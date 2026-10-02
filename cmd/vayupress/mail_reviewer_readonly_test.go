@@ -87,6 +87,12 @@ func TestAReviewerIsNotOfferedWhatWouldBeRefused(t *testing.T) {
 		if got := strings.Contains(rec.Body.String(), "This mailbox is read-only"); got != readOnly {
 			t.Errorf("compose page as %s: says read-only = %v", role, got)
 		}
+		// And the sheet Mail opens over the reader.
+		rec = httptest.NewRecorder()
+		a.handleVayuOSComposeSheet(rec, withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/compose/sheet", nil), holder))
+		if got := strings.Contains(rec.Body.String(), "This mailbox is read-only"); got != readOnly || strings.Contains(rec.Body.String(), "data-mail-compose") == readOnly {
+			t.Errorf("compose sheet as %s: says read-only = %v", role, got)
+		}
 	}
 }
 

@@ -577,6 +577,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/vayumail/switcher", a.handleVayuOSMailSwitcher)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/sent", a.handleVayuOSSent)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/compose", a.handleVayuOSCompose)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/compose/sheet", a.handleVayuOSComposeSheet)
+		pr.Get("/os/vayumail/compose/recipient", a.handleVayuOSComposeRecipient)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/accounts", a.handleVayuOSAccounts)
 		// PUBLIC key download only. There is no private-key counterpart to this
 		// route and there must never be one — an administrator has no business

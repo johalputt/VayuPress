@@ -110,7 +110,7 @@ func TestMailHTMLIsSelfContained(t *testing.T) {
 // TestRichHTMLIsOptInOnly pins the default. HTML from a young sending domain
 // delivers worse than plain text, so this has to be a deliberate choice.
 func TestRichHTMLIsOptInOnly(t *testing.T) {
-	src := readSourceFile(t, "vayuos_mail.go")
+	src := readSourceFile(t, "vayuos_mail.go") + readSourceFile(t, "vayuos_mail_compose.go")
 	if !strings.Contains(src, "richHTML := false") {
 		t.Error("richHTML must default to false in the send handler")
 	}

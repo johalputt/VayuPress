@@ -8,6 +8,24 @@ const base = process.env.MAIL_BASE_URL;
 if (!base) throw new Error("MAIL_BASE_URL is not set: boot the second install (.github/actions/boot-vayupress)");
 test.use({ baseURL: base });
 
+// The fixture writes mailboxes as Maildirs; an install also holds them as
+// accounts, with a name and a PGP key each (provisionMailbox). Made once for
+// this file, through the console's own endpoint, so compose has senders and
+// a recipient with a key on file. A second run finds them already made.
+test.beforeAll(async ({ browser }) => {
+  const page = await browser.newPage({ baseURL: base });
+  await page.goto("/os/vayumail/accounts");
+  const csrf = (await page.context().cookies()).find((c) => c.name === "vp_csrf");
+  for (const [local, name] of [["ankush", "Ankush Johal"], ["priya", "Priya Raman"]]) {
+    const r = await page.request.post("/os/vayumail/accounts/create", {
+      headers: { "X-CSRF-Token": csrf ? decodeURIComponent(csrf.value) : "" },
+      data: { local, name, pass: "e2e-mailbox-pass-" + local, role: "mailbox" },
+    });
+    if (!r.ok() && !/exist/i.test(await r.text())) throw new Error("could not make the " + local + " account: " + r.status());
+  }
+  await page.close();
+});
+
 const inbox = "/os/vayumail/inbox?user=ankush";
 async function openInbox(page, path = inbox) {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -200,4 +218,127 @@ test("the mailbox switcher opens from the account and switches", async ({ page }
   await find.press("Enter");
   await expect(page).toHaveURL(/user=priya/);
   await expect(page.locator(".mx-account__addr")).toHaveText("priya@mail.test");
+});
+
+// Compose is a sheet over the reader (Mail plan §5, §8 item 4): Reply raises
+// it from the toolbar with the quote folded away, the list beside it stays
+// live, and the mailbox answering is the sender.
+test("reply opens the compose sheet over the reader", async ({ page }) => {
+  await openInbox(page);
+  await page.locator("body").click({ position: { x: 5, y: 5 } });
+  const reply = page.locator('#vm-readpane [aria-label="Reply"]');
+  await reply.click();
+  const sheet = page.locator("[data-mx-compose-host] .mx-compose");
+  await expect(sheet.locator("[data-c-title]")).toHaveText("Re: the migration window on Saturday");
+  await expect(page).toHaveURL(/\/os\/vayumail\/inbox/);
+  await expect(sheet.locator("[data-c-body]")).toHaveValue("");
+  await expect(sheet.locator(".mx-quoted > summary")).toHaveText("Show the quoted message");
+  await expect(sheet.locator("[data-c-from]")).toHaveValue("ankush@mail.test");
+  const origin = await page.evaluate(async () => {
+    const panel = document.querySelector("[data-mx-compose-host] .mx-compose"), trig = document.querySelector('#vm-readpane [aria-label="Reply"]');
+    await Promise.all(panel.getAnimations().map((a) => a.finished));
+    const pr = panel.getBoundingClientRect(), tr = trig.getBoundingClientRect();
+    const [ox, oy] = getComputedStyle(panel).transformOrigin.split(" ").map(parseFloat);
+    const x = pr.left + ox, y = pr.top + oy;
+    return Math.hypot(Math.max(tr.left - x, 0, x - tr.right), Math.max(tr.top - y, 0, y - tr.bottom));
+  });
+  expect(origin, "the sheet does not rise from the Reply that opened it").toBeLessThanOrEqual(12);
+  // Only the reader is under the sheet: a row in the list is still what is
+  // under the pointer there.
+  const row = page.locator("#vm-inbox-list .mx-row").nth(2);
+  const box = await row.boundingBox();
+  expect(await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y).closest("#vm-inbox-list"), [box.x + box.width / 2, box.y + box.height / 2])).toBe(true);
+});
+
+// The line beside Send says what the send will do, per recipient: encrypted
+// only while every one of them has a key, and readable when the sender turns
+// it off. Keys typed in the composer never reach the list behind it.
+test("the compose line says whether the message goes encrypted", async ({ page }) => {
+  await openInbox(page);
+  const rows = await page.locator("#vm-inbox-list .mx-row").count();
+  await page.locator("body").click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("c");
+  const sheet = page.locator("[data-mx-compose-host] .mx-compose");
+  const to = sheet.locator('[data-c-chips="to"] input');
+  await expect(to).toBeFocused();
+  await to.fill("priya@mail.test");
+  await to.press("Enter");
+  const line = sheet.locator("[data-c-enc]");
+  await expect(line).toHaveText("Encrypted for priya", { timeout: 15000 });
+  await expect(line).toHaveClass(/mx-compose__enc--ok/);
+  await expect(sheet.locator(".vm-chip").first().locator(".vm-chip__lock")).toHaveCount(1);
+  await to.fill("nobody@mail.test"); // a valid address with no key on file
+  await to.press("Enter");
+  await expect(line).toHaveText("Sent as readable text: no key for nobody", { timeout: 15000 });
+  await expect(sheet.locator(".vm-chip").nth(1).locator(".vm-chip__lock")).toHaveCount(0);
+  await line.click();
+  await expect(line).toHaveText("Sent as readable text: encryption is off");
+  // Nothing clips an address (plan §2.6), a recipient's included.
+  await to.fill("a-very-long-mailbox-name-for-the-wrapping-test@mail.test");
+  await to.press("Enter");
+  await expect(sheet.locator(".vm-chip")).toHaveCount(3);
+  const clipped = await page.evaluate(() => [...document.querySelectorAll(".mx-compose .vm-chip > span:not(.vm-av):not(.vm-chip__lock)")]
+    .filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => e.textContent));
+  expect(clipped).toEqual([]);
+  await sheet.locator("[data-c-body]").click();
+  await page.keyboard.type("e#jk x");
+  await expect(page.locator("#vm-inbox-list .mx-row")).toHaveCount(rows);
+  await expect(page).toHaveURL(/\/os\/vayumail\/inbox/);
+  // A button in the composer holds focus too; j there must not walk the list.
+  const open = await page.locator("#vm-inbox-list .mx-row.vm-active").textContent();
+  await sheet.locator("[data-c-format]").focus();
+  await page.keyboard.press("j");
+  await page.waitForLoadState("networkidle");
+  expect(await page.locator("#vm-inbox-list .mx-row.vm-active").textContent(), "j in the composer opened another message").toBe(open);
+});
+
+// Escape minimises the sheet to a bar at the reader's foot and the list is
+// in reach; the bar opens it again; closing keeps what was written in Drafts.
+test("the compose sheet minimises, and closing keeps a draft", async ({ page }) => {
+  await openInbox(page);
+  await page.locator("body").click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("c");
+  const host = page.locator("[data-mx-compose-host]");
+  const subject = "Draft kept on close " + Date.now();
+  await host.locator("[data-c-subject]").fill(subject);
+  await expect(host.locator("[data-c-title]")).toHaveText(subject);
+  await page.keyboard.press("Escape");
+  await expect(host).toHaveClass(/is-min/);
+  await expect(host.locator("[data-c-body]")).toBeHidden();
+  await host.locator("[data-c-title]").click();
+  await expect(host).not.toHaveClass(/is-min/);
+  await host.locator("[data-c-close]").click();
+  await expect(host).toBeHidden();
+  const drafts = await page.evaluate(async () => (await fetch("/os/vayumail/inbox/fragment?user=ankush&folder=Drafts")).text());
+  expect(drafts, "closing the sheet lost what was written").toContain(subject);
+});
+
+// A message sent from the sheet goes, after the hold for Undo, and the sheet
+// lets go of the mailbox where it was.
+test("a message sent from the sheet arrives", async ({ page }) => {
+  test.setTimeout(60000);
+  await openInbox(page);
+  await page.locator("body").click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("c");
+  const host = page.locator("[data-mx-compose-host]");
+  const subject = "Sent from the sheet " + Date.now();
+  const to = host.locator('[data-c-chips="to"] input');
+  await to.fill("priya@mail.test");
+  await to.press("Enter");
+  await host.locator("[data-c-subject]").fill(subject);
+  await host.locator("[data-c-body]").fill("Saturday works.");
+  await host.locator("[data-c-body]").press("Control+Enter");
+  await expect(host.locator("[data-c-undobar]")).toBeVisible();
+  await expect(host).toBeHidden({ timeout: 20000 });
+  await expect.poll(async () => page.evaluate(async () => (await fetch("/os/vayumail/inbox/fragment?user=priya&folder=Inbox")).text()), { timeout: 20000 }).toContain(subject);
+});
+
+// The compose page is the same sheet, full width: a deep link, or a browser
+// without JavaScript.
+test("the compose page is the sheet, full width", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/os/vayumail/compose?user=ankush");
+  await expect(page.locator(".mx-compose--page [data-c-title]")).toHaveText("New message");
+  await expect(page.locator("[data-mx-compose-host]")).toHaveCount(0);
+  await expect(page.locator('.mx-compose--page a[aria-label="Close"]')).toHaveAttribute("href", "/os/vayumail/inbox?user=ankush");
 });

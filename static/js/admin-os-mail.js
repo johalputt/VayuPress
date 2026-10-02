@@ -195,11 +195,17 @@
   }
 
   // ── Compose ────────────────────────────────────────────────────────────────
-  var compose = document.querySelector('form[data-mail-compose]');
-  if (compose) {
+  // One composer, two homes: the compose page, and the sheet Mail opens over
+  // the reader (Mail plan §5). initCompose wires either and returns what the
+  // sheet needs to close it: save what is written, or let it go.
+  function initCompose(compose) {
     var cStatus = compose.querySelector('[data-c-status]');
     var sendBtn = compose.querySelector('[data-c-send]');
     var EMAIL_RE = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
+    // Set before anything paints: the chips draw as soon as they are wired.
+    var recipients = {};
+    var encLine = compose.querySelector('[data-c-enc]');
+    var encToggle = compose.querySelector('[data-c-encrypt]');
     function localPart(addr) { var m = (addr || '').match(/[^<@\s]+(?=@)/); return m ? m[0] : ''; }
 
     // ── Formatting toolbar ─────────────────────────────────────────────────
@@ -355,9 +361,39 @@
         if (k === 'b') { e.preventDefault(); applyFormat('bold'); }
         else if (k === 'i') { e.preventDefault(); applyFormat('italic'); }
         else if (k === 'k') { e.preventDefault(); applyFormat('link'); }
-        else if (e.key === 'Enter' && sendBtn) { e.preventDefault(); sendBtn.click(); }
       });
       updateCount();
+    }
+    // Cmd/Ctrl+Enter sends from anywhere in the composer, which is what every
+    // mail client trains people to expect.
+    compose.addEventListener('keydown', function (e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && sendBtn) { e.preventDefault(); sendBtn.click(); }
+    });
+    // Format shows the formatting bar; the message itself stays plain text.
+    var fmtBtn = compose.querySelector('[data-c-format]');
+    var fmtBar = compose.querySelector('[data-c-toolbar]');
+    if (fmtBtn && fmtBar) {
+      fmtBtn.addEventListener('click', function () {
+        fmtBar.hidden = !fmtBar.hidden;
+        fmtBtn.setAttribute('aria-pressed', fmtBar.hidden ? 'false' : 'true');
+      });
+    }
+    // The sheet's title is the subject as it is typed.
+    var titleEl = compose.querySelector('[data-c-title]');
+    var subjEl = compose.querySelector('[data-c-subject]');
+    if (titleEl && subjEl) {
+      subjEl.addEventListener('input', function () { titleEl.textContent = subjEl.value.trim() || 'New message'; });
+    }
+    // A reply's quote is folded away under the reply, and goes with it unless
+    // the sender leaves it out.
+    var quoteEl = compose.querySelector('[data-c-quote]');
+    var quoteDrop = compose.querySelector('[data-c-quote-drop]');
+    if (quoteDrop) {
+      quoteDrop.addEventListener('click', function () {
+        var box = compose.querySelector('[data-c-quoted]');
+        if (box) box.remove();
+        quoteEl = null;
+      });
     }
 
     // Preview: renders the plain-text conventions the way a reader's eye groups
@@ -420,17 +456,31 @@
         container.querySelectorAll('.vm-chip').forEach(function (c) { c.remove(); });
         list.forEach(function (addr, i) {
           var chip = document.createElement('span');
-          chip.className = 'vm-chip' + (EMAIL_RE.test(addr) ? '' : ' vm-chip--bad');
-          if (!EMAIL_RE.test(addr)) chip.title = 'This does not look like a valid email address';
-          var label = document.createElement('span'); label.textContent = addr;
+          var ok = EMAIL_RE.test(addrOf(addr));
+          chip.className = 'vm-chip' + (ok ? '' : ' vm-chip--bad');
+          if (!ok) chip.title = 'This does not look like a valid email address';
+          var info = ok ? recipientInfo(addr, render) : null;
+          if (info) {
+            var av = document.createElement('span');
+            av.className = 'vm-av vm-av--' + info.tone; av.setAttribute('aria-hidden', 'true'); av.textContent = info.initials;
+            chip.appendChild(av);
+          }
+          var label = document.createElement('span'); label.textContent = nameOf(addr, true); label.title = addrOf(addr);
+          chip.appendChild(label);
+          if (info && info.key) {
+            var lock = document.createElement('span');
+            lock.className = 'vm-chip__lock'; lock.setAttribute('role', 'img'); lock.setAttribute('aria-label', 'has a key');
+            lock.appendChild(window.vpIcon('lock'));
+            chip.appendChild(lock);
+          }
           var x = document.createElement('button');
           x.type = 'button'; x.className = 'vm-chip-x'; x.setAttribute('aria-label', 'Remove ' + addr); x.textContent = '×';
           x.addEventListener('click', function () { list.splice(i, 1); render(); sync(); });
-          chip.appendChild(label); chip.appendChild(x);
+          chip.appendChild(x);
           container.insertBefore(chip, input);
         });
       }
-      function sync() { hidden.value = list.join(', '); updatePGP(); }
+      function sync() { hidden.value = list.join(', '); paintEnc(); }
       function addFromText(text) {
         (text || '').split(/[,;\n]/).forEach(function (t) { t = t.trim(); if (t && list.indexOf(t) === -1) list.push(t); });
       }
@@ -459,7 +509,8 @@
     // (an <input type=file> FileList is immutable). The send handler builds the
     // multipart body from this array.
     var filesEl = compose.querySelector('[data-c-files]');
-    var dropzone = compose.querySelector('[data-c-dropzone]');
+    // The whole composer takes dropped files, lit while they are over it.
+    var dropzone = compose;
     var tray = compose.querySelector('[data-c-attach-list]');
     var browseBtn = compose.querySelector('[data-c-attach-btn]');
     var composeFiles = [];
@@ -473,7 +524,7 @@
       tray.textContent = '';
       // Say where the files go: they are stored with the draft, not autosaved.
       if (composeFiles.length > 0 && cStatus && !cStatus.textContent) {
-        cStatus.textContent = 'Files are stored when you press “Save as draft”.';
+        cStatus.textContent = 'Files are kept with the draft when it is closed.';
       }
       composeFiles.forEach(function (f, i) {
         var chip = document.createElement('span');
@@ -483,41 +534,85 @@
         var size = document.createElement('span'); size.className = 'vm-attach-size'; size.textContent = humanSize(f.size);
         var x = document.createElement('button');
         x.type = 'button'; x.className = 'vm-chip-x'; x.setAttribute('aria-label', 'Remove ' + f.name); x.textContent = '×';
-        x.addEventListener('click', function () { composeFiles.splice(i, 1); renderFiles(); updatePGP(); });
+        x.addEventListener('click', function () { composeFiles.splice(i, 1); renderFiles(); });
         chip.appendChild(ico); chip.appendChild(name); chip.appendChild(size); chip.appendChild(x);
         tray.appendChild(chip);
       });
     }
     function addFiles(fileList) {
       for (var i = 0; i < fileList.length; i++) composeFiles.push(fileList[i]);
-      renderFiles(); updatePGP();
+      renderFiles();
     }
     if (browseBtn && filesEl) browseBtn.addEventListener('click', function () { filesEl.click(); });
     if (filesEl) filesEl.addEventListener('change', function () { addFiles(filesEl.files); filesEl.value = ''; });
     if (dropzone) {
       ['dragenter', 'dragover'].forEach(function (ev) {
-        dropzone.addEventListener(ev, function (e) { e.preventDefault(); dropzone.classList.add('vm-dropzone--over'); });
+        dropzone.addEventListener(ev, function (e) { e.preventDefault(); dropzone.classList.add('is-drop'); });
       });
       ['dragleave', 'drop'].forEach(function (ev) {
-        dropzone.addEventListener(ev, function (e) { e.preventDefault(); dropzone.classList.remove('vm-dropzone--over'); });
+        dropzone.addEventListener(ev, function (e) { e.preventDefault(); dropzone.classList.remove('is-drop'); });
       });
       dropzone.addEventListener('drop', function (e) { if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files); });
     }
 
-    // PGP eligibility hint. With PGP/MIME (RFC 3156) encryption now covers
-    // attachments and multiple recipients, so the only requirement is that every
-    // recipient has a key on file — which the server checks at send time (it
-    // falls back to plaintext rather than send an unreadable message).
-    var pgpHint = compose.querySelector('[data-c-pgp]');
-    function countAddrs(v) { return (v || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean).length; }
-    function updatePGP() {
-      if (!pgpHint) return;
-      var to = countAddrs(val(compose, '[data-c-to]')), cc = countAddrs(val(compose, '[data-c-cc]')), bcc = countAddrs(val(compose, '[data-c-bcc]'));
-      if (to + cc + bcc === 0) { pgpHint.textContent = ''; pgpHint.className = 'vm-pgp-hint'; return; }
-      pgpHint.textContent = 'Tick “Encrypt with PGP” to encrypt the message and any attachments for every recipient whose key is known';
-      pgpHint.className = 'vm-pgp-hint vm-pgp-hint--enc';
+    // Who each recipient is, and whether a message to them can be encrypted,
+    // asked once per address of the server (handleVayuOSComposeRecipient),
+    // which resolves the key as the send will. again is called when it lands.
+    function addrOf(a) { var m = (a || '').match(/<([^>]+)>/); return (m ? m[1] : a || '').trim(); }
+    function nameOf(a, whole) {
+      var m = (a || '').match(/^\s*"?([^"<]+?)"?\s*</);
+      if (m) return whole ? m[1] : m[1].split(/\s+/)[0];
+      return whole ? addrOf(a) : addrOf(a).split('@')[0];
     }
-    updatePGP();
+    function recipientInfo(addr, again) {
+      var k = addrOf(addr).toLowerCase();
+      var got = recipients[k];
+      if (got && got !== 'asking') return got;
+      if (!got) {
+        recipients[k] = 'asking';
+        fetch('/os/vayumail/compose/recipient?addr=' + encodeURIComponent(addr), { credentials: 'same-origin' })
+          .then(function (r) { return r.ok ? r.json() : { key: false, initials: '', tone: 0 }; })
+          .catch(function () { return { key: false, initials: '', tone: 0 }; })
+          .then(function (j) { recipients[k] = j; if (again) again(); paintEnc(); });
+      }
+      return null;
+    }
+    function allRecipients() {
+      return ['to', 'cc', 'bcc'].reduce(function (out, f) {
+        return out.concat(val(compose, '[data-c-' + f + ']').split(',').map(function (t) { return t.trim(); }).filter(Boolean));
+      }, []);
+    }
+    // The line beside Send says what the send will do: the send encrypts only
+    // when encryption is on and every recipient has a key (engine
+    // ComposeRich), and those are exactly what this line reads.
+    function names(list) {
+      return list.length <= 2 ? list.join(' and ') : list.slice(0, 2).join(', ') + ' and ' + (list.length - 2) + ' more';
+    }
+    function paintEnc() {
+      if (!encLine) return;
+      var rs = allRecipients().filter(function (a) { return EMAIL_RE.test(addrOf(a)); });
+      encLine.hidden = rs.length === 0;
+      if (!rs.length) return;
+      var text, tone = '';
+      if (!pgpEncrypt()) {
+        text = 'Sent as readable text: encryption is off';
+        encLine.title = 'Turn encryption on';
+      } else {
+        var asking = false, missing = [];
+        rs.forEach(function (a) {
+          var info = recipientInfo(a);
+          if (!info) asking = true; else if (!info.key) missing.push(nameOf(a));
+        });
+        encLine.title = 'Turn encryption off';
+        if (asking) text = 'Checking keys…';
+        else if (missing.length) text = 'Sent as readable text: no key for ' + names(missing);
+        else { text = 'Encrypted for ' + (rs.length === 1 ? nameOf(rs[0]) : rs.length === 2 ? 'both' : 'all ' + rs.length); tone = 'ok'; }
+      }
+      encLine.textContent = '';
+      if (tone === 'ok') encLine.appendChild(window.vpIcon('lock'));
+      encLine.appendChild(document.createTextNode(text));
+      encLine.className = 'mx-compose__enc' + (tone ? ' mx-compose__enc--' + tone : '');
+    }
 
     // ── Signature ────────────────────────────────────────────────────────────
     // Each From <option> carries its account's signature in data-sig. The editor
@@ -537,21 +632,13 @@
     function paintSig() {
       var s = currentSig();
       if (sigText && document.activeElement !== sigText) sigText.value = s;
-      if (sigPreview) sigPreview.textContent = s || '(no signature set for this address)';
+      if (sigPreview) sigPreview.textContent = s; // empty, and so hidden, without one
     }
     function sigAppend() { return !(sigToggle && !sigToggle.checked); }
-    var encToggle = compose.querySelector('[data-c-encrypt]');
-    var encHint = compose.querySelector('[data-c-encrypt-hint]');
     function pgpEncrypt() { return !!(encToggle && encToggle.checked); }
     var richToggle = compose.querySelector('[data-c-rich]');
     function richHTML() { return !!(richToggle && richToggle.checked); }
-    function paintEnc() {
-      if (!encHint) return;
-      encHint.textContent = pgpEncrypt()
-        ? 'On — the message and any attachments are PGP-encrypted (RFC 3156) for every recipient whose key is on file. If a recipient has no key it is sent as readable text instead — never as ciphertext they can’t open.'
-        : 'Off — the message is sent as readable text. Turn on to PGP-encrypt the message and attachments for recipients whose keys are known.';
-    }
-    if (encToggle) { encToggle.addEventListener('change', paintEnc); paintEnc(); }
+    if (encLine && encToggle) encLine.addEventListener('click', function () { encToggle.checked = !encToggle.checked; paintEnc(); });
     if (fromSel) fromSel.addEventListener('change', paintSig);
     if (sigSave) {
       sigSave.addEventListener('click', function () {
@@ -575,6 +662,7 @@
       });
     }
     paintSig();
+    paintEnc();
 
     var composeFields = function () {
       return {
@@ -584,7 +672,9 @@
         bcc: val(compose, '[data-c-bcc]'),
         replyTo: val(compose, '[data-c-reply]'),
         subject: val(compose, '[data-c-subject]'),
-        body: val(compose, '[data-c-body]'),
+        // The folded quote goes back under the reply, where it always was in
+        // the body (insertSignature puts the signature above it).
+        body: val(compose, '[data-c-body]') + (quoteEl ? '\r\n\r\n' + quoteEl.textContent : ''),
         // Present only when this composer was opened from a saved draft. The send
         // path uses it to merge the files that draft is holding, so reopening a
         // draft and pressing Send does not ship a message without its attachments.
@@ -603,7 +693,7 @@
       // The signature includes the file count, so attaching a file is itself a
       // reason to save.
       var sig = f.to + '|' + f.subject + '|' + f.body + '|' + composeFiles.length;
-      if (silent && sig === lastSavedSig) return;
+      if (silent && sig === lastSavedSig) { if (done) done(true); return; }
       lastSavedSig = sig;
       if (!silent && cStatus) cStatus.textContent = 'Saving draft…';
       var prev = draftId, user = localPart(f.from);
@@ -631,7 +721,7 @@
           if (prev && user && prev !== draftId) {
             postJSON('/os/vayumail/message/action', { user: user, folder: 'Drafts', id: prev, delete: true });
           }
-          if (cStatus) cStatus.textContent = silent ? 'Draft saved' : 'Saved to Drafts ✓';
+          if (cStatus) { var t = new Date(); cStatus.textContent = 'Draft saved ' + ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2); }
           if (done) done(true);
         } else {
           if (!silent && cStatus) cStatus.textContent = 'Draft failed: ' + errText(res);
@@ -649,24 +739,19 @@
     }
     armAutosave();
 
-    var draftBtn = compose.querySelector('[data-c-draft]');
-    if (draftBtn) {
-      draftBtn.addEventListener('click', function () {
+    // Discard: the draft goes, saved copy included, and the composer closes.
+    // Closing keeps what is written instead (close below); the page has no
+    // close of its own beyond its link back to the mailbox.
+    var discarded = false;
+    var discardBtn = compose.querySelector('[data-c-discard]');
+    if (discardBtn) {
+      discardBtn.addEventListener('click', function () {
+        discarded = true;
         stopAutosave();
-        draftBtn.disabled = true;
         var f = composeFields();
-        var draftsURL = '/os/vayumail/inbox?user=' + encodeURIComponent(localPart(f.from)) + '&folder=Drafts';
-        // Navigate only once the draft is actually stored. The old fixed 700ms
-        // timer left the operator staring at an empty Drafts folder whenever the
-        // save was slow or failed.
-        saveDraft(false, function (ok, nothing) {
-          draftBtn.disabled = false;
-          if (ok || nothing) {
-            window.location.href = draftsURL;
-          } else if (cStatus) {
-            cStatus.textContent = 'Could not save the draft — staying here so nothing is lost.';
-          }
-        });
+        if (draftId) postJSON('/os/vayumail/message/action', { user: localPart(f.from), folder: 'Drafts', id: draftId, delete: true });
+        compose.dispatchEvent(new CustomEvent('mx-compose-done', { bubbles: true, detail: { why: 'discarded' } }));
+        if (!compose.closest('[data-mx-compose-host]')) window.location.href = compose.getAttribute('data-c-back') || '/os/vayumail/inbox';
       });
     }
 
@@ -692,9 +777,11 @@
         if (holdSnapshot && holdSnapshot.draftId) {
           postJSON('/os/vayumail/message/action', { user: localPart(holdSnapshot.from), folder: 'Drafts', id: holdSnapshot.draftId, delete: true });
         }
-        if (cStatus) cStatus.textContent = 'Sent ✓';
+        if (cStatus) cStatus.textContent = 'Sent';
         acctToast('Message sent');
-        setTimeout(function () { window.location.href = '/os/vayumail/sent'; }, 650);
+        // In the sheet the mailbox stays where it was; the page goes to Sent.
+        if (compose.closest('[data-mx-compose-host]')) compose.dispatchEvent(new CustomEvent('mx-compose-done', { bubbles: true, detail: { why: 'sent' } }));
+        else setTimeout(function () { window.location.href = '/os/vayumail/sent'; }, 650);
       } else {
         sending = false;
         holdSnapshot = null;
@@ -774,12 +861,109 @@
       if (snap.files.length > 0) return false;
       return new Blob([JSON.stringify(snap.fields)]).size < KEEPALIVE_MAX - 1024; // headroom for the flags
     }
-    window.addEventListener('beforeunload', function (e) {
+    function onLeave(e) {
       if (!holdSnapshot || sending) return;
       var fits = outlivesPage(holdSnapshot);
       performSend(true);
       if (!fits) { e.preventDefault(); e.returnValue = ''; }
+    }
+    window.addEventListener('beforeunload', onLeave);
+
+    return {
+      // Is a send held behind Undo? The sheet then minimises instead of closing.
+      holding: function () { return !!holdSnapshot && !sending; },
+      // Close: keep what is written as a draft, then let go of the timers.
+      // done(false) means the draft could not be kept, and the sheet stays.
+      close: function (done) {
+        if (discarded || sending) { window.removeEventListener('beforeunload', onLeave); done(true); return; }
+        saveDraft(true, function (ok, nothing) {
+          if (ok || nothing) { stopAutosave(); window.removeEventListener('beforeunload', onLeave); }
+          else if (cStatus) cStatus.textContent = 'The draft could not be saved, so it stays open.';
+          done(!!(ok || nothing));
+        });
+      },
+    };
+  }
+  var pageCompose = document.querySelector('form[data-mail-compose]');
+  if (pageCompose) initCompose(pageCompose);
+
+  // ── The compose sheet in Mail (plan §5; motion §8 item 4) ─────────────────
+  // Beside the list, every way into compose (the list's pencil, c, Reply,
+  // Reply all, Forward, the reply field under a message) opens the sheet over
+  // the reader instead of leaving the mailbox. It rises out of the control
+  // that opened it, dims only the reader, minimises to a bar at the reader's
+  // foot, expands over list and reader, and closes keeping a draft. One sheet
+  // at a time: opening another keeps the first as a draft.
+  var split = document.querySelector('.vm-split');
+  if (split) {
+    var host = document.createElement('div');
+    host.className = 'mx-compose-host';
+    host.setAttribute('data-mx-compose-host', '');
+    host.hidden = true;
+    split.appendChild(host);
+    var sheet = null, opener = null;
+    var sheetOpen = function (href, trigger) {
+      var go = function () {
+        opener = trigger || null;
+        host.className = 'mx-compose-host';
+        fetch(href.replace('/os/vayumail/compose', '/os/vayumail/compose/sheet'), { credentials: 'same-origin' })
+          .then(function (r) { return r.text(); })
+          .then(function (markup) {
+            host.innerHTML = markup; // the server's own escaped fragment, as htmx would swap it
+            host.hidden = false;
+            var form = host.querySelector('form[data-mail-compose]');
+            sheet = form ? initCompose(form) : null;
+            if (window.vpWirePops) window.vpWirePops(host);
+            var panel = host.querySelector('.mx-compose');
+            if (panel && window.vpOpenFrom) window.vpOpenFrom(panel, opener);
+            var first = form && (form.querySelector('[data-c-chips="to"] input') || null);
+            var to = form && form.querySelector('[data-c-to]');
+            if (form && to && to.value.trim()) first = form.querySelector('[data-c-body]');
+            if (first) first.focus({ preventScroll: true });
+          });
+      };
+      if (sheet) sheetClose(go); else go();
+    };
+    var sheetClose = function (then) {
+      var finish = function () {
+        sheet = null;
+        host.hidden = true;
+        host.textContent = '';
+        if (opener && document.contains(opener)) opener.focus({ preventScroll: true });
+        if (then) then();
+      };
+      if (!sheet) { finish(); return; }
+      if (sheet.holding()) { host.classList.add('is-min'); return; }
+      sheet.close(function (ok) { if (ok) finish(); });
+    };
+    document.addEventListener('click', function (e) {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      var a = e.target.closest ? e.target.closest('a[href^="/os/vayumail/compose"]') : null;
+      if (a && !host.contains(a)) { e.preventDefault(); sheetOpen(a.getAttribute('href'), a); return; }
+      if (!e.target.closest) return;
+      if (e.target.closest('[data-c-min]')) { host.classList.add('is-min'); host.classList.remove('is-max'); return; }
+      var max = e.target.closest('[data-c-max]');
+      if (max) {
+        host.classList.remove('is-min');
+        max.setAttribute('aria-pressed', host.classList.toggle('is-max') ? 'true' : 'false');
+        return;
+      }
+      if (e.target.closest('[data-c-close]')) { sheetClose(); return; }
+      // The minimised bar opens again from anywhere on it but its own tools.
+      if (host.classList.contains('is-min') && e.target.closest('.mx-compose__head') && !e.target.closest('button')) host.classList.remove('is-min');
     });
+    host.addEventListener('mx-compose-done', function () { sheet = null; sheetClose(); });
+    // Escape minimises the sheet, unless a menu inside it is what is open.
+    host.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape' || host.querySelector('details.sa-pop[open]')) return;
+      if (host.classList.contains('is-min')) return;
+      e.preventDefault();
+      host.classList.add('is-min');
+      host.classList.remove('is-max');
+      var bar = host.querySelector('[data-c-title]');
+      if (bar) { bar.setAttribute('tabindex', '-1'); bar.focus({ preventScroll: true }); }
+    });
+    window.vpComposeSheet = sheetOpen;
   }
 
   // Enterprise feedback: a non-blocking toast (from the admin shell) instead of
@@ -1326,6 +1510,10 @@
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       if (e.key === 'Escape' && helpOpen()) { toggleHelp(); return; }
       if (typing()) return;
+      // The composer's buttons hold focus too; a key pressed there is not
+      // meant for the list behind it.
+      var at = document.activeElement;
+      if (at && at.closest && at.closest('form[data-mail-compose]')) return;
       if (e.key === '?') { e.preventDefault(); toggleHelp(); return; }
       if (e.key === 'c') {
         // Keep the mailbox context: an admin reading someone's mailbox must not
@@ -1335,7 +1523,8 @@
         if (mu && mu[1]) {
           try { who = encodeURIComponent(decodeURIComponent(mu[1])); } catch (err) { who = encodeURIComponent(mu[1]); }
         }
-        window.location.href = '/os/vayumail/compose' + (who ? '?user=' + who : '');
+        var to = '/os/vayumail/compose' + (who ? '?user=' + who : '');
+        if (window.vpComposeSheet) window.vpComposeSheet(to, null); else window.location.href = to;
         return;
       }
       if (e.key === '/') {

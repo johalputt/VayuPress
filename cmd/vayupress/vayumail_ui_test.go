@@ -94,9 +94,9 @@ func TestFullViewKeepsActionsReachable(t *testing.T) {
 // TestComposerHasAFormattingToolbar guards the editor controls. The message field
 // was a bare textarea with no way to structure anything.
 func TestComposerHasAFormattingToolbar(t *testing.T) {
-	src, err := os.ReadFile("vayuos_mail.go")
+	src, err := os.ReadFile("vayuos_mail_compose.go")
 	if err != nil {
-		t.Fatalf("read vayuos_mail.go: %v", err)
+		t.Fatalf("read vayuos_mail_compose.go: %v", err)
 	}
 	page := string(src)
 	for _, want := range []string{
@@ -143,9 +143,9 @@ func TestComposerPreviewNeverInjectsMarkup(t *testing.T) {
 // become the source and the plain-text fallback would drift into "please view this
 // in HTML", which is exactly the failure this design avoids.
 func TestComposerFormattingStaysPlainText(t *testing.T) {
-	src, err := os.ReadFile("vayuos_mail.go")
+	src, err := os.ReadFile("vayuos_mail_compose.go")
 	if err != nil {
-		t.Fatalf("read vayuos_mail.go: %v", err)
+		t.Fatalf("read vayuos_mail_compose.go: %v", err)
 	}
 	if !strings.Contains(string(src), `data-c-body placeholder="Write your message…"`) {
 		t.Error("the body must remain a textarea — it is the source both MIME parts are built from")

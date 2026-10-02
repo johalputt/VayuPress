@@ -9,6 +9,8 @@ package pgp
 
 import (
 	"bytes"
+	"io"
+	"net/http"
 	"testing"
 	"time"
 
@@ -162,5 +164,47 @@ func TestTheSealJudgesAClearSignedMessage(t *testing.T) {
 	}
 	if got := e.CheckClearSigned([]byte("Just words.\n"), "snd@example.com"); got != SigNone {
 		t.Errorf("unsigned text: %d", got)
+	}
+}
+
+// wkdStub answers every WKD request with one binary key.
+type wkdStub struct {
+	key  []byte
+	hits *int
+}
+
+func (s wkdStub) RoundTrip(*http.Request) (*http.Response, error) {
+	*s.hits++
+	return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(bytes.NewReader(s.key))}, nil
+}
+
+// The compose sheet's lock and line say what the send will do, so
+// CanEncryptTo must agree with Encrypt for every kind of recipient: a key on
+// file, a key only the recipient's own WKD holds, and no key anywhere.
+func TestCanEncryptToResolvesAsTheSendDoes(t *testing.T) {
+	e, _, _, stranger, _ := sealEngine(t)
+	var key bytes.Buffer
+	if err := stranger.Serialize(&key); err != nil {
+		t.Fatal(err)
+	}
+	hits := 0
+	e.wkdClient = &http.Client{Transport: wkdStub{key.Bytes(), &hits}}
+	for _, c := range []struct {
+		addr string
+		want bool
+	}{
+		{"snd@example.com", true},         // on file
+		{"stranger@elsewhere.test", true}, // its own WKD has it
+		{"other@elsewhere.test", false},   // WKD answers with a key that is not theirs
+		{"nobody@localhost", false},       // nothing on file, and no WKD to ask
+	} {
+		got := e.CanEncryptTo(c.addr)
+		_, err := e.Encrypt([]byte("x"), c.addr)
+		if got != c.want || got != (err == nil) {
+			t.Errorf("%s: CanEncryptTo %v, Encrypt err %v; want %v from both", c.addr, got, err, c.want)
+		}
+	}
+	if hits == 0 {
+		t.Error("no WKD request was made: the WKD case was not exercised")
 	}
 }

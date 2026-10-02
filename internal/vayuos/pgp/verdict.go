@@ -125,3 +125,14 @@ func (e *Engine) CheckClearSigned(text []byte, senderEmail string) SigVerdict {
 	signer, err := b.VerifySignature(openpgp.EntityList{sender}, e.packetConfig())
 	return judge(true, sender, signer, err)
 }
+
+// CanEncryptTo says whether a message to email can be encrypted, resolving
+// its key exactly as Encrypt does: the key on file, else the recipient's own
+// WKD (never in a Tor Space). The compose sheet asks it per recipient so that
+// what it says beside Send is what the send will do. A WKD lookup here, as a
+// recipient is added, is what every WKD client does at compose time; it is
+// the sender's own act, unlike a fetch on opening a received message.
+func (e *Engine) CanEncryptTo(email string) bool {
+	_, err := e.recipientEntity(email)
+	return err == nil
+}

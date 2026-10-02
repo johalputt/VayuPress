@@ -7007,3 +7007,109 @@
 @media (prefers-reduced-motion: reduce) {
   .vp-os[data-ui="still-air"] .sa-doc__inspector { transition: none; }
 }
+
+/* The compose sheet (Mail plan §5, render 03). In Mail it lies over the
+   reader column (admin-os-mail.js sheetOpen), dimming only the reader: the
+   sidebar and the list stay live. It minimises to a bar at the reader's foot,
+   expands over list and reader, and is the whole page at /os/vayumail/compose. */
+.vp-os[data-ui="still-air"] .sa-content > .vm-split { position: relative; }
+.vp-os[data-ui="still-air"] .vm-split > .mx-compose-host {
+  position: absolute; grid-column: 2; grid-row: 1; inset: 0; z-index: 4;
+  display: flex; padding: var(--space-5); background: var(--scrim);
+  transition: background-color var(--duration-standard) var(--ease-move);
+}
+.vp-os[data-ui="still-air"] .vm-split > .mx-compose-host[hidden] { display: none; }
+.vp-os[data-ui="still-air"] .vm-split > .mx-compose-host.is-max { grid-column: 1 / -1; }
+.vp-os[data-ui="still-air"] .vm-split > .mx-compose-host.is-min { background: transparent; pointer-events: none; align-items: flex-end; }
+.vp-os[data-ui="still-air"] .mx-compose-host.is-min .mx-compose { pointer-events: auto; flex: 1; animation: mx-bar-in var(--duration-standard) var(--ease-move); }
+.vp-os[data-ui="still-air"] .mx-compose-host.is-min .mx-compose > :not(.mx-compose__head):not(.vm-undobar) { display: none; }
+.vp-os[data-ui="still-air"] .mx-compose-host.is-min .mx-compose__head { border-bottom: 0; cursor: pointer; }
+.vp-os[data-ui="still-air"] .mx-compose {
+  flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  background: var(--surface-1); border: 1px solid var(--border-2); border-radius: var(--radius-surface);
+  box-shadow: var(--shadow-5); overflow: hidden;
+  animation: mx-sheet-in var(--duration-major) var(--ease-move);
+}
+/* It rises out of the control that opened it: vpOpenFrom sets the origin. */
+@keyframes mx-sheet-in { from { opacity: 0; transform: scale(0.96) translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes mx-bar-in { from { opacity: 0; transform: translateY(100%); } to { opacity: 1; transform: none; } }
+.vp-os[data-ui="still-air"] .mx-compose--page { max-width: 880px; min-height: min(760px, calc(100vh - 140px)); margin: var(--space-6) auto; animation: none; }
+.vp-os[data-ui="still-air"] .mx-compose.is-drop { outline: 2px dashed var(--accent); outline-offset: -6px; }
+.vp-os[data-ui="still-air"] .mx-compose__head { display: flex; align-items: center; gap: var(--space-1); padding: var(--space-3) var(--space-3) var(--space-3) var(--space-5); border-bottom: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .mx-compose__title { flex: 1; min-width: 0; margin: 0; font: var(--type-heading); color: var(--text-1); overflow-wrap: anywhere; }
+.vp-os[data-ui="still-air"] .mx-compose__tool {
+  flex: none; display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0;
+  border: 0; background: none; color: var(--text-2); border-radius: var(--radius-control); cursor: pointer;
+  transition: background-color var(--duration-micro) var(--ease-move), color var(--duration-micro) var(--ease-move);
+}
+.vp-os[data-ui="still-air"] .mx-compose__tool:hover { background: var(--surface-hover); color: var(--text-1); text-decoration: none; }
+.vp-os[data-ui="still-air"] .mx-compose__tool[aria-pressed="true"] { background: var(--surface-press); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .mx-compose__note { display: flex; gap: var(--space-3); margin: 0; padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--border-1); font: var(--type-small); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .mx-compose__field { display: flex; align-items: center; gap: var(--space-4); min-height: 46px; padding: var(--space-1) var(--space-5); border-bottom: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .mx-compose__field[hidden] { display: none; }
+.vp-os[data-ui="still-air"] .mx-compose__label { flex: none; width: 64px; font: var(--type-body); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .mx-compose__from,
+.vp-os[data-ui="still-air"] .mx-compose__input { flex: 1; min-width: 0; padding: var(--space-2) 0; border: 0; background: none; color: var(--text-1); font: var(--type-body); outline: none; }
+.vp-os[data-ui="still-air"] .mx-compose__from { cursor: pointer; }
+.vp-os[data-ui="still-air"] .mx-compose__chips { flex: 1; min-width: 0; min-height: 0; padding: var(--space-1) 0; border: 0; background: none; }
+.vp-os[data-ui="still-air"] .mx-compose__chips .vm-chip-input { flex: 1 1 6rem; min-width: 6rem; font: var(--type-body); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .mx-compose .vm-chip { gap: 6px; padding: 2px 2px 2px 3px; border-radius: 999px; background: var(--surface-2); font: var(--type-small); color: var(--text-1); }
+/* Nothing clips an address (plan §2.6), a recipient included. */
+.vp-os[data-ui="still-air"] .mx-compose .vm-chip > span { overflow: visible; white-space: normal; overflow-wrap: anywhere; text-overflow: clip; }
+.vp-os[data-ui="still-air"] .mx-compose .vm-chip > .vm-av { width: 20px; height: 20px; font-size: 9px; }
+.vp-os[data-ui="still-air"] .mx-compose .vm-chip--bad { background: var(--danger-soft); color: var(--danger); }
+.vp-os[data-ui="still-air"] .vm-chip__lock { display: inline-grid; color: var(--ok); }
+.vp-os[data-ui="still-air"] .vm-chip__lock .sa-ico { width: 13px; height: 13px; }
+.vp-os[data-ui="still-air"] .mx-compose__cc { flex: none; padding: var(--space-2); border: 0; background: none; color: var(--text-3); font: var(--type-small); cursor: pointer; }
+.vp-os[data-ui="still-air"] .mx-compose__cc:hover { color: var(--text-1); }
+.vp-os[data-ui="still-air"] .mx-compose__body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-5); }
+.vp-os[data-ui="still-air"] .mx-compose__body .vm-ed-bar { border: 1px solid var(--border-1); border-radius: var(--radius-control); background: var(--surface-2); }
+.vp-os[data-ui="still-air"] .mx-compose__body .vm-ed-bar[hidden] { display: none; }
+.vp-os[data-ui="still-air"] .mx-compose__count { font: var(--type-meta); color: var(--text-3); margin-right: var(--space-3); }
+/* The message grows with what is written, so the folded quote and the
+   signature sit right under it, as they will in the message sent. */
+.vp-os[data-ui="still-air"] .mx-compose__text { flex: none; field-sizing: content; min-height: 160px; padding: 0; border: 0; background: none; resize: none; outline: none; color: var(--text-1); font: var(--type-body); line-height: 1.65; }
+.vp-os[data-ui="still-air"] .mx-compose__text[hidden] { display: none; }
+.vp-os[data-ui="still-air"] .mx-quoted > summary {
+  display: inline-flex; align-items: center; gap: var(--space-2); padding: 3px var(--space-4) 3px var(--space-3);
+  border-radius: 999px; background: var(--surface-2); color: var(--text-2); font: var(--type-small); cursor: pointer; list-style: none;
+}
+.vp-os[data-ui="still-air"] .mx-quoted > summary::-webkit-details-marker { display: none; }
+.vp-os[data-ui="still-air"] .mx-quoted[open] > summary { color: var(--text-1); }
+.vp-os[data-ui="still-air"] .mx-quoted__text { margin: var(--space-3) 0; padding-left: var(--space-4); border-left: 2px solid var(--border-2); white-space: pre-wrap; overflow-wrap: anywhere; font: var(--type-small); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .mx-quoted__drop { padding: 0; border: 0; background: none; color: var(--accent); font: var(--type-small); cursor: pointer; }
+.vp-os[data-ui="still-air"] .mx-compose__sig { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--type-small); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .mx-compose__sig:empty { display: none; }
+.vp-os[data-ui="still-air"] .mx-compose__saved { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); font: var(--type-small); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .mx-compose__foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .mx-compose__send { display: inline-flex; align-items: center; gap: var(--space-2); margin-right: var(--space-3); }
+.vp-os[data-ui="still-air"] .mx-compose__send .sa-ico { width: 16px; height: 16px; }
+.vp-os[data-ui="still-air"] .mx-compose__enc {
+  display: inline-flex; align-items: center; gap: 6px; margin-left: var(--space-2); padding: var(--space-1) var(--space-2);
+  border: 0; border-radius: var(--radius-control); background: none; color: var(--text-2); font: var(--type-small); cursor: pointer; text-align: left;
+}
+.vp-os[data-ui="still-air"] .mx-compose__enc:hover { background: var(--surface-hover); }
+.vp-os[data-ui="still-air"] .mx-compose__enc--ok { color: var(--ok); }
+.vp-os[data-ui="still-air"] .mx-compose__enc .sa-ico { width: 14px; height: 14px; }
+.vp-os[data-ui="still-air"] .mx-compose__status { margin-left: auto; padding: 0 var(--space-2); font: var(--type-small); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .mx-compose__more .sa-pop__panel { top: auto; bottom: calc(100% + 8px); left: 0; right: auto; width: 280px; padding: var(--space-2); }
+.vp-os[data-ui="still-air"] .mx-compose__opt {
+  display: flex; align-items: center; gap: var(--space-3); width: 100%; padding: var(--space-3); border: 0; border-radius: var(--radius-control);
+  background: none; color: var(--text-1); font: var(--type-small); text-align: left; cursor: pointer; list-style: none;
+}
+.vp-os[data-ui="still-air"] .mx-compose__opt:hover { background: var(--surface-hover); }
+.vp-os[data-ui="still-air"] .mx-compose__sigedit > summary::-webkit-details-marker { display: none; }
+.vp-os[data-ui="still-air"] .mx-compose__sigedit .mx-compose__input { width: 100%; padding: var(--space-3); border: 1px solid var(--border-2); border-radius: var(--radius-control); resize: vertical; }
+.vp-os[data-ui="still-air"] .mx-compose__sigbar { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; font: var(--type-small); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .mx-compose .vm-undobar { margin: 0 var(--space-4) var(--space-3); }
+/* Narrower than three columns the sheet covers list and reader alike; on a
+   phone it fills the screen and slides up from the bottom edge (§8 item 4). */
+@media (max-width: 1099px) {
+  .vp-os[data-ui="still-air"] .vm-split > .mx-compose-host { grid-column: 1 / -1; }
+}
+@media (max-width: 759px) {
+  .vp-os[data-ui="still-air"] .vm-split > .mx-compose-host { padding: 0; }
+  .vp-os[data-ui="still-air"] .mx-compose { border-radius: 0; border: 0; animation-name: mx-sheet-up; }
+  .vp-os[data-ui="still-air"] .mx-compose__label { width: 52px; }
+}
+@keyframes mx-sheet-up { from { transform: translateY(100%); } to { transform: none; } }

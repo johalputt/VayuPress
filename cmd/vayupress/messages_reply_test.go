@@ -39,12 +39,12 @@ func TestComposeFillsAReplyToAContactMessageForAnAdministratorOnly(t *testing.T)
 		return withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/compose?contact="+id, nil), u)
 	}
 
-	to, cc, bcc, subject, body := a.composePrefill(req(&users.User{Role: users.RoleAdmin}, "m-1"))
-	if to != "priya@readers.example" || cc != "" || bcc != "" || subject != "Re: your message" {
-		t.Errorf("to %q cc %q bcc %q subject %q", to, cc, bcc, subject)
+	to, cc, bcc, subject, body, quote := a.composePrefill(req(&users.User{Role: users.RoleAdmin}, "m-1"))
+	if to != "priya@readers.example" || cc != "" || bcc != "" || subject != "Re: your message" || body != "" {
+		t.Errorf("to %q cc %q bcc %q subject %q body %q", to, cc, bcc, subject, body)
 	}
-	if !strings.Contains(body, "Priya <priya@readers.example> wrote:\r\n> A note from Priya\r\n") {
-		t.Errorf("the message is not quoted under its writer:\n%q", body)
+	if !strings.Contains(quote, "Priya <priya@readers.example> wrote:\r\n> A note from Priya\r\n") {
+		t.Errorf("the message is not quoted under its writer:\n%q", quote)
 	}
 
 	for name, r := range map[string]*http.Request{
@@ -52,8 +52,8 @@ func TestComposeFillsAReplyToAContactMessageForAnAdministratorOnly(t *testing.T)
 		"an editor":     req(&users.User{Role: users.RoleEditor}, "m-1"),
 		"an unknown id": req(&users.User{Role: users.RoleAdmin}, "m-404"),
 	} {
-		if to, _, _, subject, body := a.composePrefill(r); to+subject+body != "" {
-			t.Errorf("%s: compose filled %q / %q / %q", name, to, subject, body)
+		if to, _, _, subject, body, quote := a.composePrefill(r); to+subject+body+quote != "" {
+			t.Errorf("%s: compose filled %q / %q / %q / %q", name, to, subject, body, quote)
 		}
 	}
 }

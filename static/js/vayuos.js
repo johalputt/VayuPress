@@ -77,7 +77,7 @@
   function items(d) {
     return Array.prototype.slice.call(d.querySelectorAll('[role^="menuitem"]:not([hidden]):not([disabled]), .sa-seg__opt'));
   }
-  pops.forEach(function (d) {
+  function wirePop(d) {
     d.addEventListener('toggle', function () {
       if (!d.open) return;
       closeAll(d);
@@ -117,7 +117,17 @@
       i = e.key === 'ArrowDown' ? (i + 1) % list.length : (i - 1 + list.length) % list.length;
       list[i].focus();
     });
-  });
+  }
+  pops.forEach(wirePop);
+  // A popover that arrives after the page (the compose sheet's options)
+  // is wired the same way when it lands.
+  window.vpWirePops = function (root) {
+    Array.prototype.slice.call(root.querySelectorAll('details.sa-pop')).forEach(function (d) {
+      if (pops.indexOf(d) >= 0) return;
+      pops.push(d);
+      wirePop(d);
+    });
+  };
   // A menu item that is a button does its work in place, so the menu closes
   // behind it; a link leaves the page anyway.
   document.addEventListener('click', function (e) {

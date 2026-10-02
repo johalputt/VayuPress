@@ -112,261 +112,6 @@ func stripImgAttrs(n *xhtml.Node) {
 
 // ── Compose ──────────────────────────────────────────────────────────────────
 
-func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
-	nonce := render.CSPNonce(r)
-	cfg := a.getOSSettings(r.Context())
-	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Compose</h1></div>`)
-	body.WriteString(`<p class="page-sub">Send DKIM-signed mail — auto-PGP-encrypted when the recipient's key is known.</p>`)
-	if !a.mailRunning() {
-		a.writeMailSetup(w, r, "Compose")
-		return
-	}
-	if !a.isAdminRequest(r) {
-		if _, own := a.ownMailbox(r); own != "" && a.vayuMail.MailboxReadOnly(own) {
-			body.WriteString(`<div class="empty-state">This mailbox is read-only. It can read mail here, but not send it.</div>`)
-			writeOSHTML(w, r, adminOSLayout(nonce, "Compose", "vayuos", cfg, htmpl.HTML(body.String())))
-			return
-		}
-	}
-	domain := a.vayuMail.Config().Domain
-	// Sender selector. Admins may send as any configured account (or postmaster);
-	// non-admin staff may only send from their own assigned mailbox.
-	acctStore := a.vayuMail.Accounts()
-	// The mailbox the composer was opened from is the sender. Every Compose, Reply
-	// and Forward link carries ?user=, and without this an administrator working
-	// in alice's mailbox answered her correspondents from postmaster — the first
-	// option — which is a different person as far as the recipient can tell.
-	viewing := ""
-	if u := mailUserParam(r); u != "" {
-		viewing = mailAddrOf(u, domain)
-	}
-	// Each From option carries its account's signature (data-sig) so the composer
-	// can preview/append it and swap it live when the sender changes.
-	optSig := func(email, sig string) string {
-		sel := ""
-		if viewing != "" && strings.EqualFold(email, viewing) {
-			sel = " selected"
-		}
-		return `<option value="` + html.EscapeString(email) + `" data-sig="` + html.EscapeString(sig) + `"` + sel + `>` + html.EscapeString(email) + `</option>`
-	}
-	fromOpts := ""
-	if a.isAdminRequest(r) {
-		pm := "postmaster@" + domain
-		pmSig := ""
-		if acctStore != nil {
-			pmSig = acctStore.SignatureFor(r.Context(), pm)
-		}
-		// Group the sender identities by domain (VayuDomains) so an operator
-		// serving multiple domains picks a From per domain instead of scanning one
-		// long flat list. The primary domain's group is first (and holds
-		// postmaster). A single-domain install emits a flat list with no optgroup
-		// chrome, so it stays byte-identical.
-		domOf := func(email string) string {
-			if i := strings.LastIndexByte(email, '@'); i >= 0 && i < len(email)-1 {
-				return strings.ToLower(email[i+1:])
-			}
-			return domain
-		}
-		byDom := map[string]string{domain: optSig(pm, pmSig)}
-		order := []string{domain}
-		if acctStore != nil {
-			if accs, err := acctStore.List(r.Context()); err == nil {
-				for _, ac := range accs {
-					d := domOf(ac.Email)
-					if _, seen := byDom[d]; !seen {
-						order = append(order, d)
-					}
-					byDom[d] += optSig(ac.Email, ac.Signature)
-				}
-			}
-		}
-		if len(order) == 1 {
-			fromOpts = byDom[domain]
-		} else {
-			for _, d := range order {
-				fromOpts += `<optgroup label="` + html.EscapeString(d) + `">` + byDom[d] + `</optgroup>`
-			}
-		}
-	} else {
-		_, ownEmail := a.ownMailbox(r)
-		if ownEmail == "" {
-			body.WriteString(`<div class="empty-state">No mailbox has been assigned to your account yet. Ask an administrator to assign you an email address under <strong>Members → Team &amp; roles</strong>.</div>`)
-			writeOSHTML(w, r, adminOSLayout(nonce, "Compose", "vayuos", cfg, htmpl.HTML(body.String())))
-			return
-		}
-		ownSig := ""
-		if acctStore != nil {
-			ownSig = acctStore.SignatureFor(r.Context(), ownEmail)
-		}
-		fromOpts = optSig(ownEmail, ownSig)
-	}
-
-	// Prefill (reply / forward / direct). Reply and forward load the original
-	// message server-side so URLs stay short and large bodies are handled.
-	prefillTo, prefillCc, prefillBcc, prefillSubject, prefillBody := a.composePrefill(r)
-
-	// Reopening a saved draft: show the files it is holding and carry its id, so
-	// pressing Send merges them instead of quietly sending a message without the
-	// attachments the sender put on it. Files cannot be re-materialised as file
-	// inputs, so the server keeps them and the send path picks them up by id.
-	draftID := strings.TrimSpace(r.URL.Query().Get("id"))
-	draftFilesHTML := ""
-	if r.URL.Query().Get("draft") != "" && draftID != "" {
-		draftFilesHTML = `<input type="hidden" data-c-draft-id value="` + html.EscapeString(draftID) + `">`
-		if rd := a.mailReader(r, mailUserParam(r)); rd.Key() != "" {
-			if files, derr := a.vayuMail.DraftAttachments(rd, draftID); derr == nil && len(files) > 0 {
-				var fb strings.Builder
-				fb.WriteString(`<div class="vm-row vm-row--tight"><span class="muted text-sm">` + saIcon("clip") + ` Saved with this draft — Send includes them:</span><span class="vm-attach-list">`)
-				for _, f := range files {
-					fb.WriteString(`<span class="vm-attach-chip"><span class="vm-attach-ico" aria-hidden="true">` + saIcon("doc") + `</span>` +
-						`<span class="vm-attach-name">` + html.EscapeString(f.Filename) + `</span>` +
-						`<span class="vm-attach-size">` + html.EscapeString(humanBytes(int64(len(f.Data)))) + `</span></span>`)
-				}
-				fb.WriteString(`</span></div>`)
-				draftFilesHTML += fb.String()
-			}
-		}
-	}
-
-	// Feedback mode (the VayuOS topbar "Report a bug / suggest an improvement"
-	// button links to ?feedback=1): address the feedback inbox, drop in a
-	// structured template, and pre-enable PGP so the report is encrypted. Any
-	// explicit ?to/subject/body still wins, so the mode only fills the blanks.
-	feedback := r.URL.Query().Get("feedback") == "1"
-	encryptChecked := r.URL.Query().Get("encrypt") == "1"
-	if feedback {
-		if prefillTo == "" {
-			prefillTo = a.feedbackEmail(r.Context())
-		}
-		if prefillSubject == "" {
-			prefillSubject = feedbackSubject
-		}
-		if prefillBody == "" {
-			prefillBody = feedbackBody()
-		}
-		encryptChecked = true
-	}
-	encAttr := ""
-	if encryptChecked {
-		encAttr = " checked"
-	}
-	feedbackBanner := ""
-	if feedback {
-		feedbackBanner = `<div class="vm-feedback-banner">` + saIcon("info") + ` <strong>Help improve VayuPress.</strong> Tell us about a bug, an improvement or a feature you'd like — attach screenshots or files if they help. Your report is <strong>PGP-encrypted end-to-end, attachments included</strong>. Just add your details and hit Send.</div>`
-	}
-
-	// Recipient autocomplete is scoped to the SENDING mailbox's own address book
-	// only (never a shared/global directory), so one mailbox's contacts stay
-	// private to it. The owner is the opened mailbox; an admin composing without a
-	// specific mailbox falls back to postmaster's book.
-	composeOwner := ""
-	if o, ok := a.contactOwner(r, mailUserParam(r)); ok {
-		composeOwner = o
-	} else if a.isAdminRequest(r) {
-		composeOwner = "postmaster@" + domain
-	}
-	body.WriteString(`<div class="card"><div class="card-title">New message</div>
-` + feedbackBanner + `<form data-mail-compose>
-  ` + a.composeContactsDatalistFor(r.Context(), composeOwner) + `
-  <label class="field"><span class="field-label">From</span>
-    <select class="input" data-c-from>` + fromOpts + `</select></label>
-
-  <label class="field"><span class="field-label">To</span>
-    <div class="vm-chips" data-c-chips="to"><input type="text" class="vm-chip-input" data-c-chip-input list="vm-contacts" placeholder="name@example.com" autocomplete="off" aria-label="To recipients"></div></label>
-  <input type="hidden" data-c-to value="` + html.EscapeString(prefillTo) + `">
-
-  <div class="vm-row vm-row--tight">
-    <button class="btn btn--sm" type="button" data-c-toggle-cc>Cc/Bcc</button>
-    <button class="btn btn--sm" type="button" data-c-toggle-reply>Reply-To</button>
-    <span class="vm-pgp-hint" data-c-pgp aria-live="polite"></span>
-  </div>
-
-  <label class="field" data-c-cc-field hidden><span class="field-label">Cc</span>
-    <div class="vm-chips" data-c-chips="cc"><input type="text" class="vm-chip-input" data-c-chip-input list="vm-contacts" placeholder="cc@example.com" autocomplete="off" aria-label="Cc recipients"></div></label>
-  <input type="hidden" data-c-cc value="` + html.EscapeString(prefillCc) + `">
-  <label class="field" data-c-bcc-field hidden><span class="field-label">Bcc</span>
-    <div class="vm-chips" data-c-chips="bcc"><input type="text" class="vm-chip-input" data-c-chip-input list="vm-contacts" placeholder="bcc@example.com" autocomplete="off" aria-label="Bcc recipients"></div></label>
-  <input type="hidden" data-c-bcc value="` + html.EscapeString(prefillBcc) + `">
-  <label class="field" data-c-reply-field hidden><span class="field-label">Reply-To</span>
-    <input class="input" type="text" data-c-reply placeholder="reply@example.com"></label>
-
-  <label class="field"><span class="field-label">Subject</span>
-    <input class="input" type="text" data-c-subject placeholder="Subject" value="` + html.EscapeString(prefillSubject) + `"></label>
-  <div class="field vm-editor">
-    <div class="vm-ed-head">
-      <span class="field-label">Message</span>
-      <span class="muted text-xs" data-c-count aria-live="polite"></span>
-    </div>
-    <!-- Formatting inserts plain-text conventions, because a message body IS
-         plain text end to end (mail.ComposeMessage.Body). A contenteditable
-         WYSIWYG would imply an HTML alternative part the engine does not build,
-         so it would promise formatting the recipient never receives. What goes in
-         here is exactly what is sent, and it stays readable in every client. -->
-    <div class="vm-ed-bar" role="toolbar" aria-label="Formatting" data-c-toolbar>
-      <button class="vm-ed-btn" type="button" data-c-fmt="bold" title="Bold (Ctrl+B)" aria-label="Bold"><strong>B</strong></button>
-      <button class="vm-ed-btn" type="button" data-c-fmt="italic" title="Italic (Ctrl+I)" aria-label="Italic"><em>I</em></button>
-      <button class="vm-ed-btn" type="button" data-c-fmt="strike" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>
-      <span class="vm-ed-sep" aria-hidden="true"></span>
-      <button class="vm-ed-btn" type="button" data-c-fmt="h2" title="Heading" aria-label="Heading">H</button>
-      <button class="vm-ed-btn" type="button" data-c-fmt="ul" title="Bulleted list" aria-label="Bulleted list">&bull;&nbsp;&#8801;</button>
-      <button class="vm-ed-btn" type="button" data-c-fmt="ol" title="Numbered list" aria-label="Numbered list">1.&nbsp;&#8801;</button>
-      <button class="vm-ed-btn" type="button" data-c-fmt="quote" title="Quote" aria-label="Quote">&rdquo;</button>
-      <span class="vm-ed-sep" aria-hidden="true"></span>
-      <button class="vm-ed-btn" type="button" data-c-fmt="code" title="Code block" aria-label="Code block">&lt;/&gt;</button>
-      <button class="vm-ed-btn" type="button" data-c-fmt="link" title="Link (Ctrl+K)" aria-label="Insert link">` + saIcon("link") + `</button>
-      <button class="vm-ed-btn" type="button" data-c-fmt="rule" title="Divider" aria-label="Divider">&mdash;</button>
-      <span class="vm-ed-spacer"></span>
-      <button class="vm-ed-btn vm-ed-btn--wide" type="button" data-c-preview title="Preview how the message will look" aria-pressed="false">Preview</button>
-    </div>
-    <textarea class="input vm-ed-area" rows="16" data-c-body placeholder="Write your message…">` + html.EscapeString(prefillBody) + `</textarea>
-    <div class="vm-ed-preview" data-c-preview-pane hidden aria-live="polite"></div>
-    <p class="field-hint">Formatting is written into the message itself, so it reads the same in every mail client — including ones that refuse HTML.</p>
-  </div>
-
-  <span class="field-label">Attachments</span>
-  <div class="vm-dropzone" data-c-dropzone>
-    <span class="muted text-sm">Drag &amp; drop files here, or </span><button class="btn btn--sm" type="button" data-c-attach-btn>Browse…</button>
-    <span class="muted text-xs vm-dropzone-hint">Up to ` + strconv.Itoa(composeMaxAttachMB()) + ` MB total — more than most providers allow.</span>
-    <input type="file" data-c-files multiple hidden>
-  </div>
-  <div class="vm-attach-tray" data-c-attach-list></div>
-  ` + draftFilesHTML + `
-
-  <div class="vm-sig" data-c-sig>
-    <label class="vm-filter-check"><input type="checkbox" data-c-sig-toggle checked> Append signature</label>
-    <details class="vm-sig-edit">
-      <summary>Edit signature</summary>
-      <textarea class="input" rows="4" data-c-sig-text placeholder="Your signature — appended to messages sent from the selected address."></textarea>
-      <div class="vm-row vm-row--tight">
-        <button class="btn btn--sm" type="button" data-c-sig-save>Save signature</button>
-        <span class="muted text-sm" data-c-sig-status></span>
-      </div>
-    </details>
-    <pre class="vm-sig-preview" data-c-sig-preview></pre>
-  </div>
-
-  <div class="vm-row vm-row--tight">
-    <label class="vm-filter-check"><input type="checkbox" data-c-rich> Also send an HTML version</label>
-    <span class="vm-pgp-hint">Off &mdash; the message goes as plain text, which is what a young sending domain delivers best. Turn on to add an HTML rendering of the same words alongside it; clients that prefer HTML show that one, the rest see your text unchanged.</span>
-  </div>
-  <div class="vm-row vm-row--tight">
-    <label class="vm-filter-check"><input type="checkbox" data-c-encrypt` + encAttr + `> Encrypt with PGP</label>
-    <span class="vm-pgp-hint" data-c-encrypt-hint aria-live="polite">Off — the message is sent as readable text. Turn on to PGP-encrypt the message and attachments (RFC 3156) for recipients whose keys are known.</span>
-  </div>
-  <div class="vm-row vm-compose-actions">
-    <button class="btn btn--primary" type="submit" data-c-send>Send</button>
-    <button class="btn" type="button" data-c-draft>Save as draft</button>
-    <span class="muted text-sm" data-c-status></span>
-  </div>
-  <div class="vm-undobar" data-c-undobar hidden role="status" aria-live="polite">
-    <span data-c-undo-text>Sending…</span>
-    <button class="btn btn--sm" type="button" data-c-undo>Undo</button>
-  </div>
-</form></div>` + `<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
-	writeOSHTML(w, r, adminOSLayout(nonce, "Compose", "vayuos", cfg, htmpl.HTML(body.String())))
-}
-
 // composePrefill derives the To/Cc/Bcc/Subject/Body for the compose form from the
 // request. It supports three modes:
 //
@@ -376,26 +121,28 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 //
 // Reply/forward load the stored message (PGP-decrypted for the owner) so the
 // quoted text is readable, and a reopened draft restores the Cc/Bcc it was saved
-// with rather than quietly dropping recipients.
-func (a *App) composePrefill(r *http.Request) (to, cc, bcc, subject, bodyText string) {
+// with rather than quietly dropping recipients. A reply's quote comes back on
+// its own, for the sheet to fold away (Mail plan §5); the composer puts it
+// back under the reply when it sends, where insertSignature expects it.
+func (a *App) composePrefill(r *http.Request) (to, cc, bcc, subject, bodyText, quote string) {
 	q := r.URL.Query()
 	// Draft: reopen a saved draft verbatim (To/Cc/Bcc/Subject/body) for editing.
 	if q.Get("draft") != "" {
 		rd := a.mailReader(r, q.Get("user"))
 		id := strings.TrimSpace(q.Get("id"))
 		if a.vayuMail == nil || rd.Key() == "" || id == "" {
-			return "", "", "", "", ""
+			return "", "", "", "", "", ""
 		}
 		raw, err := a.vayuMail.ReadFolderMessage(rd, "Drafts", id)
 		if err != nil {
-			return "", "", "", "", ""
+			return "", "", "", "", "", ""
 		}
 		if msg, perr := netmail.ReadMessage(bytes.NewReader(raw)); perr == nil {
 			b, _ := io.ReadAll(msg.Body)
 			return msg.Header.Get("To"), msg.Header.Get("Cc"), msg.Header.Get("Bcc"),
-				msg.Header.Get("Subject"), string(b)
+				msg.Header.Get("Subject"), string(b), ""
 		}
-		return "", "", "", "", ""
+		return "", "", "", "", "", ""
 	}
 	// A message left through a site's contact form, answered from Content ›
 	// Messages. It was a mailto: link, which opens whatever mail program the
@@ -404,21 +151,21 @@ func (a *App) composePrefill(r *http.Request) (to, cc, bcc, subject, bodyText st
 	// administrator: compose is open to client accounts, the inbox is not.
 	if id := strings.TrimSpace(q.Get("contact")); id != "" {
 		if !a.isAdminRequest(r) {
-			return "", "", "", "", ""
+			return "", "", "", "", "", ""
 		}
 		m, err := scanContactMessage(dbpkg.Reader().QueryRowContext(r.Context(),
 			`SELECT `+contactMessageCols+` FROM contact_messages WHERE id=?`, id))
 		if err != nil {
-			return "", "", "", "", ""
+			return "", "", "", "", "", ""
 		}
-		return m.Email, "", "", "Re: your message",
-			"\r\n\r\n" + quoteBody(m.Name+" <"+m.Email+">", config.FormatSite(m.Created, "2 Jan 2006"), m.Message)
+		return m.Email, "", "", "Re: your message", "",
+			quoteBody(m.Name+" <"+m.Email+">", config.FormatSite(m.Created, "2 Jan 2006"), m.Message)
 	}
 	replyAll := q.Get("replyall") != ""
 	reply := q.Get("reply") != "" || replyAll
 	forward := q.Get("forward") != ""
 	if !reply && !forward {
-		return q.Get("to"), "", "", q.Get("subject"), q.Get("body")
+		return q.Get("to"), "", "", q.Get("subject"), q.Get("body"), ""
 	}
 	rd := a.mailReader(r, q.Get("user"))
 	user := rd.Key()
@@ -428,23 +175,23 @@ func (a *App) composePrefill(r *http.Request) (to, cc, bcc, subject, bodyText st
 	}
 	id := strings.TrimSpace(q.Get("id"))
 	if a.vayuMail == nil || user == "" || id == "" {
-		return "", "", "", "", ""
+		return "", "", "", "", "", ""
 	}
 	raw, err := a.vayuMail.ReadFolderMessage(rd, folder, id)
 	if err != nil {
-		return "", "", "", "", ""
+		return "", "", "", "", "", ""
 	}
 	origFrom, origSubject, origBody, origDate := parseForQuote(raw)
 	quoted := quoteBody(origFrom, origDate, origBody)
 	if replyAll {
 		to, cc := mailReplyAll(raw, mailAddrOf(user, a.cfgDomain()))
-		return to, cc, "", ensurePrefix(origSubject, "Re: "), "\r\n\r\n" + quoted
+		return to, cc, "", ensurePrefix(origSubject, "Re: "), "", quoted
 	}
 	if reply {
-		return origFrom, "", "", ensurePrefix(origSubject, "Re: "), "\r\n\r\n" + quoted
+		return origFrom, "", "", ensurePrefix(origSubject, "Re: "), "", quoted
 	}
-	// forward
-	return "", "", "", ensurePrefix(origSubject, "Fwd: "), "\r\n\r\n---------- Forwarded message ----------\r\n" + quoted
+	// A forward's history is what is being sent, so it stays in the body.
+	return "", "", "", ensurePrefix(origSubject, "Fwd: "), "\r\n\r\n---------- Forwarded message ----------\r\n" + quoted, ""
 }
 
 // parseForQuote extracts From, Subject, Date and a plain-text body from a raw

@@ -175,7 +175,7 @@ func TestMailAccountDeleteGoesThroughTheEngine(t *testing.T) {
 // handler accepts them, the engine writes them as headers, and reopening a draft
 // reads them back into the composer.
 func TestMailDraftKeepsCcAndBcc(t *testing.T) {
-	src := readFileString(t, "vayuos_mail.go")
+	src := readFileString(t, "vayuos_mail.go") + readFileString(t, "vayuos_mail_compose.go")
 	if !strings.Contains(src, `json:"cc"`) {
 		t.Error("the draft endpoint must accept cc")
 	}
@@ -305,16 +305,20 @@ func TestMailPasswordIsSetThroughAMaskedModal(t *testing.T) {
 	}
 }
 
-// TestMailSaveAsDraftNavigatesOnSuccessOnly — the old fixed 700ms timer sent the
+// TestMailClosingKeepsTheDraftFirst — a fixed 700ms timer once sent the
 // operator to an empty Drafts folder whenever the save was slower than that, or
-// had failed outright.
-func TestMailSaveAsDraftNavigatesOnSuccessOnly(t *testing.T) {
+// had failed outright. Closing the compose sheet is the same move now: it lets
+// go only once the draft is stored, and a failed save keeps the sheet open.
+func TestMailClosingKeepsTheDraftFirst(t *testing.T) {
 	js := withoutComments(mailJS(t))
 	if strings.Contains(js, "}, 700);") {
-		t.Error("the draft button must not navigate on a fixed timer")
+		t.Error("the composer must not leave on a fixed timer")
 	}
-	if !strings.Contains(js, "saveDraft(false, function (ok, nothing)") {
-		t.Error("navigation must hang off the save result")
+	if !strings.Contains(js, "saveDraft(true, function (ok, nothing) {") || !strings.Contains(js, "done(!!(ok || nothing));") {
+		t.Error("closing must hang off the save result")
+	}
+	if !strings.Contains(js, "sheet.close(function (ok) { if (ok) finish(); });") {
+		t.Error("the sheet must stay open when the draft could not be kept")
 	}
 }
 
