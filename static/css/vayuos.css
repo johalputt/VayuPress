@@ -4913,6 +4913,9 @@
 /* The transform-origin set here is the fallback; vpOpenFrom (vayuos.js) moves
    it to the control that opened the panel, as each one opens. */
 @keyframes sa-pop-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+/* And closes back into it (vayuos.js shut()). */
+.vp-os[data-ui="still-air"] .sa-pop__panel.is-closing { animation: sa-pop-out var(--duration-micro) var(--ease-exit) forwards; pointer-events: none; }
+@keyframes sa-pop-out { to { opacity: 0; transform: scale(0.96); } }
 .vp-os[data-ui="still-air"] .sa-world__panel { width: 300px; padding: var(--space-4); }
 .vp-os[data-ui="still-air"] .sa-account__btn { display: inline-grid; place-items: center; cursor: pointer; border-radius: 50%; }
 .vp-os[data-ui="still-air"] .sa-avatar {
@@ -6094,6 +6097,57 @@
   color: var(--text-1); text-decoration: none; border-radius: var(--radius-control);
 }
 .vp-os[data-ui="still-air"] a.mx-account:hover { background: var(--surface-hover); text-decoration: none; }
+/* The switcher (Mail plan §4): the account block is its control, and stays
+   pressed while the switcher is open. */
+.vp-os[data-ui="still-air"] .mx-switch > summary.mx-account { cursor: pointer; transition: background-color var(--duration-micro) var(--ease-move); }
+.vp-os[data-ui="still-air"] .mx-switch > summary.mx-account:hover { background: var(--surface-hover); }
+.vp-os[data-ui="still-air"] .mx-switch[open] > summary.mx-account { background: var(--surface-press); }
+/* Fixed at its static place, right under the account block: the sidebar is
+   a scroll container, and an absolute panel wider than it widened its
+   scroll area, so focusing the search scrolled the sidebar sideways. */
+.vp-os[data-ui="still-air"] .mx-switch__panel {
+  position: fixed; top: auto; left: auto; right: auto; margin-top: 4px; width: 320px; max-width: calc(100vw - 32px);
+  max-height: min(520px, 70vh); display: flex; flex-direction: column; overflow: hidden;
+}
+.vp-os[data-ui="still-air"] .mx-switch__search {
+  display: flex; align-items: center; gap: var(--space-3); margin: var(--space-3); padding: 0 var(--space-4);
+  height: 34px; border: 1px solid var(--border-2); border-radius: var(--radius-control); background: var(--surface-1); color: var(--text-3);
+}
+.vp-os[data-ui="still-air"] .mx-switch__search:focus-within { border-color: var(--accent); }
+.vp-os[data-ui="still-air"] .mx-switch__search input { flex: 1; min-width: 0; border: 0; background: none; color: var(--text-1); font: var(--type-body); outline: none; }
+.vp-os[data-ui="still-air"] .mx-switch__list { overflow-y: auto; overscroll-behavior: contain; padding: 0 var(--space-2) var(--space-2); }
+.vp-os[data-ui="still-air"] .mx-switch__wait,
+.vp-os[data-ui="still-air"] .mx-switch__none { margin: 0; padding: var(--space-4); font: var(--type-small); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .mx-switch__dom {
+  display: flex; justify-content: space-between; margin: 0; padding: var(--space-4) var(--space-3) var(--space-2);
+  font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums;
+}
+.vp-os[data-ui="still-air"] .mx-switch__row {
+  display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3); border-radius: var(--radius-control);
+  color: var(--text-1); text-decoration: none; font: var(--type-body);
+}
+.vp-os[data-ui="still-air"] .mx-switch__row[aria-current="true"] { background: var(--accent-soft); }
+.vp-os[data-ui="still-air"] .mx-switch__row:hover,
+.vp-os[data-ui="still-air"] .mx-switch__row:focus-visible { background: var(--surface-hover); text-decoration: none; outline: none; }
+.vp-os[data-ui="still-air"] .mx-switch__row > .vm-av { width: 24px; height: 24px; font-size: 10px; }
+/* Nothing clips an address (plan §2.6). */
+.vp-os[data-ui="still-air"] .mx-switch__addr { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.vp-os[data-ui="still-air"] .mx-switch__count { flex: none; font: var(--type-meta); color: var(--accent); font-variant-numeric: tabular-nums; }
+.vp-os[data-ui="still-air"] .mx-switch__check { flex: none; display: inline-grid; color: var(--accent); }
+.vp-os[data-ui="still-air"] .mx-switch__check .sa-ico { width: 16px; height: 16px; }
+.vp-os[data-ui="still-air"] .mx-switch__group[hidden],
+.vp-os[data-ui="still-air"] .mx-switch__row[hidden] { display: none; }
+/* The foot arrives with the list and stays in view under it. */
+.vp-os[data-ui="still-air"] .mx-switch__foot {
+  position: sticky; bottom: calc(-1 * var(--space-2)); display: flex; justify-content: space-between; gap: var(--space-3);
+  margin: var(--space-2) calc(-1 * var(--space-2)) calc(-1 * var(--space-2)); padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--border-1); background: var(--surface-overlay); font: var(--type-small);
+}
+.vp-os[data-ui="still-air"] .mx-switch__foot { align-items: center; }
+.vp-os[data-ui="still-air"] .mx-switch__foot a { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--accent); }
+.vp-os[data-ui="still-air"] .mx-switch__foot a + a { padding: var(--space-2) var(--space-4); border: 1px solid var(--border-2); border-radius: var(--radius-control); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .mx-switch__foot a + a:hover { background: var(--surface-hover); text-decoration: none; }
+.vp-os[data-ui="still-air"] .mx-switch__foot .sa-ico { width: 14px; height: 14px; }
 .vp-os[data-ui="still-air"] .mx-account > .vm-av { width: 36px; height: 36px; font-size: 13px; }
 .vp-os[data-ui="still-air"] .mx-account__who { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .vp-os[data-ui="still-air"] .mx-account__name { font: var(--type-heading); color: var(--text-1); }

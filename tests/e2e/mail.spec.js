@@ -148,3 +148,56 @@ test("an older message arrives from below", async ({ page }) => {
   await page.keyboard.press("j");
   await expect(page.locator("#vm-readpane [data-mx-reader]")).toHaveAttribute("data-mx-from", "older");
 });
+
+// The mailbox switcher (Mail plan §4, §8 item 1) grows out of the account
+// block, which stays pressed while it is open; its search has the keys at
+// once; Enter opens the first match; Escape closes it back into the block.
+test("the mailbox switcher opens from the account and switches", async ({ page }) => {
+  await openInbox(page);
+  const account = page.locator("[data-mx-switch] > summary");
+  const panel = page.locator("[data-mx-switch] .mx-switch__panel");
+  await page.mouse.move(900, 500);
+  const rest = await account.evaluate((e) => getComputedStyle(e).backgroundColor);
+  await page.keyboard.press("Control+Shift+M");
+  await expect(panel).toBeVisible();
+  await expect(page.locator("[data-mx-switch-find]")).toBeFocused();
+  expect(await account.evaluate((e) => getComputedStyle(e).backgroundColor), "the account block is not pressed while the switcher is open").not.toBe(rest);
+  const origin = await page.evaluate(async () => {
+    const panel = document.querySelector("[data-mx-switch] .mx-switch__panel"), trig = document.querySelector("[data-mx-switch] > summary");
+    await Promise.all(panel.getAnimations().map((a) => a.finished));
+    const pr = panel.getBoundingClientRect(), tr = trig.getBoundingClientRect();
+    const [ox, oy] = getComputedStyle(panel).transformOrigin.split(" ").map(parseFloat);
+    const x = pr.left + ox, y = pr.top + oy;
+    return Math.hypot(Math.max(tr.left - x, 0, x - tr.right), Math.max(tr.top - y, 0, y - tr.bottom));
+  });
+  expect(origin, "the switcher opens away from the account block").toBeLessThanOrEqual(12);
+  // The sidebar is a scroll container; the wider panel must not widen it, or
+  // focusing the search scrolls the whole sidebar sideways.
+  expect(await page.locator("nav.sa-appside").evaluate((e) => [e.scrollLeft, e.scrollWidth - e.clientWidth]), "the switcher pushed the sidebar sideways").toEqual([0, 0]);
+
+  const rows = panel.locator(".mx-switch__row:visible");
+  await expect(rows).toHaveCount(3);
+  await expect(panel.locator(".mx-switch__dom")).toHaveText(["mail.test3"]);
+  await expect(panel.locator('.mx-switch__row[aria-current="true"]')).toContainText("ankush@mail.test");
+  await expect(panel.locator(".mx-switch__row", { hasText: "ankush@mail.test" }).locator(".mx-switch__count")).toHaveText(/^\d+$/);
+  await page.keyboard.type("zzz");
+  await expect(rows).toHaveCount(0);
+  await expect(panel.locator(".mx-switch__none")).toBeVisible();
+  // Whether the exit ran at all: it lasts 90 ms, too short to catch by polling.
+  await panel.evaluate((p) => {
+    window.__mxExit = false;
+    new MutationObserver(() => { if (p.classList.contains("is-closing")) window.__mxExit = true; }).observe(p, { attributes: true });
+  });
+  await page.keyboard.press("Escape");
+  await expect(panel).toBeHidden();
+  expect(await page.evaluate(() => window.__mxExit), "the switcher vanished instead of closing back into the account block").toBe(true);
+  await expect(account).toBeFocused();
+
+  await account.click();
+  const find = page.locator("[data-mx-switch-find]");
+  await find.fill("PRI");
+  await expect(rows).toHaveCount(1);
+  await find.press("Enter");
+  await expect(page).toHaveURL(/user=priya/);
+  await expect(page.locator(".mx-account__addr")).toHaveText("priya@mail.test");
+});

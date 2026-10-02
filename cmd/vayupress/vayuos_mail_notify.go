@@ -31,6 +31,21 @@ type unseenBox struct {
 	Total   int    `json:"total"`
 }
 
+// mailboxRef is a listed mailbox's ?user= key and its address. A summary
+// without a domain is on dom. The key is the bare local part on the primary
+// domain and the full address on a secondary (VayuDomains), so the read path
+// resolves that domain's own Maildir.
+func mailboxRef(b vmail.MailboxSummary, dom, primaryDom string) (key, addr string) {
+	if b.Domain != "" {
+		dom = b.Domain
+	}
+	addr = b.Username + "@" + dom
+	if !strings.EqualFold(dom, primaryDom) {
+		return addr, addr
+	}
+	return b.Username, addr
+}
+
 // handleVayuOSUnseen returns per-mailbox unseen counts as JSON for the console's
 // new-mail poller. It is deliberately read-only and cheap to call repeatedly.
 func (a *App) handleVayuOSUnseen(w http.ResponseWriter, r *http.Request) {
@@ -39,15 +54,7 @@ func (a *App) handleVayuOSUnseen(w http.ResponseWriter, r *http.Request) {
 		primaryDom := a.vayuMail.Config().Domain
 		add := func(boxes []vmail.MailboxSummary) {
 			for _, b := range boxes {
-				dom := b.Domain
-				if dom == "" {
-					dom = primaryDom
-				}
-				addr := b.Username + "@" + dom
-				key := b.Username
-				if !strings.EqualFold(dom, primaryDom) {
-					key = addr
-				}
+				key, addr := mailboxRef(b, primaryDom, primaryDom)
 				out = append(out, unseenBox{Key: key, Address: addr, Unseen: b.Unseen, Total: b.Total})
 			}
 		}

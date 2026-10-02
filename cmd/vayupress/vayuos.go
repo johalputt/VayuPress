@@ -1978,15 +1978,7 @@ func (a *App) vayuMailboxDomainCard(dom, primaryDomain string, boxes []vmail.Mai
 	avSet := a.mailboxAvatarSet()
 	unseenTotal := 0
 	for _, bx := range boxes {
-		bdom := bx.Domain
-		if bdom == "" {
-			bdom = dom
-		}
-		addr := bx.Username + "@" + bdom
-		key := bx.Username
-		if !strings.EqualFold(bdom, primaryDomain) {
-			key = addr
-		}
+		key, addr := mailboxRef(bx, dom, primaryDomain)
 		unseen := ""
 		if bx.Unseen > 0 {
 			unseen = `<span class="vm-tab-badge">` + itoaSafe(bx.Unseen) + `</span>`

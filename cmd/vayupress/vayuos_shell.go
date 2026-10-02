@@ -361,15 +361,19 @@ func saRailItem(href, label, icon, count string, current bool) string {
 func saMailSide(m *osMailSide, more string) string {
 	esc := html.EscapeString
 	var b strings.Builder
-	// For an administrator the account block leads to every mailbox; for
-	// anyone else it is not a control, because there is nowhere else to go.
+	// For an administrator the account block opens the mailbox switcher (Mail
+	// plan §4), whose list is read when it opens (handleVayuOSMailSwitcher);
+	// for anyone else it is not a control, because there is nowhere else to go.
 	who := `<span class="mx-account__who">`
 	if m.Name != "" {
 		who += `<span class="mx-account__name">` + esc(m.Name) + `</span>`
 	}
 	who += `<span class="mx-account__addr">` + esc(m.Address) + `</span></span>`
 	if m.Admin {
-		b.WriteString(`<a class="mx-account" href="/os/vayumail/inbox?all=1" title="Every mailbox on this install">` + m.Avatar + who + `<span class="mx-account__chev" aria-hidden="true">` + saIcon("chev-ud") + `</span></a>`)
+		b.WriteString(`<details class="sa-pop mx-switch" data-mx-switch hx-get="/os/vayumail/switcher?user=` + qparam(m.User) + `" hx-trigger="toggle once" hx-target="find .mx-switch__list" hx-swap="innerHTML">` +
+			`<summary class="mx-account" aria-label="Switch mailbox, ` + esc(m.Address) + ` open" aria-keyshortcuts="Meta+Shift+M Control+Shift+M">` + m.Avatar + who + `<span class="mx-account__chev" aria-hidden="true">` + saIcon("chev-ud") + `</span></summary>` +
+			`<div class="sa-pop__panel mx-switch__panel"><label class="mx-switch__search">` + saIcon("search") + `<input type="search" placeholder="Find a mailbox" aria-label="Find a mailbox" autocomplete="off" spellcheck="false" data-mx-switch-find></label>` +
+			`<div class="mx-switch__list" role="menu" aria-label="Mailboxes"><p class="mx-switch__wait">Reading the mailboxes…</p></div></div></details>`)
 	} else {
 		b.WriteString(`<div class="mx-account">` + m.Avatar + who + `</div>`)
 	}

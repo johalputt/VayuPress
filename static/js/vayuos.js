@@ -50,8 +50,29 @@
      A details element opens and closes itself; what it lacks is closing when
      the pointer or focus goes elsewhere, Escape, and one-at-a-time. */
   var pops = Array.prototype.slice.call(document.querySelectorAll('details.sa-pop'));
+  // A panel closes back into its control (Mail plan §8, items 1 and 9): the
+  // exit plays from the origin openFrom set, then the details element shuts.
+  // The panel takes no pointer meanwhile, so the next click lands where it is
+  // aimed; with reduced motion there is no exit animation and it shuts at once.
+  function shut(d) {
+    var p = d.querySelector('.sa-pop__panel');
+    if (!d.open || d.dataset.closing) return;
+    if (!p) { d.open = false; return; }
+    p.classList.add('is-closing');
+    if (getComputedStyle(p).animationName === 'none') { p.classList.remove('is-closing'); d.open = false; return; }
+    d.dataset.closing = '1';
+    var done = function () {
+      if (!d.dataset.closing) return;
+      delete d.dataset.closing;
+      p.removeEventListener('animationend', done);
+      p.classList.remove('is-closing');
+      d.open = false;
+    };
+    p.addEventListener('animationend', done);
+    setTimeout(done, 400); // an animation that never ends must not keep it open
+  }
   function closeAll(except) {
-    pops.forEach(function (d) { if (d !== except) d.open = false; });
+    pops.forEach(function (d) { if (d !== except) shut(d); });
   }
   function items(d) {
     return Array.prototype.slice.call(d.querySelectorAll('[role^="menuitem"]:not([hidden]):not([disabled]), .sa-seg__opt'));
@@ -70,6 +91,9 @@
     });
     var sum = d.querySelector('summary');
     if (sum) {
+      sum.addEventListener('click', function (e) {
+        if (d.open) { e.preventDefault(); shut(d); }
+      });
       sum.addEventListener('keydown', function (e) {
         if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
           d.dataset.kbd = '1';
@@ -80,7 +104,7 @@
     d.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && d.open) {
         e.preventDefault();
-        d.open = false;
+        shut(d);
         if (sum) sum.focus();
         return;
       }
@@ -99,7 +123,7 @@
   document.addEventListener('click', function (e) {
     var inside = e.target.closest ? e.target.closest('details.sa-pop') : null;
     closeAll(inside);
-    if (inside && e.target.closest('button[role^="menuitem"]')) inside.open = false;
+    if (inside && e.target.closest('button[role^="menuitem"]')) shut(inside);
   });
   document.addEventListener('focusin', function (e) {
     var inside = e.target.closest ? e.target.closest('details.sa-pop') : null;

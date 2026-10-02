@@ -1189,7 +1189,7 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	// Create form.
 	body.WriteString(`<div class="section-head"><span class="section-head__title">Add a mailbox</span><span class="section-head__hint">Create a new email ID on a mail domain</span></div>`)
 	body.WriteString(`<div class="card">
-<form data-acct-create>
+<form data-acct-create id="new-mailbox">
   <div class="vm-row vm-row--end">
     <label class="field vm-grow"><span class="field-label">Address</span>
       <span class="vm-addr"><input class="input" type="text" data-a-local placeholder="name" required>` + addrSuffix + `</span></label>

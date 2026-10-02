@@ -574,6 +574,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/search", a.handleVayuOSSearch)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/message", a.handleVayuOSMessage)
 		pr.Get("/os/vayumail/message/body", a.handleVayuOSMessageBody)
+		pr.Get("/os/vayumail/switcher", a.handleVayuOSMailSwitcher)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/sent", a.handleVayuOSSent)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/compose", a.handleVayuOSCompose)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/accounts", a.handleVayuOSAccounts)

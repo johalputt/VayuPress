@@ -72,6 +72,46 @@
   });
   settle();
 
+  // The mailbox switcher (Mail plan §4). Its search is focused as it opens,
+  // so typing filters at once; the shell's popover code gives it the arrow
+  // keys, Escape and the motion. Enter in the search opens the first match.
+  var sw = document.querySelector('[data-mx-switch]');
+  if (sw) {
+    var find = sw.querySelector('[data-mx-switch-find]');
+    var filter = function () {
+      var q = find.value.trim().toLowerCase();
+      var any = false;
+      sw.querySelectorAll('.mx-switch__group').forEach(function (g) {
+        var shown = 0;
+        g.querySelectorAll('.mx-switch__row').forEach(function (r) {
+          var hit = !q || (r.getAttribute('data-mx-find') || '').indexOf(q) >= 0;
+          r.hidden = !hit;
+          if (hit) shown++;
+        });
+        g.hidden = !shown;
+        if (shown) any = true;
+      });
+      var none = sw.querySelector('.mx-switch__none');
+      if (none) none.hidden = any || !sw.querySelector('.mx-switch__row');
+    };
+    sw.addEventListener('toggle', function () { if (sw.open) find.focus({ preventScroll: true }); });
+    find.addEventListener('input', filter);
+    // The list arrives after the first keys may have been typed.
+    sw.addEventListener('htmx:afterSwap', filter);
+    find.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      var first = sw.querySelector('.mx-switch__row:not([hidden])');
+      if (first) first.click();
+    });
+    // Cmd+Shift+M (Ctrl on other systems) opens it from anywhere in Mail.
+    document.addEventListener('keydown', function (e) {
+      if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.altKey || (e.key !== 'm' && e.key !== 'M')) return;
+      e.preventDefault();
+      sw.open = true;
+    });
+  }
+
   // Each folder keeps its scroll position for the session: leaving one
   // remembers where its list was, and coming back puts it there again.
   var scrolls = {}, switching = false;
