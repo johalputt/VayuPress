@@ -179,7 +179,8 @@ test("the mailbox switcher opens from the account and switches", async ({ page }
   await page.keyboard.press("Control+Shift+M");
   await expect(panel).toBeVisible();
   await expect(page.locator("[data-mx-switch-find]")).toBeFocused();
-  expect(await account.evaluate((e) => getComputedStyle(e).backgroundColor), "the account block is not pressed while the switcher is open").not.toBe(rest);
+  // The pressed colour fades in (a colour transition), so it is polled for.
+  await expect.poll(() => account.evaluate((e) => getComputedStyle(e).backgroundColor), { message: "the account block is not pressed while the switcher is open" }).not.toBe(rest);
   const origin = await page.evaluate(async () => {
     const panel = document.querySelector("[data-mx-switch] .mx-switch__panel"), trig = document.querySelector("[data-mx-switch] > summary");
     // The shell restarts the entrance from the control as the menu opens, which
