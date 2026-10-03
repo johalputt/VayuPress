@@ -8,6 +8,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.17.96] — 2026-10-03
+
+Released ahead of the next plan for what was broken in 3.17.95 on a laptop
+and after every restart: a message's tools ran past the reader, Print
+printed no mail, and the console read in UTC. With them, a message reads
+full width or always, Not junk, and the reply typed under a message.
+
 ### Security
 
 - **A contact's mail skips the junk filter only when it proves it is theirs.**
