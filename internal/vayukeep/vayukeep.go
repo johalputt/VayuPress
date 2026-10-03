@@ -183,8 +183,7 @@ type Engine struct {
 	// provenGen is the name of the newest generation that passed a restore
 	// drill. Retention never removes it or anything newer, so the last backup
 	// known to restore can only be replaced by a newer one known to restore.
-	// Held in memory: after a restart nothing is pruned until the next drill
-	// passes, which errs toward keeping more.
+	// Kept across restarts in the drill record (record.go).
 	provenGen string
 }
 
@@ -363,7 +362,8 @@ func (e *Engine) Run(ctx context.Context) {
 	e.cfg.Log("info", "replication enabled — target "+e.cfg.TargetDir)
 	// Refresh the observable state from whatever is already on the target, so a
 	// restarted process reports the truth immediately rather than "never" until
-	// its first generation.
+	// its first generation or drill.
+	e.loadDrillRecord()
 	e.refreshFromTarget()
 
 	nextDrill := e.firstDrillAt()
@@ -390,13 +390,12 @@ func (e *Engine) Run(ctx context.Context) {
 	}
 }
 
-// bootDrillDelay is how soon after start the first restore drill runs. Which
-// generation last passed a drill is held in memory, so after every restart —
-// every update restarts — the status reads "unverified" and retention deletes
-// nothing until a drill passes. Waiting the full drill interval (twelve hours
-// by default) for that would leave both states stale for half a day; ten
-// minutes lets the site settle first, and the drill still yields to a busy
-// public lane.
+// bootDrillDelay is how soon after start the first restore drill runs. The
+// last drill's outcome survives a restart (record.go), but only while its
+// generation is unchanged, and a restart is when files are most likely to
+// have been touched by hand; re-proving soon after start keeps "last test
+// restore" about this process's view of the target. Ten minutes lets the site
+// settle first, and the drill still yields to a busy public lane.
 const bootDrillDelay = 10 * time.Minute
 
 // firstDrillAt is when the first drill after start is due.

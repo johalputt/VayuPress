@@ -271,9 +271,15 @@ func (e *Engine) refreshFromTarget() {
 		s.Generations = len(gens)
 		s.TotalBytes = total
 		if len(gens) > 0 {
-			s.NewestGen = gens[0].Taken
+			s.NewestGen, s.LastGenBytes = gens[0].Taken, gens[0].Bytes
+			// A file bearing a generation name is a complete write (see the
+			// top of this file), so the newest is the last successful one when
+			// this process has written none.
+			if s.LastSuccess.IsZero() {
+				s.LastSuccess = gens[0].Taken
+			}
 		} else {
-			s.NewestGen = time.Time{}
+			s.NewestGen, s.LastGenBytes = time.Time{}, 0
 		}
 	})
 }

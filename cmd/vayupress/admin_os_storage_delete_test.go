@@ -141,6 +141,12 @@ func TestStorageNamesADatabaseCopyApartFromARestorePoint(t *testing.T) {
 	if row := fileRow(t, a, "vk-20261003-114512.vpbk"); !strings.Contains(row, `<span class="chip">Restore point</span>`) {
 		t.Errorf("the restore point is listed as %s", row)
 	}
+	// Backups' record of its last test restore sits beside the restore points
+	// and is not a backup of anything.
+	mustWrite(t, filepath.Join(backups, vayukeep.DrillRecordName), "{}")
+	if strings.Contains(storageFilesTable(a.managedStorageFiles()), vayukeep.DrillRecordName) {
+		t.Error("Storage lists Backups' drill record as a file to download or delete")
+	}
 }
 
 // On an install still running the old unit, systemd appends the server's

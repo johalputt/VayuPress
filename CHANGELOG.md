@@ -10,6 +10,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Backups no longer forgets its test restore when the server restarts.**
+  After the update to 3.17.96, a restore point that read "Test restore
+  passed" read "never restored", its size "0 B" and the last successful
+  write "never", and Home asked for attention, until a test restore of the
+  whole archive passed again. All of it was held in memory, so every update
+  and every change to Backups' settings forgot it. The outcome of each test
+  restore is now kept in `vayukeep-drill.json` beside the restore points and
+  read back at start-up. A pass counts only while its restore point is the
+  same file (same name, size and time); a failure is read back as a failure;
+  the newest backup's size and time are read from the folder. The first
+  start of this version has no record yet, so its page reads as before until
+  its first test restore; every restart after that keeps it.
 - **Storage no longer deletes your only restore point.** Storage lists
   Backups' restore points beside every other file, and its Delete removed the
   last one as readily as any log, where Backups refused. Both pages now delete

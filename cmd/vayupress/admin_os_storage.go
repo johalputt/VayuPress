@@ -42,6 +42,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/ui"
+	"github.com/johalputt/vayupress/internal/vayukeep"
 )
 
 // storageLogDir / storageBackupDir let an operator point the panel at custom
@@ -132,7 +133,9 @@ func (a *App) managedStorageFiles() []managedFile {
 	add(fileDatabaseCopy, filepath.Dir(config.Cfg.DBPath), func(name string) bool {
 		return strings.Contains(name, ".backup-") || strings.HasSuffix(name, ".bak") || strings.HasSuffix(name, ".db.old")
 	})
-	add(fileDatabaseCopy, storageBackupDir(), nil)
+	// Backups' drill record lives beside its restore points; it is a few
+	// hundred bytes of state, not a file to download or clear.
+	add(fileDatabaseCopy, storageBackupDir(), func(name string) bool { return name != vayukeep.DrillRecordName })
 
 	// Logs.
 	add(fileLog, storageLogDir(), func(name string) bool {

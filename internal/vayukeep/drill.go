@@ -85,6 +85,12 @@ func (e *Engine) Drill(ctx context.Context) DrillResult {
 		s.LastDrillError = res.Err
 		s.LastDrillRows = res.Rows
 	})
+	// A drill that found no generation says nothing worth keeping, and on a
+	// new install, whose target may not exist yet, saving it would only log a
+	// failure at every scheduled drill.
+	if res.Generation != "" {
+		e.saveDrillRecord(res)
+	}
 	return res
 }
 
