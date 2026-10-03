@@ -165,7 +165,7 @@ test("the reader shows the conversation, the attachment and the reply field", as
   await expect(earlier.first().locator(".mx-earlier__body")).toContainText("We need to move the database this month.");
   await expect(reader.locator(".mx-file")).toContainText("migration-runbook-v3.pdf");
   await expect(reader.locator(".mx-file__type")).toHaveText("PDF");
-  await expect(reader.locator(".mx-dock__field")).toHaveText("Reply to Priya…");
+  await expect(reader.locator(".mx-dock__field")).toHaveAttribute("placeholder", "Reply to Priya…");
 });
 
 // The seal says what was verified: a signed message from someone whose key
@@ -653,6 +653,25 @@ test("a message in Junk is not junk, by its key or its page", async ({ page }) =
   await page.waitForURL(/\/os\/vayumail\/inbox/);
   await page.goto("/os/vayumail/inbox?user=priya");
   await expect(page.locator("#vm-inbox-list")).toContainText(other);
+});
+
+// The reply field under a message (Mail plan §3.3, pipeline 3z): what is
+// typed there becomes the reply. The first keystroke opens the reply sheet,
+// and every word typed, those typed while it loads among them, is carried
+// into its body, with the caret after them.
+test("typing in the reply field writes the reply", async ({ page }) => {
+  await openInbox(page);
+  const field = page.locator("#vm-readpane .mx-dock__field");
+  await field.click();
+  await page.keyboard.type("Saturday works for us, see you then", { delay: 15 });
+  const sheet = page.locator("[data-mx-compose-host] .mx-compose");
+  const body = sheet.locator("[data-c-body]");
+  await expect(body).toBeFocused();
+  await page.keyboard.type(".");
+  await expect(body).toHaveValue(/^Saturday works for us, see you then\./);
+  expect(await body.evaluate((b) => b.selectionStart), "the caret is not after the words").toBe("Saturday works for us, see you then.".length);
+  await expect(field).toHaveValue("");
+  await expect(sheet.locator("[data-c-subject]")).toHaveValue(/^Re: /);
 });
 
 // Print prints the open message, all of it, and nothing of the console

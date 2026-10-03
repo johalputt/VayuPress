@@ -1118,7 +1118,10 @@
     host.hidden = true;
     split.appendChild(host);
     var sheet = null, opener = null;
-    var sheetOpen = function (href, trigger) {
+    // carry: a field whose words become the start of the message (the reply
+    // field under a message), read when the sheet arrives, so what was typed
+    // while it loaded is kept too.
+    var sheetOpen = function (href, trigger, carry) {
       var go = function () {
         opener = trigger || null;
         host.className = 'mx-compose-host';
@@ -1135,6 +1138,17 @@
             var first = form && (form.querySelector('[data-c-chips="to"] input') || null);
             var to = form && form.querySelector('[data-c-to]');
             if (form && to && to.value.trim()) first = form.querySelector('[data-c-body]');
+            var body = form && form.querySelector('[data-c-body]');
+            if (carry) carry.removeAttribute('data-opening');
+            if (carry && body && carry.value) {
+              var words = carry.value;
+              carry.value = '';
+              body.value = words + (body.value ? '\n\n' + body.value : '');
+              body.dispatchEvent(new Event('input', { bubbles: true }));
+              first = body;
+              body.focus({ preventScroll: true });
+              return;
+            }
             if (first) first.focus({ preventScroll: true });
           });
       };
@@ -1169,6 +1183,14 @@
       if (host.classList.contains('is-min') && e.target.closest('.mx-compose__head') && !e.target.closest('button')) host.classList.remove('is-min');
     });
     host.addEventListener('mx-compose-done', function () { sheet = null; sheetClose(); });
+    // The reply field under a message (Mail plan §3.3): the first thing typed
+    // opens the reply, and everything typed is carried into it.
+    document.addEventListener('input', function (e) {
+      var f = e.target && e.target.closest ? e.target.closest('[data-mx-quick-reply]') : null;
+      if (!f || f.hasAttribute('data-opening')) return;
+      f.setAttribute('data-opening', '');
+      sheetOpen(f.getAttribute('data-href'), f, f);
+    });
     // Escape minimises the sheet, unless a menu inside it is what is open.
     host.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape' || host.querySelector('details.sa-pop[open]')) return;

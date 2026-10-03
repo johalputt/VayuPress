@@ -370,7 +370,9 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		if len(first) > 0 {
 			name = first[0]
 		}
-		c.WriteString(`<div class="mx-dock"><a class="mx-dock__field" href="/os/vayumail/compose?reply=1&amp;` + esc(q) + `">Reply to ` + esc(name) + `…</a>`)
+		// A field, not a link (Mail plan §3.3, pipeline 3z): what is typed in
+		// it becomes the reply, carried into the compose sheet it opens.
+		c.WriteString(`<div class="mx-dock"><input class="mx-dock__field" type="text" autocomplete="off" data-mx-quick-reply data-href="/os/vayumail/compose?reply=1&amp;` + esc(q) + `" placeholder="Reply to ` + esc(name) + `…" aria-label="Reply to ` + esc(name) + `">`)
 		if a.vayuPGP != nil {
 			if _, err := a.vayuPGP.GetPublicKey(fromAddr); err == nil {
 				c.WriteString(`<span class="mx-dock__enc">` + saIcon("lock") + ` Encrypted</span>`)

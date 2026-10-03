@@ -6106,10 +6106,12 @@
 .vp-os[data-ui="still-air"] .mx-file__dl { color: var(--text-3); }
 .vp-os[data-ui="still-air"] .mx-dock { position: sticky; bottom: 0; z-index: 2; padding: var(--space-4) var(--space-6) var(--space-5); background: var(--surface-1); border-top: 1px solid var(--border-1); }
 .vp-os[data-ui="still-air"] .mx-dock__field {
-  display: flex; align-items: center; justify-content: space-between; max-width: 740px; margin: 0 auto; min-height: 44px; padding: 0 var(--space-5);
-  font: var(--type-body); color: var(--text-3); text-decoration: none; border: 1px solid var(--border-1); border-radius: 22px; background: var(--surface-input);
+  display: block; min-width: 0; max-width: 740px; margin: 0 auto; min-height: 44px; padding: 0 var(--space-5);
+  font: var(--type-body); color: var(--text-1); border: 1px solid var(--border-1); border-radius: 22px; background: var(--surface-input);
 }
-.vp-os[data-ui="still-air"] .mx-dock__field:hover { border-color: var(--border-2); text-decoration: none; color: var(--text-2); }
+.vp-os[data-ui="still-air"] .mx-dock__field::placeholder { color: var(--text-3); }
+.vp-os[data-ui="still-air"] .mx-dock__field:hover:not(:focus) { border-color: var(--border-2); }
+.vp-os[data-ui="still-air"] .mx-dock__field:focus-visible { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px var(--accent-soft); }
 .vp-os[data-ui="still-air"] .mx-dock { display: flex; justify-content: center; align-items: center; gap: var(--space-4); }
 .vp-os[data-ui="still-air"] .mx-dock__field { flex: 1; }
 .vp-os[data-ui="still-air"] .mx-dock__enc { display: inline-flex; align-items: center; gap: var(--space-2); font: var(--type-small); color: var(--ok); }

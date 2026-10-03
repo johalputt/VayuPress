@@ -19,6 +19,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   browser. The full view the old reader had was lost when the reader was
   redesigned; its leftover script and styles are gone with this.
 
+- **Reply by typing under the message.** The reply field under a message is a
+  field: the first thing typed there opens the reply, and every word typed,
+  those typed while it opens among them, is carried into it, ready to go on.
 - **Not junk.** A message in Junk offers Not junk first (also `!`, the key
   that files a message there everywhere else, and in selection mode for all
   that is picked). It goes back to the Inbox and its sender joins the
