@@ -449,6 +449,33 @@ test("the mail keys go to folders and open the menus", async ({ page }) => {
 
 // The command bar offers what the page offers, by name (plan §6): the open
 // message's actions, run as the toolbar runs them.
+// The keys keep out of what is being written (Mail plan §10): one seed per
+// guard. A letter typed in a field is the field's, and a key pressed with
+// focus anywhere in the composer, a button included, is the composer's. Either
+// way the open message behind is not archived.
+test("the mail keys keep out of fields and the composer", async ({ page }) => {
+  await openInbox(page);
+  const acted = [];
+  // An archive is a move to Archive; the newest message's own read mark is not.
+  page.on("request", (r) => { if (r.method() === "POST" && /Archive/.test(r.postData() || "")) acted.push(r.url() + " " + r.postData()); });
+  const search = page.locator('input[type="search"][name="q"]');
+  await search.focus();
+  await page.keyboard.press("e");
+  await expect(search).toHaveValue("e");
+  await page.waitForTimeout(600);
+  expect(acted, "a letter typed in the search field archived the open message").toEqual([]);
+  await search.fill("");
+  await search.blur();
+
+  await page.locator('#vm-readpane [aria-label="Reply"]').first().click();
+  const cc = page.locator("[data-mx-compose-host] [data-c-toggle-cc]");
+  await expect(cc).toBeVisible();
+  await cc.focus();
+  await page.keyboard.press("e");
+  await page.waitForTimeout(600);
+  expect(acted, "a key pressed on the composer's button archived the message behind it").toEqual([]);
+});
+
 test("the command bar runs the open message's actions", async ({ page }) => {
   await openInbox(page);
   // An older message, not the newest the other tests read.
@@ -586,3 +613,45 @@ test("on a phone, Mail is screens pushed and popped", async ({ page }) => {
   expect(await page.evaluate(() => window.__tint), "the row just read was not tinted").toBe(true);
   expect(await page.evaluate(() => window.__moves), "the screens did not push and pop").toEqual(["push", "pop"]);
 });
+
+// Text holds its contrast where Mail paints its own colours (Mail plan §10):
+// the selected row, the previews and times, and the seal, in both schemes. A
+// colour is composited over every background beneath it on a canvas, so a
+// translucent token or an oklch() value is measured as it is drawn.
+for (const scheme of ["light", "dark"]) {
+  test.describe(`in the ${scheme} scheme`, () => {
+    test.use({ colorScheme: scheme });
+    test(`Mail's text holds its contrast (${scheme})`, async ({ page }) => {
+      await openInbox(page);
+      await page.locator(".mx-row", { hasText: "Newsletter draft, October" }).locator(".mx-row__open").click();
+      await expect(page.locator("#vm-readpane .mx-seal")).toBeVisible();
+      const measured = await page.evaluate(() => {
+        const cv = document.createElement("canvas"); cv.width = cv.height = 1;
+        const x = cv.getContext("2d", { willReadFrequently: true });
+        const paint = (c) => { x.fillStyle = c; x.fillRect(0, 0, 1, 1); return Array.from(x.getImageData(0, 0, 1, 1).data).slice(0, 3); };
+        const lum = (rgb) => { const [r, g, b] = rgb.map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+        const ratio = (el) => {
+          const chain = []; for (let n = el; n; n = n.parentElement) chain.unshift(getComputedStyle(n).backgroundColor);
+          paint("#000"); chain.forEach(paint);
+          const bg = paint("rgba(0,0,0,0)"); const fg = paint(getComputedStyle(el).color);
+          const [a, b] = [lum(fg), lum(bg)].sort((p, q) => q - p);
+          return (a + 0.05) / (b + 0.05);
+        };
+        const out = {};
+        const sel = document.querySelector("#vm-inbox-list .mx-row.vm-active");
+        const other = document.querySelector("#vm-inbox-list .mx-row:not(.vm-active)");
+        for (const [name, el] of [
+          ["selected sender", sel && sel.querySelector(".mx-row__who")], ["selected subject", sel && sel.querySelector(".mx-row__subj-text")],
+          ["selected preview", sel && sel.querySelector(".mx-row__pv")], ["selected time", sel && sel.querySelector(".mx-row__time")],
+          ["preview", other && other.querySelector(".mx-row__pv")], ["time", other && other.querySelector(".mx-row__time")],
+          ["seal", document.querySelector("#vm-readpane .mx-seal span")],
+        ]) out[name] = el ? Math.round(ratio(el) * 100) / 100 : "missing";
+        return out;
+      });
+      for (const [name, r] of Object.entries(measured)) {
+        expect(r, `${name}: no element to measure`).not.toBe("missing");
+        expect(r, `${name} is ${r}:1 in ${scheme}, under 4.5:1`).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+  });
+}
