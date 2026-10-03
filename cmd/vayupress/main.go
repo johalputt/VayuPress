@@ -805,31 +805,7 @@ func main() {
 	if err := a.apiKeys.EnsureInternal(context.Background()); err != nil {
 		logging.LogError("apikeys", "failed to provision internal system key", err.Error())
 	}
-	if sv, err := a.siteSettings.GetAll(context.Background(), settings.ForPrimary()); err == nil {
-		render.SetActiveSettings(render.SiteSettings{
-			Name:            sv[settings.KeySiteName],
-			Tagline:         sv[settings.KeySiteTagline],
-			Description:     sv[settings.KeySiteDescription],
-			Author:          sv[settings.KeySiteAuthor],
-			AuthorBio:       sv[settings.KeyAuthorBio],
-			ShowMembership:  sv[settings.KeyMembershipButtons] == "true",
-			PrimaryLight:    sv[settings.KeyThemePrimaryLight],
-			PrimaryDark:     sv[settings.KeyThemePrimaryDark],
-			AccentLight:     sv[settings.KeyThemeAccentLight],
-			AccentDark:      sv[settings.KeyThemeAccentDark],
-			CustomCSS:       sv[settings.KeyThemeCustomCSS],
-			Keywords:        sv[settings.KeyHeadKeywords],
-			ThemeColor:      sv[settings.KeyHeadThemeColor],
-			Robots:          sv[settings.KeyHeadRobots],
-			VerifyGoogle:    sv[settings.KeyHeadVerifyGoogle],
-			VerifyBing:      sv[settings.KeyHeadVerifyBing],
-			NavJSON:         sv[settings.KeyNavItems],
-			FooterJSON:      sv[settings.KeyFooterConfig],
-			OGImage:         render.OGImagePath(sv[settings.KeyThemeOGImage]),
-			ShowHero:        sv[settings.KeyHomeHero] == "true",
-			CommentsEnabled: sv[settings.KeyFeatureComments] != "off",
-		})
-	}
+	a.applyRenderSettings(context.Background())
 
 	// VayuDomains registry (migration 059) — seed the primary domain from the
 	// configured host so an existing single-domain install is described exactly

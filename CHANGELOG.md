@@ -25,6 +25,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   screen left the reader narrower than its tools, so it scrolled sideways and
   More (with Print in it) sat past its edge. The tools wrap onto a second row
   instead.
+- **The console reads in your time zone from the moment it starts.** The time
+  zone set in Settings was applied only when Settings was saved, so after
+  every restart, an update among them, Home and every other console time read
+  in UTC until the next save. It is applied at start-up now.
 - **Print prints the message.** The print rules were older than the reader and
   printed the page's address with none of the mail. A message now prints
   whole, without the console, its tools or the reply field.

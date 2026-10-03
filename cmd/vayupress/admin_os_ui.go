@@ -3797,6 +3797,15 @@ func (a *App) handleOSSettingsAPI(w http.ResponseWriter, r *http.Request) {
 // for the settings→render mapping, shared by the VayuOS settings API and the
 // update_site_settings MCP tool. A no-op if the settings store is unavailable.
 func (a *App) reloadRenderSettings(ctx context.Context) {
+	a.applyRenderSettings(ctx)
+	render.CachePurgeAll()
+}
+
+// applyRenderSettings is reloadRenderSettings without the purge, for boot,
+// where nothing is cached yet. Boot once kept its own copy of this mapping,
+// without the time zone, so every restart showed the console in UTC until
+// Settings was saved again (pipeline 3ad).
+func (a *App) applyRenderSettings(ctx context.Context) {
 	if a.siteSettings == nil {
 		return
 	}
@@ -3834,7 +3843,6 @@ func (a *App) reloadRenderSettings(ctx context.Context) {
 		ShowHero:        sv[settings.KeyHomeHero] == "true",
 		CommentsEnabled: sv[settings.KeyFeatureComments] != "off",
 	})
-	render.CachePurgeAll()
 }
 
 // handleOSQuickCreatePost creates a draft post from the dashboard quick-compose.
