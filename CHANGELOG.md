@@ -8,6 +8,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.17.98] — 2026-10-03
+
+Backups now says what a backup holds, and its test restore checks the mail,
+media and website inside one, not only the database. Mailbox recovery is
+Still Air, like the sign-in it is reached from.
+
 ### Added
 
 - **Backups says what a backup holds.** A new section lists the database and
