@@ -10,6 +10,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **Mail's seal vouches only for what its signature covers.** The reader's
+  green "Signed · their key is verified" sat above the whole message while
+  the signature covered only its block, so anyone holding one genuine signed
+  message from a sender could wrap their own words round it (before or after
+  a clear-signed block, in an HTML part or a file beside it, in a third part
+  after a PGP/MIME signature, round an inline encrypted block) and send the
+  whole in that sender's name. The seal now vouches only when the reader
+  shows nothing but the signed or encrypted block, says "Part of this
+  message is signed; the rest is not" otherwise, and keeps a signature that
+  fails red whatever it covers. It also names the address whose key was
+  checked, not the display name the sender typed beside it: "PayPal Security
+  <mallory@…>" signing with Mallory's own key no longer reads "PayPal
+  Security's key is verified".
+- **A read-only mailbox can no longer snooze its mail.** Snooze took a bare
+  mailbox name and so skipped the write check every other change makes: a
+  reviewer's read-only mailbox could move its mail out of the Inbox. Snooze
+  is now authorised as a move and refused to a read-only holder, and the
+  reader no longer offers it to one.
 - **Code scanning's four reflected-XSS alerts are closed at their source.**
   None was a value written unescaped: Mail's `?view=` was only ever written
   when it equalled one of three fixed names, and every other path ran
@@ -27,6 +45,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
+- **The post editor, Website and Theme are documents.** The editor is a
+  quiet bar (the way back to Posts or Pages, the save state, Preview, Save,
+  Publish), the post at reading measure, and its settings laid open beside
+  it; Focus, the side preview, Markdown, HTML, version history and the rest
+  of the old eleven-button bar are under More, with their keys. Website shows
+  the site itself, framed, with the hosting choice, the design, the content
+  and an uploaded build beside it; a design chosen there is previewed in its
+  own styles (it was drawn with the saved design's). Theme shows the live
+  preview with the Studio beside it in four tabs (Design, Colour, Layout,
+  Advanced) in place of thirteen accordion sections, and Guided and Expert
+  are retired.
+- **Mail is redesigned.** The list is one row per conversation under date
+  groups, each with its first words and marks for an attachment or
+  encryption, and views for unread, pinned and encrypted mail; a listing
+  reads at most the header block and 32 KB of each message, once. The reader
+  folds the rest of the conversation (Sent included) above the newest
+  message and opens with a seal that states what VayuPGP verified against a
+  key already on file, fetching nothing. An administrator switches mailbox
+  from the account block. Compose is a sheet over the reader that keeps a
+  draft when closed and says beside Send whether the message will be
+  encrypted for every recipient. A row's check starts selection, with the
+  actions beside what is picked; Mail's keys and every control on screen are
+  in the command bar; search lifts into the header with its scope. On a
+  phone, Mail is screens pushed and popped, and back returns to where the
+  list was.
 - **Every console page keeps to the page grammar, and the lint enforces it.**
   Each page now says which kind it is and is held to the rules: one surface
   level, state as a dot and a word, a figure only when it says something,
@@ -71,6 +114,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **A conversation is no longer split when a reply sits in Sent.** Messages
+  are grouped by every id they name, so the middle of a thread in another
+  folder joins its two halves.
+- **The console no longer reloads itself on a first visit.** The reload
+  meant for a new build ran when the first service worker took a page that
+  had none, and threw away whatever the first moments did.
+- **Shield's figures stay within the page.** Its trail, bot share,
+  real-user timings and AI traffic were sentences, and on any install with
+  traffic they ran the page past its length; they are rows of facts.
 - **A post or page started from its title opens with that title.** The
   create was queued, and the editor opened before it was written: a blank
   "New post" with the title gone. It now opens once the draft can be read,
