@@ -635,6 +635,11 @@ for (const scheme of ["light", "dark"]) {
       await openInbox(page);
       await page.locator(".mx-row", { hasText: "Newsletter draft, October" }).locator(".mx-row__open").click();
       await expect(page.locator("#vm-readpane .mx-seal")).toBeVisible();
+      // The selection fades in over --duration-micro while its text turns at
+      // once, so a reading inside those 90 ms is white on near-white. What is
+      // judged is the colour the row settles on: wait out its transitions.
+      await page.locator("#vm-inbox-list .mx-row.vm-active").evaluate((r) =>
+        Promise.all(r.getAnimations({ subtree: true }).map((a) => a.finished)));
       const measured = await page.evaluate(() => {
         const cv = document.createElement("canvas"); cv.width = cv.height = 1;
         const x = cv.getContext("2d", { willReadFrequently: true });
