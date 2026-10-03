@@ -5933,7 +5933,10 @@
 .vp-os[data-ui="still-air"] .mx-results { animation: mx-fade-in var(--duration-standard) var(--ease-enter); }
 .vp-os[data-ui="still-air"] .has-results :is(.mx-list:not(.mx-results .mx-list), .mx-older, .mx-banner) { display: none; }
 .vp-os[data-ui="still-air"] .mx-results__count { margin: 0; padding: var(--space-2) var(--space-3) var(--space-3); font: var(--type-small); color: var(--text-3); }
-.vp-os[data-ui="still-air"] .mx-results .mx-group { top: 150px; }
+/* A result's heading sticks under the raised search: the header's 56px, the
+   field and scope bar (84px), less the 48px it rises. Any lower and it sits
+   over the first result before the list has scrolled at all. */
+.vp-os[data-ui="still-air"] .mx-results .mx-group { top: 92px; }
 .vp-os[data-ui="still-air"] .mx-search__input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; color: var(--text-1); font: var(--type-body); outline: none; }
 .vp-os[data-ui="still-air"] .mx-search__key { font: var(--type-meta); color: var(--text-3); padding: 0 6px; border: 1px solid var(--border-1); border-radius: 4px; }
 .vp-os[data-ui="still-air"] .mx-search:focus-within .mx-search__key { visibility: hidden; }
@@ -6012,6 +6015,9 @@
 .vp-os[data-ui="still-air"] .mx-row.vm-active :is(.mx-row__time, .mx-row__pv, .mx-row__marks) { color: var(--mx-on-sel-2); }
 .vp-os[data-ui="still-air"] .mx-row.vm-active .mx-row__dot { background: var(--mx-on-sel); }
 .vp-os[data-ui="still-air"] .mx-row.vm-active .mx-thread { color: var(--mx-sel); background: var(--mx-on-sel); }
+/* The avatars' tints are translucent, so on the selection they darken into
+   it; the avatar inverts as the thread count does. */
+.vp-os[data-ui="still-air"] .mx-row.vm-active .mx-row__open > .vm-av:not(.vm-av--img) { color: var(--mx-sel); background: var(--mx-on-sel); }
 .vp-os[data-ui="still-air"] .mx-row.vm-focus { box-shadow: inset 0 0 0 2px var(--focus); }
 /* Picked rows wear the selection fill. Where two meet, their corners square
    off, so neighbours read as one block (Mail plan §8, item 3). While

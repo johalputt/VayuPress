@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
@@ -62,5 +64,21 @@ func TestMailOverviewIsTheFirstAdministrationTab(t *testing.T) {
 	}
 	if strings.Count(nav, `aria-current`) != 1 {
 		t.Errorf("want exactly one current tab, got %s", nav)
+	}
+}
+
+// One seed per rule of mailInitials, each stating the wrong answer the rule
+// prevents rather than calling the function to judge itself.
+func TestMailInitials(t *testing.T) {
+	for raw, want := range map[string]string{
+		`"Ankush Johal" <a@mail.test>`: "AJ", // two words: their first letters
+		"x@mail.test":                  "X",  // an address alone: its local part, never "X@"
+		"a-very-long-name@mail.test":   "AV", // punctuation separates and is never an initial ("A-")
+		`"Émile" <e@x.test>`:           "ÉM", // one word: its first two letters, any script
+		"<>":                           "?",  // nothing to take a letter from
+	} {
+		if got := mailInitials(raw); got != want {
+			t.Errorf("mailInitials(%q) = %q, want %q", raw, got, want)
+		}
 	}
 }

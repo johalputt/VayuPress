@@ -153,3 +153,31 @@ test("on a phone, a conversation is pushed over the list", async ({ browser }) =
   expect(await a.evaluate(() => document.scrollingElement.scrollWidth <= window.innerWidth), "the page scrolls sideways").toBe(true);
   await a.context().close();
 });
+
+// Talk asks only for pictures that exist: a mailbox with one shows it, and a
+// mailbox without one is never asked for (each such ask was a 404, an error
+// in the console for every contact without a picture).
+test("a picture is shown where there is one, and never asked for otherwise", async ({ browser }) => {
+  const admin = await browser.newPage({ baseURL: base });
+  await admin.goto("/os/vayumail/accounts");
+  const csrf = decodeURIComponent((await admin.context().cookies()).find((c) => c.name === "vp_csrf").value);
+  const local = "pic" + Date.now().toString(36), pictured = local + "@mail.test";
+  expect((await admin.request.post("/os/vayumail/accounts/create", { headers: { "X-CSRF-Token": csrf }, data: { local, pass: "e2e-mailbox-pass-" + local, role: "mailbox" } })).ok()).toBe(true);
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+  const up = await admin.request.post("/os/vayumail/accounts/avatar", { headers: { "X-CSRF-Token": csrf }, multipart: { email: pictured, avatar: { name: "a.png", mimeType: "image/png", buffer: png } } });
+  expect(up.ok(), "the picture upload: " + up.status()).toBe(true);
+  await admin.close();
+
+  const asked = [];
+  const a = await (await browser.newContext({ baseURL: base, viewport: { width: 1440, height: 900 } })).newPage();
+  a.on("request", (r) => { if (r.url().includes("/os/vayumail/accounts/avatar?")) asked.push(new URL(r.url()).searchParams.get("email")); });
+  await a.goto("/os/talk");
+  if ((await a.locator("#vtalk-as").inputValue()) !== ANKUSH) await a.locator("#vtalk-as").selectOption(ANKUSH);
+  await expect(a.locator("#vtalk-status")).toHaveAttribute("data-state", "online");
+  await startChat(a, pictured);
+  await expect(a.locator(".vtalk-convo", { hasText: local }).first().locator(".vtalk-avatar img")).toBeVisible();
+  await startChat(a, PRIYA);
+  await expect(a.locator(".vtalk-convo", { hasText: "priya" }).first().locator(".vtalk-avatar")).toHaveText(/^[A-Z]/);
+  expect(asked.filter((e) => e !== pictured), "pictures asked for mailboxes that have none").toEqual([]);
+  await a.context().close();
+});

@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
@@ -1547,25 +1548,25 @@ func mailDisplay(raw string) string {
 	return raw
 }
 
-// mailInitials returns 1–2 uppercase initials for the avatar chip.
+// mailInitials returns 1–2 uppercase initials for the avatar chip: the first
+// letters of the first two words of the name, or of an address's local part,
+// where a word is a run of letters and digits. Punctuation is never an
+// initial: "a-very-long-name@" is AV, not "A-".
 func mailInitials(raw string) string {
 	name, addr := mailParseFrom(raw)
-	src := name
+	src := strings.TrimSpace(name)
 	if src == "" {
-		src = addr
+		src, _, _ = strings.Cut(addr, "@")
 	}
-	src = strings.TrimSpace(src)
-	if src == "" {
+	words := strings.FieldsFunc(src, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
+	switch {
+	case len(words) == 0:
 		return "?"
+	case len(words) >= 2:
+		return strings.ToUpper(string([]rune(words[0])[:1]) + string([]rune(words[1])[:1]))
 	}
-	if parts := strings.Fields(src); len(parts) >= 2 {
-		return strings.ToUpper(string([]rune(parts[0])[:1]) + string([]rune(parts[1])[:1]))
-	}
-	r := []rune(src)
-	if len(r) >= 2 {
-		return strings.ToUpper(string(r[:2]))
-	}
-	return strings.ToUpper(string(r[:1]))
+	r := []rune(words[0])
+	return strings.ToUpper(string(r[:min(2, len(r))]))
 }
 
 // mailAvatarIdx maps a seed deterministically to one of the avatar palette

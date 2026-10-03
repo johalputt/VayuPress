@@ -68,8 +68,21 @@
       p.classList.remove('is-closing');
       d.open = false;
     };
+    d.vpCloseDone = done;
     p.addEventListener('animationend', done);
     setTimeout(done, 400); // an animation that never ends must not keep it open
+  }
+  // keep takes a closing panel back: the exit is dropped and the entrance
+  // plays again. Without it a click on the control during the exit read as
+  // "close" (the element is still open until the exit ends) and was eaten:
+  // New chat clicked just after starting a chat stayed shut.
+  function keep(d) {
+    var p = d.querySelector('.sa-pop__panel');
+    delete d.dataset.closing;
+    if (d.vpCloseDone) p.removeEventListener('animationend', d.vpCloseDone);
+    p.classList.remove('is-closing');
+    closeAll(d);
+    openFrom(p, d.querySelector('summary'));
   }
   function closeAll(except) {
     pops.forEach(function (d) { if (d !== except) shut(d); });
@@ -92,7 +105,10 @@
     var sum = d.querySelector('summary');
     if (sum) {
       sum.addEventListener('click', function (e) {
-        if (d.open) { e.preventDefault(); shut(d); }
+        if (!d.open) return;
+        e.preventDefault();
+        if (d.dataset.closing) keep(d);
+        else shut(d);
       });
       sum.addEventListener('keydown', function (e) {
         if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {

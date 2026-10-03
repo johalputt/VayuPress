@@ -513,6 +513,28 @@ test("every menu opens from the control that opened it", async ({ page }) => {
   expect(checked, "menus found to check").toBeGreaterThanOrEqual(3);
 });
 
+// A click on a menu's control while the menu plays its exit opens it again.
+// The element stays open until the exit ends, so the click used to read as
+// "close" and was eaten. The exit lasts 90 ms, so the close and the click are
+// sent in one turn of the page, as a quick hand would land them.
+test("a menu clicked while it closes opens again", async ({ page }) => {
+  await openConsole(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const sum = page.locator("summary.sa-account__btn");
+  await sum.click();
+  await expect(page.locator("summary.sa-account__btn + .sa-pop__panel")).toBeVisible();
+  const closing = await sum.evaluate((s) => {
+    s.closest("details").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    const was = s.nextElementSibling.classList.contains("is-closing");
+    s.click();
+    return was;
+  });
+  expect(closing, "the menu did not start its exit").toBe(true);
+  await page.waitForTimeout(500);
+  expect(await sum.evaluate((s) => s.closest("details").open), "the click during the exit was eaten").toBe(true);
+  await expect(page.locator("summary.sa-account__btn + .sa-pop__panel")).toBeVisible();
+});
+
 // Under reduced motion nothing moves: no keyframe animation runs anywhere in
 // the shell, and no transition is longer than a 90 ms fade (Mail plan §8).
 test("reduced motion moves nothing", async ({ page }) => {

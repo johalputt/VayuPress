@@ -33,6 +33,7 @@ import (
 	htmpl "html/template"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -260,7 +261,18 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	// call (TestEscapesAreCalledByName).
 	invite := strings.TrimSpace(r.URL.Query().Get("t"))
 
-	body.WriteString(`<div class="vtalk" data-self="` + esc(self) + `" data-self-fp="` + esc(formatSafety(selfFP)) + `"` + onionAttr + ` data-view="list">`)
+	// The mailboxes with a picture, so the script asks only for pictures that
+	// exist: a request per contact answered 404 was an error in the console
+	// for everyone without one. The picture route answers the same question
+	// to the same signed-in reader, so this tells nobody anything new.
+	var pictures []string
+	for addr := range a.mailboxAvatarSet() {
+		pictures = append(pictures, addr)
+	}
+	sort.Strings(pictures)
+
+	body.WriteString(`<div class="vtalk" data-self="` + esc(self) + `" data-self-fp="` + esc(formatSafety(selfFP)) + `"` + onionAttr +
+		` data-pictures="` + esc(strings.Join(pictures, " ")) + `" data-view="list">`)
 
 	// The bar (render 05): where you are, who you are chatting as, and the two
 	// things you start from here: a new chat, and what someone needs to reach

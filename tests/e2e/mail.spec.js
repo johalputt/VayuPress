@@ -515,6 +515,10 @@ test("search rises into the header and gives the list back", async ({ page }) =>
   const results = page.locator("#vm-search-results");
   await expect(results.locator(".mx-results__count")).toContainText("for “bucket”");
   await expect(results.locator(".mx-row", { hasText: "Keys for the backup bucket" })).toHaveCount(1);
+  // The result's heading sticks under the raised search, and not lower: a
+  // heading stuck below where it sits covers the first result's sender.
+  const overlap = await results.evaluate((r) => r.querySelector(".mx-group").getBoundingClientRect().bottom - r.querySelector(".mx-row").getBoundingClientRect().top);
+  expect(overlap, "the result's heading covers the first result").toBeLessThanOrEqual(0);
   await expect(list.locator("> .mx-list")).toBeHidden();
   await page.locator(".mx-scope__opt", { hasText: "Has attachments" }).click();
   await expect(results.locator(".mx-row", { hasText: "Keys for the backup bucket" })).toHaveCount(0);
@@ -620,9 +624,10 @@ test("on a phone, Mail is screens pushed and popped", async ({ page }) => {
 });
 
 // Text holds its contrast where Mail paints its own colours (Mail plan §10):
-// the selected row, the previews and times, and the seal, in both schemes. A
-// colour is composited over every background beneath it on a canvas, so a
-// translucent token or an oklch() value is measured as it is drawn.
+// the selected row and its avatar, the previews and times, and the seal, in
+// both schemes. A colour is composited over every background beneath it on a
+// canvas, so a translucent token or an oklch() value is measured as it is
+// drawn.
 for (const scheme of ["light", "dark"]) {
   test.describe(`in the ${scheme} scheme`, () => {
     test.use({ colorScheme: scheme });
@@ -648,6 +653,7 @@ for (const scheme of ["light", "dark"]) {
         for (const [name, el] of [
           ["selected sender", sel && sel.querySelector(".mx-row__who")], ["selected subject", sel && sel.querySelector(".mx-row__subj-text")],
           ["selected preview", sel && sel.querySelector(".mx-row__pv")], ["selected time", sel && sel.querySelector(".mx-row__time")],
+          ["selected initials", sel && sel.querySelector(".mx-row__open > .vm-av")],
           ["preview", other && other.querySelector(".mx-row__pv")], ["time", other && other.querySelector(".mx-row__time")],
           ["seal", document.querySelector("#vm-readpane .mx-seal span")],
         ]) out[name] = el ? Math.round(ratio(el) * 100) / 100 : "missing";

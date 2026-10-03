@@ -27,6 +27,8 @@
   var self = root.getAttribute('data-self') || '';
   var selfFp = root.getAttribute('data-self-fp') || '';
   var onionWorld = root.getAttribute('data-onion') === '1'; // Tor world: this console is the sole reader
+  var pictures = {};
+  (root.getAttribute('data-pictures') || '').split(' ').forEach(function (a) { if (a) pictures[a] = true; });
   var asSel = document.getElementById('vtalk-as');   // "chat as" switcher (admins)
   var currentSelf = (asSel ? asSel.value : self).trim().toLowerCase();
 
@@ -126,11 +128,11 @@
   function parse(s) { try { return JSON.parse(s); } catch (_) { return null; } }
 
   // avatarEl builds a round avatar chip that shows the address' real mailbox
-  // picture when the server has one (your own identity, or any local mailbox),
-  // falling back to coloured initials otherwise. The <img> load/error handlers are
-  // attached in JS (never an inline onerror) so it stays strict-CSP-safe: a 404
-  // (no picture) simply keeps the initials. It is same-origin only and never
-  // reaches another host, so it is safe in the Tor world too.
+  // picture when the page says it has one (data-pictures: local mailboxes
+  // with an upload), and coloured initials otherwise. The <img> load handler
+  // is attached in JS (never an inline handler) so it stays strict-CSP-safe,
+  // and the initials stay until the picture has loaded. It is same-origin only
+  // and never reaches another host, so it is safe in the Tor world too.
   // avatarTone is Mail's avatar tint for an address (mailAvatarIdx in
   // vayuos.go: FNV-1a over its bytes, of six), so a person has one colour in
   // Mail and in Talk. Talk draws its rows here; Mail's are drawn on the server.
@@ -142,7 +144,7 @@
   function avatarEl(addr, label) {
     var a = norm(addr);
     var el = elem('span', 'vtalk-avatar vm-av vm-av--' + avatarTone(a), initials(label || addr));
-    if (!a) return el;
+    if (!pictures[a]) return el;
     var img = document.createElement('img');
     img.alt = '';
     img.addEventListener('load', function () {

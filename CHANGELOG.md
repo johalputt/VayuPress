@@ -48,6 +48,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **A menu clicked while it closes opens again.** Every console menu plays a
+  short exit before it shuts, and a click on its control during that exit
+  was taken as "close" and lost: New chat, clicked just after starting a
+  chat, stayed shut.
+- **Mail search's first result is no longer under its heading.** The group
+  heading stuck 58 px too low and covered the first result's sender.
+- **The selected message's avatar is readable.** Its tint darkened into the
+  selection colour (1.3:1 in the light scheme); it now inverts, as the
+  thread count beside it does.
+- **Avatar initials are letters.** A mailbox named only by its address took
+  its first two characters, so `a-very-long-name@` read "A-"; it is "AV".
+- **Talk no longer asks for pictures that do not exist.** Every contact
+  without a picture cost a request answered 404 and an error in the
+  browser's console; the page now says which mailboxes have one.
 - **Your safety number now follows "Chatting as".** Switching mailbox
   changed your share link and its QR code but left the previous mailbox's
   safety number on show, so the number you read out could vouch for the
