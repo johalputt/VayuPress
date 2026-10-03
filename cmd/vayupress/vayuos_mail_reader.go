@@ -302,7 +302,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		if a.vayuPGP != nil {
 			checker = a.vayuPGP
 		}
-		if s := mailSealFor(checker, mbox, stored, fromAddr, who); s.Text != "" {
+		if s := mailSealFor(checker, mbox, stored, fromAddr); s.Text != "" {
 			icon := "lock"
 			if !strings.Contains(s.Text, "ncrypted") {
 				icon = "check-c"
