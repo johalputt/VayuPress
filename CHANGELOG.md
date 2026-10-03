@@ -8,6 +8,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.17.97] — 2026-10-03
+
+A hotfix for what the operator found after updating to 3.17.96: Backups
+read "never restored" over a restore point that had passed its test, and
+Home asked for attention. With it, Storage no longer deletes the only
+restore point and says what each backup is.
+
 ### Fixed
 
 - **Backups no longer forgets its test restore when the server restarts.**
