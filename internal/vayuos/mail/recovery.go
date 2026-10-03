@@ -533,6 +533,20 @@ func (s *AccountStore) pruneRecoveryRequests(ctx context.Context) {
 		"-"+fmt.Sprint(recoveryRetentionDays)+" days")
 }
 
+// PendingRecoveryCount is how many requests await a decision, counted inside
+// the retention window the queue lists. It prunes nothing: the bell asks on
+// every console page, and a page view must not be a write. No table yet (no
+// one has ever asked) is none waiting.
+func (s *AccountStore) PendingRecoveryCount(ctx context.Context) int {
+	var n int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM vayumail_recovery_requests WHERE status='pending' AND created_at >= datetime('now', ?)`,
+		"-"+fmt.Sprint(recoveryRetentionDays)+" days").Scan(&n); err != nil {
+		return 0
+	}
+	return n
+}
+
 // PendingRecoveryRequests lists requests awaiting a decision, newest first.
 func (s *AccountStore) PendingRecoveryRequests(ctx context.Context) []RecoveryRequest {
 	if err := s.ensureRecoveryRequests(); err != nil {

@@ -251,7 +251,8 @@ that works here</strong> — generate them for every mailbox.</p>`)
 recovery sits with that mailbox's other settings, next to forwarding and aliases.</p>`)
 	// Assisted-recovery queue. Shown only when someone is actually waiting: an
 	// empty section every day trains the eye to skip the one day it is not empty.
-	if pending := accts.PendingRecoveryRequests(r.Context()); len(pending) > 0 {
+	pending := accts.PendingRecoveryRequests(r.Context())
+	if len(pending) > 0 {
 		b.WriteString(`<div class="section-head mt-4"><span class="section-head__title">Waiting for you</span>
 <span class="section-head__hint">Holders who are locked out with nothing enrolled</span></div>`)
 		b.WriteString(`<p class="text-sm muted">Approving does not set or reveal a password — it creates a
@@ -276,8 +277,10 @@ are talking to first: this is the step an attacker would try to talk you through
 	b.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail-recovery.js?v=` +
 		assetVer("js/admin-os-mail-recovery.js") + `"></script>`)
 
-	return monAcc(saIcon("key"), "Account recovery", "Who could get back in if they forgot their password", chip,
-		len(stuck) > 0, b.String())
+	// Open, and the bell's link lands on it, when someone is waiting: a
+	// request folded away is one the administrator was never told of.
+	return `<div id="recovery">` + monAcc(saIcon("key"), "Account recovery", "Who could get back in if they forgot their password", chip,
+		len(stuck) > 0 || len(pending) > 0, b.String()) + `</div>`
 }
 
 // selfRecovery is the holder's own view: one mailbox, theirs, no readiness

@@ -1652,6 +1652,15 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 	if next, bad := a.mailDNSNeedsAttention(); bad && s.AccessLevel >= accessAdmin {
 		state("/os/vayumail/dns", "Mail domain needs attention", next, "mail", "warn")
 	}
+	// Someone locked out of their mailbox asked for help. The public page tells
+	// them their administrator has been told; this is where that is made true.
+	// The queue is on Mail's Accounts tab, administrator-only while /os/vayumail
+	// is open to authors, so the path gate is not enough here either.
+	if s.AccessLevel >= accessAdmin && a.vayuMail != nil && a.vayuMail.Accounts() != nil {
+		if n := a.vayuMail.Accounts().PendingRecoveryCount(ctx); n > 0 {
+			add("/os/vayumail/accounts#recovery", "Locked out of their mailbox", strconv.Itoa(n)+" waiting for you", "mail", n, "warn")
+		}
+	}
 	// Backups that are not proven. This verdict used to sit on the Operations
 	// hub; Home and the bell are where an operator looks without being sent, and
 	// a broken recovery path is otherwise silent until the day it is needed.

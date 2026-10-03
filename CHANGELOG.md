@@ -21,6 +21,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **"Ask your administrator" now reaches the administrator.** A person locked
+  out of their mailbox was told "your administrator has been told", but the
+  request only sat in a folded section of Mail's Accounts tab, and nothing in
+  the console said it was there. While a request waits, the bell and Home now
+  say "Locked out of their mailbox: N waiting for you" to administrators, and
+  the link opens the Account recovery section at the list, with Approve and
+  Decline.
 - **Everyone who signs in with a mailbox is listed in Members.** The member
   portal's mailbox sign-in added the person to Members; the website's login
   button, which takes the same mailbox password, and the VayuMail app's
