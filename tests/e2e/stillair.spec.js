@@ -985,14 +985,18 @@ test("outside services reach the public pages, never the console", async ({ page
 });
 
 // Starting a post (fidelity plan §3): Home's field moved to the head's New
-// post and to the command bar, where what is typed can be the new post's
-// title. Home holds no form of its own any more.
+// post and to the command bar, where a title that matches nothing is offered
+// as a new post's. A search that matches is left as it was: "backups" is
+// still the Backups page, first and alone. Home holds no form of its own.
 test("a post is started from Home's New post or the command bar's title", async ({ page }) => {
   await openConsole(page);
   await expect(page.locator("main input:not([type=hidden])")).toHaveCount(0);
   await expect(page.locator("main .sa-home__head a.btn--primary")).toHaveAttribute("href", "/os/editor");
-  const title = "Notes from the walk " + Date.now().toString(36);
   await page.keyboard.press("Control+k");
+  await page.locator(".cmd-input").fill("backups");
+  await expect(page.locator("#cmd-results .cmd-item", { hasText: "Backups" }).first()).toBeVisible();
+  await expect(page.locator("#cmd-results .cmd-item", { hasText: "Start a post titled" })).toHaveCount(0);
+  const title = "Notes from the walk " + Date.now().toString(36);
   await page.locator(".cmd-input").fill(title);
   await page.locator("#cmd-results .cmd-item", { hasText: "Start a post titled" }).click();
   await expect(page).toHaveURL(/\/os\/editor\/[a-z0-9-]+$/);

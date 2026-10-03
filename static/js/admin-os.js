@@ -491,22 +491,24 @@ document.addEventListener('click', function (e) {
         var keys = b.getAttribute('aria-keyshortcuts');
         return { kind: 'here', text: b.getAttribute('data-cmd'), where: b.getAttribute('data-cmd-where') || '', icon: icon, hint: keys ? 'Key: ' + keys : '', target: b };
       }), q);
-      var acts = (index.actions || []).filter(function (a) { return hit(a.label); }).slice(0, cap).map(function (a) {
+      group('Actions', (index.actions || []).filter(function (a) { return hit(a.label); }).slice(0, cap).map(function (a) {
         return { kind: 'action', text: a.label, href: a.href || null, post: a.post || null, icon: a.icon, hint: a.hint, done: a.done };
-      });
-      // What is typed can be a new post's title (Home's quick-compose field
-      // moved here, fidelity plan §3). Offered only where the index offers
-      // New post, which it does only to a session that may write.
-      var title = input.value.trim();
-      if (title && (index.actions || []).some(function (a) { return a.href === '/os/editor'; })) {
-        acts.push({ kind: 'start', text: 'Start a post titled “' + title + '”', icon: 'pencil', hint: 'A draft with this title, opened in the editor', start: title });
-      }
-      group('Actions', acts, q);
+      }), q);
     }
     if (want('Settings') && (q || kind !== 0)) {
       group('Settings', (index.settings || []).filter(function (st) { return hit(st.label + ' ' + st.where); }).slice(0, cap).map(function (st) {
         return { kind: 'setting', text: st.label, href: st.href, icon: 'settings', where: st.where, hint: st.hint };
       }), q);
+    }
+    // What is typed can be a new post's title (Home's quick-compose field
+    // moved here, fidelity plan §3), offered when nothing else matches. It
+    // creates something, so it never joins a search's results: offered
+    // beside them, ↓ Enter on "backups" started a post called "backups".
+    // Offered only where the index offers New post, which it does only to a
+    // session that may write.
+    var title = input.value.trim();
+    if (!items.length && title && want('Actions') && (index.actions || []).some(function (a) { return a.href === '/os/editor'; })) {
+      group('New', [{ kind: 'start', text: 'Start a post titled “' + title + '”', icon: 'pencil', hint: 'A draft with this title, opened in the editor', start: title }], q);
     }
     if (!items.length) {
       var empty = document.createElement('div');
