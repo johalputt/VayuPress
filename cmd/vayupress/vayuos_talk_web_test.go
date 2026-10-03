@@ -468,3 +468,25 @@ func TestATalkInviteLinkIsEchoedAsText(t *testing.T) {
 		t.Error("a link with an address does not open New chat")
 	}
 }
+
+// The picture list names mailboxes, so only an administrator's Talk page
+// carries it: an author's would list every pictured mailbox on the install.
+func TestTalkListsPicturesOnlyForAnAdministrator(t *testing.T) {
+	a, alice, _ := appWithTalkWeb(t)
+	png := []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89")
+	if err := a.vayuMail.Accounts().SetAvatar(context.Background(), "dana@example.com", png, "image/png"); err != nil {
+		t.Fatalf("set avatar: %v", err)
+	}
+	page := func(u *users.User) string {
+		rec := httptest.NewRecorder()
+		a.handleVayuOSTalk(rec, withUser(httptest.NewRequest(http.MethodGet, "/os/talk", nil), u))
+		return rec.Body.String()
+	}
+	admin := &users.User{ID: "ad", Email: "dana@example.com", Role: users.RoleAdmin}
+	if !strings.Contains(page(admin), `data-pictures="dana@example.com"`) {
+		t.Error("an administrator's Talk does not list the mailboxes with a picture")
+	}
+	if body := page(alice); !strings.Contains(body, `class="vtalk"`) || strings.Contains(body, "data-pictures") {
+		t.Error("an author's Talk page lists the install's pictured mailboxes")
+	}
+}

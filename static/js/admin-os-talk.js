@@ -27,8 +27,13 @@
   var self = root.getAttribute('data-self') || '';
   var selfFp = root.getAttribute('data-self-fp') || '';
   var onionWorld = root.getAttribute('data-onion') === '1'; // Tor world: this console is the sole reader
-  var pictures = {};
-  (root.getAttribute('data-pictures') || '').split(' ').forEach(function (a) { if (a) pictures[a] = true; });
+  // Which mailboxes have a picture, on an administrator's page only (see
+  // vayuos_talk.go); without the list every contact is asked for.
+  var pictures = null;
+  if (root.hasAttribute('data-pictures')) {
+    pictures = {};
+    root.getAttribute('data-pictures').split(' ').forEach(function (a) { if (a) pictures[a] = true; });
+  }
   var asSel = document.getElementById('vtalk-as');   // "chat as" switcher (admins)
   var currentSelf = (asSel ? asSel.value : self).trim().toLowerCase();
 
@@ -128,10 +133,11 @@
   function parse(s) { try { return JSON.parse(s); } catch (_) { return null; } }
 
   // avatarEl builds a round avatar chip that shows the address' real mailbox
-  // picture when the page says it has one (data-pictures: local mailboxes
-  // with an upload), and coloured initials otherwise. The <img> load handler
-  // is attached in JS (never an inline handler) so it stays strict-CSP-safe,
-  // and the initials stay until the picture has loaded. It is same-origin only
+  // picture when it has one, and coloured initials otherwise. Where the page
+  // lists the pictures (data-pictures) only those are asked for; elsewhere a
+  // 404 simply keeps the initials. The <img> load handler is attached in JS
+  // (never an inline handler) so it stays strict-CSP-safe, and the initials
+  // stay until the picture has loaded. It is same-origin only
   // and never reaches another host, so it is safe in the Tor world too.
   // avatarTone is Mail's avatar tint for an address (mailAvatarIdx in
   // vayuos.go: FNV-1a over its bytes, of six), so a person has one colour in
@@ -144,7 +150,7 @@
   function avatarEl(addr, label) {
     var a = norm(addr);
     var el = elem('span', 'vtalk-avatar vm-av vm-av--' + avatarTone(a), initials(label || addr));
-    if (!pictures[a]) return el;
+    if (!a || (pictures && !pictures[a])) return el;
     var img = document.createElement('img');
     img.alt = '';
     img.addEventListener('load', function () {
