@@ -367,6 +367,15 @@ test("the compose page is the sheet, full width", async ({ page }) => {
   await expect(page.locator('.mx-compose--page a[aria-label="Close"]')).toHaveAttribute("href", "/os/vayumail/inbox?user=ankush");
 });
 
+// Discard on the page goes back to the mailbox it was opened from. The way
+// back is built by the script, never read from the page's markup (CodeQL #120).
+test("discard on the compose page goes back to its mailbox", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/os/vayumail/compose?user=ankush");
+  await page.locator(".mx-compose--page [data-c-discard]").click();
+  await expect(page).toHaveURL(/\/os\/vayumail\/inbox\?user=ankush$/);
+});
+
 // Selection mode (Mail plan §7, render 04; motion §8 items 2 and 3). A row's
 // round check starts it: the header becomes the count, a click on a row picks
 // it instead of opening it, neighbours picked together square off into one

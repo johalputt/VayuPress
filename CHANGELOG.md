@@ -18,6 +18,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   table's own name, the aliases are one package function, and
   `TestEscapesAreCalledByName` refuses an escaper taken as a value or a
   `func(string) string` parameter in the console or any `internal/` package.
+- **Code scanning's DOM alert (#120) is closed at its source.** Discard on
+  the full compose page went back by reading an address out of the page's
+  own markup and handing it to `location`. The address was the server's own
+  (never a request's), but a navigation taken from markup is how a
+  `javascript:` URL runs. The script now builds the way back from a fixed
+  path and the encoded mailbox, and the attribute is gone.
 
 ## [3.17.94] — 2026-10-02
 

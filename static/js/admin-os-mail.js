@@ -925,7 +925,13 @@
         var f = composeFields();
         if (draftId) postJSON('/os/vayumail/message/action', { user: localPart(f.from), folder: 'Drafts', id: draftId, delete: true });
         compose.dispatchEvent(new CustomEvent('mx-compose-done', { bubbles: true, detail: { why: 'discarded' } }));
-        if (!compose.closest('[data-mx-compose-host]')) window.location.href = compose.getAttribute('data-c-back') || '/os/vayumail/inbox';
+        // The way back is built here, a fixed path and the mailbox encoded,
+        // never read from the page: an address taken from markup and handed to
+        // location is a script waiting for a javascript: URL (CodeQL #120).
+        if (!compose.closest('[data-mx-compose-host]')) {
+          var box = new URLSearchParams(window.location.search).get('user');
+          window.location.href = '/os/vayumail/inbox' + (box ? '?user=' + encodeURIComponent(box) : '');
+        }
       });
     }
 

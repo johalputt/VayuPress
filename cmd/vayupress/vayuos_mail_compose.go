@@ -211,7 +211,7 @@ func (a *App) composeSheet(r *http.Request, page bool) (sheet, refusal string) {
 	if page {
 		cls += " mx-compose--page"
 	}
-	b.WriteString(`<form class="` + cls + `" data-mail-compose data-c-back="` + esc(back) + `" aria-labelledby="mx-compose-title">`)
+	b.WriteString(`<form class="` + cls + `" data-mail-compose aria-labelledby="mx-compose-title">`)
 	b.WriteString(`<div class="mx-compose__head"><h2 class="mx-compose__title" id="mx-compose-title" data-c-title>` + esc(title) + `</h2>`)
 	if page {
 		b.WriteString(`<a class="mx-compose__tool" href="` + esc(back) + `" aria-label="Close">` + saIcon("x") + `</a>`)
