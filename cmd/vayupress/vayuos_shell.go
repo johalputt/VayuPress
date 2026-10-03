@@ -79,7 +79,7 @@ var saClearnetApps = []saApp{
 	{Key: "mail", Label: "Mail", Icon: "mail", Href: "/os/vayumail/inbox", TabGroup: "Administration", TabIcon: "wrench", Sections: []saSection{
 		{Label: "Mailbox", Href: "/os/vayumail/inbox", Icon: "inbox"},
 		{Label: "Compose", Href: "/os/vayumail/compose", Icon: "pencil"},
-		{Label: "Outbox", Href: "/os/vayumail/sent", Icon: "send"},
+		{Label: "Outbox", Href: "/os/vayumail/sent", Icon: "send", AdminOnly: true},
 		{Label: "Connect a device", Href: "/os/vayumail/connect", Icon: "link"},
 		{Label: "Overview", Href: "/os/vayumail", Icon: "grid", AdminOnly: true, Tab: true},
 		{Label: "Accounts", Href: "/os/vayumail/accounts", Icon: "audience", AdminOnly: true, Tab: true},

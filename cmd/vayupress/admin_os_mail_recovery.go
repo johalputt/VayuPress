@@ -280,62 +280,61 @@ are talking to first: this is the step an attacker would try to talk you through
 		len(stuck) > 0, b.String())
 }
 
-// selfRecoveryCardHTML is the holder's own view: one mailbox, theirs, no
-// readiness list and no mailbox picker. Rendered on the Connect page, which is
-// where a holder already goes to set their mail up.
+// selfRecovery is the holder's own view: one mailbox, theirs, no readiness
+// list and no mailbox picker. Rendered on the Connect page, which is where a
+// holder already goes to set their mail up, as a row whose button opens the
+// controls in a sheet (the page grammar keeps forms out of a page's flow).
 //
 // It exists because recovery that only an administrator can enrol is recovery
 // most people never get. The endpoints scope by themselves (recoveryScope), so
-// this card is a narrower presentation of the same surface, not a second one.
-func (a *App) selfRecoveryCardHTML(r *http.Request, nonce string) string {
+// this is a narrower presentation of the same surface, not a second one. ok is
+// false when the request holds no mailbox of its own.
+func (a *App) selfRecovery(r *http.Request, nonce string) (row ui.Row, sheet string, ok bool) {
 	accts, ok := a.recoveryAccounts()
 	if !ok {
-		return ""
+		return ui.Row{}, "", false
 	}
 	_, own := a.ownMailbox(r)
 	own = strings.ToLower(strings.TrimSpace(own))
 	if own == "" || !accts.Exists(r.Context(), own) {
-		return ""
+		return ui.Row{}, "", false
 	}
 	st := accts.RecoveryStatusFor(r.Context(), own)
-	chip := monChip(st.Ready, "Recovery ready", "No way back in")
+	state := ui.State("warn", "No way back in")
+	if st.Ready {
+		state = ui.State("ok", "Ready")
+	}
 
 	var b strings.Builder
-	b.WriteString(`<p class="text-sm muted mb-4">If you forget this mailbox's password, a reset link is no
-use — it would be delivered here, to the mailbox you cannot open. Set one of these up <strong>now</strong>,
-while you still can.</p>`)
-
-	b.WriteString(`<div class="card" data-recovery-panel>
+	b.WriteString(`<div data-recovery-panel>
   <input type="hidden" data-rec-mailbox value="` + html.EscapeString(own) + `">
-  <p class="text-sm"><strong>Mailbox:</strong> <code>` + html.EscapeString(own) + `</code></p>
   <div class="rec-status text-sm muted" data-rec-status></div>
 
-  <div class="section-head mt-4"><span class="section-head__title">Recovery codes</span>
-    <span class="section-head__hint">Ten single-use codes, shown once</span></div>
-  <p class="text-sm muted">The most reliable option: they need no network and no second mailbox, so they
-  work even when mail itself is broken. Save, download or print them somewhere you can reach without this
-  mailbox. Generating a new set <strong>invalidates the previous one</strong>.</p>
+  <h3 class="sa-sheet__sub">Recovery codes</h3>
+  <p class="text-sm muted">Ten single-use codes, shown once. The most reliable option: they need no
+  network and no second mailbox, so they work even when mail itself is broken. Keep them somewhere you can
+  reach without this mailbox. A new set <strong>replaces the previous one</strong>.</p>
   <button type="button" class="btn btn--primary btn--sm" data-rec-gen>Generate my codes</button>
   <div class="rec-codes" data-rec-codes hidden></div>
 
-  <div class="section-head mt-4"><span class="section-head__title">Recovery address</span>
-    <span class="section-head__hint">On a different mail provider</span></div>
-  <p class="text-sm muted">An address this server hosts is refused — losing this mailbox would lose it too.
-  Your administrator confirms the address before it counts.</p>
-  <div class="vm-row vm-row--end">
-    <label class="field vm-grow"><span class="field-label">Address</span>
-      <input class="input" type="email" data-rec-contact placeholder="you@another-provider.com"
-             aria-label="Recovery address"></label>
-    <button type="button" class="btn btn--primary btn--sm" data-rec-set>Save</button>
+  <h3 class="sa-sheet__sub">Recovery address</h3>
+  <p class="text-sm muted">On a different mail provider: an address this server hosts is refused, since
+  losing this mailbox would lose it too. Your administrator confirms the address before it counts.</p>
+  <label class="field"><span class="field-label">Address</span>
+    <input class="input" type="email" data-rec-contact placeholder="you@another-provider.com"></label>
+  <div class="sa-sheet__foot"><span class="text-sm" data-rec-msg role="status" aria-live="polite"></span>
     <button type="button" class="btn btn--sm btn--ghost" data-rec-clear>Remove</button>
-  </div>
-  <div class="text-sm" data-rec-msg role="status" aria-live="polite"></div>
+    <button type="button" class="btn btn--primary btn--sm" data-rec-set>Save</button></div>
 </div>`)
-
 	b.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail-recovery.js?v=` +
 		assetVer("js/admin-os-mail-recovery.js") + `"></script>`)
 
-	return monAcc(saIcon("key"), "Recover my mailbox", "Set this up before you need it", chip, !st.Ready, b.String())
+	row = ui.Row{
+		Label:   "Recover " + own,
+		Hint:    "If you forget this mailbox's password, a reset link is no use: it would arrive in the mailbox you cannot open. Set this up while you still can.",
+		Control: ui.HTML(string(state) + `<button type="button" class="btn btn--sm" data-sheet="my-recovery">Set up</button>`),
+	}
+	return row, string(ui.Sheet("my-recovery", "Recover "+own, ui.HTML(b.String()))), true
 }
 
 // vayuCardRecovery renders one mailbox's recovery controls INSIDE its own card,

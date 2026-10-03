@@ -45,9 +45,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   check as a dot and a word; PGP keys is a table with each mailbox's Web Key
   Directory address under it. Overview is now an administrator's page like
   the other four: anyone else who opens it is taken to their own inbox.
+- **Outbox and Connect a device are laid out like the rest of the console.**
+  The Outbox is a list: what is waiting, failed or delivered in one line
+  (a count of nothing is left out), the queue as a flush table with each
+  message's state as a dot and a word, and Auto-clear in a sheet; an empty
+  queue says so in one sentence. It is an administrator's page, as the
+  queue is the whole server's: anyone else is taken to their Sent folder.
+  Connect a device opens on whether mail apps can connect (every service
+  listening, one not, or a certificate apps will refuse, with the fix),
+  then the listeners, the VayuMail app, app passwords (a new one is made in
+  a sheet) and the settings for any other app. Recovering your own mailbox
+  is a row whose Set up opens its controls in a sheet.
 
 ### Fixed
 
+- **A new app password's Copy and Download work on Connect.** The page never
+  loaded the script behind them, so both buttons did nothing.
 - **A menu clicked while it closes opens again.** Every console menu plays a
   short exit before it shuts, and a click on its control during that exit
   was taken as "close" and lost: New chat, clicked just after starting a

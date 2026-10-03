@@ -1656,6 +1656,16 @@
     }
   });
 
+  // A new app password is made in its sheet; the answer swaps the list beside
+  // it, which shows the password once, so the sheet steps out of the way.
+  document.addEventListener('htmx:afterRequest', function (e) {
+    var f = e.target && e.target.closest ? e.target.closest('form[data-apppw-create]') : null;
+    if (!f || !e.detail || !e.detail.successful) return;
+    f.reset();
+    var sheet = f.closest('dialog');
+    if (sheet && sheet.open) sheet.close();
+  });
+
   // ── Message raw-source toggle ────────────────────────────────────────────────
   var rawBtn = document.querySelector('[data-mail-raw-toggle]');
   var rawPre = document.querySelector('[data-mail-raw]');

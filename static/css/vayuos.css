@@ -7281,3 +7281,13 @@
 .vp-os[data-ui="still-air"] td:first-child .vm-pgp__wkd { white-space: normal; word-break: break-all; }
 .vp-os[data-ui="still-air"] .vm-pgp__fp { display: block; max-width: 25ch; font-size: 12px; color: var(--text-2); }
 .vp-os[data-ui="still-air"] .vm-pgp { display: inline-flex; gap: var(--space-2); white-space: nowrap; }
+/* Outbox and Connect a device (8.12). The Outbox's counts are a line over a
+   flush table; Connect's values are mono, right-hand, wrapping on a phone. */
+.vp-os[data-ui="still-air"] .vm-outbox-bar { margin-bottom: var(--space-3); }
+.vp-os[data-ui="still-air"] .vm-outbox-sum { font: var(--type-small); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .vm-connect__val { font-size: 12px; color: var(--text-1); text-align: right; overflow-wrap: anywhere; }
+.vp-os[data-ui="still-air"] .sa-sheet__sub { margin: var(--space-5) 0 var(--space-2); font: var(--type-strong); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .sa-sheet__sub:first-of-type { margin-top: var(--space-3); }
+.vp-os[data-ui="still-air"] .vm-apppw-secret { margin: var(--space-3) 0; font-size: 15px; letter-spacing: .04em; }
+.vp-os[data-ui="still-air"] .callout__body > .vm-row { margin: var(--space-2) 0; }
+.vp-os[data-ui="still-air"] .vm-outbox-table th { vertical-align: middle; }

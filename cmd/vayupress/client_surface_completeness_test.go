@@ -60,7 +60,6 @@ func clientMailPages(t *testing.T, a *App, cl *users.User) map[string][]string {
 	for name, h := range map[string]http.HandlerFunc{
 		"inbox":   a.handleVayuOSInbox,
 		"compose": a.handleVayuOSCompose,
-		"sent":    a.handleVayuOSSent,
 		"connect": a.handleVayuOSConnect,
 		"message": a.handleVayuOSMessage,
 	} {
@@ -270,15 +269,17 @@ func TestMailOpensAClientsInboxAndKeepsAHoldersPages(t *testing.T) {
 	holder := saSession(accessMailOnly)
 	holder.MailOnly = true
 	got = mailHrefs(holder)
-	for _, want := range []string{"/os/vayumail/compose", "/os/vayumail/inbox", "/os/vayumail/connect", "/os/vayumail/sent"} {
+	for _, want := range []string{"/os/vayumail/compose", "/os/vayumail/inbox", "/os/vayumail/connect"} {
 		if !strings.Contains(got, " "+want+" ") {
 			t.Errorf("a mailbox holder lost %q: %s", want, got)
 		}
 	}
 	// Mail's overview is the first of its administration tabs (fidelity plan
-	// decision 3). For a holder it only repeated the four pages above, and
-	// opening it takes them to their mailbox.
-	for _, hidden := range []string{"/os/vayumail", "/os/vayumail/accounts", "/os/vayumail/dns", "/os/vayumail/pgp"} {
+	// decision 3). For a holder it only repeated the pages above, and opening
+	// it takes them to their mailbox. The Outbox is the server's delivery
+	// queue: for a holder it was one sentence pointing at their Sent folder,
+	// which is where opening it now takes them.
+	for _, hidden := range []string{"/os/vayumail", "/os/vayumail/accounts", "/os/vayumail/dns", "/os/vayumail/pgp", "/os/vayumail/sent"} {
 		if strings.Contains(got, " "+hidden+" ") {
 			t.Errorf("a non-admin was offered %q", hidden)
 		}

@@ -684,3 +684,22 @@ test("a new mailbox is made in its sheet, and its row appears", async ({ page })
   await page.locator('main [data-sheet="new-mailbox"]').click();
   await expect(sheet).toHaveJSProperty("open", true);
 });
+
+// An app password is made in its sheet on Connect (8.12): Create closes the
+// sheet so the password, shown once, can be read beside its new row.
+test("an app password is made in its sheet and shown once", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const label = "Sheet " + Date.now().toString(36);
+  await page.goto("/os/vayumail/connect#new-app-password");
+  const sheet = page.locator("dialog#new-app-password");
+  await expect(sheet).toHaveJSProperty("open", true);
+  await sheet.locator('input[name="label"]').fill(label);
+  await sheet.getByRole("button", { name: "Create app password" }).click();
+  await expect(sheet).toHaveJSProperty("open", false);
+  const list = page.locator("#vm-apppw-card");
+  await expect(list.locator(".callout--ok .vm-apppw-secret")).toHaveText(/^[A-Za-z0-9]{4}(-[A-Za-z0-9]{4})+$/);
+  await expect(list.locator("tr", { hasText: label })).toHaveCount(1);
+  // Its Download works: the page loads the script that drives it.
+  const [file] = await Promise.all([page.waitForEvent("download"), list.getByRole("button", { name: "Download .txt" }).click()]);
+  expect(file.suggestedFilename()).toBe("vayumail-app-password.txt");
+});

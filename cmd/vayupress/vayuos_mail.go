@@ -1374,29 +1374,19 @@ func (a *App) handleVayuMailAutoconfigJSON(w http.ResponseWriter, r *http.Reques
 	_ = json.NewEncoder(w).Encode(a.buildVayuMailAutoconfigFor(r.Host))
 }
 
-// handleVayuOSConnect renders the "Connect" tab: ready-to-use IMAP/POP3/SMTP
-// client settings for each mailbox (so any standard mail app — Gmail, Apple
-// Mail, Thunderbird, Outlook — can be set up by copying the values), plus the
-// live up/down status of each mail listener so the operator can see at a glance
-// whether the server side of the connection is reachable.
+// handleVayuOSConnect is Connect a device, a status page: whether a mail app
+// can connect to this server, said first, because it is what the page is
+// opened to learn; then what the app needs. The listeners each say whether
+// they are up, the certificate whether apps will trust it (with the remedy
+// when they will not), and the settings are there to copy for any app the
+// VayuMail app does not cover.
 func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
-	nonce := render.CSPNonce(r)
-	cfg := a.getOSSettings(r.Context())
-	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Connect a mail app</h1></div>`)
-	body.WriteString(`<p class="page-sub">IMAP / POP3 / SMTP settings for the Gmail app, Apple Mail, Thunderbird, Outlook and more.</p>`)
-
 	if !a.mailRunning() {
 		a.writeMailSetup(w, r, "Connect a mail app")
 		return
 	}
-
-	// The holder's OWN recovery enrolment (ADR-0144 Phase 2). Placed here because
-	// this is the page someone already visits when setting their mail up, which is
-	// the one moment they are thinking about access to this mailbox at all. It
-	// renders only for a signed-in holder with an assigned mailbox, and shows just
-	// theirs — the install-wide readiness view stays on the admin Accounts page.
-	body.WriteString(a.selfRecoveryCardHTML(r, nonce))
+	nonce := render.CSPNonce(r)
+	cfg := a.getOSSettings(r.Context())
 
 	mc := a.vayuMail.Config()
 	host := mc.Hostname
@@ -1404,135 +1394,148 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 		host = "mail." + mc.Domain
 	}
 	hHost := html.EscapeString(host)
-	imapsPort := html.EscapeString(mailPort(mc.IMAPSListen, "993"))
-	imapPort := html.EscapeString(mailPort(mc.IMAPListen, "143"))
-	pop3sPort := html.EscapeString(mailPort(mc.POP3SListen, "995"))
-	pop3Port := html.EscapeString(mailPort(mc.POP3Listen, "110"))
-	subPort := html.EscapeString(mailPort(mc.SubmissionListen, "587"))
-	smtpPort := html.EscapeString(mailPort(mc.SMTPListen, "25"))
+	imapsPort := mailPort(mc.IMAPSListen, "993")
+	imapPort := mailPort(mc.IMAPListen, "143")
+	pop3sPort := mailPort(mc.POP3SListen, "995")
+	pop3Port := mailPort(mc.POP3Listen, "110")
+	subPort := mailPort(mc.SubmissionListen, "587")
+	smtpPort := mailPort(mc.SMTPListen, "25")
 
-	// ── Live service status ──────────────────────────────────────────────────
-	badge := func(up bool) string {
-		if up {
-			return `<span class="badge badge--ok">Online</span>`
+	listeners := []struct {
+		label, port string
+		up          bool
+	}{
+		{"IMAP · SSL", imapsPort, a.vayuMail.IMAPSActive()},
+		{"IMAP · STARTTLS", imapPort, a.vayuMail.IMAPActive()},
+		{"POP3 · SSL", pop3sPort, a.vayuMail.POP3SActive()},
+		{"POP3 · STLS", pop3Port, a.vayuMail.POP3Active()},
+		{"SMTP submission · STARTTLS", subPort, a.vayuMail.SubmissionActive()},
+		{"SMTP receive", smtpPort, a.vayuMail.InboundActive()},
+	}
+	var lrows []ui.Row
+	down := 0
+	for _, l := range listeners {
+		st := ui.State("ok", "Listening")
+		if !l.up {
+			st = ui.State("warn", "Not listening")
+			down++
 		}
-		return `<span class="badge badge--warn">Offline</span>`
+		lrows = append(lrows, ui.Row{Label: l.label, Hint: host + ":" + l.port, Control: st})
 	}
-	body.WriteString(`<div class="section-head"><span class="section-head__title">Service status</span><span class="section-head__hint">Live mail listener health</span></div>`)
-	body.WriteString(`<div class="card">`)
-	body.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Service</th><th>Address</th><th>Status</th></tr></thead><tbody>`)
-	row := func(label, addr string, up bool) {
-		body.WriteString(`<tr><td>` + label + `</td><td class="mono text-sm">` + addr + `</td><td>` + badge(up) + `</td></tr>`)
-	}
-	row("IMAP · SSL", hHost+":"+imapsPort, a.vayuMail.IMAPSActive())
-	row("IMAP · STARTTLS", hHost+":"+imapPort, a.vayuMail.IMAPActive())
-	row("POP3 · SSL", hHost+":"+pop3sPort, a.vayuMail.POP3SActive())
-	row("POP3 · STLS", hHost+":"+pop3Port, a.vayuMail.POP3Active())
-	row("SMTP submission · STARTTLS", hHost+":"+subPort, a.vayuMail.SubmissionActive())
-	row("SMTP receive", hHost+":"+smtpPort, a.vayuMail.InboundActive())
-	body.WriteString(`</tbody></table></div>`)
-	if err := a.vayuMail.InboundError(); err != nil {
-		body.WriteString(`<p class="muted text-sm">Some listeners are not bound: ` + html.EscapeString(err.Error()) +
-			`. Ensure the ports are free and the service may bind them (grant CAP_NET_BIND_SERVICE for ports below 1024, or point the VAYUOS_MAIL_*_LISTEN vars at high ports), then restart.</p>`)
-	}
-	body.WriteString(`</div>`)
 
-	// ── TLS certificate trust ────────────────────────────────────────────────
-	// A reachable port with an untrusted (self-signed) certificate is the most
-	// common cause of a mail app's "Couldn't open connection to server": the
-	// connection and TLS handshake succeed, but the client rejects the
-	// certificate. Surface this prominently with the exact remediation.
+	// The state, worst first: an untrusted certificate refuses every app
+	// even with every port open, so it outranks a listener being down.
+	untrusted := a.vayuMail.TLSActive() && !a.vayuMail.TLSTrusted()
+	covered := a.vayuMail.TLSCertHosts()
+	mismatch := a.vayuMail.TLSActive() && a.vayuMail.TLSTrusted() && len(covered) > 0 && !a.vayuMail.TLSCertCovers(host)
+	page := ui.StatusPage{Title: "Connect a mail app", Tone: "ok", State: "Mail apps can connect",
+		Detail: ui.HTML(`Every mail service is listening at <code>` + hHost + `</code>.`)}
+	switch {
+	case untrusted:
+		page.Tone, page.State = "danger", "Mail apps will refuse to connect"
+		page.Detail = ui.HTML(`The mail services offer a self-signed certificate, which phones and mail apps reject. The fix is below.`)
+	case down == len(listeners):
+		page.Tone, page.State = "danger", "No mail service is listening"
+		page.Detail = ui.HTML(`Nothing answers at <code>` + hHost + `</code>; see Listeners below.`)
+	case mismatch:
+		page.Tone, page.State = "warn", "Phones will refuse this server's certificate"
+		page.Detail = ui.HTML(`It does not cover <code>` + hHost + `</code>. Desktop apps let you accept it; the Gmail app and Thunderbird for Android do not.`)
+	case down > 0:
+		page.Tone, page.State = "warn", itoaSafe(down)+" of "+itoaSafe(len(listeners))+" mail services are not listening"
+		page.Detail = ui.HTML(`Apps that use them cannot connect; see Listeners below.`)
+	}
+
+	var sections []ui.HTML
+	var sheets strings.Builder
+
+	// The holder's own recovery enrolment (ADR-0144 Phase 2), here because this
+	// is the page someone visits when setting their mail up: the one moment
+	// they think about access to this mailbox at all.
+	if row, sheet, ok := a.selfRecovery(r, nonce); ok {
+		sections = append(sections, ui.Section("Getting back in", "", ui.Rows(row)))
+		sheets.WriteString(sheet)
+	}
+
+	// The certificate: the most common cause of an app's "Couldn't open
+	// connection to server" is a reachable port whose certificate it rejects.
 	acmeErr := a.vayuMail.ACMEChallengeError()
-	if a.vayuMail.TLSActive() && !a.vayuMail.TLSTrusted() {
-		body.WriteString(`<div class="card card--danger"><div class="card-title">` + saIcon("error") + ` Mail apps will reject this connection</div>`)
-		body.WriteString(`<p class="text-sm">VayuMail is serving a <strong>self-signed TLS certificate</strong>, so mobile and desktop mail apps ` +
-			`(the Gmail app, Apple Mail, Thunderbird, Outlook) report <em>"Couldn't open connection to server"</em> — even though the ports above are online.</p>`)
-		// Surface the exact reason the engine recorded, so the operator isn't guessing.
+	var cert strings.Builder
+	switch {
+	case untrusted:
+		var fix strings.Builder
+		fix.WriteString(`<p><strong>Apps reject the self-signed certificate</strong> with "Couldn't open connection to server", even though the ports are open.</p>`)
 		if note := a.vayuMail.TLSNote(); note != "" {
-			body.WriteString(`<p class="text-sm muted">Reason: ` + html.EscapeString(note) + `</p>`)
+			fix.WriteString(`<p class="muted">Reason: ` + html.EscapeString(note) + `</p>`)
 		}
 		if acmeErr != "" {
-			body.WriteString(`<p class="text-sm muted">Built-in ACME could not run: ` + html.EscapeString(acmeErr) +
-				` — port 80 is almost certainly already used by your website's nginx, so VayuMail cannot answer the Let's Encrypt challenge itself.</p>`)
+			fix.WriteString(`<p class="muted">Built-in ACME could not run: ` + html.EscapeString(acmeErr) + `. Port 80 is almost certainly your website's nginx, so VayuMail cannot answer the Let's Encrypt challenge itself.</p>`)
 		}
-		body.WriteString(`<p class="text-sm"><strong>This is a one-time step and is SEPARATE from updating VayuPress</strong> — the update command only swaps the binary; it never provisions the mail certificate. Run this once on the server (it issues a real Let's Encrypt certificate for <code>` + hHost + `</code> through nginx, makes it readable by the mail service, and wires it in):</p>`)
-		body.WriteString(`<pre class="code-block code-block--wrap">cd /tmp/VayuPress &amp;&amp; git pull origin main &amp;&amp; sudo bash deploy/vayumail-setup.sh</pre>`)
-		body.WriteString(`<p class="text-sm">Then reload this page. It auto-renews and is auto-discovered on restart (no env vars needed). If the script reports a DNS or port-80 problem, fix that and re-run it. Alternatives:</p>`)
-		body.WriteString(`<ul class="text-sm">` +
-			`<li><strong>Built-in ACME (only if port 80 is free):</strong> set <code>VAYUOS_MAIL_TLS_ACME=on</code> and <code>VAYUOS_MAIL_ACME_EMAIL=you@` + html.EscapeString(mc.Domain) + `</code>, then restart. On this box nginx owns port 80, so use the script above instead — or point a free port via <code>VAYUOS_MAIL_ACME_HTTP_ADDR=127.0.0.1:8081</code> and proxy <code>` + hHost + `/.well-known/acme-challenge/</code> to it in nginx.</li>` +
-			`<li><strong>Manual / existing certbot cert:</strong> set <code>VAYUOS_MAIL_TLS_CERT</code> and <code>VAYUOS_MAIL_TLS_KEY</code> to a CA-signed pair (e.g. <code>/etc/letsencrypt/live/` + hHost + `/fullchain.pem</code> and <code>privkey.pem</code>), then restart. VayuMail hot-reloads on renewal.</li>` +
-			`</ul>`)
-		body.WriteString(`<p class="text-sm muted">Also make sure DNS has an A record for <code>` + hHost + `</code> pointing at this server, and that ports 25/143/993/587/995/110 are open in your firewall (the script handles the firewall + privileged-port binding too).</p>`)
-		body.WriteString(`</div>`)
-	} else if a.vayuMail.TLSActive() && a.vayuMail.TLSTrusted() {
-		body.WriteString(`<div class="card"><div class="card-title">TLS certificate</div>`)
-		body.WriteString(`<p class="text-sm">A trusted certificate is active — mail apps can connect over SSL/TLS. <span class="muted">(` + html.EscapeString(a.vayuMail.TLSNote()) + `)</span></p>`)
-		// Hostname-match check: a trusted cert that does NOT cover the hostname
-		// clients are told to use is the classic "desktop syncs, mobile doesn't"
-		// trap — desktop Thunderbird lets the user accept the mismatch, but the
-		// Gmail app (validating from Google's servers) and Thunderbird for Android
-		// silently refuse. Surface the mismatch and the exact connect hostname.
-		if covered := a.vayuMail.TLSCertHosts(); len(covered) > 0 && !a.vayuMail.TLSCertCovers(host) {
-			body.WriteString(`<p class="text-sm tone-warn">` + saIcon("warn") + ` The certificate does <strong>not</strong> cover <code>` + hHost + `</code>, the server your apps are told to connect to. Desktop apps let you accept this, but the <strong>Gmail app and Thunderbird for Android refuse it</strong> — which is why mobile won't sync.</p>`)
-			body.WriteString(`<p class="text-sm">This certificate is valid for: <code>` + html.EscapeString(strings.Join(covered, "</code>, <code>")) + `</code>.</p>`)
-			body.WriteString(`<p class="text-sm"><strong>Fix it one of two ways:</strong></p><ul class="text-sm">`)
-			body.WriteString(`<li>Set the mail hostname to a name the certificate already covers — e.g. <code>VAYUOS_MAIL_HOSTNAME=` + html.EscapeString(covered[0]) + `</code> — and restart, so Connect/Autoconfig hand clients the matching name; or</li>`)
-			body.WriteString(`<li>Reissue the certificate to include <code>` + hHost + `</code> (e.g. <code>sudo bash deploy/vayumail-setup.sh</code>, or add <code>-d ` + hHost + `</code> to your certbot command), then restart.</li>`)
-			body.WriteString(`</ul>`)
+		fix.WriteString(`<p>Run this once on the server. It is separate from updating VayuPress: it issues a Let's Encrypt certificate for <code>` + hHost + `</code> through nginx, lets the mail service read it, and wires it in. It renews itself.</p>`)
+		fix.WriteString(`<pre class="code-block code-block--wrap">cd /tmp/VayuPress &amp;&amp; git pull origin main &amp;&amp; sudo bash deploy/vayumail-setup.sh</pre>`)
+		fix.WriteString(`<p>Then reload this page.` + string(ui.Tip("Alternatives: with port 80 free, set VAYUOS_MAIL_TLS_ACME=on and VAYUOS_MAIL_ACME_EMAIL, then restart; or point VAYUOS_MAIL_TLS_CERT and VAYUOS_MAIL_TLS_KEY at a CA-signed pair (such as /etc/letsencrypt/live/"+host+"/fullchain.pem and privkey.pem) and restart. Either way DNS needs an A record for "+host+" and the firewall must open ports 25, 143, 993, 587, 995 and 110; the script does both.")) + `</p>`)
+		cert.WriteString(string(ui.Callout("danger", ui.HTML(fix.String()))))
+	case a.vayuMail.TLSActive():
+		cert.WriteString(string(ui.Rows(ui.Row{Label: "Certificate", Hint: a.vayuMail.TLSNote(), Control: ui.State("ok", "Trusted")})))
+		if mismatch {
+			cert.WriteString(string(ui.Callout("warn", ui.HTML(`This certificate is valid for <code>`+html.EscapeString(strings.Join(covered, "</code>, <code>"))+`</code>, not <code>`+hHost+`</code>. `+
+				`Set <code>VAYUOS_MAIL_HOSTNAME=`+html.EscapeString(covered[0])+`</code> and restart, so apps are handed a name it covers; or reissue it to include <code>`+hHost+`</code> (<code>sudo bash deploy/vayumail-setup.sh</code>, or <code>-d `+hHost+`</code> on your certbot command) and restart.`))))
 		}
-		// Even in ACME mode, warn if the challenge responder can't bind — renewals
-		// will eventually fail and the cert will expire back into self-signed.
+		// Even in ACME mode a challenge responder that cannot bind means the
+		// renewal will fail and the certificate will lapse back to self-signed.
 		if acmeErr != "" {
-			body.WriteString(`<p class="text-sm tone-warn">` + saIcon("warn") + ` Auto-renewal may fail: ` + html.EscapeString(acmeErr) +
-				` (port 80 is held by another service). Switch to the guided script (<code>sudo bash deploy/vayumail-setup.sh</code>), which renews through nginx, to avoid the certificate expiring.</p>`)
+			cert.WriteString(string(ui.Callout("warn", ui.HTML(`Renewal may fail: `+html.EscapeString(acmeErr)+` (port 80 is held by another service). The guided script, <code>sudo bash deploy/vayumail-setup.sh</code>, renews through nginx instead.`))))
 		}
-		body.WriteString(`</div>`)
+	}
+	if cert.Len() > 0 {
+		sections = append(sections, ui.Section("Certificate", "", ui.HTML(cert.String())))
 	}
 
-	// ── Recommended app: VayuMail Mobile ──────────────────────────────────────
-	// VayuPress's own official mobile client. Plain external links only —
-	// CSP-safe (no third-party assets are loaded).
-	body.WriteString(`<div class="card"><div class="card-title">` + saIcon("phone") + ` VayuMail — the official mobile app</div>`)
-	body.WriteString(`<ol class="text-sm">` +
-		`<li>Install the app.</li>` +
-		`<li>Sign in with your address and an <a href="#vm-apppw-card">app password</a>.</li>` +
-		`<li>It fills in every server setting and syncs PGP keys itself.` +
-		string(ui.Tip("VayuMail Mobile is VayuPress's own open-source app. It reads every server setting from /.well-known/vayumail/autoconfig.json and syncs PGP keys through WKD, so your mail stays end-to-end encrypted on your phone with no host, port or key typing.")) + `</li>` +
-		`</ol>`)
-	body.WriteString(`<div class="vm-row mt-1">` +
-		`<a class="btn btn--primary btn--sm" href="https://github.com/johalputt/VayuMail-Mobile/releases" target="_blank" rel="noopener noreferrer">Download app ↗</a>` +
-		`<a class="btn btn--ghost btn--sm" href="https://github.com/johalputt/VayuMail-Mobile" target="_blank" rel="noopener noreferrer">Source ↗</a>` +
-		`</div>`)
-	body.WriteString(`<p class="muted text-xs mt-2">Any other mail app connects with the settings below.</p>`)
-	body.WriteString(`</div>`)
+	lis := string(ui.Rows(lrows...))
+	if err := a.vayuMail.InboundError(); err != nil {
+		lis += `<p class="sa-list__note">Some services could not bind: ` + html.EscapeString(err.Error()) + `.` +
+			string(ui.Tip("Make sure the ports are free and the service may bind them: grant CAP_NET_BIND_SERVICE for ports below 1024, or point the VAYUOS_MAIL_*_LISTEN variables at high ports. Then restart.")) + `</p>`
+	}
+	sections = append(sections, ui.Section("Listeners", "Live", ui.HTML(lis)))
 
-	// ── App passwords — the credential the mobile app signs in with ──────────
-	// Create/revoke swap the card in place (HTMX), same pattern as the alias /
-	// autoreply / filter cards on the Accounts page.
-	body.WriteString(`<div id="vm-apppw-card">` + a.vayuAppPasswordsCard(r) + `</div>`)
+	// The official app, which needs nothing typed but an address and an app
+	// password. Plain external links: CSP-safe, no third-party assets.
+	sections = append(sections, ui.Section("The VayuMail app", "", ui.Rows(ui.Row{
+		Label: "VayuMail for your phone",
+		Hint:  "Sign in with your address and an app password; it fills in every server setting and keeps your PGP keys in step.",
+		Control: ui.HTML(`<a class="btn btn--sm btn--ghost" href="https://github.com/johalputt/VayuMail-Mobile" target="_blank" rel="noopener noreferrer">Source</a>` +
+			`<a class="btn btn--primary btn--sm" href="https://github.com/johalputt/VayuMail-Mobile/releases" target="_blank" rel="noopener noreferrer">Download</a>` +
+			string(ui.Tip("VayuMail Mobile is VayuPress's own open-source app. It reads every server setting from /.well-known/vayumail/autoconfig.json and syncs PGP keys through WKD, so your mail stays end-to-end encrypted on your phone with no host, port or key typing."))),
+	})))
 
-	// ── Instant setup (Mozilla Autoconfig) ────────────────────────────────────
-	// Thunderbird and K-9/Thunderbird-for-Android auto-discover server settings
-	// from a per-domain autoconfig XML: the user types only their email address
-	// and password, and the client fills in IMAP/SMTP host, ports and security.
-	body.WriteString(`<div class="card"><div class="card-title">Instant setup — no manual server entry</div>`)
-	body.WriteString(`<p class="text-sm">Choose <em>Add account</em>, enter your <span class="mono">you@` + html.EscapeString(mc.Domain) + `</span> address and password, and every server setting fills in.` +
-		string(ui.Tip("Published at https://"+mc.Domain+"/.well-known/autoconfig/mail/config-v1.1.xml and /.well-known/vayumail/autoconfig.json (the VayuMail app reads the latter). If a client asks, the incoming server is "+host+" (IMAP "+imapsPort+" SSL) and outgoing is "+host+" (SMTP "+subPort+" STARTTLS).")) + `</p>`)
-	body.WriteString(`</div>`)
+	// App passwords: the list swaps in place on create and revoke; the form
+	// is a sheet beside it.
+	pwSheet := a.vayuAppPasswordSheet(r)
+	pwHead := ""
+	if pwSheet != "" {
+		pwHead = `<div class="vm-row vm-row--end"><button type="button" class="btn btn--sm" data-sheet="new-app-password">` + saIcon("plus") + `New app password</button></div>`
+		sheets.WriteString(pwSheet)
+	}
+	sections = append(sections, ui.Section("App passwords", "One per device, revocable", ui.HTML(pwHead+`<div id="vm-apppw-card">`+a.vayuAppPasswordsCard(r)+`</div>`)))
 
-	// ── Recommended settings ─────────────────────────────────────────────────
-	body.WriteString(`<div class="card"><div class="card-title">Recommended settings</div>`)
-	body.WriteString(`<div class="table-wrap"><table class="table"><tbody>`)
-	body.WriteString(`<tr><th>Incoming · IMAP (recommended)</th><td class="mono text-sm">` + hHost + `</td><td>Port ` + imapsPort + ` · SSL/TLS</td></tr>`)
-	body.WriteString(`<tr><th>Incoming · IMAP (alternative)</th><td class="mono text-sm">` + hHost + `</td><td>Port ` + imapPort + ` · STARTTLS</td></tr>`)
-	body.WriteString(`<tr><th>Incoming · POP3</th><td class="mono text-sm">` + hHost + `</td><td>Port ` + pop3sPort + ` SSL · or ` + pop3Port + ` STLS</td></tr>`)
-	body.WriteString(`<tr><th>Outgoing · SMTP</th><td class="mono text-sm">` + hHost + `</td><td>Port ` + subPort + ` · STARTTLS · authentication required</td></tr>`)
-	body.WriteString(`<tr><th>Username</th><td colspan="2">your full email address (e.g. <span class="mono">you@` + html.EscapeString(mc.Domain) + `</span>)</td></tr>`)
-	body.WriteString(`<tr><th>Password</th><td colspan="2">an <a href="#vm-apppw-card">app password</a> (recommended for devices) or your mailbox password (set under <a href="/os/vayumail/accounts">Accounts</a>)</td></tr>`)
-	body.WriteString(`</tbody></table></div>`)
-	body.WriteString(`<p class="muted text-sm">IMAP syncs every device; POP3 downloads to one.` + string(ui.Tip("Prefer the SSL ports where your app supports them.")) + `</p></div>`)
+	// Any other app: autoconfig fills these in from the address; the rows are
+	// for the apps that ask.
+	val := func(s string) ui.HTML {
+		return ui.HTML(`<span class="mono vm-connect__val">` + html.EscapeString(s) + `</span>`)
+	}
+	sections = append(sections, ui.Section("Any other mail app", "Thunderbird, Apple Mail, Outlook, K-9",
+		ui.HTML(`<p class="sa-list__note">Choose Add account and enter your address and password: Thunderbird and K-9 fill in the rest.`+
+			string(ui.Tip("Published at https://"+mc.Domain+"/.well-known/autoconfig/mail/config-v1.1.xml, and at /.well-known/vayumail/autoconfig.json for the VayuMail app."))+
+			` For an app that asks:</p>`+string(ui.Rows(
+			ui.Row{Label: "Incoming · IMAP", Hint: "Recommended: every device stays in step", Control: val(host + " · " + imapsPort + " SSL/TLS")},
+			ui.Row{Label: "Incoming · IMAP, alternative", Control: val(host + " · " + imapPort + " STARTTLS")},
+			ui.Row{Label: "Incoming · POP3", Hint: "Downloads to one device", Control: val(host + " · " + pop3sPort + " SSL, or " + pop3Port + " STLS")},
+			ui.Row{Label: "Outgoing · SMTP", Hint: "Authentication required", Control: val(host + " · " + subPort + " STARTTLS")},
+			ui.Row{Label: "Username", Control: ui.Text("Your full address, such as you@" + mc.Domain)},
+			ui.Row{Label: "Password", Hint: "An app password for a device; the mailbox password works too", Control: ui.Text("App password")},
+		)))))
 
-	// ── Per-mailbox quick setup ──────────────────────────────────────────────
+	// Per mailbox, for the administrator setting up several; a holder sees
+	// their own.
 	var emails []string
 	if a.isAdminRequest(r) && a.vayuMail.Accounts() != nil {
 		if accs, err := a.vayuMail.Accounts().List(r.Context()); err == nil {
@@ -1545,23 +1548,20 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	} else if _, own := a.ownMailbox(r); own != "" {
 		emails = append(emails, own)
 	}
-
-	body.WriteString(`<div class="card"><div class="card-title">Per-mailbox setup</div>`)
-	body.WriteString(`<p class="muted text-sm">Every mailbox connects to <span class="mono">` + hHost + `</span>. The username is the full address; the password is the mailbox's own.</p>`)
-	body.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Mailbox (username)</th><th>IMAP</th><th>POP3</th><th>SMTP (send)</th></tr></thead><tbody>`)
-	if len(emails) == 0 {
-		body.WriteString(`<tr><td colspan="4" class="muted">No active mailboxes yet. Create one under <a href="/os/vayumail/accounts">Accounts</a>.</td></tr>`)
-	}
+	var mrows [][]ui.HTML
 	for _, em := range emails {
-		e := html.EscapeString(em)
-		body.WriteString(`<tr><td class="mono">` + e + `</td>` +
-			`<td class="text-sm">Port ` + imapsPort + ` · SSL/TLS</td>` +
-			`<td class="text-sm">Port ` + pop3sPort + ` · SSL/TLS</td>` +
-			`<td class="text-sm">Port ` + subPort + ` · STARTTLS</td></tr>`)
+		mrows = append(mrows, []ui.HTML{ui.HTML(`<span class="mono">` + html.EscapeString(em) + `</span>`),
+			ui.Text(imapsPort + " SSL/TLS"), ui.Text(pop3sPort + " SSL/TLS"), ui.Text(subPort + " STARTTLS")})
 	}
-	body.WriteString(`</tbody></table></div></div>`)
+	sections = append(sections, ui.Section("Per mailbox", "The username is the full address",
+		ui.Table([]string{"Mailbox", "IMAP", "POP3", "SMTP (send)"}, mrows, "No active mailboxes yet. Make one under Accounts.")))
 
-	writeOSHTML(w, r, adminOSLayout(nonce, "Connect a mail app", "vayuos", cfg, htmpl.HTML(body.String())))
+	// The new password's Copy and Download, and the sheet that closes once it
+	// is made, are driven by admin-os-mail.js. This page never loaded it, so
+	// both buttons rendered and did nothing.
+	body := string(ui.Status(page, sections...)) + sheets.String() +
+		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`
+	writeOSHTML(w, r, adminOSLayout(nonce, "Connect a mail app", "vayuos", cfg, htmpl.HTML(body)))
 }
 
 func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) {
@@ -2056,52 +2056,53 @@ func (a *App) appPasswordMailboxes(r *http.Request) []string {
 	return nil
 }
 
-// vayuAppPasswordsCard renders the "App passwords" card on the Connect tab:
-// a create form plus the per-mailbox list of live credentials (label + created
-// date only — hashes never leave the store). Create/revoke POST the
-// /os/vayumail/accounts/apppassword endpoints and swap this card in place.
+// vayuAppPasswordsCard renders the app-password list on the Connect page:
+// each mailbox's live credentials (label and created date only: hashes never
+// leave the store), flush, with Revoke. Create and revoke POST the
+// /os/vayumail/accounts/apppassword endpoints and swap this list in place; the
+// create form is a sheet beside it (vayuAppPasswordSheet), so a swap never
+// takes the open form away.
 func (a *App) vayuAppPasswordsCard(r *http.Request) string {
 	if a.vayuMail == nil || a.vayuMail.Accounts() == nil {
-		return `<div class="card"><div class="card-title">App passwords</div><p class="muted">VayuMail account storage is not available yet.</p></div>`
+		return `<p class="muted text-sm">Mailbox storage is not available yet.</p>`
 	}
 	emails := a.appPasswordMailboxes(r)
-
-	post := ` hx-target="#vm-apppw-card" hx-swap="innerHTML"`
-	var b strings.Builder
-	b.WriteString(`<div class="card"><div class="card-title">App passwords</div>`)
-	b.WriteString(`<p class="text-sm">A sign-in for one device, shown once and revocable here.` +
-		string(ui.Tip("For the VayuMail app or any IMAP, SMTP or POP3 client. It is stored only as an Argon2id hash and can be revoked without changing the mailbox password. With VAYUMAIL_2FA_ENFORCE on, mail apps on 2FA-protected mailboxes must use one.")) + `</p>`)
-
 	if len(emails) == 0 {
-		b.WriteString(`<p class="muted">No active mailboxes yet. Create one under <a href="/os/vayumail/accounts">Accounts</a>.</p></div>`)
-		return b.String()
+		return `<p class="muted text-sm">No active mailboxes yet. Make one under <a href="/os/vayumail/accounts">Accounts</a>.</p>`
 	}
+	post := ` hx-target="#vm-apppw-card" hx-swap="innerHTML"`
+	var rows [][]ui.HTML
+	for _, em := range emails {
+		for _, p := range a.vayuMail.Accounts().ListAppPasswords(r.Context(), em) {
+			rows = append(rows, []ui.HTML{
+				ui.HTML(`<span class="mono">` + html.EscapeString(p.Email) + `</span>`),
+				ui.Text(p.Label),
+				ui.Text(p.CreatedAt.Format("2 Jan 2006")),
+				ui.HTML(`<button type="button" class="btn btn--sm btn--ghost" hx-post="/os/vayumail/accounts/apppassword/delete"` + post + hxVals("email", p.Email, "id", strconv.FormatInt(p.ID, 10)) + ` hx-confirm="Revoke this app password? Devices signed in with it stop syncing immediately.">Revoke</button>`),
+			})
+		}
+	}
+	return string(ui.Table([]string{"Mailbox", "Device", "Created", ""}, rows, "No app passwords yet. One lets a device sign in without the mailbox password."))
+}
 
-	// Create form.
-	b.WriteString(`<form class="vm-row vm-row--end" hx-post="/os/vayumail/accounts/apppassword"` + post + `>`)
-	b.WriteString(`<label class="field"><span class="field-label">Mailbox</span><select class="input input--sm" name="email">`)
+// vayuAppPasswordSheet is the create form, in the sheet the section's button
+// opens. The response swaps the list, which then carries the new password,
+// shown once; the page's script closes the sheet so it can be read.
+func (a *App) vayuAppPasswordSheet(r *http.Request) string {
+	emails := a.appPasswordMailboxes(r)
+	if a.vayuMail == nil || a.vayuMail.Accounts() == nil || len(emails) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(`<form class="vm-acct-new" data-apppw-create hx-post="/os/vayumail/accounts/apppassword" hx-target="#vm-apppw-card" hx-swap="innerHTML">`)
+	b.WriteString(`<label class="field"><span class="field-label">Mailbox</span><select class="input" name="email">`)
 	for _, em := range emails {
 		b.WriteString(`<option value="` + html.EscapeString(em) + `">` + html.EscapeString(em) + `</option>`)
 	}
 	b.WriteString(`</select></label>`)
-	b.WriteString(`<label class="field vm-grow"><span class="field-label">Label (what device is this for?)</span><input class="input input--sm" type="text" name="label" placeholder="VayuMail Mobile" maxlength="64"></label>`)
-	b.WriteString(`<button class="btn btn--primary btn--sm" type="submit">Create app password</button></form>`)
-
-	// Existing credentials — metadata only, never the hash.
-	b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Mailbox</th><th>Label</th><th>Created</th><th></th></tr></thead><tbody>`)
-	rows := 0
-	for _, em := range emails {
-		for _, p := range a.vayuMail.Accounts().ListAppPasswords(r.Context(), em) {
-			rows++
-			b.WriteString(`<tr><td class="mono">` + html.EscapeString(p.Email) + `</td><td>` + html.EscapeString(p.Label) + `</td><td class="muted text-sm">` + p.CreatedAt.Format("2006-01-02") + `</td><td>` +
-				`<button type="button" class="btn btn--sm btn--danger" hx-post="/os/vayumail/accounts/apppassword/delete"` + post + hxVals("email", p.Email, "id", strconv.FormatInt(p.ID, 10)) + ` hx-confirm="Revoke this app password? Devices signed in with it stop syncing immediately.">Revoke</button></td></tr>`)
-		}
-	}
-	if rows == 0 {
-		b.WriteString(`<tr><td colspan="4" class="muted">No app passwords yet. Create one above to connect the VayuMail app.</td></tr>`)
-	}
-	b.WriteString(`</tbody></table></div></div>`)
-	return b.String()
+	b.WriteString(`<label class="field"><span class="field-label">Which device is it for?</span><input class="input" type="text" name="label" placeholder="VayuMail Mobile" maxlength="64"></label>`)
+	b.WriteString(`<div class="sa-sheet__foot"><span class="field-hint">Shown once, then stored only as a hash.</span><button class="btn btn--primary" type="submit">Create app password</button></div></form>`)
+	return string(ui.Sheet("new-app-password", "New app password", ui.HTML(b.String())))
 }
 
 // handleVayuOSAppPasswordCreate mints a new app password for a mailbox and
@@ -2164,14 +2165,13 @@ func (a *App) handleVayuOSAppPasswordCreate(w http.ResponseWriter, r *http.Reque
 		// html.EscapeString called directly, not through a local alias: the label
 		// and address come from the form, and CodeQL credits the escaper only
 		// when it can see the call (go/reflected-xss).
-		banner = `<div class="card card--ok"><div class="card-title">` + saIcon("check-c") + ` App password created — copy it now</div>` +
-			`<p class="text-sm">This password is <strong>shown only once</strong>. It is stored only as a hash and can never be displayed again — if it is lost, revoke it and create a new one.</p>` +
-			`<pre class="code-block code-block--wrap">` + html.EscapeString(grouped) + `</pre>` +
-			`<div class="vm-row vm-row--tight">` +
-			`<button type="button" class="btn btn--sm" data-apppw-copy="` + html.EscapeString(grouped) + `">Copy password</button>` +
-			`<button type="button" class="btn btn--sm btn--ghost" data-apppw-save="` + html.EscapeString(grouped) + `" data-apppw-label="` + html.EscapeString(label) + `" data-apppw-email="` + html.EscapeString(email) + `">Download .txt</button>` +
-			`</div>` +
-			`<p class="muted text-xs">Sign in to <span class="mono">` + html.EscapeString(email) + `</span> (label: ` + html.EscapeString(label) + `) with this as the password — in the VayuMail app or any IMAP/SMTP client. The dashes are optional.</p></div>`
+		banner = string(ui.Callout("ok", ui.HTML(`<strong>Copy this app password now.</strong> It is shown only once and stored only as a hash: if it is lost, revoke it and make another.`+
+			`<pre class="code-block code-block--wrap vm-apppw-secret">`+html.EscapeString(grouped)+`</pre>`+
+			`<span class="vm-row vm-row--tight">`+
+			`<button type="button" class="btn btn--sm" data-apppw-copy="`+html.EscapeString(grouped)+`">Copy password</button>`+
+			`<button type="button" class="btn btn--sm btn--ghost" data-apppw-save="`+html.EscapeString(grouped)+`" data-apppw-label="`+html.EscapeString(label)+`" data-apppw-email="`+html.EscapeString(email)+`">Download .txt</button>`+
+			`</span>`+
+			`<span class="muted text-xs">Sign in to <span class="mono">`+html.EscapeString(email)+`</span> (`+html.EscapeString(label)+`) with it as the password, in the VayuMail app or any mail app. The dashes are optional.</span>`)))
 	}
 	card := a.vayuAppPasswordsCard(r)
 	if opErr != nil {

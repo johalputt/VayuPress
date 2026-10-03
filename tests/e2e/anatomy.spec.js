@@ -174,3 +174,25 @@ test("Mail's administration keeps to the page grammar, as tabs", async ({ page }
   }
   expect(findings).toEqual([]);
 });
+
+// Mail's own pages with Mail on (Outbox and Connect a device, 8.12), held to
+// the rules outright once the listener checks they run are in. The mailbox
+// and compose are not here: they are the Mail plan's three panes, which the
+// fidelity plan leaves to that plan's renders, and mail.spec.js holds them.
+const MAIL_OWN = ["/os/vayumail/sent", "/os/vayumail/connect"];
+test("Mail's own pages keep to the page grammar", async ({ page }) => {
+  const base = process.env.MAIL_BASE_URL;
+  if (!base) throw new Error("MAIL_BASE_URL is not set: boot the second install (.github/actions/boot-vayupress)");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  const findings = [];
+  for (const href of MAIL_OWN) {
+    await page.goto(base + href);
+    await page.waitForLoadState("networkidle");
+    const a = await page.evaluate(anatomy);
+    for (const f of ruleBreaks(a)) findings.push(`${href}: ${f}`);
+    if (a.crumb) findings.push(`${href}: a breadcrumb`);
+    if (a.titles !== 1) findings.push(`${href}: ${a.titles} titles`);
+  }
+  expect(findings).toEqual([]);
+});

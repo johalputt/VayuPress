@@ -1165,7 +1165,7 @@ func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
 		ui.Section("Delivery", "", dnsRows),
 		ui.Section("Mail domains", "", ui.Rows(doms...)),
 		ui.Section("Services", "", ui.Rows(svc...)))
-	writeOSHTML(w, r, adminOSLayout(nonce, "Mail administration", "vayuos", cfg, htmpl.HTML(page)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Mail administration", "vayuos", cfg, page))
 }
 
 func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
@@ -3021,35 +3021,37 @@ func (a *App) cfgDomain() string {
 	return ""
 }
 
-// handleVayuOSSent lists recent outbound messages from the delivery queue, with
-// per-message Resend/Delete and a Retry-all-failed action. The body is an HTMX
-// fragment that auto-refreshes (delivery state changes on its own) and re-renders
-// in place after an action — no full-page reload.
+// handleVayuOSSent is the Outbox, a list: the delivery queue's recent
+// messages with per-message Resend/Delete and Retry all failed. The list is an
+// HTMX fragment that refreshes itself (delivery state changes on its own) and
+// re-renders in place after an action, with no full-page reload.
 func (a *App) handleVayuOSSent(w http.ResponseWriter, r *http.Request) {
-	nonce := render.CSPNonce(r)
-	cfg := a.getOSSettings(r.Context())
-	// A CSRF cookie so the Resend/Delete/Retry HTMX POSTs pass the middleware.
-	csrfTokenFor(w, r)
-	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Outbox</h1></div>`)
-	body.WriteString(`<p class="page-sub">Outbound delivery queue — auto-retries with backoff until sent, with one-click Resend.</p>`)
 	if !a.mailRunning() {
 		a.writeMailSetup(w, r, "Outbox")
 		return
 	}
-	// The outbound delivery queue is server-wide; non-admins see their own sent
-	// mail in their mailbox's Sent folder instead.
+	// The delivery queue is the whole server's. Anyone else's sent mail is in
+	// their own Sent folder, which is where they are taken: the page used to
+	// say so in a sentence and stop.
 	if !a.isAdminRequest(r) {
-		body.WriteString(`<div class="empty-state">Your sent messages are in your mailbox under <a href="/os/vayumail/inbox?folder=Sent">Mailbox → Sent</a>. The server-wide delivery queue is visible to administrators only.</div>`)
-		writeOSHTML(w, r, adminOSLayout(nonce, "Outbox", "vayuos", cfg, htmpl.HTML(body.String())))
+		a.denyAccess(w, r, "/os/vayumail/inbox?folder=Sent")
 		return
 	}
+	nonce := render.CSPNonce(r)
+	cfg := a.getOSSettings(r.Context())
+	// A CSRF cookie so the Resend/Delete/Retry HTMX POSTs pass the middleware.
+	csrfTokenFor(w, r)
 	// The auto-refresh poller lives INSIDE the body (see vayuOutboxBody) so it
 	// carries the active per-domain filter; a poll on this wrapper would reset it.
-	body.WriteString(`<div id="vm-outbox-body">`)
-	body.WriteString(a.vayuOutboxBody(r.Context(), r.URL.Query().Get("domain")))
-	body.WriteString(`</div>`)
-	writeOSHTML(w, r, adminOSLayout(nonce, "Outbox", "vayuos", cfg, htmpl.HTML(body.String())))
+	list := `<div id="vm-outbox-body">` + a.vayuOutboxBody(r.Context(), r.URL.Query().Get("domain")) + `</div>` +
+		`<p class="sa-list__note">Mail is retried with backoff until it is delivered.` +
+		string(ui.Tip("Each message is signed with DKIM and delivered straight to the recipient's mail server. Deleting a row here removes it from the queue only: the copy in the sender's Sent folder stays.")) + `</p>` +
+		string(ui.Sheet("outbox-autoclear", "Auto-clear delivered", ui.HTML(outboxRetentionSelect(a.vayuMail.QueueRetentionDays()))))
+	page := ui.List(ui.ListPage{
+		Title:   "Outbox",
+		Actions: ui.HTML(`<button type="button" class="btn btn--sm" data-sheet="outbox-autoclear">Auto-clear</button>`),
+	}, ui.HTML(list), "")
+	writeOSHTML(w, r, adminOSLayout(nonce, "Outbox", "vayuos", cfg, page))
 }
 
 // emailDomain returns the lower-cased domain of an email address, or fallback
@@ -3101,10 +3103,10 @@ func outboxRetentionSelect(cur int) string {
 	if !std[cur] && cur > 0 {
 		extra = `<option value="` + itoaSafe(cur) + `" selected>After ` + itoaSafe(cur) + ` days</option>`
 	}
-	return `<label class="vm-retention" title="Auto-delete the delivered Outbox rows after this long. Your sent mail stays in the mailbox’s Sent folder."><span class="text-xs muted">Auto-clear delivered</span>` +
-		`<select class="input input--sm" name="days" hx-post="/os/vayumail/outbox/retention" hx-trigger="change" hx-target="#vm-outbox-body" hx-swap="innerHTML">` +
-		extra + opt(0, "Off · keep all") + opt(7, "After 7 days") + opt(30, "After 30 days") + opt(90, "After 90 days") +
-		`</select></label>`
+	return `<label class="field"><span class="field-label">Remove delivered messages from the Outbox</span>` +
+		`<select class="input" name="days" hx-post="/os/vayumail/outbox/retention" hx-trigger="change" hx-target="#vm-outbox-body" hx-swap="innerHTML">` +
+		extra + opt(0, "Never: keep them all") + opt(7, "After 7 days") + opt(30, "After 30 days") + opt(90, "After 90 days") +
+		`</select><span class="field-hint">Applies as you choose. The copy in the sender's Sent folder always stays.</span></label>`
 }
 
 // handleVayuOSOutboxRetention persists the operator's auto-clear window for
@@ -3184,10 +3186,26 @@ func (a *App) vayuOutboxBody(ctx context.Context, filterDomain string) string {
 	// A poller carrying the active filter, so the 15s refresh preserves it.
 	b.WriteString(`<div class="vm-poller" aria-hidden="true" hx-get="/os/vayumail/outbox/fragment?domain=` + qparam(filterDomain) + `" hx-trigger="every 15s" hx-target="#vm-outbox-body" hx-swap="innerHTML"></div>`)
 
-	b.WriteString(`<div class="vm-row vm-row--end">`)
-	b.WriteString(`<span class="muted text-sm vm-grow">` + itoaSafe(pending) + ` pending · ` + itoaSafe(failed) + ` failed · ` + itoaSafe(delivered) + ` delivered <span class="text-xs">(latest ` + itoaSafe(len(sent)) + `)</span></span>`)
-	b.WriteString(outboxRetentionSelect(a.vayuMail.QueueRetentionDays()))
-	b.WriteString(`<button type="button" class="btn btn--sm" hx-get="/os/vayumail/outbox/fragment?domain=` + qparam(filterDomain) + `" hx-target="#vm-outbox-body" hx-swap="innerHTML">↻ Refresh</button>`)
+	// An empty queue is one sentence: no counts, no table of headers over
+	// nothing. The poller above stays, so the first message still appears.
+	if len(sent) == 0 {
+		b.WriteString(string(ui.Empty("send", "Nothing has been sent yet", "Mail sent from this server waits here until it is delivered.", "")))
+		return b.String()
+	}
+
+	// The counts as a sentence of what is there: a zero is left out.
+	var said []string
+	for _, c := range []struct {
+		n    int
+		what string
+	}{{pending, "waiting"}, {failed, "failed"}, {delivered, "delivered"}} {
+		if c.n > 0 {
+			said = append(said, itoaSafe(c.n)+" "+c.what)
+		}
+	}
+	b.WriteString(`<div class="vm-row vm-row--end vm-outbox-bar">`)
+	b.WriteString(`<span class="vm-outbox-sum vm-grow">` + strings.Join(said, " · ") + `</span>`)
+	b.WriteString(`<button type="button" class="btn btn--sm btn--ghost" hx-get="/os/vayumail/outbox/fragment?domain=` + qparam(filterDomain) + `" hx-target="#vm-outbox-body" hx-swap="innerHTML">` + saIcon("refresh") + `Refresh</button>`)
 	if failed > 0 {
 		b.WriteString(`<button type="button" class="btn btn--sm btn--primary" hx-post="/os/vayumail/outbox/action" hx-vals='{"action":"retry-all","domain":"` + html.EscapeString(filterDomain) + `"}' hx-target="#vm-outbox-body" hx-swap="innerHTML">Retry all failed (` + itoaSafe(failed) + `)</button>`)
 	}
@@ -3215,7 +3233,7 @@ func (a *App) vayuOutboxBody(ctx context.Context, filterDomain string) string {
 	// The attempt count and the last error ride under the subject: as columns of
 	// their own they squeezed an error into a sliver and cut the date short.
 	cols := fromCol + `<col class="vm-ocw-to"><col class="vm-ocw-subj"><col class="vm-ocw-status"><col class="vm-ocw-when"><col class="vm-ocw-act">`
-	b.WriteString(`<div class="card"><div class="card-title">Recent outbound</div><div class="table-wrap"><table class="table ` + tableCls + `"><colgroup>` + cols + `</colgroup><thead><tr>` + fromHead + `<th>To</th><th>Subject</th><th>Status</th><th>When</th><th></th></tr></thead><tbody>`)
+	b.WriteString(`<div class="table-wrap"><table class="table ` + tableCls + `"><colgroup>` + cols + `</colgroup><thead><tr>` + fromHead + `<th>To</th><th>Subject</th><th>Status</th><th>When</th><th></th></tr></thead><tbody>`)
 	now := time.Now()
 	shown := 0
 	for _, s := range sent {
@@ -3227,12 +3245,12 @@ func (a *App) vayuOutboxBody(ctx context.Context, filterDomain string) string {
 		if subj == "" {
 			subj = "(no subject)"
 		}
-		badge := `<span class="badge badge--ok">Delivered</span>`
+		badge := string(ui.State("ok", "Delivered"))
 		switch s.State {
 		case "failed":
-			badge = `<span class="badge badge--warn">Failed</span>`
+			badge = string(ui.State("warn", "Failed"))
 		case "pending":
-			badge = `<span class="badge">Pending</span>`
+			badge = string(ui.State("neutral", "Waiting"))
 		}
 		when := s.CreatedAt
 		if t, ok := parseQueueTime(s.CreatedAt); ok {
@@ -3259,7 +3277,7 @@ func (a *App) vayuOutboxBody(ctx context.Context, filterDomain string) string {
 			if i := strings.LastIndexByte(s.From, '@'); i >= 0 {
 				local = s.From[:i]
 			}
-			fromCell = `<td class="text-sm vm-oc-nowrap" title="` + html.EscapeString(s.From) + `"><span class="vm-name">` + html.EscapeString(local) + `</span> <span class="badge badge--muted">` + html.EscapeString(fd) + `</span></td>`
+			fromCell = `<td class="text-sm vm-oc-nowrap" title="` + html.EscapeString(s.From) + `"><span class="vm-name">` + html.EscapeString(local) + `</span><span class="muted">@` + html.EscapeString(fd) + `</span></td>`
 		}
 		toJoined := strings.Join(s.To, ", ")
 		b.WriteString(`<tr>` + fromCell +
@@ -3280,7 +3298,7 @@ func (a *App) vayuOutboxBody(ctx context.Context, filterDomain string) string {
 		}
 		b.WriteString(`<tr><td colspan="` + itoaSafe(colspan) + `" class="muted">` + msg + `</td></tr>`)
 	}
-	b.WriteString(`</tbody></table></div></div>`)
+	b.WriteString(`</tbody></table></div>`)
 	return b.String()
 }
 
