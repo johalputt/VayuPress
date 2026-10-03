@@ -993,8 +993,17 @@
         if (holdSnapshot && holdSnapshot.draftId) {
           postJSON('/os/vayumail/message/action', { user: localPart(holdSnapshot.from), folder: 'Drafts', id: holdSnapshot.draftId, delete: true });
         }
-        if (cStatus) cStatus.textContent = 'Sent';
-        acctToast('Message sent');
+        var later = res.body && res.body.scheduled;
+        var said = later ? 'Scheduled for ' + laterLabel(new Date(res.body.sendAt)) : 'Message sent';
+        if (cStatus) cStatus.textContent = later ? 'Scheduled' : 'Sent';
+        acctToast(said);
+        // The sidebar gains Scheduled: redraw the list beside the sheet.
+        if (later) document.body.dispatchEvent(new CustomEvent('vm-mail-changed'));
+        if (later && !compose.closest('[data-mx-compose-host]')) {
+          var box = new URLSearchParams(window.location.search).get('user');
+          setTimeout(function () { window.location.href = '/os/vayumail/inbox?folder=Scheduled' + (box ? '&user=' + encodeURIComponent(box) : ''); }, 650);
+          return;
+        }
         // In the sheet the mailbox stays where it was; the page goes to Sent.
         if (compose.closest('[data-mx-compose-host]')) compose.dispatchEvent(new CustomEvent('mx-compose-done', { bubbles: true, detail: { why: 'sent' } }));
         else setTimeout(function () { window.location.href = '/os/vayumail/sent'; }, 650);
@@ -1019,6 +1028,7 @@
         fd.append('appendSig', snap.appendSig ? '1' : '0');
         fd.append('encrypt', snap.encrypt ? '1' : '0');
         fd.append('richHTML', snap.richHTML ? '1' : '0');
+        if (snap.sendAt) fd.append('sendAt', snap.sendAt);
         opts.body = fd;
       } else {
         var payload = {};
@@ -1026,6 +1036,7 @@
         payload.appendSig = snap.appendSig;
         payload.encrypt = snap.encrypt;
         payload.richHTML = snap.richHTML;
+        if (snap.sendAt) payload.sendAt = snap.sendAt;
         opts.headers['Content-Type'] = 'application/json';
         opts.body = JSON.stringify(payload);
       }
@@ -1043,6 +1054,58 @@
       if (!autosaveTimer) armAutosave();
     }
     if (undoBtn) undoBtn.addEventListener('click', cancelHold);
+
+    // ── Send later ─────────────────────────────────────────────────────────
+    // The times are the sender's own: built and labelled on this clock, sent
+    // as an instant (UTC), held by the server until then. No Undo hold: until
+    // its time it waits under Scheduled, where it can be sent or cancelled.
+    var later = compose.querySelector('[data-c-later]');
+    function laterLabel(d) {
+      return d.toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    }
+    function atHour(daysAhead, hour) {
+      var d = new Date();
+      d.setDate(d.getDate() + daysAhead);
+      d.setHours(hour, 0, 0, 0);
+      return d;
+    }
+    function laterPresets() {
+      var monday = (8 - new Date().getDay()) % 7 || 7;
+      return { morning: ['Tomorrow morning', atHour(1, 8)], afternoon: ['Tomorrow afternoon', atHour(1, 13)], monday: ['Monday morning', atHour(monday, 8)] };
+    }
+    function scheduleAt(d) {
+      if (sending || holdSnapshot) return;
+      if (isNaN(d) || d.getTime() <= Date.now()) { if (cStatus) cStatus.textContent = 'Choose a time that has not passed.'; return; }
+      var f = composeFields();
+      if (!f.to && !f.cc && !f.bcc) { if (cStatus) cStatus.textContent = 'Add at least one recipient.'; return; }
+      if (later) later.open = false;
+      holdSnapshot = { fields: f, files: composeFiles.slice(), appendSig: sigAppend(), encrypt: pgpEncrypt(), richHTML: richHTML(), from: f.from, draftId: draftId, sendAt: d.toISOString() };
+      stopAutosave();
+      if (sendBtn) sendBtn.disabled = true;
+      performSend(false);
+    }
+    if (later) {
+      later.addEventListener('toggle', function () {
+        if (!later.open) return;
+        var p = laterPresets();
+        later.querySelectorAll('[data-c-later-preset]').forEach(function (b) {
+          var it = p[b.getAttribute('data-c-later-preset')];
+          b.textContent = it[0] + ' · ' + laterLabel(it[1]);
+          // Monday is tomorrow on a Sunday: one button is enough.
+          b.hidden = b.getAttribute('data-c-later-preset') === 'monday' && it[1].getTime() === p.morning[1].getTime();
+        });
+      });
+      later.addEventListener('click', function (e) {
+        var b = e.target.closest('[data-c-later-preset]');
+        if (b) scheduleAt(laterPresets()[b.getAttribute('data-c-later-preset')][1]);
+        if (e.target.closest('[data-c-later-go]')) {
+          var v = later.querySelector('[data-c-later-at]').value;
+          // datetime-local is the sender's wall time with no zone, which is
+          // exactly what new Date reads it as.
+          scheduleAt(v ? new Date(v) : new Date(NaN));
+        }
+      });
+    }
 
     compose.addEventListener('submit', function (e) {
       e.preventDefault();

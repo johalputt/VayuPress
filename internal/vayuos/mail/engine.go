@@ -719,6 +719,10 @@ func (e *Engine) Start(ctx context.Context) error {
 	} else {
 		return fmt.Errorf("vayumail: uid store init: %w", uerr)
 	}
+	// Send later (scheduled.go), started once the accounts it checks the
+	// sender against are open.
+	e.failInterruptedScheduled(ctx)
+	go e.scheduledSender()
 
 	// Inbound receive side. Enabled by default so a configured domain can
 	// receive external mail; disabled with VAYUOS_MAIL_INBOUND=off. Binding the

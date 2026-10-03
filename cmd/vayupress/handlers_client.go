@@ -90,6 +90,7 @@ var clientSurface = []clientSurfaceEntry{
 	// and handleVayuOSSend overwrites From with it.
 	{Prefix: "/os/vayumail/send", Audience: audienceClient},
 	{Prefix: "/os/vayumail/draft", Audience: audienceClient},
+	{Prefix: "/os/vayumail/scheduled", Audience: audienceClient},
 	{Prefix: "/os/vayumail/search", Audience: audienceClient},
 	{Prefix: "/os/vayumail/attachment", Audience: audienceClient},
 	{Prefix: "/os/vayumail/contacts", Audience: audienceClient},

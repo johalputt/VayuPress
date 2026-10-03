@@ -117,11 +117,13 @@ func TestEveryControlOnAClientsOwnPagesIsReachable(t *testing.T) {
 //     That file also drives the operator's Accounts page, so its endpoint list
 //     cannot be asserted wholesale — these two are the composer's.
 //   - attachment is rendered only on a message that HAS an attachment.
+//   - scheduled/action is rendered only beside a message held to send later.
 func TestTheComposerAndAttachmentEndpointsAreReachable(t *testing.T) {
 	for path, consequence := range map[string]string{
-		"/os/vayumail/send":       "the client writes a message, presses Send, and gets a 403",
-		"/os/vayumail/draft":      "the composer's autosave fails silently and unsent work is lost on a reload",
-		"/os/vayumail/attachment": "the client cannot download a file someone sent them",
+		"/os/vayumail/send":             "the client writes a message, presses Send, and gets a 403",
+		"/os/vayumail/draft":            "the composer's autosave fails silently and unsent work is lost on a reload",
+		"/os/vayumail/attachment":       "the client cannot download a file someone sent them",
+		"/os/vayumail/scheduled/action": "the client schedules a message and can neither send it now nor cancel it",
 	} {
 		if !clientPathAllowed(path) {
 			t.Errorf("%s is refused to a bound client: %s", path, consequence)

@@ -1759,6 +1759,9 @@ func (a *App) folderUnread(rd vmail.Reader) map[string]int {
 			counts[f] = n
 		}
 	}
+	if n := a.scheduledCount(context.Background(), rd); n > 0 {
+		counts[scheduledFolder] = n
+	}
 	return counts
 }
 
@@ -1796,6 +1799,16 @@ func mailFolderNav(user, active, view string, counts, viewCounts map[string]int,
 			cur = ` aria-current="page"`
 		}
 		item("user="+qparam(user)+"&folder="+qparam(f), f, mailFolderIcons[f], cur, counts[f])
+	}
+	// Scheduled is there while something is (or while it is open), and has
+	// no views: it is a list of held messages, not a folder of mail.
+	if isScheduledFolder(active) {
+		item("user="+qparam(user)+"&folder="+scheduledFolder, scheduledFolder, "calendar", ` aria-current="page"`, counts[scheduledFolder])
+		sb.WriteString(`</div>`)
+		return sb.String()
+	}
+	if n := counts[scheduledFolder]; n > 0 {
+		item("user="+qparam(user)+"&folder="+scheduledFolder, scheduledFolder, "calendar", "", n)
 	}
 	// Views filter the open folder; choosing the view in force again shows
 	// the whole folder.
@@ -2024,6 +2037,9 @@ type mailListFacts struct {
 }
 
 func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int) (string, mailListFacts) {
+	if isScheduledFolder(folder) {
+		return a.vayuScheduledBody(context.Background(), rd, ""), mailListFacts{}
+	}
 	user := rd.Key()
 	// A read-only mailbox is offered no control the engine would refuse.
 	readOnly := a.vayuMail.ReaderReadOnly(rd)

@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Send later in Mail.** The compose foot has Send later beside Send:
+  tomorrow morning, tomorrow afternoon, Monday morning, or a time you pick,
+  all in your own clock. The message waits under Scheduled in the mailbox's
+  sidebar, where it can be sent now or cancelled; Cancel puts it back in
+  Drafts as you wrote it. It is held on the server, so it goes at its time
+  with the browser closed and across a restart, and it is put together when
+  it goes: the Date is the time it actually left, the Sent copy is filed
+  then, and an encrypted message is encrypted to the keys on file then. A
+  mailbox made read-only or full in the meantime does not send, and says
+  why; a deleted mailbox's scheduled mail is deleted with it. A message the
+  server was stopped in the middle of sending is not sent again by itself,
+  since it may already have gone: it waits, saying so, for you to choose.
+
 ### Changed
 
 - **Sign-in security and VayuVeil are Still Air**, the last two console pages

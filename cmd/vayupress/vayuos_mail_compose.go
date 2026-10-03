@@ -286,6 +286,15 @@ func (a *App) composeSheet(r *http.Request, page bool) (sheet, refusal string) {
 	// draft's state; Discard at the far right.
 	b.WriteString(`<div class="mx-compose__foot">`)
 	b.WriteString(`<button class="btn btn--primary mx-compose__send" type="submit" data-c-send aria-keyshortcuts="Meta+Enter Control+Enter">` + saIcon("send") + `Send</button>`)
+	// Send later: times the composer fills in from the sender's own clock
+	// (the server does not know their zone), or one they pick.
+	b.WriteString(`<details class="sa-pop mx-compose__later" data-c-later><summary class="mx-compose__tool" aria-label="Send later" title="Send later">` + saIcon("calendar") + `</summary><div class="sa-pop__panel">` +
+		`<button type="button" class="mx-compose__opt" data-c-later-preset="morning"></button>` +
+		`<button type="button" class="mx-compose__opt" data-c-later-preset="afternoon"></button>` +
+		`<button type="button" class="mx-compose__opt" data-c-later-preset="monday"></button>` +
+		`<label class="mx-compose__opt mx-compose__when">Pick a time<input type="datetime-local" class="mx-compose__input" data-c-later-at></label>` +
+		`<button type="button" class="btn btn--sm" data-c-later-go>Schedule</button>` +
+		`</div></details>`)
 	b.WriteString(`<button type="button" class="mx-compose__tool" data-c-attach-btn aria-label="Attach files" title="Up to ` + strconv.Itoa(composeMaxAttachMB()) + ` MB in all">` + saIcon("clip") + `</button>`)
 	b.WriteString(`<input type="file" data-c-files multiple hidden>`)
 	b.WriteString(`<button type="button" class="mx-compose__tool" data-c-format aria-label="Format" aria-pressed="false">` + saIcon("type") + `</button>`)

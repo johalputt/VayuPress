@@ -6860,7 +6860,16 @@
 .vp-os[data-ui="still-air"] .mx-compose__enc--ok { color: var(--ok); }
 .vp-os[data-ui="still-air"] .mx-compose__enc .sa-ico { width: 14px; height: 14px; }
 .vp-os[data-ui="still-air"] .mx-compose__status { margin-left: auto; padding: 0 var(--space-2); font: var(--type-small); color: var(--text-3); }
-.vp-os[data-ui="still-air"] .mx-compose__more .sa-pop__panel { top: auto; bottom: calc(100% + 8px); left: 0; right: auto; width: 280px; padding: var(--space-2); }
+.vp-os[data-ui="still-air"] :is(.mx-compose__more, .mx-compose__later) .sa-pop__panel { top: auto; bottom: calc(100% + 8px); left: 0; right: auto; width: 280px; padding: var(--space-2); }
+/* Send later: the presets, then a time of the sender's own choosing. */
+.vp-os[data-ui="still-air"] .mx-compose__when { flex-direction: column; align-items: stretch; gap: var(--space-2); cursor: default; }
+.vp-os[data-ui="still-air"] .mx-compose__when:hover { background: none; }
+.vp-os[data-ui="still-air"] .mx-compose__when .mx-compose__input { padding: var(--space-2) var(--space-3); border: 1px solid var(--border-2); border-radius: var(--radius-control); }
+.vp-os[data-ui="still-air"] .mx-compose__later [data-c-later-go] { margin: 0 var(--space-3) var(--space-2); }
+/* A held message under Scheduled: its row is not a link, and its two
+   actions sit under its line. */
+.vp-os[data-ui="still-air"] .mx-row--held .mx-row__open { cursor: default; }
+.vp-os[data-ui="still-air"] .mx-row__acts { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
 .vp-os[data-ui="still-air"] .mx-compose__opt {
   display: flex; align-items: center; gap: var(--space-3); width: 100%; padding: var(--space-3); border: 0; border-radius: var(--radius-control);
   background: none; color: var(--text-1); font: var(--type-small); text-align: left; cursor: pointer; list-style: none;

@@ -407,6 +407,10 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		// finishing a saved draft. The files stored with that draft are merged into
 		// this send (see below) so the sender never has to attach them again.
 		DraftID string `json:"draft_id"`
+		// SendAt, when set, holds the message until then (Send later): an
+		// RFC 3339 time, which the composer writes from the sender's own
+		// clock and zone.
+		SendAt string `json:"sendAt"`
 	}
 	var attachments []vmail.Attachment
 	appendSig := true // default: append the sender's signature when one is set
@@ -428,6 +432,7 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		in.Subject = r.FormValue("subject")
 		in.Body = r.FormValue("body")
 		in.DraftID = r.FormValue("draft_id")
+		in.SendAt = r.FormValue("sendAt")
 		if r.FormValue("appendSig") == "0" {
 			appendSig = false
 		}
@@ -497,6 +502,15 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		}
 		from = ownEmail
 	}
+	var sendAt time.Time
+	if v := strings.TrimSpace(in.SendAt); v != "" {
+		t, msg := sendLaterTime(v, time.Now())
+		if msg != "" {
+			writeAPIError(w, r, 400, "send-at", msg, "")
+			return
+		}
+		sendAt = t
+	}
 	splitAddrs := parseRecipientList
 	to := splitAddrs(in.To)
 	cc := splitAddrs(in.CC)
@@ -562,7 +576,7 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 	if richHTML {
 		htmlBody = renderMailHTML(bodyText)
 	}
-	id, err := a.vayuMail.ComposeRich(r.Context(), vmail.ComposeMessage{
+	msg := vmail.ComposeMessage{
 		From:         fromHeader,
 		To:           to,
 		CC:           cc,
@@ -574,12 +588,40 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		Attachments:  attachments,
 		SenderUserID: senderUserID,
 		Encrypt:      encrypt,
-	})
+	}
+	if !sendAt.IsZero() {
+		id, err := a.vayuMail.Schedule(r.Context(), from, msg, in.Body, sendAt)
+		if err != nil {
+			writeAPIError(w, r, 500, "schedule-failed", "Could not schedule the message: "+err.Error(), "")
+			return
+		}
+		writeJSON(w, r, 200, map[string]interface{}{"scheduled": true, "id": id, "sendAt": sendAt.UTC().Format(time.RFC3339)})
+		return
+	}
+	id, err := a.vayuMail.ComposeRich(r.Context(), msg)
 	if err != nil {
 		writeAPIError(w, r, 500, "send-failed", mailSendErrText(err), "")
 		return
 	}
 	writeJSON(w, r, 200, map[string]interface{}{"queued": true, "id": id, "attachments": len(attachments)})
+}
+
+// sendLaterLimit is how far ahead Send later reaches: a year, past which a
+// time is far more likely a mistyped year than a plan.
+const sendLaterLimit = 366 * 24 * time.Hour
+
+// sendLaterTime reads a Send later time, or says why it cannot be used.
+func sendLaterTime(v string, now time.Time) (time.Time, string) {
+	t, err := time.Parse(time.RFC3339, v)
+	switch {
+	case err != nil:
+		return time.Time{}, "That send time could not be read."
+	case !t.After(now):
+		return time.Time{}, "That time has passed. Choose a later one, or send it now."
+	case t.Sub(now) > sendLaterLimit:
+		return time.Time{}, "Choose a time within a year."
+	}
+	return t, ""
 }
 
 // handleVayuOSDraft saves a composed message into the sender's Drafts folder so

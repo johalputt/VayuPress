@@ -357,6 +357,40 @@ test("a message sent from the sheet arrives", async ({ page }) => {
   await expect.poll(async () => page.evaluate(async () => (await fetch("/os/vayumail/inbox/fragment?user=priya&folder=Inbox")).text()), { timeout: 20000 }).toContain(subject);
 });
 
+// Send later holds the message under Scheduled until its time, sends
+// nothing yet, and Cancel brings it back to Drafts. In Priya's mailbox, so no
+// other spec's sidebar shows a Scheduled it did not make.
+test("a message sent later waits under Scheduled, and Cancel returns it to Drafts", async ({ page }) => {
+  test.setTimeout(60000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/os/vayumail/inbox?user=priya");
+  await expect(page.locator("#vm-inbox-list .mx-head")).toBeVisible();
+  await page.locator("body").click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("c");
+  const host = page.locator("[data-mx-compose-host]");
+  const subject = "Sent later " + Date.now();
+  const to = host.locator('[data-c-chips="to"] input');
+  await to.fill("ankush@mail.test");
+  await to.press("Enter");
+  await host.locator("[data-c-subject]").fill(subject);
+  await host.locator("[data-c-body]").fill("For the morning.");
+  await host.locator("[data-c-later] summary").click();
+  const morning = host.locator('[data-c-later-preset="morning"]');
+  await expect(morning).toContainText("Tomorrow morning · ");
+  await morning.click();
+  await expect(host).toBeHidden({ timeout: 20000 });
+  const fragment = (folder) => page.evaluate(async (f) => (await fetch("/os/vayumail/inbox/fragment?user=priya&folder=" + f)).text(), folder);
+  expect(await fragment("Sent"), "a message held for later was filed as sent").not.toContain(subject);
+  const scheduled = page.locator('#vm-folders a[href*="folder=Scheduled"]');
+  await expect(scheduled).toBeVisible();
+  await scheduled.click();
+  const row = page.locator("#vm-inbox-list .mx-row--held", { hasText: subject });
+  await expect(row).toContainText("Sends ");
+  await row.getByRole("button", { name: "Cancel" }).click();
+  await expect(row).toHaveCount(0);
+  await expect.poll(() => fragment("Drafts"), { timeout: 10000 }).toContain(subject);
+});
+
 // The compose page is the same sheet, full width: a deep link, or a browser
 // without JavaScript.
 test("the compose page is the sheet, full width", async ({ page }) => {
