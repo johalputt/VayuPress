@@ -385,17 +385,22 @@ test("selection mode picks rows and says what is picked", async ({ page }) => {
   const list = page.locator("#vm-inbox-list");
   const rows = list.locator(".mx-row");
   const subject = await page.locator("#vm-readpane .mx-subject").textContent();
-  await rows.nth(2).hover();
-  await rows.nth(2).locator(".mx-check").click();
+  // Two rows that are neighbours on the page, past the open one. The rows
+  // sit under date headings worked out from the clock, so which two rows
+  // share a heading moves with the time of day the suite runs.
+  const at = await rows.evaluateAll((rs) => rs.findIndex((r, i) => i >= 2 && r.nextElementSibling === rs[i + 1]));
+  expect(at, "no two neighbouring rows to pick").toBeGreaterThanOrEqual(2);
+  await rows.nth(at).hover();
+  await rows.nth(at).locator(".mx-check").click();
   await expect(list).toHaveClass(/is-selecting/);
   await expect(list.locator(".mx-head__sel [data-vm-bulkcount]")).toHaveText("1 selected");
   await expect.poll(() => list.locator(".mx-head__main").evaluate((e) => getComputedStyle(e).opacity)).toBe("0");
   expect(await list.locator(".mx-head__main").evaluate((e) => e.inert), "the folder's header stays reachable under the count").toBe(true);
   // A click on the next row picks it; the message open stays open.
-  await rows.nth(3).locator(".mx-row__open").click();
+  await rows.nth(at + 1).locator(".mx-row__open").click();
   await expect(list.locator("[data-vm-bulkcount]")).toHaveText("2 selected");
   await expect(page.locator("#vm-readpane .mx-subject")).toHaveText(subject);
-  const corners = await rows.nth(2).evaluate((a) => [getComputedStyle(a).borderBottomLeftRadius, getComputedStyle(a.nextElementSibling).borderTopLeftRadius]);
+  const corners = await rows.nth(at).evaluate((a) => [getComputedStyle(a).borderBottomLeftRadius, getComputedStyle(a.nextElementSibling).borderTopLeftRadius]);
   expect(corners, "two picked neighbours do not meet as one block").toEqual(["0px", "0px"]);
   const panel = page.locator(".mx-select-host .mx-selpanel");
   await expect(panel.locator("[data-vm-sel-title]")).toHaveText("2 messages selected");
