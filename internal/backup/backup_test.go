@@ -323,3 +323,29 @@ func TestALinkedDataFolderIsArchivedWhole(t *testing.T) {
 		t.Error("a link inside the data folder was followed")
 	}
 }
+
+// Restoring onto a data folder that is a link writes through the link: the
+// link stays, and the restored data is on the disk it points at.
+func TestARestoreOntoALinkedDataFolderWritesThroughIt(t *testing.T) {
+	var buf bytes.Buffer
+	if err := Create(&buf, "correct horse battery staple", makeTree(t)); err != nil {
+		t.Fatal(err)
+	}
+	bigDisk := filepath.Join(t.TempDir(), "vayupress")
+	if err := os.MkdirAll(bigDisk, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "data")
+	if err := os.Symlink(bigDisk, link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ExtractStaged(bytes.NewReader(buf.Bytes()), "correct horse battery staple", link); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Lstat(link); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the restore replaced the data folder's link: %v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(bigDisk, "vayudata", "mail", "secret.key")); err != nil || string(got) != "PRIVATE" {
+		t.Errorf("the restored data is not on the disk the link points at: %q %v", got, err)
+	}
+}

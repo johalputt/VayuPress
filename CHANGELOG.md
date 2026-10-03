@@ -43,6 +43,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   and linked back produced backups with nothing in them. The folder is now
   resolved first; links inside it are still not followed, and Backups names
   any that hold data.
+- **A restore onto a data folder that is a link writes through the link.**
+  Restoring moved the link aside and put the restored folder in its place, so
+  the data landed on the disk it had been moved off and the larger disk was
+  left behind. Found in this release's audit, before any such backup could
+  hold data to restore.
 
 ## [3.17.97] — 2026-10-03
 

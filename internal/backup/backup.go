@@ -619,6 +619,15 @@ func ExtractStaged(r io.Reader, passphrase, destDir string) (displaced string, e
 		return "", err
 	}
 	destDir = filepath.Clean(destDir)
+	// A data folder that is a link (moved to a larger disk) is restored through
+	// the link, as it is archived: renaming the link aside and the restore into
+	// its place would put the data on the disk it was moved off, and leave the
+	// folder it was moved to behind.
+	if fi, err := os.Lstat(destDir); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		if destDir, err = filepath.EvalSymlinks(destDir); err != nil {
+			return "", err
+		}
+	}
 	parent := filepath.Dir(destDir)
 	if err := os.MkdirAll(parent, 0o750); err != nil {
 		return "", err
