@@ -2072,19 +2072,23 @@
 .vp-os .vm-pre--quoted { color: var(--text-2); border-left: 2px solid var(--border-strong); padding-left: .75rem; }
 
 @media print {
-  /* Print exactly the open message: hide everything, then re-show the
-     reader (visibility cascades back on for its subtree) pinned to the
-     page origin. Chrome, list, toolbars and action buttons never print. */
-  body * { visibility: hidden !important; }
-
-  .vm-reader, .vm-reader * { visibility: visible !important; }
-
-  .vm-reader { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; margin: 0 !important; border: 0 !important; box-shadow: none !important; background: var(--surface-2) !important; color: var(--color-canvas) !important; }
-
-  .vm-reader-top, .vm-actions, .vm-rawwrap { display: none !important; }
-
-  .vm-msg-body { max-width: none !important; }
-
+  /* Print exactly the open message, all of it (pipeline 3y). The reader sits
+     in a column that scrolls inside a page that does not, so every box around
+     it gives up its height and clipping, and everything that is not the
+     reader or round it is dropped. The old rules hid the console by
+     visibility and pinned the reader to the page's origin inside its clipped
+     column: the printout was the page's address and nothing of the mail. */
+  .vp-os[data-ui="still-air"]:has(.mx-reader) :not(:has(.mx-reader)):not(.mx-reader):not(.mx-reader *) { display: none !important; }
+  .vp-os[data-ui="still-air"]:has(.mx-reader),
+  .vp-os[data-ui="still-air"] :has(.mx-reader) {
+    display: block !important; position: static !important; height: auto !important; min-height: 0 !important; max-height: none !important;
+    margin: 0 !important; padding: 0 !important; border: 0 !important; background: none !important; box-shadow: none !important; transform: none !important;
+  }
+  /* The tools, the reply field, the phone bar and the raw source are for the
+     screen; the earlier messages of the conversation stay folded. */
+  .vp-os[data-ui="still-air"] .mx-reader :is(.mx-rtools, .mx-dock, .mx-phonebar, .mx-source, .mx-convo, .mx-images-off, .mx-file__dl, .btn) { display: none !important; }
+  .vp-os[data-ui="still-air"] .mx-reader, .vp-os[data-ui="still-air"] .mx-reader * { color: black !important; background: none !important; box-shadow: none !important; }
+  .vp-os[data-ui="still-air"] .mx-rbody { max-width: none !important; padding: 0 !important; }
 }
 
 /* List + in-place reader side by side. The reader loads via HTMX into
@@ -2119,19 +2123,6 @@
 
 .vp-os .vm-split:has(.vm-readpane-empty) .vm-readpane { display: none; }
 
-/* Full view (⛶): the open message overlays the work area — but only the area
-   RIGHT of the fixed sidebar, and above it, so it never slides under the rail.
-   left offsets by the sidebar width; z-index clears the sidebar's 200. */
-.vp-os #vm-readpane.vm-readpane--full { position: fixed; top: 1.25rem; right: 1.25rem; bottom: 1.25rem; left: calc(var(--sidebar-w) + 1.25rem); z-index: 240; overflow: auto; background: var(--bg-surface); border: 1px solid var(--border-strong); border-radius: var(--radius-surface); padding: 1rem; box-shadow: var(--shadow-3); }
-
-.vp-os #vm-readpane.vm-readpane--full .vm-reader { box-shadow: none; }
-
-/* At <=768px the sidebar is off-canvas (see the rail's transform), so the
-   overlay spans full width. */
-@media (max-width: 768px) {
-  .vp-os #vm-readpane.vm-readpane--full { left: 1.25rem; }
-
-}
 
 .vp-os .vm-list tbody tr { transition: background .14s ease; }
 
@@ -3752,21 +3743,8 @@
 
 .vp-os .vm-msg-from-meta > .muted.text-sm strong { font-weight: 600; color: var(--text-3); font-size: var(--text-xs); }
 
-/* ── Full view: a centred reading column, not an edge-to-edge stretch ───── */
-
-.vp-os #vm-readpane.vm-readpane--full { padding: 0; overscroll-behavior: contain; }
-
-.vp-os #vm-readpane.vm-readpane--full .vm-reader { max-width: 62rem; margin: 0 auto; padding: 1.6rem 2rem 3rem; }
-
-/* The action bar stays reachable however far you have read — the same rule the
-   member portal's close button needed. */
-.vp-os #vm-readpane.vm-readpane--full .vm-actions,
-.vp-os #vm-readpane.vm-readpane--full .vm-reader-top { position: sticky; top: 0; z-index: 3; background: var(--bg-surface); padding-top: .75rem; padding-bottom: .75rem; margin-bottom: 0; }
-
-.vp-os #vm-readpane.vm-readpane--full .vm-reader-top { border-bottom: 1px solid var(--border); }
 
 @media (max-width: 768px) {
-  .vp-os #vm-readpane.vm-readpane--full .vm-reader { padding: 1.1rem 1.15rem 2.5rem; }
 
   .vp-os .vm-msg-subject { font-size: 20px; }
 
@@ -5735,6 +5713,17 @@
   .vp-os[data-ui="still-air"] .vm-split > .vm-readpane:has(.vm-reader) { position: absolute; inset: 0; z-index: 2; background: var(--surface-1); }
 }
 
+/* Full width (pipeline 3y) is the narrow layout's screens at any width: the
+   message pushed over the list, Mail's sidebar kept, back to the list by the
+   bar's back button. admin-os-mail.js sets <body data-mx-screens> when the
+   window is narrower than three columns, when the person reads full width
+   (Reading), or while one message is widened; the screen rules below key on
+   it, so all three are one mechanism. A message already over the list has
+   nothing to widen. */
+.vp-os[data-ui="still-air"][data-mx-screens] .mx-widen { display: none; }
+.vp-os[data-ui="still-air"][data-mx-screens] .sa-content > .vm-split { grid-template-columns: minmax(0, 1fr); position: relative; }
+.vp-os[data-ui="still-air"][data-mx-screens] .vm-split > .vm-inbox-list { border-right: 0; }
+
 /* The sidebar: who, the folders and views, the rest of Mail folded, the foot. */
 .vp-os[data-ui="still-air"] .mx-account {
   display: flex; align-items: center; gap: var(--space-4); padding: var(--space-2) 10px var(--space-5);
@@ -5805,6 +5794,11 @@
 .vp-os[data-ui="still-air"] .mx-more[open] > summary { color: var(--text-1); }
 .vp-os[data-ui="still-air"] .mx-foot { display: flex; flex-direction: column; gap: 1px; margin-top: auto; padding-top: var(--space-4); border-top: 1px solid var(--border-1); }
 .vp-os[data-ui="still-air"] .mx-foot > button.sa-appside__item { width: 100%; border: 0; background: none; cursor: pointer; text-align: left; }
+/* Reading (pipeline 3y) sits at the sidebar's foot, so its menu opens above
+   it, from its left edge; the checked choice is ticked like the editor's. */
+.vp-os[data-ui="still-air"] .mx-reading > summary { list-style: none; cursor: pointer; }
+.vp-os[data-ui="still-air"] .mx-reading > summary::-webkit-details-marker { display: none; }
+.vp-os[data-ui="still-air"] .mx-reading > .sa-pop__panel { top: auto; bottom: calc(100% + 8px); left: 0; right: auto; min-width: 220px; transform-origin: bottom left; }
 .vp-os[data-ui="still-air"] .mx-storage { padding: var(--space-4) 10px var(--space-2); }
 .vp-os[data-ui="still-air"] .mx-storage__row { display: flex; justify-content: space-between; gap: var(--space-3); font: var(--type-small); color: var(--text-2); }
 .vp-os[data-ui="still-air"] .sa-meter__fill--warn { fill: var(--warn); }
@@ -6015,6 +6009,10 @@
   min-height: 56px; padding: 0 var(--space-6); background: var(--surface-1); border-bottom: 1px solid var(--border-1);
 }
 .vp-os[data-ui="still-air"] .mx-rtools__group { display: flex; align-items: center; gap: var(--space-1); }
+/* A reader narrower than its tools (three columns at a large zoom) wraps them
+   onto a second row. Unwrapped, the row could not shrink, so the reader
+   scrolled sideways and More sat off its edge. */
+.vp-os[data-ui="still-air"] .mx-rtools { flex-wrap: wrap; row-gap: var(--space-1); padding-block: var(--space-2); }
 .vp-os[data-ui="still-air"] .mx-rtools__fill { flex: 1; }
 .vp-os[data-ui="still-air"] .mx-rtools__sep { width: 1px; height: 18px; margin: 0 var(--space-2); background: var(--border-1); }
 .vp-os[data-ui="still-air"] .mx-rtools__pos { font: var(--type-small); color: var(--text-3); margin: 0 var(--space-2); font-variant-numeric: tabular-nums; }
@@ -6732,8 +6730,8 @@
 
 /* The More menu: the editor's modes are checked items, its keys beside them. */
 .vp-os[data-ui="still-air"] .editor-more .sa-menu { width: 260px; }
-.vp-os[data-ui="still-air"] .editor-more .sa-menu__item::before { content: ""; flex: none; width: 14px; font: var(--type-small); color: var(--accent); text-align: center; }
-.vp-os[data-ui="still-air"] .editor-more .sa-menu__item[aria-checked="true"]::before { content: "✓"; }
+.vp-os[data-ui="still-air"] :is(.editor-more, .mx-reading) .sa-menu__item::before { content: ""; flex: none; width: 14px; font: var(--type-small); color: var(--accent); text-align: center; }
+.vp-os[data-ui="still-air"] :is(.editor-more, .mx-reading) .sa-menu__item[aria-checked="true"]::before { content: "✓"; }
 .vp-os[data-ui="still-air"] .editor-more .sa-menu__item:disabled { color: var(--text-4); background: none; cursor: default; }
 .vp-os[data-ui="still-air"] .editor-more .sa-menu__meta { margin-left: auto; }
 
@@ -6893,26 +6891,25 @@
 @keyframes mx-push-under { to { transform: translateX(-33%); opacity: 0.7; } }
 @keyframes mx-pop-out { to { transform: translateX(100%); } }
 @keyframes mx-pop-under { from { transform: translateX(-33%); opacity: 0.7; } to { transform: none; opacity: 1; } }
-@media (max-width: 1099px) {
-  .vp-os[data-ui="still-air"] .mx-rtools .mx-back { display: inline-flex; }
-  .vp-os[data-ui="still-air"]:not([data-mx-screen="message"]):not([data-mx-from="message"]) .vm-split > .vm-readpane { display: none; }
-  .vp-os[data-ui="still-air"]:is([data-mx-screen="message"], [data-mx-from="message"]) .vm-split > .vm-readpane {
-    display: block; position: absolute; inset: 0; z-index: 2; background: var(--surface-1);
-  }
-  .vp-os[data-ui="still-air"][data-mx-move="push"][data-mx-screen="message"] .vm-split > .vm-readpane { animation: mx-push-in var(--duration-major) var(--ease-move); }
-  .vp-os[data-ui="still-air"][data-mx-move="push"][data-mx-screen="message"] .vm-split > .vm-inbox-list { animation: mx-push-under var(--duration-major) var(--ease-move) forwards; }
-  .vp-os[data-ui="still-air"][data-mx-move="pop"][data-mx-from="message"] .vm-split > .vm-readpane { animation: mx-pop-out var(--duration-major) var(--ease-move) forwards; }
-  .vp-os[data-ui="still-air"][data-mx-move="pop"][data-mx-from="message"] .vm-split > .vm-inbox-list { animation: mx-pop-under var(--duration-major) var(--ease-move); }
-  /* One screen at a time: the open message is not marked in the list. Back
-     from it, its row is tinted a moment, so the eye lands where it left. */
-  .vp-os[data-ui="still-air"] .mx-row.vm-active { background: none; }
-  .vp-os[data-ui="still-air"] .mx-row.vm-active :is(.mx-row__who, .mx-row__subj-text) { color: var(--text-1); }
-  .vp-os[data-ui="still-air"] .mx-row.vm-active :is(.mx-row__time, .mx-row__pv, .mx-row__marks) { color: var(--text-3); }
-  .vp-os[data-ui="still-air"] .mx-row.vm-active .mx-thread { color: var(--text-2); background: var(--surface-press); }
-  .vp-os[data-ui="still-air"] .mx-row.vm-active .mx-row__dot { background: var(--accent); }
-  .vp-os[data-ui="still-air"] .mx-row { transition: background-color var(--duration-major) var(--ease-move); }
-  .vp-os[data-ui="still-air"] .mx-row.is-just-read { background: var(--accent-soft); }
+.vp-os[data-ui="still-air"][data-mx-screens] .mx-rtools .mx-back { display: inline-flex; }
+.vp-os[data-ui="still-air"][data-mx-screens]:not([data-mx-screen="message"]):not([data-mx-from="message"]) .vm-split > .vm-readpane { display: none; }
+.vp-os[data-ui="still-air"][data-mx-screens]:is([data-mx-screen="message"], [data-mx-from="message"]) .vm-split > .vm-readpane {
+  display: block; position: absolute; inset: 0; z-index: 2; background: var(--surface-1);
 }
+.vp-os[data-ui="still-air"][data-mx-screens][data-mx-move="push"][data-mx-screen="message"] .vm-split > .vm-readpane { animation: mx-push-in var(--duration-major) var(--ease-move); }
+.vp-os[data-ui="still-air"][data-mx-screens][data-mx-move="push"][data-mx-screen="message"] .vm-split > .vm-inbox-list { animation: mx-push-under var(--duration-major) var(--ease-move) forwards; }
+.vp-os[data-ui="still-air"][data-mx-screens][data-mx-move="pop"][data-mx-from="message"] .vm-split > .vm-readpane { animation: mx-pop-out var(--duration-major) var(--ease-move) forwards; }
+.vp-os[data-ui="still-air"][data-mx-screens][data-mx-move="pop"][data-mx-from="message"] .vm-split > .vm-inbox-list { animation: mx-pop-under var(--duration-major) var(--ease-move); }
+/* One screen at a time: the open message is not marked in the list. Back
+   from it, its row is tinted a moment, so the eye lands where it left. */
+.vp-os[data-ui="still-air"][data-mx-screens] .mx-row.vm-active { background: none; }
+.vp-os[data-ui="still-air"][data-mx-screens] .mx-row.vm-active :is(.mx-row__who, .mx-row__subj-text) { color: var(--text-1); }
+.vp-os[data-ui="still-air"][data-mx-screens] .mx-row.vm-active :is(.mx-row__time, .mx-row__pv, .mx-row__marks) { color: var(--text-3); }
+.vp-os[data-ui="still-air"][data-mx-screens] .mx-row.vm-active .mx-thread { color: var(--text-2); background: var(--surface-press); }
+.vp-os[data-ui="still-air"][data-mx-screens] .mx-row.vm-active .mx-row__dot { background: var(--accent); }
+.vp-os[data-ui="still-air"][data-mx-screens] .mx-row { transition: background-color var(--duration-major) var(--ease-move); }
+.vp-os[data-ui="still-air"][data-mx-screens] .mx-row.is-just-read { background: var(--accent-soft); }
+
 @media (max-width: 768px) {
   .vp-os[data-ui="still-air"] .sa-main:has(.vm-split) { position: relative; }
   /* The mailboxes: Mail's sidebar, as the screen above the list. */

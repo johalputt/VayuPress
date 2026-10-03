@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/johalputt/vayupress/internal/users"
+	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
 // withoutComments strips Go, CSS and HTML comments so a check cannot match the
@@ -77,17 +78,34 @@ func TestMessageBodyReadsAsProse(t *testing.T) {
 	}
 }
 
-// TestFullViewKeepsActionsReachable pins the same lesson the member portal's close
-// button taught: in a scrolling container, a control that scrolls away is a
-// control that is not there.
-func TestFullViewKeepsActionsReachable(t *testing.T) {
-	css := adminOSCSS(t)
-	i := strings.Index(css, "#vm-readpane.vm-readpane--full .vm-actions")
-	if i < 0 {
-		t.Fatal("full view must pin the action bar")
+// TestTheReaderOffersFullWidthAndPrint holds pipeline 3y. The reader beside
+// the list carries Full width (its key, w, for the command bar too) and Print
+// under More; its own page, which has the width already, has no Full width. The old full view's CSS outlived its button by a release, and the
+// test that pinned that CSS kept passing with nothing on the page to press:
+// this one reads the reader that is drawn.
+func TestTheReaderOffersFullWidthAndPrint(t *testing.T) {
+	a, holder, id := reviewerApp(t, vmail.RoleMailbox)
+	rd := a.mailReader(withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/inbox", nil), holder), "")
+	for _, pane := range []bool{true, false} {
+		card, ok := a.vayuReaderCard(rd, "Inbox", id, readerView{Pane: pane})
+		if !ok {
+			t.Fatalf("reader (pane=%v) not drawn", pane)
+		}
+		for _, want := range []string{`data-mx-widen`, `aria-label="Full width"`, `aria-keyshortcuts="w"`} {
+			if strings.Contains(card, want) != pane {
+				t.Errorf("reader (pane=%v): has %s = %v", pane, want, !pane)
+			}
+		}
+		if !strings.Contains(card, `data-vm-print`) {
+			t.Errorf("reader (pane=%v) has no Print", pane)
+		}
 	}
-	if !strings.Contains(css[i:i+400], "position: sticky") {
-		t.Error("the full-view action bar must be sticky, or it scrolls out of reach on a long message")
+	// The member portal's lesson: in a scrolling container, a control that
+	// scrolls away is a control that is not there.
+	css := adminOSCSS(t)
+	k := strings.Index(css, `.vp-os[data-ui="still-air"] .mx-rtools {`)
+	if k < 0 || !strings.Contains(css[k:k+200], "position: sticky") {
+		t.Error("the reader's tools must stick to its top, or they scroll out of reach on a long message")
 	}
 }
 

@@ -394,6 +394,17 @@ func saMailSide(m *osMailSide, more string) string {
 	if m.Admin {
 		b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/accounts/settings?user=` + qparam(m.Address) + `">` + saIcon("filter") + `<span class="sa-appside__label">Rules and replies</span></a>`)
 	}
+	if m.Reading {
+		// Reading (pipeline 3y): beside the list, or over it at full width.
+		// The person's own choice, kept on their account (POST
+		// /os/vayumail/layout) and applied at once by admin-os-mail.js.
+		opt := func(value, label string, on bool) string {
+			return `<button type="button" class="sa-menu__item" role="menuitemradio" aria-checked="` + strconv.FormatBool(on) + `" data-mx-layout-choice="` + value + `"><span class="sa-menu__text">` + label + `</span></button>`
+		}
+		b.WriteString(`<details class="sa-pop mx-reading"><summary class="sa-appside__item">` + saIcon("columns") + `<span class="sa-appside__label">Reading</span></summary>` +
+			`<div class="sa-pop__panel sa-menu" role="menu" aria-label="Open messages"><p class="sa-menu__label">Open messages</p>` +
+			opt("", "Beside the list", !m.FullOpen) + opt("full", "Full width", m.FullOpen) + `</div></details>`)
+	}
 	if m.Quota > 0 {
 		pct := int(float64(m.Used) / float64(m.Quota) * 100)
 		if pct > 100 {

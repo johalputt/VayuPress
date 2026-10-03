@@ -37,6 +37,7 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/ui"
+	"github.com/johalputt/vayupress/internal/users"
 	vkernel "github.com/johalputt/vayupress/internal/vayuos/kernel"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
@@ -1913,11 +1914,20 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	if acc := a.vayuMail.Accounts(); acc != nil {
 		side.Name = acc.FullNameFor(r.Context(), mbox)
 	}
+	if u := currentUser(r); u != nil && a.userStore != nil {
+		side.Reading = true
+		side.FullOpen = a.userStore.MailLayout(r.Context(), u.ID) == users.MailLayoutFull
+	}
 	cfg.MailSide = side
 	body.WriteString(`<span id="vm-inbox-spin" class="htmx-indicator vm-spin" aria-hidden="true">loading…</span>`)
 	// The Mail plan's panes are their own kind, "app": the fidelity plan
 	// leaves Mail's anatomy to that plan's renders (§3).
-	body.WriteString(`<div class="vm-split" data-page-kind="app">`)
+	split := `<div class="vm-split" data-page-kind="app"`
+	if side.FullOpen {
+		// Messages open over the list at full width (admin-os-mail.js).
+		split += ` data-mx-layout="full"`
+	}
+	body.WriteString(split + `>`)
 	body.WriteString(`<div id="vm-inbox-list" class="vm-inbox-list">`)
 	body.WriteString(list)
 	body.WriteString(`</div>`)

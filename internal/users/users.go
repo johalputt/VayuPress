@@ -697,3 +697,28 @@ func newID() string {
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
 }
+
+// MailLayout is how this person reads mail: "" beside the list, or "full" for
+// a message over the list at full width. Read only when Mail is drawn, never
+// with the session, so the hot GetByID path is unchanged. SetMailLayout is the
+// only writer, and writes nothing else.
+func (s *Store) MailLayout(ctx context.Context, userID string) string {
+	var v string
+	if err := s.reader.QueryRowContext(ctx, `SELECT COALESCE(mail_layout,'') FROM users WHERE id=?`, userID).Scan(&v); err != nil {
+		return ""
+	}
+	return v
+}
+
+// MailLayoutFull is the one layout besides the default.
+const MailLayoutFull = "full"
+
+// SetMailLayout stores how userID reads mail; anything but MailLayoutFull is
+// the default, so no other value reaches the column.
+func (s *Store) SetMailLayout(ctx context.Context, userID, layout string) error {
+	if layout != MailLayoutFull {
+		layout = ""
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE users SET mail_layout=? WHERE id=?`, layout, userID)
+	return err
+}

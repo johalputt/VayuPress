@@ -48,7 +48,9 @@
     // the list comes first and the newest message waits, unread, behind it.
     if (!peek || !reader.getClientRects().length) return;
     peekTimer = setTimeout(function () {
-      if (!document.body.contains(reader)) return;
+      // Still on screen when the time is up: the layout may have put the list
+      // over it since (Reading set to full width is settled after this runs).
+      if (!document.body.contains(reader) || !reader.getClientRects().length) return;
       var body = new URLSearchParams({ action: 'mark', mark: 'read', id: peek, user: reader.getAttribute('data-mx-user') || '', folder: reader.getAttribute('data-mx-folder') || '' });
       fetch('/os/vayumail/inbox/action', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrfToken(), 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
         .then(function (r) {
@@ -205,17 +207,25 @@
     }).catch(fallBack);
   });
 
-  // ── Narrower than three columns: screens (Mail plan §7, render 05) ─────────
+  // ── Screens (Mail plan §7, render 05; pipeline 3y) ────────────────────────
   // The list comes first and a message is pushed over it; on a phone the
   // mailboxes are a screen above the list. <body data-mx-screen> says which
   // is showing; data-mx-move and data-mx-from let the stylesheet play the
   // push or the pop between them (§8, item 6). Opening a message is a history
   // entry, so a phone's own back gesture comes back to the list.
+  // Messages are screens (<body data-mx-screens>) narrower than three
+  // columns, for a person who reads full width (Mail's Reading), and while
+  // one message is widened (Full width, w): one mechanism for all three.
   (function () {
     var split = document.querySelector('.vm-split');
     if (!split) return;
     var narrow = window.matchMedia('(max-width: 1099px)');
     var body = document.body, pushed = false, moveTimer = null;
+    var full = split.getAttribute('data-mx-layout') === 'full', wide = false;
+    function screensOn() { return narrow.matches || full || wide; }
+    function sync() { body.toggleAttribute('data-mx-screens', screensOn()); }
+    sync();
+    if (narrow.addEventListener) narrow.addEventListener('change', sync);
     var list = document.getElementById('vm-inbox-list');
     function at() { return body.getAttribute('data-mx-screen'); }
     function move(to, dir) {
@@ -233,24 +243,52 @@
       }
     }
     body.setAttribute('data-mx-screen', 'list');
+    // Back from a widened message (always through history: widen pushes an
+    // entry) is back to the columns, the message beside the list as it was
+    // before, with no screen to pop.
+    function settle() {
+      if (!wide) return false;
+      wide = false;
+      body.setAttribute('data-mx-screen', 'list');
+      sync();
+      var w = document.querySelector('#vm-readpane [data-mx-widen]');
+      if (w && document.activeElement && document.activeElement.closest && document.activeElement.closest('.mx-rtools')) w.focus();
+      return true;
+    }
     function toList() {
       if (at() !== 'message') return;
       if (pushed) { history.back(); return; }
       move('list', 'pop');
     }
+    function widen() {
+      if (screensOn() || !document.querySelector('#vm-readpane .mx-reader')) return;
+      wide = true;
+      sync();
+      move('message', 'push');
+      history.pushState({ mx: 'message' }, '');
+      pushed = true;
+      var back = document.querySelector('#vm-readpane .mx-back');
+      if (back) back.focus();
+    }
+    // For the keys (below): w widens, and w or Escape comes back.
+    window.vmScreens = {
+      widen: widen, toList: toList,
+      open: function () { return screensOn() && at() === 'message'; },
+      wide: function () { return wide; }
+    };
     // In the capture phase, so it runs before htmx's own listener: the entry
     // under a message is often one htmx pushed for a folder, and htmx would
     // restore it by fetching the page again, throwing away the list's scroll.
     // Popping a message is this page's own move, so htmx is not asked.
     window.addEventListener('popstate', function (e) {
-      if (e.state && e.state.mx === 'message') { if (narrow.matches) { pushed = true; move('message', 'push'); } return; }
+      if (e.state && e.state.mx === 'message') { if (screensOn()) { pushed = true; move('message', 'push'); } return; }
       pushed = false;
       if (at() !== 'message') return;
       e.stopImmediatePropagation();
-      move('list', 'pop');
+      if (!settle()) move('list', 'pop');
     }, true);
     document.body.addEventListener('htmx:afterSwap', function (e) {
-      if (!e.target || e.target.id !== 'vm-readpane' || !narrow.matches) return;
+      if (!e.target || e.target.id !== 'vm-readpane' || !screensOn()) return;
       if (e.target.querySelector('.vm-reader')) {
         if (at() !== 'message') { move('message', 'push'); history.pushState({ mx: 'message' }, ''); pushed = true; }
       } else {
@@ -260,6 +298,20 @@
     document.addEventListener('click', function (e) {
       var t = e.target && e.target.closest ? e.target : null;
       if (!t) return;
+      if (t.closest('[data-mx-widen]')) { widen(); return; }
+      var choice = t.closest('[data-mx-layout-choice]');
+      if (choice) {
+        // Reading: kept on the person's account, applied at once.
+        full = choice.getAttribute('data-mx-layout-choice') === 'full';
+        document.querySelectorAll('[data-mx-layout-choice]').forEach(function (c) { c.setAttribute('aria-checked', String(c === choice)); });
+        var pop = choice.closest('details');
+        if (pop) pop.open = false;
+        if (!screensOn()) body.setAttribute('data-mx-screen', 'list');
+        sync();
+        fetch('/os/vayumail/layout', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrfToken(), 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ layout: full ? 'full' : '' }) })
+          .then(function (r) { if (!r.ok && window.vpToast) window.vpToast('Reading could not be saved.', 'error'); });
+        return;
+      }
       var go = t.closest('[data-mx-go]');
       if (go) {
         e.preventDefault();
@@ -311,27 +363,11 @@
     var pane = document.getElementById('vm-readpane');
     if (!pane || !e.target || e.target !== pane) return;
     pane.scrollTop = 0;
-    if (!pane.querySelector('.vm-reader')) pane.classList.remove('vm-readpane--full');
   });
 
-  // Reading-pane comfort controls: expand toggles a full-screen overlay for
-  // the open message (ESC collapses), print prints just the reader (see the
-  // @media print rules). Delegated so they survive HTMX swaps.
+  // Print prints just the reader (the @media print rules).
   document.addEventListener('click', function (e) {
-    if (e.target && e.target.closest && e.target.closest('[data-vm-print]')) {
-      window.print();
-      return;
-    }
-    var ex = e.target && e.target.closest ? e.target.closest('[data-vm-expand]') : null;
-    if (ex) {
-      var pane = document.getElementById('vm-readpane');
-      if (pane) pane.classList.toggle('vm-readpane--full');
-    }
-  });
-  document.addEventListener('keydown', function (e) {
-    if (e.key !== 'Escape') return;
-    var pane = document.getElementById('vm-readpane');
-    if (pane) pane.classList.remove('vm-readpane--full');
+    if (e.target && e.target.closest && e.target.closest('[data-vm-print]')) window.print();
   });
 
   function cookie(name) {
@@ -1704,7 +1740,7 @@
         ['Reply · reply all · forward', 'r · a · f'], ['Compose', 'c'], ['Search', '/'],
         ['Select the row', 'x'], ['Archive', 'e'], ['Delete', '#'], ['Snooze', 's'], ['Pin', 'p'],
         ['Mark unread', 'u'], ['Move to…', 'v'], ['Junk', '!'],
-        ['Go to Inbox · Sent · Drafts', 'g then i · s · d'], ['Switch mailbox', '⌘⇧M · Ctrl+Shift+M'], ['These keys', '?']
+        ['Full width · the list again', 'w'], ['Go to Inbox · Sent · Drafts', 'g then i · s · d'], ['Switch mailbox', '⌘⇧M · Ctrl+Shift+M'], ['These keys', '?']
       ];
       var h = '<div class="vm-help-title">Keyboard shortcuts</div><div class="vm-help-grid">';
       pairs.forEach(function (p) { h += '<span></span><span class="vm-kbd"></span>'; });
@@ -1799,6 +1835,13 @@
       var at = document.activeElement;
       if (at && at.closest && at.closest('form[data-mail-compose]')) return;
       if (e.key === '?') { e.preventDefault(); toggleHelp(); return; }
+      // w widens the open message, and w or Escape comes back to the list.
+      var sc = window.vmScreens;
+      if (sc && (e.key === 'w' || e.key === 'Escape') && document.querySelector('#vm-readpane .mx-reader')) {
+        if (e.key === 'Escape' && (!sc.open() || document.querySelector('details.sa-pop[open]'))) return;
+        if (e.key === 'w' && !sc.open()) { e.preventDefault(); sc.widen(); return; }
+        if (sc.open()) { e.preventDefault(); sc.toList(); return; }
+      }
       if (e.key === 'c') {
         // Keep the mailbox context: an admin reading someone's mailbox must not
         // silently start composing as postmaster instead.

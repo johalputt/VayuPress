@@ -201,6 +201,14 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 	nav(newerID, "chev-u", "Newer message", "k", "newer")
 	nav(olderID, "chev-d", "Older message", "j", "older")
 
+	if pane {
+		// Full width (pipeline 3y): the message is pushed over the list and
+		// takes its place, as compose's Expand does, and the bar's back button
+		// (shown whenever a message covers the list) returns to the columns.
+		// Hidden whenever the message already covers the list (admin-os-mail.js).
+		c.WriteString(`<button type="button" class="mx-tool mx-widen" data-mx-widen title="Full width (w)" aria-label="Full width"` + mailCmd("Full width", "This message", "w") + `>` + saIcon("expand") + `</button>`)
+	}
+
 	// More: the rarer things, folded.
 	view := func(label string, htmlOn, imagesOn bool) string {
 		u := msgURL(id)
@@ -527,4 +535,21 @@ func mailCmd(label, where, key string) string {
 		out += ` aria-keyshortcuts="` + esc(key) + `"`
 	}
 	return out
+}
+
+// handleVayuOSMailLayout keeps how the signed-in person opens a message
+// (Mail's Reading choice): "full" over the list at full width, anything else
+// beside it. Only their own account is written, and a session with none (the
+// API key) is refused rather than given somewhere to keep it.
+func (a *App) handleVayuOSMailLayout(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil || a.userStore == nil {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "Reading is kept on a user account, and this session has none.", "")
+		return
+	}
+	if err := a.userStore.SetMailLayout(r.Context(), u.ID, strings.TrimSpace(r.FormValue("layout"))); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "save-failed", "Reading could not be saved.", "")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

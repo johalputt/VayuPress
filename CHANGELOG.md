@@ -8,6 +8,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Read a message full width, or always.** Full width in a message's tools
+  (or `w`) puts it over the list, as compose's Expand does, with Mail's
+  sidebar kept; the bar's back button, Escape, `w` or the browser's Back
+  return to the columns. Reading, in Mail's sidebar, opens every message that
+  way: the list fills the page, a message opens over it, and back gives the
+  list. The choice is kept on your account, so it follows you to every
+  browser. The full view the old reader had was lost when the reader was
+  redesigned; its leftover script and styles are gone with this.
+
+### Fixed
+
+- **A message's tools stay in reach on a laptop.** Three columns at a 14-inch
+  screen left the reader narrower than its tools, so it scrolled sideways and
+  More (with Print in it) sat past its edge. The tools wrap onto a second row
+  instead.
+- **Print prints the message.** The print rules were older than the reader and
+  printed the page's address with none of the mail. A message now prints
+  whole, without the console, its tools or the reply field.
+
 ## [3.17.95] — 2026-10-03
 
 Every console page now keeps to the Still Air page grammar, and the lint

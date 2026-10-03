@@ -553,6 +553,106 @@ test("an attachment downloads with its ring, and a new one slides in", async ({ 
   await expect(page.locator("[data-mx-compose-host] .vm-attach-chip").last()).toHaveClass(/is-new/);
 });
 
+// A reader narrower than its tools (three columns on a laptop) keeps every
+// tool inside it: they wrap, and nothing scrolls sideways (pipeline 3y: More,
+// and Print in it, sat past the reader's edge on a 14-inch screen).
+test("a narrow reader keeps its tools in reach", async ({ page }) => {
+  await openInbox(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const pane = page.locator("#vm-readpane");
+  await expect(pane.locator(".mx-reader")).toBeVisible();
+  const fit = await pane.evaluate((p) => {
+    const r = p.getBoundingClientRect();
+    const out = [...p.querySelectorAll(".mx-rtools .mx-tool, .mx-rtools .mx-rtools__pos")].filter((t) => t.getClientRects().length && t.getBoundingClientRect().right > r.right + 1);
+    return { sideways: p.scrollWidth - p.clientWidth, past: out.map((t) => t.getAttribute("aria-label") || t.textContent) };
+  });
+  expect(fit.sideways, "the reader scrolls sideways").toBe(0);
+  expect(fit.past, "tools past the reader's edge").toEqual([]);
+  expect(await pane.locator(".mx-rtools__pos").evaluate((e) => e.getClientRects().length), "the position breaks across lines").toBe(1);
+});
+
+// Full width (pipeline 3y), as compose's Expand: the open message is pushed
+// over the list and takes its place, Mail's sidebar kept, and the bar's back
+// button, Escape, w or the browser's Back return to the columns.
+test("a message opens full width and comes back to the columns", async ({ page }) => {
+  await openInbox(page);
+  const pane = page.locator("#vm-readpane");
+  const list = page.locator("#vm-inbox-list");
+  // What a click at the middle of the list would land on.
+  const over = () => list.evaluate((l) => { const b = l.getBoundingClientRect(); const at = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return at && at.closest("#vm-readpane") ? "reader" : at && at.closest("#vm-inbox-list") ? "list" : "other"; });
+  expect(await over()).toBe("list");
+  const subject = await pane.locator(".mx-subject").textContent();
+  await pane.getByRole("button", { name: "Full width" }).click();
+  await expect.poll(over, { message: "the message is not over the list" }).toBe("reader");
+  await expect(page.locator(".sa-appside .mx-account")).toBeVisible();
+  await expect(pane.locator(".mx-subject")).toHaveText(subject);
+  await expect(pane.getByRole("button", { name: "Full width" })).toBeHidden();
+  await expect(pane.locator(".mx-back")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect.poll(over, { message: "Escape did not give the list back" }).toBe("list");
+  await expect.poll(() => page.evaluate(() => document.body.hasAttribute("data-mx-screens")), { message: "the columns did not come back" }).toBe(false);
+  await expect(pane.locator(".mx-reader"), "the message did not stay open beside the list").toBeVisible();
+  await expect(pane.locator(".mx-subject")).toHaveText(subject);
+  await page.keyboard.press("w");
+  await expect.poll(over).toBe("reader");
+  await page.goBack();
+  await expect.poll(over, { message: "Back did not give the list back" }).toBe("list");
+  await expect(page).toHaveURL(/\/os\/vayumail\/inbox/);
+});
+
+// Reading set to full width (pipeline 3y) is the person's own choice, kept on
+// their account; this run signs in with the API key, which has none, so the
+// page is served as the server draws it for that person (the server's side is
+// TestTheMailboxOpensFullWidthForWhoChoseIt). The list comes first at full
+// width, the newest message waits unread behind it, a message opens over it,
+// and Escape gives the list back.
+test("reading full width: the list first, a message over it", async ({ page }) => {
+  await newestUnread(page);
+  await page.route(/\/os\/vayumail\/inbox\?user=ankush$/, async (route) => {
+    const res = await route.fetch();
+    route.fulfill({ response: res, body: (await res.text()).replace('<div class="vm-split" data-page-kind="app">', '<div class="vm-split" data-page-kind="app" data-mx-layout="full">') });
+  });
+  await openInbox(page);
+  const pane = page.locator("#vm-readpane");
+  const list = page.locator("#vm-inbox-list");
+  const split = await page.locator(".vm-split").evaluate((e) => e.getBoundingClientRect().width);
+  await expect(pane).toBeHidden();
+  expect(Math.abs((await list.evaluate((e) => e.getBoundingClientRect().width)) - split), "the list is not full width").toBeLessThan(2);
+  await page.waitForTimeout(2600);
+  await expect(list.locator(".mx-row").filter({ has: page.locator(".mx-row__dot") }).first(), "the newest message was read behind the list").toHaveClass(/is-unread/);
+  await list.locator(".mx-row__open").nth(1).click();
+  await expect(pane.locator(".mx-reader")).toBeVisible();
+  expect(Math.abs((await pane.evaluate((e) => e.getBoundingClientRect().width)) - split), "the message is not full width").toBeLessThan(2);
+  await expect(pane.getByRole("button", { name: "Full width" })).toBeHidden();
+  await page.keyboard.press("Escape");
+  await expect(pane).toBeHidden();
+  await expect(list).toBeVisible();
+});
+
+// Print prints the open message, all of it, and nothing of the console
+// (pipeline 3y): the old print rules left the reader in its clipped column,
+// and the page came out with its address and no mail.
+test("print gives the message and nothing else", async ({ page }) => {
+  await openInbox(page);
+  const reader = page.locator("#vm-readpane .mx-reader");
+  await expect(reader).toBeVisible();
+  const words = (await reader.locator(".mx-msg__body").innerText()).trim().slice(0, 40);
+  // A window shorter than the message, so a column that clips would show it.
+  await page.setViewportSize({ width: 1440, height: 200 });
+  await page.emulateMedia({ media: "print" });
+  const printed = await reader.evaluate((r) => ({
+    others: [...document.querySelectorAll("body *")].filter((e) => e.getClientRects().length && !r.contains(e) && !e.contains(r)).map((e) => e.className || e.tagName).slice(0, 5),
+    tools: !!r.querySelector(".mx-rtools").getClientRects().length,
+    clipped: [r, ...(function up(n, a) { return n ? up(n.parentElement, a.concat(n)) : a; })(r.parentElement, [])].some((n) => n.scrollHeight > n.clientHeight + 1 && getComputedStyle(n).overflowY !== "visible"),
+    text: r.innerText,
+  }));
+  await page.emulateMedia({ media: "screen" });
+  expect(printed.others, "the console prints beside the message").toEqual([]);
+  expect(printed.tools, "the message's tools print").toBe(false);
+  expect(printed.clipped, "the message is clipped by a scrolling column").toBe(false);
+  expect(printed.text).toContain(words);
+});
+
 // On a phone Mail is three screens (Mail plan §7, render 05; motion §8 item
 // 6): the list first, the mailboxes above it, a message pushed over it with
 // its own bar where the tab bar was. The newest message, not on screen, is

@@ -575,6 +575,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/message", a.handleVayuOSMessage)
 		pr.Get("/os/vayumail/message/body", a.handleVayuOSMessageBody)
 		pr.Get("/os/vayumail/switcher", a.handleVayuOSMailSwitcher)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/layout", a.handleVayuOSMailLayout)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/sent", a.handleVayuOSSent)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/compose", a.handleVayuOSCompose)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/compose/sheet", a.handleVayuOSComposeSheet)
@@ -1521,6 +1522,10 @@ type osMailSide struct {
 	Admin       bool
 	Folders     string
 	Used, Quota int64 // bytes; Quota 0 means no limit, and no meter
+	// Reading: how the signed-in person opens a message (users.MailLayout),
+	// offered only to a session with an account to keep it on.
+	Reading  bool
+	FullOpen bool
 }
 
 // osSite is one hosted site in the switcher.
