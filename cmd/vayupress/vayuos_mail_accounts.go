@@ -62,22 +62,32 @@ func (a *App) vayuAccountsList(ctx context.Context) string {
 	}
 
 	var b strings.Builder
-	// Stats strip — an at-a-glance enterprise summary that refreshes on every swap.
-	b.WriteString(`<div class="stat-grid">`)
-	b.WriteString(vmStatTile(strconv.Itoa(len(accs)), "Mailboxes", ""))
-	b.WriteString(vmStatTile(strconv.Itoa(active), "Active", ""))
-	b.WriteString(vmStatTile(strconv.Itoa(twofa), "2FA on", ""))
-	pendCls := ""
-	if pending > 0 {
-		pendCls = "warn"
-	}
-	b.WriteString(vmStatTile(strconv.Itoa(pending), "Devices pending", pendCls))
-	b.WriteString(vmStatTile(strconv.FormatFloat(usedTotal, 'f', 1, 64)+" MB", "Storage used", ""))
-	b.WriteString(`</div>`)
-
+	// What the list holds, in a sentence that names only what is there: a
+	// row of zeros reads as a dashboard with nothing on it (the grammar's
+	// rule on empty figures). It refreshes with the list on every swap.
 	if len(accs) == 0 {
-		b.WriteString(`<div class="card empty-state">No mail accounts yet. Create one above — it can sign in over SMTP/IMAP/POP3 straight away.</div>`)
+		b.WriteString(`<p class="vm-acct-empty">No mailboxes yet. New mailbox makes one, and it can sign in over SMTP, IMAP and POP3 at once.</p>`)
 		return b.String()
+	}
+	var said []string
+	if twofa > 0 {
+		said = append(said, strconv.Itoa(twofa)+" with two-factor sign-in")
+	}
+	if inactive := len(accs) - active; inactive > 0 {
+		said = append(said, strconv.Itoa(inactive)+" turned off")
+	}
+	line := ""
+	if len(said) > 0 {
+		line = strings.Join(said, ", ") + ". "
+	}
+	if usedTotal > 0 {
+		line += strconv.FormatFloat(usedTotal, 'f', 1, 64) + " MB of mail stored."
+	}
+	if pending > 0 {
+		line += " " + strconv.Itoa(pending) + " device" + plural(pending) + " waiting for approval, below."
+	}
+	if line = strings.TrimSpace(line); line != "" {
+		b.WriteString(`<p class="vm-acct-summary">` + esc(line) + `</p>`)
 	}
 
 	// Group the mailboxes by domain (VayuDomains): the primary first, then each
@@ -112,9 +122,9 @@ func (a *App) vayuAccountsList(ctx context.Context) string {
 	}
 	for _, d := range order {
 		list := groups[d]
-		role := `<span class="badge badge--muted">Secondary</span>`
+		role := `<span class="vm-dom-role">Secondary</span>`
 		if d == primary {
-			role = `<span class="badge badge--accent">Primary</span>`
+			role = `<span class="vm-dom-role">Primary</span>`
 		}
 		unit := "mailboxes"
 		if len(list) == 1 {
@@ -147,9 +157,9 @@ func (a *App) vayuCardVacation(ctx context.Context, ac vmail.Account) string {
 	ar := a.vayuMail.Accounts().AutoreplyFor(ctx, ac.Email)
 	state := `<span class="muted text-xs">off</span>`
 	if ar.Active(time.Now()) {
-		state = `<span class="badge badge--ok">Active</span>`
+		state = string(ui.State("ok", "Active"))
 	} else if ar.Enabled {
-		state = `<span class="badge badge--warn">Scheduled</span>`
+		state = string(ui.State("warn", "Scheduled"))
 	}
 	checked := ""
 	if ar.Enabled {
@@ -199,7 +209,7 @@ func (a *App) vayuCardAliases(ctx context.Context, ac vmail.Account) string {
 	}
 	state := `<span class="muted text-xs">none</span>`
 	if len(mine) > 0 {
-		state = `<span class="badge badge--ok">` + strconv.Itoa(len(mine)) + `</span>`
+		state = `<span class="vm-count">` + strconv.Itoa(len(mine)) + `</span>`
 	}
 
 	var b strings.Builder
@@ -232,7 +242,7 @@ func (a *App) vayuCardFilters(ctx context.Context, ac vmail.Account) string {
 
 	state := `<span class="muted text-xs">none</span>`
 	if len(rules) > 0 {
-		state = `<span class="badge badge--ok">` + strconv.Itoa(len(rules)) + `</span>`
+		state = `<span class="vm-count">` + strconv.Itoa(len(rules)) + `</span>`
 	}
 
 	var b strings.Builder
@@ -272,12 +282,6 @@ func (a *App) vayuCardFilters(ctx context.Context, ac vmail.Account) string {
 	return b.String()
 }
 
-// vmStatTile renders one figure (ui.Figure). tone "" is neutral, "warn" marks
-// a value that wants operator attention (e.g. devices awaiting approval).
-func vmStatTile(value, label, tone string) string {
-	return string(ui.Figure{Value: value, Label: label, Tone: tone}.Cell())
-}
-
 // vayuAccountCard renders one mailbox as a collapsible <details> card: a scannable
 // summary (address, role, status, 2FA, storage) with every control revealed on
 // expand. Inline controls are HTMX; the prompt-driven ones keep their data-*
@@ -306,7 +310,7 @@ func (a *App) vayuCardPGP(ac vmail.Account) string {
 		// A mailbox created before VayuPGP was enabled has no key yet. Say so
 		// plainly rather than showing an empty box that looks broken.
 		return `<details class="vm-ooo vm-acct__sub"><summary><span class="field-label">PGP public key</span> ` +
-			`<span class="badge badge--muted">No key</span></summary>` +
+			string(ui.State("neutral", "No key")) + `</summary>` +
 			`<span class="muted text-sm">No key yet for this mailbox. Keys are generated automatically on account creation; ` +
 			`enable VayuPGP and re-create or re-save this account to mint one.</span></details>`
 	}
@@ -328,7 +332,7 @@ func (a *App) vayuCardPGP(ac vmail.Account) string {
 	// the screen on every card.
 	return `<details class="vm-ooo vm-acct__sub vm-pgp">` +
 		`<summary><span class="field-label">PGP public key</span> ` +
-		`<span class="badge badge--ok">Key active</span></summary>` +
+		string(ui.State("ok", "Key active")) + `</summary>` +
 		`<div class="vm-row"><span class="field-label">Fingerprint</span>` +
 		`<code class="mono text-xs">` + esc(pk.Fingerprint) + `</code></div>` +
 		`<textarea class="input vm-pgp__armor mono text-xs" readonly rows="6" ` +
@@ -395,13 +399,13 @@ func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
 	if roleName == "" {
 		roleName = "mailbox"
 	}
-	statusBadge := `<span class="badge badge--ok">Active</span>`
+	statusBadge := string(ui.State("ok", "Active"))
 	if !ac.Active {
-		statusBadge = `<span class="badge badge--warn">Disabled</span>`
+		statusBadge = string(ui.State("warn", "Disabled"))
 	}
-	twofaBadge := `<span class="badge badge--muted">2FA off</span>`
+	twofaBadge := string(ui.State("neutral", "2FA off"))
 	if ac.TOTPEnabled {
-		twofaBadge = `<span class="badge badge--ok">2FA on</span>`
+		twofaBadge = string(ui.State("ok", "2FA on"))
 	}
 
 	// Storage: a native <meter> (CSP-safe, no inline style, survives HTMX swaps)
@@ -494,7 +498,7 @@ func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
 	}
 
 	var c strings.Builder
-	c.WriteString(`<details class="vm-acct card">`)
+	c.WriteString(`<details class="vm-acct">`)
 	c.WriteString(`<summary class="vm-acct__sum">`)
 	c.WriteString(avatar)
 	c.WriteString(`<span class="vm-acct__id"><span class="vm-acct__email mono">` + email + `</span>`)
@@ -502,7 +506,7 @@ func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
 		c.WriteString(`<span class="vm-acct__name muted text-sm">` + esc(ac.FullName) + `</span>`)
 	}
 	c.WriteString(`</span>`)
-	c.WriteString(`<span class="vm-acct__badges"><span class="badge badge--info">` + esc(titleFirst(roleName)) + `</span>` + statusBadge + twofaBadge + `</span>`)
+	c.WriteString(`<span class="vm-acct__badges"><span class="vm-acct__role">` + esc(titleFirst(roleName)) + `</span>` + statusBadge + twofaBadge + `</span>`)
 	c.WriteString(`<span class="vm-acct__store">` + storageSummary + `</span>`)
 	c.WriteString(`<span class="vm-acct__chev" aria-hidden="true"></span>`)
 	c.WriteString(`</summary>`)
@@ -680,7 +684,7 @@ func (a *App) vayuCardHandover(ctx context.Context, ac vmail.Account) string {
 			}
 		}
 		return `<details class="vm-ooo vm-acct__sub"><summary>` +
-			`<span class="field-label">Ownership</span> <span class="badge badge--ok">Handed over</span></summary>` +
+			`<span class="field-label">Ownership</span> ` + string(ui.State("ok", "Handed over")) + `</summary>` +
 			`<p class="muted text-xs">This mailbox belongs to its holder` + esc(when) + `. You cannot open it from
       here, sign in to it with your own password, reset its password, clear its second factor, mint a
       credential for it, or point its mail elsewhere. This cannot be reversed — the database refuses to
@@ -712,7 +716,7 @@ func (a *App) vayuCardHandover(ctx context.Context, ac vmail.Account) string {
 	}
 
 	return `<details class="vm-ooo vm-acct__sub"><summary>` +
-		`<span class="field-label">Ownership</span> <span class="badge badge--muted">You administer this</span></summary>` +
+		`<span class="field-label">Ownership</span> ` + string(ui.State("neutral", "You administer this")) + `</summary>` +
 		`<p class="muted text-xs">Handing this mailbox to its holder ends <b>your</b> access to it. You will no
     longer be able to read it from the panel, sign in to it with your own console password over IMAP or
     POP3, reset its password, turn off its second factor, create an app password for it, or set

@@ -63,8 +63,11 @@ function anatomy() {
   // GET changes nothing. A list's inspector edits the selected item where its
   // values are shown (render 07: a file's alt text), which rule 5 allows; the
   // rule is that making something new rises in a sheet.
+  // A field hidden from assistive technology (aria-hidden, as PGP's armour is
+  // for its Copy button) is a page's machinery, not a form a person fills in.
   const inlineFields = all.filter((e) =>
     e.matches("input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=search]), textarea, select") &&
+    e.getAttribute("aria-hidden") !== "true" &&
     !e.closest("dialog, [role=dialog], .sa-sheet, form[method=get i], [data-list-inspector]")).length;
   const crumb = !!document.querySelector(".sa-crumb, .sa-apphead, [aria-label='You are here'], [aria-label='Breadcrumb']");
   const kinds = [...main.querySelectorAll("[data-page-kind]")].map((e) => e.getAttribute("data-page-kind"));
@@ -140,5 +143,34 @@ test("every console page keeps to the page grammar, or at least no further from 
   fs.writeFileSync(path.join(test.info().outputDir, "anatomy.json"), JSON.stringify(counts, null, 2));
   if (process.env.ANATOMY_UPDATE) fs.writeFileSync(BASELINE, JSON.stringify(counts, null, 2) + "\n");
 
+  expect(findings).toEqual([]);
+});
+
+// Mail's administration keeps to the page grammar where it is real: on the
+// install with Mail on. The walk above sees these pages as their setup state,
+// since Mail is off on its install, so they are held to the rules here,
+// outright (fidelity plan §6a), each as the tab it is.
+const MAIL_ADMIN = ["/os/vayumail", "/os/vayumail/accounts", "/os/vayumail/dns", "/os/vayumail/pgp", "/os/vayumail/security"];
+test("Mail's administration keeps to the page grammar, as tabs", async ({ page }) => {
+  const base = process.env.MAIL_BASE_URL;
+  if (!base) throw new Error("MAIL_BASE_URL is not set: boot the second install (.github/actions/boot-vayupress)");
+  test.setTimeout(120000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  const findings = [];
+  for (const href of MAIL_ADMIN) {
+    // The DNS tab runs its lookups as it renders; the fixture's domain has no
+    // records, so they fail fast, and the page is measured once they are in.
+    await page.goto(base + href);
+    await page.waitForLoadState("networkidle");
+    const a = await page.evaluate(anatomy);
+    for (const f of ruleBreaks(a)) findings.push(`${href}: ${f}`);
+    if (a.crumb) findings.push(`${href}: a breadcrumb`);
+    if (a.titles !== 1) findings.push(`${href}: ${a.titles} titles`);
+    const current = await page.locator('main nav.tabs a[aria-current="page"]').evaluateAll((as) => as.map((x) => x.getAttribute("href")));
+    if (current.join() !== href) findings.push(`${href}: the current tab is ${JSON.stringify(current)}`);
+    const side = await page.locator('.sa-appside a[aria-current="page"] .sa-appside__label').allTextContents();
+    if (side.join() !== "Administration") findings.push(`${href}: the sidebar marks ${JSON.stringify(side)}`);
+  }
   expect(findings).toEqual([]);
 });

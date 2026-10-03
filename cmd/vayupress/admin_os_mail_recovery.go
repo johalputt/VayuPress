@@ -202,11 +202,16 @@ func (a *App) recoveryCardHTML(r *http.Request, nonce string, mailboxes []string
 	total := len(mailboxes)
 	covered := total - len(stuck)
 
-	// The chip states the honest number. "Recovery enabled" would be true of the
-	// feature and false of the mailboxes, which is the distinction that matters.
-	chip := monChip(len(stuck) == 0,
-		strconv.Itoa(covered)+"/"+strconv.Itoa(total)+" covered",
-		strconv.Itoa(len(stuck))+" cannot be recovered")
+	// The state says the honest number. "Recovery enabled" would be true of the
+	// feature and false of the mailboxes, which is the distinction that matters;
+	// with no mailbox there is nothing covered to be proud of.
+	chip := string(ui.State("ok", strconv.Itoa(covered)+"/"+strconv.Itoa(total)+" covered"))
+	switch {
+	case total == 0:
+		chip = string(ui.State("neutral", "No mailboxes yet"))
+	case len(stuck) > 0:
+		chip = string(ui.State("warn", strconv.Itoa(len(stuck))+" cannot be recovered"))
+	}
 
 	var b strings.Builder
 	b.WriteString(`<p class="text-sm muted mb-4">Recovery has to be enrolled <strong>before</strong> a password is forgotten.` +
@@ -220,8 +225,13 @@ func (a *App) recoveryCardHTML(r *http.Request, nonce string, mailboxes []string
 	} else if len(stuck) == 0 {
 		b.WriteString(`<p class="text-sm">✓ Every mailbox has at least one working recovery factor.</p>`)
 	} else {
+		// "mailboxes": plural() only adds an s.
+		noun := " mailboxes"
+		if len(stuck) == 1 {
+			noun = " mailbox"
+		}
 		b.WriteString(`<p class="text-sm"><strong>` + strconv.Itoa(len(stuck)) +
-			`</strong> mailbox` + plural(len(stuck)) + ` cannot be recovered at all. If the holder forgets
+			`</strong>` + noun + ` cannot be recovered at all. If the holder forgets
 their password, only a server operator with shell access can help:</p><ul class="rec-list">`)
 		for _, e := range stuck {
 			b.WriteString(`<li><code>` + html.EscapeString(e) + `</code></li>`)
@@ -237,7 +247,7 @@ so a reset link cannot be delivered to an outside address. <strong>Recovery code
 that works here</strong> — generate them for every mailbox.</p>`)
 	}
 
-	b.WriteString(`<p class="text-sm muted mt-4">Enrol a mailbox from <strong>its own card</strong> below —
+	b.WriteString(`<p class="text-sm muted mt-4">Enrol a mailbox from <strong>its own row</strong> below —
 recovery sits with that mailbox's other settings, next to forwarding and aliases.</p>`)
 	// Assisted-recovery queue. Shown only when someone is actually waiting: an
 	// empty section every day trains the eye to skip the one day it is not empty.
@@ -349,7 +359,7 @@ func (a *App) vayuCardRecovery(ctx context.Context, email string) string {
 
 	// The summary badge is the whole point at a glance: scanning the mailbox list
 	// should show which accounts have no way back in.
-	state := `<span class="badge badge--warn">No recovery</span>`
+	state := string(ui.State("warn", "No recovery"))
 	if st.Ready {
 		bits := []string{}
 		if st.CodesRemaining > 0 {
@@ -358,9 +368,9 @@ func (a *App) vayuCardRecovery(ctx context.Context, email string) string {
 		if st.Contact != "" {
 			bits = append(bits, "address")
 		}
-		state = `<span class="badge badge--ok">` + html.EscapeString(strings.Join(bits, " + ")) + `</span>`
+		state = string(ui.State("ok", strings.Join(bits, " + ")))
 	} else if st.ContactPending != "" {
-		state = `<span class="badge badge--warn">Unverified address</span>`
+		state = string(ui.State("warn", "Unverified address"))
 	}
 
 	var b strings.Builder

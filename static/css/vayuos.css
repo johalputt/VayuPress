@@ -7228,3 +7228,50 @@
   .vp-os[data-ui="still-air"] .vtalk-msg { max-width: 86%; }
   .vp-os[data-ui="still-air"] .vtalk-composer { margin: 0 var(--space-3) var(--space-3); }
 }
+
+/* ── Mail administration (fidelity plan §6a) ───────────────────────────────
+   Overview, Accounts, DNS, PGP keys and Security as tabs. Sections are
+   hairlines, not cards; a state is a dot and a word; New mailbox rises in a
+   sheet. */
+.vp-os[data-ui="still-air"] .sa-list__note { margin: var(--space-3) 0 0; font: var(--type-small); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .vm-pgp__who { display: block; font: var(--type-body); color: var(--text-1); overflow-wrap: anywhere; }
+.vp-os[data-ui="still-air"] .vm-pgp__wkd { display: block; margin-top: 2px; font: var(--type-mono); font-size: 11px; color: var(--text-3); overflow-wrap: anywhere; }
+.vp-os[data-ui="still-air"] .vm-acct-new { display: grid; gap: var(--space-4); }
+.vp-os[data-ui="still-air"] .vm-acct-new .vm-addr { display: flex; align-items: center; gap: var(--space-2); }
+.vp-os[data-ui="still-air"] .vm-acct-new .vm-addr .input { flex: 1; min-width: 0; }
+.vp-os[data-ui="still-air"] .sa-sheet__foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-3); padding-top: var(--space-2); }
+.vp-os[data-ui="still-air"] .sa-sheet__foot .field-hint { margin-right: auto; }
+.vp-os[data-ui="still-air"] :is(.vm-acct-summary, .vm-acct-empty) { margin: 0 0 var(--space-4); font: var(--type-body); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .vm-acct__role { font: var(--type-small); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .vm-dom-role { font: var(--type-small); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .vm-count { font: var(--type-small); font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.vp-os[data-ui="still-air"] .vm-devices { margin-top: var(--space-6); padding-top: var(--space-4); border-top: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .vm-devices__title { margin: 0; font: var(--type-heading); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .vm-devices__sub { margin: var(--space-5) 0 var(--space-2); font: var(--type-strong); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .vm-wizard { margin-bottom: var(--space-6); }
+.vp-os[data-ui="still-air"] .vm-wizard-head { display: grid; gap: var(--space-1); justify-items: start; }
+.vp-os[data-ui="still-air"] .vm-wizard-lead { margin: 0; font: var(--type-body); color: var(--text-2); }
+/* The DNS sections fold as hairline rows, not as cards. */
+.vp-os[data-ui="still-air"] .vm-sec { border: 0; border-top: 1px solid var(--border-1); border-radius: 0; box-shadow: none; background: none; }
+.vp-os[data-ui="still-air"] .vm-sec[open] { box-shadow: none; }
+.vp-os[data-ui="still-air"] .vm-sec__head { padding: var(--space-3) 0; }
+.vp-os[data-ui="still-air"] .vm-sec__head:hover { background: none; color: var(--text-1); }
+.vp-os[data-ui="still-air"] .vm-sec__body { padding: 0 0 var(--space-4); }
+/* A record's type is a code, not a state: no fill of its own. */
+.vp-os[data-ui="still-air"] .vm-tag { padding: 0; background: none; color: var(--text-1); font: var(--type-mono); font-weight: 600; }
+/* Each mailbox is a row that opens in place, not a card. */
+.vp-os[data-ui="still-air"] .vm-acct-list { display: block; }
+.vp-os[data-ui="still-air"] .vm-acct { margin: 0; border: 0; border-top: 1px solid var(--border-1); border-radius: 0; box-shadow: none; background: none; }
+.vp-os[data-ui="still-air"] .vm-acct:last-child { border-bottom: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .vm-acct[open] { box-shadow: none; }
+.vp-os[data-ui="still-air"] .vm-acct__sum { padding: var(--space-3) 0; }
+.vp-os[data-ui="still-air"] .vm-acct__sum:hover { background: none; }
+.vp-os[data-ui="still-air"] .vm-wizard { margin-top: var(--space-5); }
+/* PGP keys: the directory address breaks anywhere, inside a bounded first
+   column, so the table never runs past the page. The td:first-child prefix
+   outranks the table rule that keeps first-column code on one line: an
+   identifier there must not wrap, but a 100-character URL has to. */
+.vp-os[data-ui="still-air"] .vm-pgp__id { max-width: 380px; min-width: 0; }
+.vp-os[data-ui="still-air"] td:first-child .vm-pgp__wkd { white-space: normal; word-break: break-all; }
+.vp-os[data-ui="still-air"] .vm-pgp__fp { display: block; max-width: 25ch; font-size: 12px; color: var(--text-2); }
+.vp-os[data-ui="still-air"] .vm-pgp { display: inline-flex; gap: var(--space-2); white-space: nowrap; }

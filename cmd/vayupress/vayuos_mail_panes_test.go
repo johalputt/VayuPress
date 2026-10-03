@@ -56,7 +56,9 @@ func TestTheMailSidebarIsTheOpenMailbox(t *testing.T) {
 	// The rest of Mail is folded away, and the section that opened the
 	// mailbox is not among it.
 	more := side[strings.Index(side, `<details class="mx-more">`):strings.Index(side, `<div class="mx-foot">`)]
-	if !strings.Contains(more, `href="/os/vayumail/compose"`) || !strings.Contains(more, `href="/os/vayumail/accounts"`) || strings.Contains(more, `>Mailbox</span>`) {
+	// Administration is one item there, as in Mail's own sidebar.
+	if !strings.Contains(more, `href="/os/vayumail/compose"`) || !strings.Contains(more, `href="/os/vayumail"`) || !strings.Contains(more, `>Administration</span>`) ||
+		strings.Contains(more, `href="/os/vayumail/accounts"`) || strings.Contains(more, `>Mailbox</span>`) {
 		t.Errorf("the rest of Mail is not folded under the mailbox:\n%s", more)
 	}
 	// The foot: contacts, the mailbox's rules, and its storage, warned at 75%.

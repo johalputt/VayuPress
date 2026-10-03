@@ -1189,6 +1189,8 @@
           acctToast('Mailbox ' + local + ' created');
           if (aStatus) aStatus.textContent = '';
           acctForm.querySelectorAll('[data-a-local],[data-a-name],[data-a-pass]').forEach(function (el) { el.value = ''; });
+          var sheet = acctForm.closest('dialog');
+          if (sheet && sheet.open) sheet.close();
           acctReload();
         } else if (aStatus) aStatus.textContent = 'Failed: ' + errText(res);
       });

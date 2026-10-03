@@ -660,3 +660,21 @@ for (const scheme of ["light", "dark"]) {
     });
   });
 }
+
+// A new mailbox is made in its sheet (fidelity plan §6a): a link to the sheet
+// opens it with the page, Create closes it, and the mailbox's row is in the
+// list without a reload; the page's button is what opens it again.
+test("a new mailbox is made in its sheet, and its row appears", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const local = "sheet" + Date.now().toString(36);
+  await page.goto("/os/vayumail/accounts#new-mailbox");
+  const sheet = page.locator("dialog#new-mailbox");
+  await expect(sheet).toHaveJSProperty("open", true);
+  await sheet.locator("[data-a-local]").fill(local);
+  await sheet.locator("[data-a-pass]").fill("e2e-mailbox-pass-" + local);
+  await sheet.getByRole("button", { name: "Create mailbox" }).click();
+  await expect(sheet).toHaveJSProperty("open", false);
+  await expect(page.locator("#vm-accounts-list")).toContainText(local + "@");
+  await page.locator('main [data-sheet="new-mailbox"]').click();
+  await expect(sheet).toHaveJSProperty("open", true);
+});

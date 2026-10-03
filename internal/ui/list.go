@@ -18,6 +18,7 @@ type ListPage struct {
 	Search  HTML   // Search
 	Actions HTML   // the page's own buttons, at most one primary
 	Sub     HTML   // a line under the header, only when the list needs one
+	Tabs    HTML   // the page's tabs, under the title, when it has them
 }
 
 // List renders the page. The inspector sits beside the list where there is
@@ -34,7 +35,7 @@ func List(p ListPage, list, inspector HTML) HTML {
 	if p.Views != "" || p.Search != "" || p.Actions != "" {
 		b.WriteString(`<div class="page-actions">` + string(p.Views) + string(p.Search) + string(p.Actions) + `</div>`)
 	}
-	b.WriteString(`</div>`)
+	b.WriteString(`</div>` + string(p.Tabs))
 	if p.Sub != "" {
 		b.WriteString(`<p class="page-sub">` + string(p.Sub) + `</p>`)
 	}

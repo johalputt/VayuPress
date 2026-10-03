@@ -138,7 +138,7 @@ func TestEveryStillAirLinkIsARealRoute(t *testing.T) {
 func TestStillAirFindsTheCurrentSection(t *testing.T) {
 	apps := saVisibleApps(saSession(accessAdmin))
 	for _, c := range []struct{ route, active, app, sec string }{
-		{"/os/vayumail/dns", "vayuos", "mail", "DNS records"},
+		{"/os/vayumail/dns", "vayuos", "mail", "DNS"},
 		{"/os/vayumail", "vayuos", "mail", "Overview"},
 		{"/os/vayumail/inbox", "vayuos", "mail", "Mailbox"},
 		{"/os/theme/store", "theme-store", "site", "Theme store"},

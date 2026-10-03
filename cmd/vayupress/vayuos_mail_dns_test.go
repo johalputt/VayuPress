@@ -36,7 +36,7 @@ func TestVayuDNSRecordsSection(t *testing.T) {
 // TestVayuDNSCollapsibleOpenState confirms the open flag is honoured so important
 // sections start expanded and secondaries start collapsed.
 func TestVayuDNSCollapsibleOpenState(t *testing.T) {
-	if open := vayuDNSCollapsible("T", "", true, "x"); !strings.Contains(open, `<details class="card vm-sec" open>`) {
+	if open := vayuDNSCollapsible("T", "", true, "x"); !strings.Contains(open, `<details class="vm-sec" open>`) {
 		t.Errorf("open collapsible not open: %s", open)
 	}
 	if closed := vayuDNSCollapsible("T", "", false, "x"); strings.Contains(closed, " open>") {
@@ -45,15 +45,17 @@ func TestVayuDNSCollapsibleOpenState(t *testing.T) {
 }
 
 // TestVayuDNSVerifyDomainTable pins the per-domain verification rendering: a
-// misaligned MX surfaces its actionable message and an "action" badge, an aligned
-// record reads ok, and the domain header reflects the overall state.
+// misaligned MX surfaces its actionable message and a "to do" state, an aligned
+// record reads ok, and the domain header reflects the overall state. Each state
+// is a dot and a word (the grammar), so the dot's tone is checked with the word.
 func TestVayuDNSVerifyDomainTable(t *testing.T) {
 	hc := &mail.DomainHealth{Domain: "shop.example", AllOK: false, Records: []mail.RecordHealth{
 		{Type: "MX", OK: false, Message: "MX does not point to mail.example.com — mail for this domain is delivered elsewhere"},
 		{Type: "SPF", OK: true, Found: "v=spf1 a mx ~all"},
 	}}
 	out := vayuDNSVerifyDomainTable("shop.example", hc)
-	for _, want := range []string{"shop.example", `badge--warn">Check records<`, "delivered elsewhere", "v=spf1 a mx ~all", `badge--warn">Action<`, `badge--ok">OK<`} {
+	for _, want := range []string{"shop.example", `sa-dot--warn" aria-hidden="true"></span>Check records<`, "delivered elsewhere", "v=spf1 a mx ~all",
+		`sa-dot--warn" aria-hidden="true"></span>To do<`, `sa-dot--ok" aria-hidden="true"></span>OK<`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("verify table missing %q\n%s", want, out)
 		}

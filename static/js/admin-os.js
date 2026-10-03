@@ -321,6 +321,12 @@ document.addEventListener('click', function (e) {
   if (shut) { var s = shut.closest('dialog'); if (s) s.close(); return; }
   if (e.target.matches && e.target.matches('dialog.sa-sheet')) e.target.close();
 });
+// A link to a sheet (#new-mailbox) opens it with the page, as its button would.
+(function () {
+  var id = location.hash.slice(1);
+  var d = id && document.getElementById(id);
+  if (d && d.matches('dialog.sa-sheet') && typeof d.showModal === 'function' && !d.open) d.showModal();
+})();
 
 /* ── Command bar (Cmd+K / Ctrl+K, render 03) ─────────────────────
    Three kinds of result: Go to (the rail's own gated index of pages, then

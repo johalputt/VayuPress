@@ -59,7 +59,7 @@ func TestTheWizardNamesTheNextThingToFix(t *testing.T) {
 	h.Domains[0].Health.Records[2] = vmail.RecordHealth{Type: "DKIM", OK: false, Message: "no key found at selector._domainkey.example.com"}
 
 	out := vayuDNSWizard(h)
-	if !strings.Contains(out, ">Action needed<") {
+	if !strings.Contains(out, "Needs attention") || !strings.Contains(out, "sa-dot--warn") {
 		t.Error("a failing check must be labelled as needing action")
 	}
 	if !strings.Contains(out, "Next:") {
@@ -93,7 +93,7 @@ func TestTheWizardPrefersADomainFailureOverADeliverabilityOne(t *testing.T) {
 func TestTheWizardHandlesADomainWithNoHealth(t *testing.T) {
 	h := dnsHealth{AllOK: true, Domains: []dnsDomainHealth{{Domain: "broken.example"}}}
 	out := vayuDNSWizard(h)
-	if !strings.Contains(out, "Domain health") {
+	if !strings.Contains(out, `id="vm-dns-wizard"`) || !strings.Contains(out, "All checks pass") {
 		t.Error("a domain with no health report must not take the card down with it")
 	}
 }

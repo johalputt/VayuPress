@@ -12,6 +12,7 @@ type StatusPage struct {
 	Tone    string // ok, warn or danger; anything else is neutral
 	State   string // "Backed up 2 h ago, and it restores"
 	Detail  HTML   // one line under it, which may carry a path in <code>
+	Tabs    HTML   // the page's tabs, under the title, when it has them
 }
 
 // statusMarks draws each tone's mark. The sentence already says the state in
@@ -27,7 +28,7 @@ func Status(p StatusPage, sections ...HTML) HTML {
 	if _, ok := statusMarks[tone]; !ok {
 		tone = "neutral"
 	}
-	head := `<div class="sa-statuspage" data-page-kind="status">` + string(Page(p.Title, "", p.Actions)) +
+	head := `<div class="sa-statuspage" data-page-kind="status">` + string(Page(p.Title, "", p.Actions)) + string(p.Tabs) +
 		`<div class="sa-status__head sa-status__head--` + tone + `"><span class="sa-status__mark" aria-hidden="true">` +
 		string(Icon(statusMarks[tone])) + `</span><div><p class="sa-status__state">` + string(Text(p.State)) + `</p>`
 	if p.Detail != "" {

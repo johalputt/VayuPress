@@ -35,6 +35,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   open conversation says whether you have compared safety numbers, that it
   is end-to-end encrypted, and when your messages burn, and keeps Rename and
   Keep under More. On a phone a conversation opens over the whole screen.
+- **Mail's administration is one sidebar item with five tabs.** Overview,
+  Accounts, DNS, PGP keys and Security were five entries in Mail's sidebar;
+  they are now one, Administration, carrying the DNS attention mark, and the
+  pages are tabs under one title. Overview says how many mailboxes and mail
+  domains there are and shows a figure only when it has something to count;
+  Accounts lists the mailboxes and makes a new one in a sheet (a link to
+  `/os/vayumail/accounts#new-mailbox` opens it); DNS and Security state each
+  check as a dot and a word; PGP keys is a table with each mailbox's Web Key
+  Directory address under it. Overview is now an administrator's page like
+  the other four: anyone else who opens it is taken to their own inbox.
 
 ### Fixed
 

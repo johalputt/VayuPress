@@ -905,12 +905,8 @@ func (a *App) handleVayuOSAttachment(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
-	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Mail accounts</h1></div>`)
-	body.WriteString(`<p class="page-sub">Admin-managed email IDs &amp; passwords (SMTP/IMAP login). Each mailbox is a card — tap to expand.</p>`)
 	if !a.isAdminRequest(r) {
-		body.WriteString(`<div class="empty-state">Mail-account management is available to administrators only. Your own mailbox is under <a href="/os/vayumail/inbox">Mailbox</a>.</div>`)
-		writeOSHTML(w, r, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
+		a.denyAccess(w, r, "/os/vayumail/inbox")
 		return
 	}
 	if !a.mailRunning() || a.vayuMail.Accounts() == nil {
@@ -923,77 +919,70 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	// operator choose which domain a new mailbox belongs to (each domain has its
 	// own isolated store). With none, the address suffix is the fixed primary
 	// domain exactly as before.
-	addrSuffix := `<span class="vm-suffix">@` + html.EscapeString(domain) + `</span>`
+	addrSuffix := `<span class="vm-suffix">@` + esc(domain) + `</span>`
 	if secs := a.mailSecondaryHosts(r.Context()); len(secs) > 0 {
 		var opts strings.Builder
-		opts.WriteString(`<option value="">@` + html.EscapeString(domain) + ` (primary)</option>`)
+		opts.WriteString(`<option value="">@` + esc(domain) + ` (primary)</option>`)
 		for _, h := range secs {
-			opts.WriteString(`<option value="` + html.EscapeString(h) + `">@` + html.EscapeString(h) + `</option>`)
+			opts.WriteString(`<option value="` + esc(h) + `">@` + esc(h) + `</option>`)
 		}
 		addrSuffix = `<select class="input" data-a-domain aria-label="Mailbox domain">` + opts.String() + `</select>`
 	}
+	// New mailbox rises in a sheet from the page's button (the grammar keeps
+	// forms out of a list's flow). The form is the one the page's script has
+	// always driven; /os/vayumail/accounts#new-mailbox opens it with the page.
+	form := `<form class="vm-acct-new" data-acct-create>
+  <label class="field"><span class="field-label">Address</span>
+    <span class="vm-addr"><input class="input" type="text" data-a-local placeholder="name" required>` + addrSuffix + `</span></label>
+  <label class="field"><span class="field-label">Full name (optional)</span>
+    <input class="input" type="text" data-a-name placeholder="Display name"></label>
+  <label class="field"><span class="field-label">Role</span>
+    <select class="input" data-a-role>
+      <option value="mailbox" selected>Mailbox: mail only, no console</option>
+      <option value="reviewer">Reviewer: read-only, mail only</option>
+      <option value="author">Author: mail and the author console</option>
+      <option value="editor">Editor: mail and the editor console</option>
+      <option value="administrator">Administrator: the whole console</option>
+    </select>
+    <span class="field-hint">Mail-only roles see their own mailbox and nothing else.</span></label>
+  <label class="field"><span class="field-label">Quota in MB (0 for none)</span>
+    <input class="input" type="number" min="0" step="1" data-a-quota value="0"></label>
+  <label class="field"><span class="field-label">Password (8 characters or more)</span>
+    <input class="input" type="password" data-a-pass required></label>
+  <div class="sa-sheet__foot"><span class="field-hint" data-a-status role="status"></span><button class="btn btn--primary" type="submit">Create mailbox</button></div>
+</form>`
 
-	// Create form.
-	body.WriteString(`<div class="section-head"><span class="section-head__title">Add a mailbox</span><span class="section-head__hint">Create a new email ID on a mail domain</span></div>`)
-	body.WriteString(`<div class="card">
-<form data-acct-create id="new-mailbox">
-  <div class="vm-row vm-row--end">
-    <label class="field vm-grow"><span class="field-label">Address</span>
-      <span class="vm-addr"><input class="input" type="text" data-a-local placeholder="name" required>` + addrSuffix + `</span></label>
-    <label class="field vm-grow"><span class="field-label">Full name (optional)</span>
-      <input class="input" type="text" data-a-name placeholder="Display name"></label>
-    <label class="field"><span class="field-label">Role</span>
-      <select class="input" data-a-role>
-        <option value="mailbox" selected>Mailbox — mail only, no console (default)</option>
-        <option value="reviewer">Reviewer — read-only, mail only</option>
-        <option value="author">Author — mail + author console</option>
-        <option value="editor">Editor — mail + editor console</option>
-        <option value="administrator">Administrator — full console</option>
-      </select>
-      <span class="vm-suffix">Mail-only roles see just their own mailbox — no other tabs, no other inboxes.</span></label>
-    <label class="field"><span class="field-label">Quota (MB, 0 = unlimited)</span>
-      <input class="input" type="number" min="0" step="1" data-a-quota placeholder="0" value="0"></label>
-    <label class="field vm-grow"><span class="field-label">Password (min 8)</span>
-      <input class="input" type="password" data-a-pass placeholder="••••••••" required></label>
-    <button class="btn btn--primary" type="submit">Create</button>
-  </div>
-  <span class="muted text-sm" data-a-status></span>
-</form></div>`)
-
-	// Account recovery (ADR-0144). Placed above the mailbox list because its
-	// readiness view is a standing question about every mailbox below it, and
-	// because a factor nobody enrolled is invisible until the day it is needed.
-	{
-		var boxes []string
-		if accs, err := a.vayuMail.Accounts().List(r.Context()); err == nil {
-			for _, ac := range accs {
-				if ac.Active {
-					boxes = append(boxes, ac.Email)
-				}
+	// Account recovery (ADR-0144), above the list: its readiness view is a
+	// standing question about every mailbox below it, and a factor nobody
+	// enrolled is invisible until the day it is needed.
+	var boxes []string
+	count := 0
+	if accs, err := a.vayuMail.Accounts().List(r.Context()); err == nil {
+		count = len(accs)
+		for _, ac := range accs {
+			if ac.Active {
+				boxes = append(boxes, ac.Email)
 			}
 		}
-		body.WriteString(a.recoveryCardHTML(r, nonce, boxes))
 	}
-
-	// Existing accounts — a live, HTMX-swappable list of collapsible mailbox cards
-	// (VayuMail Accounts redesign). Every inline action swaps this fragment in
-	// place, and the create / 2FA / set-password flows refresh it via htmx.ajax, so
-	// the page never does a full reload.
-	body.WriteString(`<div class="section-head"><span class="section-head__title">Mailboxes</span><span class="section-head__hint">Every email ID on this install</span></div>`)
-	body.WriteString(`<span id="vm-accounts-spin" class="htmx-indicator vm-spin" aria-hidden="true">working…</span>`)
-	body.WriteString(`<div id="vm-accounts-list">` + a.vayuAccountsList(r.Context()) + `</div>`)
-
-	// Devices — approval-gated sync credentials (ADR-0129): pending devices
-	// need an explicit Approve here before any mail syncs to them. The card polls
-	// itself so a newly-registered pending device surfaces without a page reload.
-	body.WriteString(`<div id="vm-device-card">` + a.vayuDevicesCard(r.Context()) + `</div>`)
-
-	// Every per-mailbox control — forwarding, vacation, aliases and filters — now
-	// lives inside that mailbox's own card in #vm-accounts-list above, so there are
-	// no separate account-wide alias/filter cards here.
-
-	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
-	writeOSHTML(w, r, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
+	noun := "mailboxes"
+	if count == 1 {
+		noun = "mailbox"
+	}
+	// The mailboxes: a live, swappable list of the mailbox rows. Every inline
+	// action swaps it in place, and the create, 2FA and set-password flows
+	// refresh it, so the page never reloads. Devices waiting for approval
+	// (ADR-0129) follow, polling themselves.
+	list := a.recoveryCardHTML(r, nonce, boxes) +
+		`<span id="vm-accounts-spin" class="htmx-indicator vm-spin" aria-hidden="true">working…</span>` +
+		`<div id="vm-accounts-list">` + a.vayuAccountsList(r.Context()) + `</div>` +
+		`<div id="vm-device-card">` + a.vayuDevicesCard(r.Context()) + `</div>`
+	body := string(ui.List(ui.ListPage{Title: "Mail administration", Count: itoaSafe(count) + " " + noun,
+		Actions: ui.HTML(`<button type="button" class="btn btn--primary btn--sm" data-sheet="new-mailbox">` + saIcon("plus") + `New mailbox</button>`),
+		Tabs:    saTabsFor(cfg, "mail", "/os/vayumail/accounts")}, ui.HTML(list), "")) +
+		string(ui.Sheet("new-mailbox", "New mailbox", ui.HTML(form)))
+	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`
+	writeOSHTML(w, r, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body)))
 }
 
 // handleVayuOSFilterAction creates or deletes a delivery rule and returns the
@@ -2260,7 +2249,7 @@ func (a *App) vayuDevicesCard(ctx context.Context) string {
 		}
 	}
 	var b strings.Builder
-	b.WriteString(`<div class="card"><div class="vm-card-head"><div class="card-title">Devices</div><span class="vm-live" title="Updates automatically">● live</span></div>`)
+	b.WriteString(`<section class="vm-devices"><div class="vm-card-head"><h2 class="vm-devices__title">Devices</h2><span class="vm-live" title="Updates automatically">● live</span></div>`)
 	// Self-refresh: a hidden poller re-fetches this card so a device that registers
 	// out-of-band (from the mobile app) surfaces as "pending approval" within
 	// seconds — no full-page reload (the redesign's headline fix).
@@ -2299,7 +2288,7 @@ func (a *App) vayuDevicesCard(ctx context.Context) string {
 
 	// Per-mailbox enforcement toggle. Turning it OFF restores password sign-in
 	// on the mail protocols for that mailbox (devices are auto-approved).
-	b.WriteString(`<div class="card-title mt-2">Require device approval</div>`)
+	b.WriteString(`<h3 class="vm-devices__sub">Require device approval</h3>`)
 	b.WriteString(`<p class="muted text-sm">Recommended on.` +
 		string(ui.Tip("When required, only approved devices sync mail; the mailbox password still signs into the web console and registers new devices. Turning it off lets the mailbox password sign in from any mail app, unapproved.")) + `</p>`)
 	b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Mailbox</th><th>Device approval</th><th></th></tr></thead><tbody>`)
@@ -2315,7 +2304,7 @@ func (a *App) vayuDevicesCard(ctx context.Context) string {
 		}
 		b.WriteString(`<tr><td class="mono">` + html.EscapeString(ac.Email) + `</td><td>` + state + `</td><td>` + btn + `</td></tr>`)
 	}
-	b.WriteString(`</tbody></table></div></div>`)
+	b.WriteString(`</tbody></table></div></section>`)
 	return b.String()
 }
 

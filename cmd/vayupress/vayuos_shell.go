@@ -39,6 +39,9 @@ type saSection struct {
 	// AdminOnly is for pages whose own guard is the administrator flag rather
 	// than osPathMinLevel (VayuMail's infrastructure tabs).
 	AdminOnly bool
+	// Tab makes the section one of its app's TabGroup: the sidebar shows the
+	// group as one item, and the group's pages share a strip of tabs.
+	Tab bool
 }
 
 type saApp struct {
@@ -48,6 +51,10 @@ type saApp struct {
 	// instead of a sidebar: a sidebar of three items is a second navigation
 	// for nothing (the fidelity plan's rule 8).
 	Tabbed bool
+	// TabGroup names the sections marked Tab, shown in the sidebar as one item
+	// with TabIcon (Mail's administration, fidelity plan decision 3): the app
+	// keeps its sidebar, and the group's pages are tabs.
+	TabGroup, TabIcon string
 }
 
 // saClearnetApps is the clearnet console. Hub pages are gone from it: each hub's
@@ -69,16 +76,16 @@ var saClearnetApps = []saApp{
 		{Label: "Monetization", Href: "/os/monetization", Icon: "coin", Group: "Revenue"},
 		{Label: "Advertising", Href: "/os/ads", Icon: "megaphone"},
 	}},
-	{Key: "mail", Label: "Mail", Icon: "mail", Href: "/os/vayumail/inbox", Sections: []saSection{
+	{Key: "mail", Label: "Mail", Icon: "mail", Href: "/os/vayumail/inbox", TabGroup: "Administration", TabIcon: "wrench", Sections: []saSection{
 		{Label: "Mailbox", Href: "/os/vayumail/inbox", Icon: "inbox"},
 		{Label: "Compose", Href: "/os/vayumail/compose", Icon: "pencil"},
 		{Label: "Outbox", Href: "/os/vayumail/sent", Icon: "send"},
-		{Label: "Overview", Href: "/os/vayumail", Icon: "grid"},
 		{Label: "Connect a device", Href: "/os/vayumail/connect", Icon: "link"},
-		{Label: "Accounts", Href: "/os/vayumail/accounts", Icon: "audience", Group: "Administration", AdminOnly: true},
-		{Label: "DNS records", Href: "/os/vayumail/dns", Icon: "site", AdminOnly: true},
-		{Label: "PGP keys", Href: "/os/vayumail/pgp", Icon: "key", AdminOnly: true},
-		{Label: "Security", Href: "/os/vayumail/security", Icon: "lock", AdminOnly: true},
+		{Label: "Overview", Href: "/os/vayumail", Icon: "grid", AdminOnly: true, Tab: true},
+		{Label: "Accounts", Href: "/os/vayumail/accounts", Icon: "audience", AdminOnly: true, Tab: true},
+		{Label: "DNS", Href: "/os/vayumail/dns", Icon: "site", AdminOnly: true, Tab: true},
+		{Label: "PGP keys", Href: "/os/vayumail/pgp", Icon: "key", AdminOnly: true, Tab: true},
+		{Label: "Security", Href: "/os/vayumail/security", Icon: "lock", AdminOnly: true, Tab: true},
 	}},
 	{Key: "talk", Label: "Talk", Icon: "talk", Href: "/os/talk"},
 	{Key: "site", Label: "Site", Icon: "site", Href: "/os/website", Sections: []saSection{
@@ -469,24 +476,38 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 		default:
 			side.WriteString(`<div class="sa-appside__title">` + html.EscapeString(app.Label) + `</div>`)
 		}
+		grouped := false
 		for i := range app.Sections {
 			x := &app.Sections[i]
 			if mailOpen && x.Href == "/os/vayumail/inbox" {
 				continue // the folders are the mailbox
 			}
+			if x.Tab {
+				// The group is one item, opening its first tab this session
+				// may see, current on any of them.
+				if !grouped {
+					grouped = true
+					cur, mark := "", ""
+					if sec != nil && sec.Tab {
+						cur = ` aria-current="page"`
+					}
+					if s.MailDNSAttention {
+						mark = `<span class="sa-attn" role="img" aria-label="needs attention" title="A mail domain's DNS is not finished"></span>`
+					}
+					out.WriteString(`<a class="sa-appside__item" href="` + x.Href + `"` + cur + `>` + saIcon(app.TabIcon) +
+						`<span class="sa-appside__label">` + html.EscapeString(app.TabGroup) + `</span>` + mark + `</a>`)
+				}
+				continue
+			}
 			if x.Group != "" {
 				out.WriteString(`<div class="sa-appside__group">` + html.EscapeString(x.Group) + `</div>`)
-			}
-			mark := ""
-			if x.Href == "/os/vayumail/dns" && s.MailDNSAttention {
-				mark = `<span class="sa-attn" role="img" aria-label="needs attention" title="A mail domain's DNS is not finished"></span>`
 			}
 			cur := ""
 			if sec == x {
 				cur = ` aria-current="page"`
 			}
 			out.WriteString(`<a class="sa-appside__item" href="` + x.Href + `"` + cur + `>` + saIcon(x.Icon) +
-				`<span class="sa-appside__label">` + html.EscapeString(x.Label) + `</span>` + mark + `</a>`)
+				`<span class="sa-appside__label">` + html.EscapeString(x.Label) + `</span></a>`)
 		}
 		if mailOpen {
 			side.WriteString(saMailSide(s.MailSide, more.String()))
@@ -770,19 +791,29 @@ func (a *App) osSitesFor(ctx context.Context, s *osSettings) {
 	}
 }
 
-// saTabsFor is a tabbed app's sections as the strip under its pages' title.
-// It reads the same visible-apps list as the rail and the command bar, so a
-// tab appears exactly when this session can open its page.
+// saTabsFor is the strip under a page's title: a tabbed app's sections, or
+// the sections of an app's tab group. It reads the same visible-apps list as
+// the rail and the command bar, so a tab appears exactly when this session
+// can open its page.
 func saTabsFor(s *osSettings, key, current string) ui.HTML {
 	for _, app := range saVisibleApps(s) {
-		if app.Key != key || len(app.Sections) < 2 {
+		if app.Key != key {
 			continue
 		}
-		tabs := make([]ui.Tab, 0, len(app.Sections))
-		for _, sec := range app.Sections {
-			tabs = append(tabs, ui.Tab{Label: sec.Label, Href: sec.Href, Current: sec.Href == current})
+		label := app.Label
+		if !app.Tabbed {
+			label = app.TabGroup
 		}
-		return ui.Tabs(app.Label, tabs...)
+		var tabs []ui.Tab
+		for _, sec := range app.Sections {
+			if app.Tabbed || sec.Tab {
+				tabs = append(tabs, ui.Tab{Label: sec.Label, Href: sec.Href, Current: sec.Href == current})
+			}
+		}
+		if len(tabs) < 2 {
+			return ""
+		}
+		return ui.Tabs(label, tabs...)
 	}
 	return ""
 }

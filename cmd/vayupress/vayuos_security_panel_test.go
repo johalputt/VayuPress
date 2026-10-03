@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/vayuos/secwatch"
 )
 
@@ -14,10 +15,10 @@ import (
 // module; no release applies it. The row reads up to date on its own line and
 // names the new major as the migration it is.
 func TestANewerMajorReadsAsAMigrationNotAnUpdate(t *testing.T) {
-	out := buildComponentTable([]secwatch.Component{
+	out := string(ui.Table(nil, securityLibraryRows([]secwatch.Component{
 		{Name: "goldmark", Current: "v1.8.6", Latest: "v1.8.6", NewerMajor: "v2.1.5"},
-	})
-	if strings.Contains(out, "Update available") || !strings.Contains(out, "Up to date") {
+	}), ""))
+	if strings.Contains(out, "Update waiting") || !strings.Contains(out, "Up to date") {
 		t.Errorf("a module at the newest release of its line is not up to date:\n%s", out)
 	}
 	if !strings.Contains(out, "v2.1.5 is a new major version") {

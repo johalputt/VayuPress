@@ -101,10 +101,12 @@ func TestConsoleStylesheetIsServedMinified(t *testing.T) {
 // (render 02) and selection mode with its panel (render 04), which took the
 // sheet to about 360,000. Above 335,629 the budget no longer notices the
 // classic sheet's decoration coming back, as it used to; nothing else does
-// either, so that one is now a matter of review. A budget is discipline, not a
-// limit: raise it on purpose, in this line, when a requirement needs it —
-// never cut a feature to stay under it.
-const consoleCSSBudget = 375_000
+// either, so that one is now a matter of review. Raised to 385,000 on
+// 2026-10-03 for Talk to render 05 (fidelity step 8.10, its old rules gone)
+// and Mail's administration as tabs (8.11), which took the sheet to 375,475.
+// A budget is discipline, not a limit: raise it on purpose, in this line, when
+// a requirement needs it — never cut a feature to stay under it.
+const consoleCSSBudget = 385_000
 
 func TestConsoleStylesheetFitsItsBudget(t *testing.T) {
 	src, err := os.ReadFile("../../static/css/vayuos.css") // #nosec G304 -- repository file

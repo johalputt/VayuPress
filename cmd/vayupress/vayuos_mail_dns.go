@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
@@ -74,19 +75,13 @@ func (a *App) vayuDNSHealth(ctx context.Context) dnsHealth {
 // below this card.
 func vayuDNSWizard(h dnsHealth) string {
 	var b strings.Builder
-	b.WriteString(`<div class="card vm-wizard" id="vm-dns-wizard">`)
-	b.WriteString(`<div class="vm-wizard-head"><h2 class="vm-wizard-title">Domain health — are we done?</h2>`)
+	b.WriteString(`<div class="vm-wizard" id="vm-dns-wizard"><div class="vm-wizard-head">`)
 	if h.AllOK {
-		b.WriteString(`<span class="badge badge--ok">All checks pass</span>`)
+		b.WriteString(string(ui.State("ok", "All checks pass")) + `<p class="vm-wizard-lead">Every mail domain is aligned and the mail-host checks pass.</p>`)
 	} else {
-		b.WriteString(`<span class="badge badge--warn">Action needed</span>`)
+		b.WriteString(string(ui.State("warn", "Needs attention")) + `<p class="vm-wizard-lead">Each line is a live check. The first unfinished one is the thing to fix next.</p>`)
 	}
 	b.WriteString(`</div>`)
-	if h.AllOK {
-		b.WriteString(`<p class="muted text-sm">Every mail domain is aligned and the mail-host checks pass. Nothing to do here.</p>`)
-	} else {
-		b.WriteString(`<p class="muted text-sm">Each line below is a live check. Work down the list; the first unfinished one is the thing to fix next.</p>`)
-	}
 	b.WriteString(`<div class="vm-wizard-groups">`)
 	for _, d := range h.Domains {
 		if d.Health != nil {
@@ -176,7 +171,7 @@ func vayuDNSCollapsible(title, meta string, open bool, inner string) string {
 	if meta != "" {
 		metaHTML = `<span class="vm-sec__meta">` + meta + `</span>`
 	}
-	return `<details class="card vm-sec"` + o + `>
+	return `<details class="vm-sec"` + o + `>
   <summary class="vm-sec__head"><span class="vm-sec__title">` + html.EscapeString(title) + `</span>` + metaHTML + `<span class="vm-sec__chev" aria-hidden="true">▾</span></summary>
   <div class="vm-sec__body">` + inner + `</div>
 </details>`
@@ -210,12 +205,12 @@ func vayuMailHostSection(mc mail.Config) string {
 	host := html.EscapeString(mc.Hostname)
 	inner := `<p class="muted text-sm">Mail runs over SMTP/IMAP/POP3, which <strong>cannot be proxied</strong>. These records make your mail host reachable — publish them <strong>DNS-only</strong>. On Cloudflare that is the <strong>grey cloud</strong>; a proxied (orange-cloud) mail host silently breaks inbound mail.</p>
 <div class="table-wrap"><table class="table vm-dns-table"><thead><tr><th>Type</th><th>Name</th><th>Value</th><th>Proxy</th></tr></thead><tbody>
-<tr><td><span class="vm-tag">A</span></td><td class="mono text-sm">` + host + `</td><td class="mono text-sm">your server's public IPv4</td><td><span class="badge badge--warn">DNS only</span></td></tr>
-<tr><td><span class="vm-tag">AAAA</span></td><td class="mono text-sm">` + host + `</td><td class="mono text-sm">your server's public IPv6 (if any)</td><td><span class="badge badge--warn">DNS only</span></td></tr>
+<tr><td><span class="vm-tag">A</span></td><td class="mono text-sm">` + host + `</td><td class="mono text-sm">your server's public IPv4</td><td>DNS only</td></tr>
+<tr><td><span class="vm-tag">AAAA</span></td><td class="mono text-sm">` + host + `</td><td class="mono text-sm">your server's public IPv6 (if any)</td><td>DNS only</td></tr>
 <tr><td><span class="vm-tag">PTR</span></td><td class="mono text-sm">reverse DNS of your IP</td><td class="mono text-sm">` + host + `</td><td><span class="muted text-xs">set at your VPS host</span></td></tr>
 </tbody></table></div>
 <p class="muted text-xs">Open inbound ports <span class="mono">25</span> (SMTP), <span class="mono">465/587</span> (submission), <span class="mono">993</span> (IMAPS) and <span class="mono">995</span> (POP3S) on your server firewall.</p>`
-	return vayuDNSCollapsible("Mail host & networking — "+mc.Hostname, `<span class="badge badge--warn">Do not proxy</span>`, true, inner)
+	return vayuDNSCollapsible("Mail host & networking — "+mc.Hostname, string(ui.State("warn", "Do not proxy")), true, inner)
 }
 
 // vayuDNSPublishSections builds the "records to publish" collapsibles — the
@@ -224,15 +219,17 @@ func vayuMailHostSection(mc mail.Config) string {
 // primary and host sections render, so nothing changes for a plain setup.
 func (a *App) vayuDNSPublishSections(r *http.Request, mc mail.Config) string {
 	var b strings.Builder
+	// Named by domain alone: the page section around them is already
+	// "Records to publish".
 	b.WriteString(vayuDNSRecordsSection(
-		"Records to publish — "+mc.Domain,
+		mc.Domain,
 		"Publish these at your DNS provider for "+mc.Domain+". They route your mail (MX) and authenticate it (SPF, DKIM, DMARC).",
 		a.vayuMail.PlannedRecords(), true))
 	for _, secHost := range a.mailSecondaryHosts(r.Context()) {
 		sub := "Secondary mail domain. Its MX points at this install's mail host (" + mc.Hostname +
 			"); the DKIM key is shared with the primary, so publish the same key value at " +
 			mc.DKIMSelector + "._domainkey." + secHost + "."
-		b.WriteString(vayuDNSRecordsSection("Records to publish — "+secHost, sub, a.vayuMail.PlannedRecordsForDomain(secHost), false))
+		b.WriteString(vayuDNSRecordsSection(secHost, sub, a.vayuMail.PlannedRecordsForDomain(secHost), false))
 	}
 	b.WriteString(vayuMailHostSection(mc))
 	return b.String()
@@ -241,9 +238,9 @@ func (a *App) vayuDNSPublishSections(r *http.Request, mc mail.Config) string {
 // vayuDNSVerifyRow renders one verification row (record/check, status badge,
 // detail).
 func vayuDNSVerifyRow(typ string, ok bool, detail string) string {
-	badge := `<span class="badge badge--ok">OK</span>`
+	badge := string(ui.State("ok", "OK"))
 	if !ok {
-		badge = `<span class="badge badge--warn">Action</span>`
+		badge = string(ui.State("warn", "To do"))
 	}
 	return `<tr><td>` + html.EscapeString(typ) + `</td><td>` + badge + `</td><td class="muted text-sm vm-break">` + html.EscapeString(detail) + `</td></tr>`
 }
@@ -258,9 +255,9 @@ func vayuDNSVerifyDomainTable(domain string, hc *mail.DomainHealth) string {
 		}
 		rows.WriteString(vayuDNSVerifyRow(rh.Type, rh.OK, detail))
 	}
-	pill := `<span class="badge badge--ok">Aligned</span>`
+	pill := string(ui.State("ok", "Aligned"))
 	if !hc.AllOK {
-		pill = `<span class="badge badge--warn">Check records</span>`
+		pill = string(ui.State("warn", "Check records"))
 	}
 	return `<div class="vm-verify-dom"><h4 class="vm-sub-title">` + html.EscapeString(domain) + ` ` + pill + `</h4>` +
 		`<div class="table-wrap"><table class="table vm-dns-table"><thead><tr><th>Record</th><th>Status</th><th>Found</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div></div>`
@@ -288,9 +285,9 @@ func vayuDNSVerifyFragmentWith(h dnsHealth) string {
 		deliv.WriteString(vayuDNSVerifyRow(rh.Type, rh.OK, rh.Message))
 	}
 
-	pill := `<span class="badge badge--ok">All aligned</span>`
+	pill := string(ui.State("ok", "All aligned"))
 	if !h.AllOK {
-		pill = `<span class="badge badge--warn">Action needed</span>`
+		pill = string(ui.State("warn", "Needs attention"))
 	}
 
 	inner := `<div class="vm-verify-head">` + pill +
@@ -304,7 +301,7 @@ func vayuDNSVerifyFragmentWith(h dnsHealth) string {
 	// The fragment root carries the swap id and is itself the collapsible section,
 	// so an HTMX outerHTML swap replaces the whole section (button included) with
 	// freshly-checked results.
-	return `<div id="vm-dns-verify">` + vayuDNSCollapsible("DNS verification — all domains", "", true, inner) + `</div>`
+	return `<div id="vm-dns-verify">` + inner + `</div>`
 }
 
 // vayuDNSScript is the CSP-nonce'd copy-to-clipboard handler for the record

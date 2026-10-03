@@ -38,8 +38,12 @@ func TestAccountsListFragmentRendersCollapsibleCards(t *testing.T) {
 		t.Fatalf("fragment status = %d, want 200", rec.Code)
 	}
 	body := rec.Body.String()
+	// No row of figures: what the list holds is a sentence, said only when
+	// there is something in it to say (the grammar's rule on zero figures).
+	if strings.Contains(body, `class="stat-grid"`) {
+		t.Error("the accounts list draws a row of figures")
+	}
 	for _, want := range []string{
-		`class="stat-grid"`,            // the figures
 		`<details class="vm-acct`,      // collapsible card
 		"dana@example.com",             // the seeded mailbox
 		"/os/vayumail/accounts/action", // inline HTMX action target

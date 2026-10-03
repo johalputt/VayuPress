@@ -1067,80 +1067,104 @@ func redirectLegacyVayuOS(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, next, http.StatusPermanentRedirect)
 }
 
+// handleVayuOSDashboard is Mail administration's Overview tab (fidelity plan
+// §6a): how much mail there is and whether it is moving, then the DNS
+// verdict, the mail domains and the services, as rows. For anyone but an
+// administrator it held only links their sidebar already has, so they are
+// taken to their mailbox instead.
 func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
 	if !a.mailRunning() {
 		a.writeMailSetup(w, r, "VayuMail")
 		return
 	}
+	if !a.isAdminRequest(r) {
+		a.denyAccess(w, r, "/os/vayumail/inbox")
+		return
+	}
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
-	admin := a.isAdminRequest(r)
+
+	pending, failed, delivered := 0, 0, 0
+	if qs, st, err := a.vayuMail.QueueStatus(r.Context()); err == nil {
+		pending, failed = qs.Pending, qs.Failed
+		if st != nil {
+			delivered = st.Delivered
+		}
+	}
+	primary := strings.ToLower(a.vayuMail.Config().Domain)
+	domains := append([]string{primary}, a.mailSecondaryHosts(r.Context())...)
+	counts := map[string]int{}
+	if acc := a.vayuMail.Accounts(); acc != nil {
+		counts, _ = acc.CountsByHost(r.Context())
+	}
+	// "mailbox", whose plural plural() cannot spell.
+	count := func(n int, one, many string) string {
+		if n == 1 {
+			return "1 " + one
+		}
+		return itoaSafe(n) + " " + many
+	}
+	mailboxes := 0
+	for _, n := range counts {
+		mailboxes += n
+	}
+
+	// The figures say what is moving; a zero is said in the sentence, not
+	// drawn as a figure (the grammar's rule on empty figures).
+	sentence := count(mailboxes, "mailbox", "mailboxes") + " on " + count(len(domains), "mail domain", "mail domains") + "."
+	if pending == 0 && failed == 0 {
+		sentence += " Nothing is waiting to be sent."
+	}
+	var figs []ui.Figure
+	if pending > 0 {
+		figs = append(figs, ui.Figure{Value: itoaSafe(pending), Label: "Waiting to send"})
+	}
+	if failed > 0 {
+		figs = append(figs, ui.Figure{Value: itoaSafe(failed), Label: "Failed", Tone: "warn", Note: "See the Outbox"})
+	}
+	if delivered > 0 {
+		figs = append(figs, ui.Figure{Value: itoaSafe(delivered), Label: "Delivered"})
+	}
+
+	// DNS from the remembered verdict: the live lookups belong to the DNS tab.
+	dnsState, dnsHint := ui.State("neutral", "Not checked yet"), "The DNS tab checks every mail domain's records."
+	if v := a.mailDNS.Load(); v != nil {
+		if v.AllOK {
+			dnsState, dnsHint = ui.State("ok", "All records found"), "Checked "+relTimeAgo(v.Checked)+"."
+		} else {
+			dnsState, dnsHint = ui.State("warn", "Needs attention"), "Next: "+v.Next+"."
+		}
+	}
+	dnsRows := ui.Rows(ui.Row{Label: "DNS", Hint: dnsHint, Control: dnsState + ` <a class="btn btn--sm" href="/os/vayumail/dns">Open DNS</a>`})
+
+	var doms []ui.Row
+	for i, d := range domains {
+		hint := count(counts[d], "mailbox", "mailboxes")
+		if i == 0 {
+			hint = "Primary · " + hint
+		}
+		doms = append(doms, ui.Row{Label: d, Hint: hint, Control: `<a class="btn btn--sm btn--ghost" href="/os/vayumail/accounts">Accounts</a>`})
+	}
+
+	// Services: the ones that are not well, each with what it says; when all
+	// are, one line says so.
 	snap := a.vayuHealth.Snapshot()
-	var rows strings.Builder
+	var svc []ui.Row
 	for _, c := range snap.Components {
-		badge := ui.Tag("ok", "Healthy")
 		if !c.OK {
-			badge = ui.Tag("warn", "Degraded")
+			svc = append(svc, ui.Row{Label: c.Name, Hint: c.Detail, Control: ui.State("warn", "Degraded")})
 		}
-		rows.WriteString(`<tr><td>` + html.EscapeString(c.Name) + `</td><td>` + string(badge) + `</td><td class="muted">` + html.EscapeString(c.Detail) + `</td></tr>`)
 	}
-	// Infrastructure cards (PGP keys, DKIM/DNS, security updates) and the
-	// subsystem-health table expose operational detail the four non-admin roles
-	// do not need, so they are administrator-only.
-	// Admin-only live stat strip: mailboxes, mail domains, and the outbound queue
-	// at a glance (mirrors the Accounts stat tiles).
-	statStrip := ""
-	if admin {
-		pending, failed, delivered := 0, 0, 0
-		if qs, st, err := a.vayuMail.QueueStatus(r.Context()); err == nil {
-			pending, failed = qs.Pending, qs.Failed
-			if st != nil {
-				delivered = st.Delivered
-			}
-		}
-		mailboxes := 0
-		if acc := a.vayuMail.Accounts(); acc != nil {
-			if c, err := acc.CountsByHost(r.Context()); err == nil {
-				for _, n := range c {
-					mailboxes += n
-				}
-			}
-		}
-		domains := 1 + len(a.mailSecondaryHosts(r.Context()))
-		failTone := ""
-		if failed > 0 {
-			failTone = "warn"
-		}
-		statStrip = `<div class="stat-grid">` +
-			vmStatTile(itoaSafe(mailboxes), "Mailboxes", "") +
-			vmStatTile(itoaSafe(domains), "Mail domains", "") +
-			vmStatTile(itoaSafe(pending), "Queued", "") +
-			vmStatTile(itoaSafe(failed), "Failed", failTone) +
-			vmStatTile(itoaSafe(delivered), "Delivered", "") +
-			`</div>`
+	if len(svc) == 0 {
+		svc = append(svc, ui.Row{Label: "Mail services", Hint: count(len(snap.Components), "service", "services") + " checked.", Control: ui.State("ok", "All running")})
 	}
-	infraSection, healthSection := "", ""
-	if admin {
-		infraSection = `<div class="section-head"><span class="section-head__title">Infrastructure</span><span class="section-head__hint">Keys, deliverability &amp; security — administrator only</span></div>
-<div class="grid grid-3">
-  <div class="card"><div class="card-title">Privacy (VayuPGP)</div><p class="muted">End-to-end PGP, keys encrypted at rest, WKD published.</p><a class="btn" href="/os/vayumail/pgp">Manage keys</a></div>
-  <div class="card"><div class="card-title">Sovereignty (VayuMail)</div><p class="muted">DKIM-signed outbound mail, direct-to-MX, DNS health.</p><a class="btn" href="/os/vayumail/dns">Mail &amp; DNS</a></div>
-  <div class="card"><div class="card-title">Security updates</div><p class="muted">Track upstream PGP/crypto security releases.</p><a class="btn" href="/os/vayumail/security">Updates</a></div>
-</div>`
-		healthSection = `<div class="section-head"><span class="section-head__title">Health &amp; status</span><span class="section-head__hint">Live subsystem checks</span></div>
-<div class="card"><div class="card-title">Subsystem health</div>
-<div class="table-wrap"><table class="table"><thead><tr><th>Component</th><th>Status</th><th>Detail</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div></div>`
-	}
-	body := `<div class="page-header"><h1>VayuMail</h1></div>
-<p class="page-sub">Your mailboxes — read, compose and connect any mail app. Everything in one place.</p>` + statStrip + `
-<div class="section-head"><span class="section-head__title">Your mailbox</span><span class="section-head__hint">Read, send and connect an app</span></div>
-<div class="grid grid-3">
-  <div class="card"><div class="card-title">Inbox</div><p class="muted">Read mail received into your mailboxes (Maildir).</p><a class="btn" href="/os/vayumail/inbox">Open inbox</a></div>
-  <div class="card"><div class="card-title">Compose</div><p class="muted">Write a new message — multi-domain From, PGP-aware.</p><a class="btn" href="/os/vayumail/compose">New message</a></div>
-  <div class="card"><div class="card-title">Sent</div><p class="muted">Outbound delivery queue with per-message status.</p><a class="btn" href="/os/vayumail/sent">View sent</a></div>
-  <div class="card"><div class="card-title">Connect a mail app</div><p class="muted">IMAP/POP3/SMTP settings for the Gmail app, Apple Mail and more.</p><a class="btn" href="/os/vayumail/connect">Connect</a></div>
-</div>` + infraSection + healthSection
-	writeOSHTML(w, r, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body)))
+
+	page := ui.Overview(ui.OverviewPage{Title: "Mail administration", Tabs: saTabsFor(cfg, "mail", "/os/vayumail")},
+		ui.Band{Title: "Mail", Sentence: sentence, Figures: figs},
+		ui.Section("Delivery", "", dnsRows),
+		ui.Section("Mail domains", "", ui.Rows(doms...)),
+		ui.Section("Services", "", ui.Rows(svc...)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Mail administration", "vayuos", cfg, htmpl.HTML(page)))
 }
 
 func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
@@ -1153,7 +1177,7 @@ func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	keys, _ := a.vayuPGP.ListKeys()
-	var rows, wkdRows strings.Builder
+	var rows [][]ui.HTML
 	for _, k := range keys {
 		// Anonymous VayuTalk chat handles (Tor world) mint a keypair on use/rotate
 		// but are throwaway identities, not mailboxes — never list them here, so a
@@ -1161,46 +1185,49 @@ func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
 		if isAnonTalkHandle(k.Email) {
 			continue
 		}
-		state := `<span class="badge badge--ok">Active</span>`
+		state := ui.State("ok", "Active")
 		if k.Revoked {
-			state = `<span class="badge badge--warn">Revoked</span>`
+			state = ui.State("warn", "Revoked")
 		} else if time.Now().After(k.ExpiresAt) {
-			state = `<span class="badge badge--warn">Expired</span>`
+			state = ui.State("warn", "Expired")
 		}
+		// Each mailbox's Web Key Directory address under it: where GnuPG,
+		// Thunderbird and the app look its key up.
+		// One block, so a phone's stacked row keeps the two together as
+		// the cell's single value.
+		who := `<div class="vm-pgp__id"><span class="vm-pgp__who">` + esc(k.Email) + `</span>`
+		if u := vpgp.WKDURL(k.Email); u != "" {
+			who += `<code class="vm-pgp__wkd">` + esc(u) + `</code>`
+		}
+		who += `</div>`
 		// Public key only — a copy button and a download, never the private half.
 		// Listing every mailbox's key here is how an operator hands one out; the
 		// private key has no admin-facing path at all.
 		pub := `<span class="vm-pgp"><textarea class="vm-pgp__armor hidden-armor" readonly rows="1" aria-hidden="true" tabindex="-1" data-pgp-armor>` +
-			html.EscapeString(k.PublicArmor) + `</textarea>` +
+			esc(k.PublicArmor) + `</textarea>` +
 			`<button type="button" class="btn btn--sm" data-pgp-copy>Copy</button> ` +
 			`<a class="btn btn--sm btn--ghost" href="/os/vayumail/accounts/pubkey?email=` + qparam(k.Email) + `" download>.asc</a></span>`
-		rows.WriteString(`<tr><td>` + html.EscapeString(k.Email) + `</td><td class="mono text-sm vm-break">` + html.EscapeString(k.Fingerprint) + `</td><td>` + state + `</td><td class="muted">` + k.ExpiresAt.Format("2006-01-02") + `</td><td>` + pub + `</td></tr>`)
-		if u := vpgp.WKDURL(k.Email); u != "" {
-			wkdRows.WriteString(`<tr><td class="mono text-sm">` + html.EscapeString(k.Email) + `</td><td><code class="mono text-xs vm-pgp__wkd">` + html.EscapeString(u) + `</code></td></tr>`)
+		// The fingerprint in groups of four, as GnuPG prints it, so a reader
+		// can compare it a group at a time and it wraps between groups.
+		var fp strings.Builder
+		for i, c := range k.Fingerprint {
+			if i > 0 && i%4 == 0 {
+				fp.WriteByte(' ')
+			}
+			fp.WriteRune(c)
 		}
+		rows = append(rows, []ui.HTML{ui.HTML(who), ui.HTML(`<span class="mono vm-pgp__fp">` + esc(fp.String()) + `</span>`), state, ui.Text(k.ExpiresAt.Format("2\u00a0Jan\u00a02006")), ui.HTML(pub)})
 	}
-	if rows.Len() == 0 {
-		rows.WriteString(`<tr><td colspan="5" class="muted">No keys yet — keys are generated automatically when accounts are created.</td></tr>`)
-	}
-	if wkdRows.Len() == 0 {
-		wkdRows.WriteString(`<tr><td colspan="2" class="muted">No mailboxes yet.</td></tr>`)
-	}
-	body := `<div class="page-header"><h1>VayuPGP keys</h1></div>
-<p class="page-sub">Ed25519 + Curve25519 · private keys AES-256-GCM encrypted at rest · published via WKD.</p>` + `
-<div class="section-head"><span class="section-head__title">Keypairs</span><span class="section-head__hint">One per mailbox — generated automatically on account creation</span></div>
-<div class="card">
-<div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Fingerprint</th><th>State</th><th>Expires</th><th>Public key</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div>
-<p class="text-xs muted">Only the <strong>public</strong> half is shown here.` + string(ui.Tip("Private keys are AES-256-GCM encrypted at rest and have no administrator-facing path at all: a mailbox's own signed-in device is the only thing that can retrieve one. An administrator managing somebody else's mailbox has no business holding its private key, and a key you can read on a web page ends up in a browser cache, a screenshot and a support ticket.")) + `</p></div>
-<div class="section-head"><span class="section-head__title">Web Key Directory</span><span class="section-head__hint">Where external clients look for each key</span></div>
-<div class="card">
-<p class="muted">The exact URLs mail clients request for each key.` + string(ui.Tip("Every mail domain publishes its own directory, and discovery is per domain: a key for someone@shop.example is only findable at openpgpkey.shop.example. These are the URLs GnuPG, Thunderbird and the VayuMail app request, derived from the same hash this server answers on.")) + `</p>
-<div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Discovery URL</th></tr></thead><tbody>` + wkdRows.String() + `</tbody></table></div>
-<p class="text-xs muted">They answer once <code>openpgpkey.&lt;domain&gt;</code> points here with the proxy <strong>off</strong>.` + string(ui.Tip("Run sudo bash scripts/setup-openpgpkey-subdomain.sh, which also creates the DNS record when Cloudflare credentials are configured. The proxy must be off because a key fetch is machine-to-machine: GnuPG cannot solve a bot challenge, and behind one, discovery fails silently and correspondents quietly fall back to unencrypted mail.")) + `</p></div>`
+	count := itoaSafe(len(rows)) + " key" + plural(len(rows))
+	notes := `<p class="sa-list__note">Only the public half of each key is shown.` + string(ui.Tip("Private keys are AES-256-GCM encrypted at rest and have no administrator-facing path at all: a mailbox's own signed-in device is the only thing that can retrieve one. An administrator managing somebody else's mailbox has no business holding its private key, and a key you can read on a web page ends up in a browser cache, a screenshot and a support ticket.")) +
+		` Each key is published at its Web Key Directory address once <code>openpgpkey.&lt;domain&gt;</code> points here with the proxy off.` + string(ui.Tip("Run sudo bash scripts/setup-openpgpkey-subdomain.sh, which also creates the DNS record when Cloudflare credentials are configured. The proxy must be off because a key fetch is machine-to-machine: GnuPG cannot solve a bot challenge, and behind one, discovery fails silently and correspondents quietly fall back to unencrypted mail.")) + `</p>`
+	list := ui.Table([]string{"Mailbox", "Fingerprint", "State", "Expires", "Public key"}, rows, "No keys yet. A key is made with each mailbox.") + ui.HTML(notes)
+	body := string(ui.List(ui.ListPage{Title: "Mail administration", Count: count, Tabs: saTabsFor(cfg, "mail", "/os/vayumail/pgp")}, list, ""))
 	// The Copy buttons above are handled by the delegated listener in
 	// admin-os-mail.js, so this page has to load it too — without it the buttons
 	// render and do nothing, which is worse than not offering them.
 	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`
-	writeOSHTML(w, r, adminOSLayout(nonce, "VayuPGP", "vayuos", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "PGP keys", "vayuos", cfg, htmpl.HTML(body)))
 }
 
 func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
@@ -1220,35 +1247,24 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mc := a.vayuMail.Config()
-	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>VayuMail · DNS</h1></div>`)
-	body.WriteString(`<p class="page-sub">Native outbound mail sovereignty — publish these records, then verify every mail domain.</p>`)
 	if !mc.Enabled {
 		a.writeMailSetup(w, r, "Mail DNS")
 		return
 	}
-	qs, stats, _ := a.vayuMail.QueueStatus(r.Context())
-	failTone := ""
-	if qs.Failed > 0 {
-		failTone = "warn"
-	}
-	body.WriteString(`<div class="stat-grid">` +
-		vmStatTile(itoaSafe(qs.Pending), "Pending", "") +
-		vmStatTile(itoaSafe(stats.Delivered), "Delivered", "") +
-		vmStatTile(itoaSafe(qs.Failed), "Failed", failTone) +
-		`</div>`)
-	// DNS tab (rebuilt for multi-domain — see vayuos_mail_dns.go): a guided
-	// checklist first (are we done?), then the records to publish per domain and
-	// live verification of EVERY mail domain. The verdicts are computed once and
-	// shared, so the checklist and the tables below it cannot disagree.
+	// The checklist first (are we done, and what is next), then the records
+	// to publish per domain and the live verification of every mail domain.
+	// The verdicts are computed once and shared, so the checklist and the
+	// tables under it cannot disagree. The delivery figures are Overview's.
 	health := a.vayuDNSHealth(r.Context())
+	n := len(health.Domains)
+	count := itoaSafe(n) + " mail domain" + plural(n)
+	var body strings.Builder
 	body.WriteString(vayuDNSWizard(health))
-	body.WriteString(`<div class="section-head"><span class="section-head__title">DNS records</span><span class="section-head__hint">Publish these at your domain's DNS host</span></div>`)
-	body.WriteString(a.vayuDNSPublishSections(r, mc))
-	body.WriteString(`<div class="section-head"><span class="section-head__title">Live verification</span><span class="section-head__hint">Re-check every mail domain</span></div>`)
-	body.WriteString(vayuDNSVerifyFragmentWith(health))
-	body.WriteString(vayuDNSScript(nonce))
-	writeOSHTML(w, r, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body.String())))
+	body.WriteString(string(ui.Section("Records to publish", "At each domain's DNS host", ui.HTML(a.vayuDNSPublishSections(r, mc)))))
+	body.WriteString(string(ui.Section("Live verification", "Every mail domain, checked now", ui.HTML(vayuDNSVerifyFragmentWith(health)))))
+	page := string(ui.List(ui.ListPage{Title: "Mail administration", Count: count, Tabs: saTabsFor(cfg, "mail", "/os/vayumail/dns")}, ui.HTML(body.String()), "")) +
+		vayuDNSScript(nonce)
+	writeOSHTML(w, r, adminOSLayout(nonce, "Mail DNS", "vayuos", cfg, htmpl.HTML(page)))
 }
 
 func (a *App) handleVayuOSSecurity(w http.ResponseWriter, r *http.Request) {
@@ -1269,34 +1285,43 @@ func (a *App) handleVayuOSSecurity(w http.ResponseWriter, r *http.Request) {
 	// CSRF token so the inline "Check now" control can POST.
 	csrfTokenFor(w, r)
 
-	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Security updates</h1>
-  <div class="page-actions">
-    <button type="button" class="btn btn--sm" data-sec-check>Check now</button>
-    <a class="btn btn--primary btn--sm" href="/os/update">Update VayuPress →</a>
-    <span class="text-xs muted" data-sec-status role="status" aria-live="polite"></span>
-  </div>
-</div>`)
-	body.WriteString(`<p class="page-sub">Upstream PGP &amp; crypto dependency monitoring — VayuPress never reaches out on its own.</p>`)
-	if !rep.Enabled {
-		body.WriteString(saCallout("info", `Automatic checks are off, so VayuPress never reaches out on its own. <strong>Check now</strong> runs one check, fetching only public release metadata from GitHub and sending nothing about your site. To check automatically, set <code>VAYUOS_SECURITY_UPDATES=on</code> and restart.`))
-	} else if rep.UpdatesAvailable > 0 {
-		body.WriteString(`<div class="warn-box">` + itoaSafe(rep.UpdatesAvailable) + ` security-relevant update` + plural(rep.UpdatesAvailable) + ` available. ` + html.EscapeString(rep.UpgradeHint) + `</div>`)
+	// The answer the page is opened for, said once: whether the PGP and
+	// crypto libraries this build embeds have security releases waiting.
+	checked := false
+	for _, c := range rep.Components {
+		if c.Latest != "" {
+			checked = true
+		}
 	}
-	body.WriteString(`<div class="section-head"><span class="section-head__title">Dependencies</span><span class="section-head__hint">Upstream PGP / crypto components this build embeds</span></div>`)
-	body.WriteString(buildComponentTable(rep.Components))
-	// One-click dependency update. VayuPress is a single static binary with its
-	// dependencies compiled in, so "updating dependencies" means installing the
-	// latest signed release (built with the patched dependencies) — there is no
-	// separate go-get/rebuild step on the server. The button links to the
-	// one-click self-updater (checksum + Ed25519 verified, atomic swap,
-	// auto-rollback), the safe enterprise path to apply these patches.
-	body.WriteString(`<div class="section-head"><span class="section-head__title">Apply updates</span><span class="section-head__hint">One click · checksum + signature verified</span></div>`)
-	body.WriteString(`<div class="card">
-<p class="text-sm muted">VayuPress ships as one self-contained, statically-linked binary, so security patches to the PGP/crypto libraries above are delivered <strong>inside a signed release</strong> — installing the latest release applies them. There is no separate dependency-fetch/rebuild step to run on your server.</p>
-<p><a class="btn btn--primary btn--sm" href="/os/update">Update VayuPress now →</a></p>
-<p class="text-xs muted">The updater verifies the download by SHA-256 checksum (and Ed25519 signature when a release key is pinned), backs up the database, swaps the binary atomically, and rolls back automatically if the new build fails to start.</p></div>`)
-	body.WriteString(`<script nonce="` + nonce + `">
+	page := ui.StatusPage{Title: "Mail administration", Tabs: saTabsFor(cfg, "mail", "/os/vayumail/security"),
+		Actions: `<span class="text-xs muted" data-sec-status role="status" aria-live="polite"></span><button type="button" class="btn btn--sm" data-sec-check>Check now</button>`}
+	switch {
+	case rep.UpdatesAvailable > 0:
+		page.Tone, page.State = "warn", itoaSafe(rep.UpdatesAvailable)+" security update"+plural(rep.UpdatesAvailable)+" waiting"
+		page.Detail = ui.Text(rep.UpgradeHint)
+	case checked:
+		page.Tone, page.State = "ok", "Every library this build embeds is up to date"
+		page.Detail = ui.Text("Checked " + relTimeAgo(rep.CheckedAt) + ".")
+	default:
+		page.State = "Not checked yet"
+		page.Detail = ui.Text("Check now asks GitHub once for these libraries' public releases, and sends nothing about this site.")
+	}
+	rows := securityLibraryRows(rep.Components)
+	auto, autoHint := ui.State("neutral", "Off"), "VayuPress never reaches out on its own. To check every day, set VAYUOS_SECURITY_UPDATES=on and restart."
+	if rep.Enabled {
+		auto, autoHint = ui.State("ok", "On"), "Checked against each library's public releases."
+	}
+	settings := ui.Rows(
+		ui.Row{Label: "Automatic checks", Hint: autoHint, Control: auto},
+		// One self-contained binary: a patched library arrives inside a signed
+		// release, so updating VayuPress is how these are applied, from the one
+		// place that does it (verified, backed up, rolled back on failure).
+		ui.Row{Label: "Applying an update", Hint: "A patched library arrives inside a signed VayuPress release.", Control: `<a class="btn btn--sm" href="/os/update">Open Updates</a>`},
+	)
+	body := string(ui.Status(page,
+		ui.Section("Libraries", "PGP and crypto, as this build embeds them", ui.Table([]string{"Library", "In this build", "Latest", "State"}, rows, "")),
+		ui.Section("Updates", "", settings)))
+	body += `<script nonce="` + nonce + `">
 (function(){'use strict';
 function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):'';}
 var b=document.querySelector('[data-sec-check]'),s=document.querySelector('[data-sec-status]');
@@ -1307,8 +1332,33 @@ if(b)b.addEventListener('click',function(){
     .catch(function(e){b.disabled=false;if(s)s.textContent='Network error: '+e;});
 });
 })();
-</script>`)
-	writeOSHTML(w, r, adminOSLayout(nonce, "Security updates", "vayuos", cfg, htmpl.HTML(body.String())))
+</script>`
+	writeOSHTML(w, r, adminOSLayout(nonce, "Mail security", "vayuos", cfg, htmpl.HTML(body)))
+}
+
+// securityLibraryRows is the Security tab's table: each embedded library, the
+// version in this build, the latest of its line, and whether a release waits.
+func securityLibraryRows(comps []secwatch.Component) [][]ui.HTML {
+	var rows [][]ui.HTML
+	for _, c := range comps {
+		latest, state := c.Latest, ui.State("ok", "Up to date")
+		switch {
+		case c.UpdateAvailable:
+			state = ui.State("warn", "Update waiting")
+		case latest == "":
+			// No upstream version known: the watcher is off or the check
+			// failed. Never "up to date" for what was not compared.
+			state, latest = ui.State("neutral", "Not checked"), "—"
+		}
+		cell := `<span class="mono">` + esc(latest) + `</span>`
+		// A later major is a separate module reached by changing code; no
+		// release applies it, so it is named here, not counted as an update.
+		if c.NewerMajor != "" {
+			cell += `<span class="field-hint">` + esc(c.NewerMajor) + ` is a new major version: a code migration, not a patch</span>`
+		}
+		rows = append(rows, []ui.HTML{ui.Text(c.Name), ui.HTML(`<span class="mono">` + esc(c.Current) + `</span>`), ui.HTML(cell), state})
+	}
+	return rows
 }
 
 // handleVayuOSSecurityCheck performs an on-demand upstream security check
@@ -1325,37 +1375,6 @@ func (a *App) handleVayuOSSecurityCheck(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"updatesAvailable": rep.UpdatesAvailable})
-}
-
-func buildComponentTable(comps []secwatch.Component) string {
-	var sb strings.Builder
-	sb.WriteString(`<div class="card"><div class="card-title">Tracked dependencies</div><div class="table-wrap"><table class="table"><thead><tr><th>Component</th><th>Current</th><th>Latest</th><th>Status</th></tr></thead><tbody>`)
-	for _, c := range comps {
-		latest := c.Latest
-		var status string
-		switch {
-		case c.UpdateAvailable:
-			status = `<span class="badge badge--warn">Update available</span>`
-		case latest == "":
-			// No upstream version known — the watcher is disabled or the check
-			// failed. Don't claim "up to date" when we haven't actually compared.
-			status = `<span class="muted text-sm">not checked</span>`
-		default:
-			status = `<span class="badge badge--ok">Up to date</span>`
-		}
-		if latest == "" {
-			latest = "—"
-		}
-		// A later major is a separate module reached by changing code; no release
-		// applies it, so it is named here rather than counted as an update.
-		major := ""
-		if c.NewerMajor != "" {
-			major = `<span class="field-hint">` + html.EscapeString(c.NewerMajor) + ` is a new major version: a code migration, not a patch</span>`
-		}
-		sb.WriteString(`<tr><td>` + html.EscapeString(c.Name) + `</td><td class="mono text-sm">` + html.EscapeString(c.Current) + `</td><td class="mono text-sm">` + html.EscapeString(latest) + major + `</td><td>` + status + `</td></tr>`)
-	}
-	sb.WriteString(`</tbody></table></div></div>`)
-	return sb.String()
 }
 
 // handleVayuOSHealthJSON exposes the VayuOS health snapshot as JSON.
