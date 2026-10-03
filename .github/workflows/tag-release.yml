@@ -57,10 +57,23 @@ jobs:
         id: exists
         env:
           GH_TOKEN: ${{ github.token }}
+        # A draft is not a release: the publish step creates one, uploads to
+        # it and only then publishes. A connection dropped between the two
+        # leaves a draft missing files (3.17.98 lost vayupress.sha256 this
+        # way), and treating it as "exists" skipped every re-run, so the
+        # version could never be published. The draft was never public and
+        # carries no tag, so it is deleted and the release built whole.
         run: |
-          if gh release view "${{ steps.ver.outputs.version }}" >/dev/null 2>&1; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Release ${{ steps.ver.outputs.version }} already exists — skipping."
+          v="${{ steps.ver.outputs.version }}"
+          if draft=$(gh release view "$v" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [ "$draft" = "true" ]; then
+              echo "A draft of $v was left by an interrupted publish; deleting it to publish $v whole."
+              gh release delete "$v" --yes
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "Release $v already exists — skipping."
+            fi
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
