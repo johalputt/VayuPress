@@ -256,18 +256,6 @@ func Empty(icon, title, sub string, action HTML) HTML {
 		string(Text(title)) + `</div>` + s + string(action) + `</div>`)
 }
 
-// Tag is a short status label on its tone's tint: ok, warn, danger, info or
-// muted. Anything else is muted, so a caller cannot put a class of its own
-// choosing into the markup.
-func Tag(tone, text string) HTML {
-	switch tone {
-	case "ok", "warn", "danger", "info":
-	default:
-		tone = "muted"
-	}
-	return HTML(`<span class="badge badge--` + tone + `">` + string(Text(text)) + `</span>`)
-}
-
 // Step is one stage of a process: a short mark on the left (a time, a count),
 // what happens, and what it means. Now marks the stage the system is in.
 type Step struct {

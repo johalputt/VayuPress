@@ -26,10 +26,10 @@ const KINDS = ["overview", "list", "document", "settings", "status", "setup", "g
 // Kinds whose pages edit in place: everywhere else a form rises in a sheet.
 // An app's composer and search are its work, not a form loose in a page.
 const EDITS_IN_PLACE = ["settings", "document", "app"];
-// Pages not yet given a kind, queued by name: Sign-in security and VayuVeil
-// move to the grammar with pipeline item 104, the release after this plan's.
-// Adding a page here is a decision for the pipeline, not a way past the lint.
-const NOT_YET_CONVERTED = ["/os/security", "/os/vayuveil"];
+// Pages not yet given a kind, queued by name. Empty since pipeline item 104
+// gave Sign-in security and VayuVeil theirs; adding a page here is a decision
+// for the pipeline, not a way past the lint.
+const NOT_YET_CONVERTED = [];
 
 function anatomy() {
   const main = document.querySelector("main#main-content");

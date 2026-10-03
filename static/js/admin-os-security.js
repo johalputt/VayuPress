@@ -40,8 +40,8 @@
         if (keyEl) keyEl.textContent = data.secret;
         if (uriEl) uriEl.setAttribute('href', data.uri);
         if (qrEl) {
-          if (data.qr) { qrEl.src = data.qr; qrEl.style.display = ''; }
-          else { qrEl.style.display = 'none'; }
+          if (data.qr) qrEl.src = data.qr;
+          qrEl.hidden = !data.qr;
         }
         if (enrollBox) enrollBox.hidden = false;
         beginBtn.disabled = true;

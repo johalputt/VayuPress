@@ -93,54 +93,62 @@ func TestThePageNeverClaimsProtectionItDoesNotHave(t *testing.T) {
 }
 
 // The phase boundary must be the first thing a reader meets, not a footnote.
-// Someone who reads only the lede has to come away knowing nothing is enforced.
+// Someone who reads only the state line has to come away knowing nothing is
+// enforced.
 func TestThePhaseBoundaryIsStatedBeforeAnythingElse(t *testing.T) {
-	page := veilPageFor(t, true, vayuveil.PresenceAbsent)
-	lede := page
-	if i := strings.Index(page, `class="stat-grid"`); i > 0 {
-		lede = page[:i]
-	}
-	if !strings.Contains(lede, "enforces none of them") {
-		t.Error("the lede does not say that Phase 0 enforces nothing, so a reader who stops after " +
-			"the first paragraph believes this page describes a defence")
+	for _, enabled := range []bool{true, false} {
+		if head := veilHead(t, veilPageFor(t, enabled, vayuveil.PresenceAbsent)); !strings.Contains(head, "enforces none of them") {
+			t.Errorf("enabled=%v: the state line does not say that Phase 0 enforces nothing, so a reader who "+
+				"stops there believes this page describes a defence", enabled)
+		}
 	}
 }
 
-// The tile counts VERIFIED controls, and the count has to move with reality in
-// both directions — a tile hardcoded either way is the thing to catch.
-func TestTheVerifiedEnforcingTileCountsWhatIsActuallyVerified(t *testing.T) {
-	// Kernel says undumpable but the core limit could not be read: ONE control is
-	// verified, not two. Unverified must not be rounded up.
-	on := statCardIn(t, veilPageWith(t,
-		vayuveil.SelfHardening{Supported: true, Known: true, Undumpable: true}, nil), "Verified enforcing")
-	if !strings.Contains(on, ">1<") {
-		t.Errorf("one control is verified and the tile does not say so: %s", on)
+// veilHead is the page's state line, everything before its first section, so
+// an assertion about it cannot be met by a row further down.
+func veilHead(t *testing.T, page string) string {
+	t.Helper()
+	i := strings.Index(page, `class="sa-status__head`)
+	j := strings.Index(page, "Observation control")
+	if i < 0 || j < i {
+		t.Fatal("the page has no state line before its first section")
 	}
-	// Both mechanisms verified: two.
-	both := statCardIn(t, veilPageWith(t, vayuveil.SelfHardening{
-		Supported: true, Known: true, Undumpable: true,
-		CoreLimitKnown: true, CoreLimitZero: true,
-	}, nil), "Verified enforcing")
-	if !strings.Contains(both, ">2<") {
-		t.Errorf("both controls are verified and the tile does not count both: %s", both)
-	}
-	if strings.Contains(on, "stat-card--warn") {
-		t.Errorf("a verified control is toned as a problem: %s", on)
-	}
-	// Kernel says dumpable: nothing is enforcing, and that IS a problem.
-	off := statCardIn(t, veilPageWith(t,
-		vayuveil.SelfHardening{Supported: true, Known: true, Undumpable: false}, nil), "Verified enforcing")
-	if !strings.Contains(off, ">0<") {
-		t.Errorf("nothing is enforcing and the tile does not read zero: %s", off)
-	}
-	if !strings.Contains(off, "stat-card--warn") {
-		t.Errorf("zero verified controls is rendered as unremarkable: %s", off)
-	}
-	// Kernel could not be asked: unverified is NOT a pass.
-	unk := statCardIn(t, veilPageWith(t,
-		vayuveil.SelfHardening{Supported: false}, nil), "Verified enforcing")
-	if !strings.Contains(unk, ">0<") {
-		t.Errorf("an unverifiable platform is counted as enforcing: %s", unk)
+	return page[i:j]
+}
+
+// The state line counts VERIFIED controls, and the count has to move with
+// reality in both directions; a count hardcoded either way is the thing to catch.
+func TestTheStateCountsWhatIsActuallyVerified(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		self  vayuveil.SelfHardening
+		count string
+		warn  bool
+	}{
+		// Kernel says undumpable but the core limit could not be read: ONE control
+		// is verified, not two. Unverified must not be rounded up.
+		{"one", vayuveil.SelfHardening{Supported: true, Known: true, Undumpable: true}, "1 verified enforcing", false},
+		{"both", vayuveil.SelfHardening{Supported: true, Known: true, Undumpable: true, CoreLimitKnown: true, CoreLimitZero: true}, "2 verified enforcing", false},
+		// Kernel says dumpable: nothing is enforcing, and that IS a problem.
+		{"dumpable", vayuveil.SelfHardening{Supported: true, Known: true, Undumpable: false}, "Nothing verified enforcing", true},
+		// Kernel could not be asked: unverified is NOT a pass.
+		{"unknown", vayuveil.SelfHardening{Supported: false}, "Nothing verified enforcing", true},
+	} {
+		head := veilHead(t, veilPageWith(t, c.self, nil))
+		if !strings.Contains(head, c.count) {
+			t.Errorf("%s: the state line does not say %q: %s", c.name, c.count, head)
+		}
+		if warned := strings.Contains(head, "sa-status__head--warn"); warned != c.warn {
+			t.Errorf("%s: the state line is toned warn=%v, want %v", c.name, warned, c.warn)
+		}
+		if strings.Contains(head, "sa-status__head--ok") {
+			t.Errorf("%s: an observation console is marked ok, which reads as protection it does not give", c.name)
+		}
+		// The permanent limits are always open by construction: they are the
+		// boundary, listed apart, not findings that make a host read open.
+		if c.name == "one" && !strings.Contains(head, "Nothing open on this host") {
+			t.Errorf("the permanent limits are counted as open findings on this host: %s", head)
+		}
 	}
 }
 
@@ -191,17 +199,18 @@ func TestThePageNamesEveryThingItWillNeverClaim(t *testing.T) {
 	}
 }
 
-// A channel open on this host is the actionable finding. It must reach the page.
+// A channel open on this host is the actionable finding. It must reach the
+// page, in its row and in the state line, as a warning.
 func TestAnOpenChannelIsVisibleOnThePage(t *testing.T) {
 	page := veilPageFor(t, true, vayuveil.PresentReachable)
 	if !strings.Contains(page, ">Open</span>") {
-		t.Error("no row is chipped as open on a host where every channel is reachable")
+		t.Error("no row reads open on a host where every channel is reachable")
 	}
-	tile := statCardIn(t, page, "Open on this host")
-	if strings.Contains(tile, ">0<") {
-		t.Error("the tile reports nothing open while every channel is reachable")
+	head := veilHead(t, page)
+	if !strings.Contains(head, "open on this host") || strings.Contains(head, "Nothing open") {
+		t.Errorf("the state line does not say channels are open: %s", head)
 	}
-	if !strings.Contains(tile, "stat-card--warn") {
+	if !strings.Contains(head, "sa-status__head--warn") {
 		t.Error("open channels are toned as ordinary state")
 	}
 }
@@ -210,7 +219,7 @@ func TestAnOpenChannelIsVisibleOnThePage(t *testing.T) {
 func TestTheVayuVeilPageMeetsTheHouseStyle(t *testing.T) {
 	page := veilPageFor(t, true, vayuveil.PresenceAbsent)
 	assertHouseStyle(t, page, houseStyle{
-		Name: "VayuVeil", MinTiles: 4, MinBands: 6,
+		Name:  "VayuVeil",
 		IDs:   []string{"veil-status"},
 		Hooks: []string{"data-veil-toggle"},
 	})

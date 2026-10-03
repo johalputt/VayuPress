@@ -331,9 +331,3 @@ func shieldSelfTestBody(res shieldCanaryResult) string {
 	}
 	return b
 }
-
-// shieldHeader is the title and tab strip a Shield tab opens with when it is
-// not built on ui.Overview (Sign-in security), so all three read as one place.
-func shieldHeader(cfg *osSettings, current string) string {
-	return `<div class="page-header"><h1>Shield</h1></div>` + string(saTabsFor(cfg, "shield", current))
-}

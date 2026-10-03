@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+
+- **Sign-in security and VayuVeil are Still Air**, the last two console pages
+  on the old layout, so the page-grammar walk now holds every console page
+  with no exception. Each opens on its state. Sign-in security says whether
+  two-factor sign-in is on, with the one control that changes it; setting it
+  up rises in a sheet, and the QR code stays dark on white in dark mode so
+  authenticator cameras read it. VayuVeil says what is open on this host and
+  what is verified enforcing, its badges are now dots and words, and its
+  tiles are gone.
+
+### Fixed
+
+- **VayuVeil counted its permanent limits as findings on this host.** The
+  six things it will never claim (an attacker with root, a kernel attacker,
+  a camera on the screen and the rest) are always open by construction; they
+  were counted in "open on this host", so it read six on every install and no
+  change could move it. They stay listed as the boundary; the count is now
+  what is open on this machine.
+
 ## [3.17.98] — 2026-10-03
 
 Backups now says what a backup holds, and its test restore checks the mail,

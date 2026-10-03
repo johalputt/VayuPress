@@ -132,20 +132,59 @@ func (a *App) handleOSVayuVeilToggle(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok", "state": state})
 }
 
-// statusChip renders a report row's verdict.
+// veilStatusChip renders a report row's verdict as a state: a dot and a word.
+// Only a verified control is ok; open and exposed are the findings to act on.
 func veilStatusChip(s veilaudit.Status) string {
 	switch s {
 	case veilaudit.Pass:
-		return `<span class="mon-chip mon-chip--on">Enforcing</span>`
+		return string(ui.State("ok", "Enforcing"))
 	case veilaudit.Fail:
-		return `<span class="mon-chip mon-chip--off">Open</span>`
+		return string(ui.State("danger", "Open"))
 	case veilaudit.Warn:
-		return `<span class="mon-chip mon-chip--off">Exposed</span>`
+		return string(ui.State("warn", "Exposed"))
 	case veilaudit.Unverified:
-		return `<span class="mon-chip mon-chip--off">Unverified</span>`
+		return string(ui.State("neutral", "Unverified"))
 	default:
-		return `<span class="mon-chip mon-chip--off">Context</span>`
+		return string(ui.State("neutral", "Context"))
 	}
+}
+
+// veilState is the sentence VayuVeil opens on, with its tone. Counted from
+// the report, never from the switch: open findings first, because they are
+// what an operator can act on, then what is verified enforcing. Nothing open
+// and something verified is neutral, not ok: at this phase a calm green mark
+// over an observation console reads as protection it does not give.
+func veilState(enabled bool, checks []veilaudit.Check) (tone, state string, detail ui.HTML) {
+	const phase = "This phase records a decision for each observation channel and enforces none of them, except that VayuPress itself refuses to be dumped."
+	if !enabled {
+		return "warn", "VayuVeil is not reporting", ui.Text("Activate it to inventory what on this machine can observe a screen, a keyboard, a clipboard or a window. " + phase)
+	}
+	// The permanent rows (root, a kernel attacker, a camera, ...) are the
+	// boundary §8 states forever, always open by construction; counting them
+	// as findings on this host made "open" read six on every install, so no
+	// change on the host could ever move it.
+	pass, fail := 0, 0
+	for _, c := range checks {
+		switch {
+		case c.Status == veilaudit.Pass:
+			pass++
+		case c.Status == veilaudit.Fail && !c.Permanent:
+			fail++
+		}
+	}
+	verified := "Nothing verified enforcing"
+	if pass > 0 {
+		verified = strconv.Itoa(pass) + " verified enforcing"
+	}
+	switch {
+	case fail > 0:
+		tone, state = "warn", strconv.Itoa(fail)+" finding"+plural(fail)+" open on this host"
+	case pass == 0:
+		tone, state = "warn", "Nothing open on this host, and nothing verified enforcing"
+	default:
+		tone, state = "neutral", "Nothing open on this host"
+	}
+	return tone, state, ui.Text(verified + ". " + phase)
 }
 
 // vayuVeilPage builds the console body. Pure, so the page can be rendered and
@@ -155,185 +194,130 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 	self vayuveil.SelfHardening, red []vayuveil.AttackResult,
 	harden vayuveil.HardenState, sandbox vayuveil.SandboxState, processStart time.Time,
 	suiteAt time.Time, tabs ui.HTML) string {
-	var b strings.Builder
-
-	b.WriteString(`<div class="page-header"><h1>Shield</h1><div class="page-actions">` +
-		`<a class="btn btn--ghost btn--sm" href="/os/adr">ADR-0150</a>` +
-		`<span id="veil-status" class="text-sm muted" role="status" aria-live="polite"></span>` +
-		`</div></div>` + string(tabs))
-	b.WriteString(`<p class="page-sub">What on this machine can observe a screen, a keyboard, a ` +
-		`clipboard or a window. This phase records a decision for each and enforces none of them, ` +
-		`except that VayuPress itself refuses to be dumped.</p>`)
-
-	// ── Tiles ─────────────────────────────────────────────────────────────────
-	pass, warn, fail, unver := veilaudit.Summary(checks)
-	activeLabel, activeTone := "Inactive", "warn"
-	if enabled {
-		activeLabel, activeTone = "Reporting", ""
-	}
-	b.WriteString(`<div class="stat-grid">` +
-		osStatTile("Observation control", activeLabel, activeTone) +
-		osStatTile("Channels registered", strconv.Itoa(len(chans)), "") +
-		osStatTile("Open on this host", strconv.Itoa(fail), tone(fail > 0)) +
-		osStatTile("Verified enforcing", strconv.Itoa(pass), tone(pass == 0)) +
-		`</div>`)
+	tone, state, detail := veilState(enabled, checks)
 
 	// ── The switch, and the boundary it does NOT cross ────────────────────────
-	b.WriteString(`<div class="section-head"><span class="section-head__title">Observation control</span>` +
-		`<span class="section-head__hint">What this switch does, and what it cannot</span></div>`)
-	b.WriteString(`<div class="mon-stack">`)
-
-	btnLabel, btnAction, chip := "Activate", "1", `<span class="mon-chip mon-chip--off">Inactive</span>`
+	btnLabel, btnAction, btnClass := "Activate", "1", "btn btn--primary btn--sm"
 	if enabled {
-		btnLabel, btnAction, chip = "Deactivate", "0", `<span class="mon-chip mon-chip--on">Reporting</span>`
+		btnLabel, btnAction, btnClass = "Deactivate", "0", "btn btn--sm"
 	}
-	b.WriteString(monAcc(saIcon("shield"), "VayuVeil", "Inventory the observation channels on this host and report",
-		chip, true,
-		`<div class="card"><p class="text-sm">Reporting only. Activating it protects nothing, and turning it off exposes nothing.</p>`+
-			`<div class="vm-row"><button type="button" class="btn btn--primary btn--sm" `+
-			`data-veil-toggle="`+btnAction+`">`+btnLabel+`</button></div>`+
-			string(ui.Explain(`<p>Activating VayuVeil makes this install <b>look at itself</b>: it `+
-				`probes which observation interfaces exist on this machine, which of them this process can `+
-				`open, and reports both against the policy registered for each one.</p>`+
-				`<p>ADR-0150 Phase 0 registers every channel's policy, grant model, indicator and audit `+
-				`level: it registers those decisions and enforces none of them on this host, with one exception it can prove: this process refuses to `+
-				`be dumped, checked against the kernel below. Enforcement is Phase 1 and later, and it `+
-				`lives in a compositor, a sandbox and a mandatory-access-control policy, not in this `+
-				`binary. A switch here that read as a shield would be the exact claim this ADR was `+
-				`written to prevent.</p>`))+`</div>`))
+	control := ui.Section("Observation control", "", ui.Join(ui.Rows(ui.Row{Label: "VayuVeil",
+		Hint:    "Reporting only. Activating it protects nothing, and turning it off exposes nothing.",
+		Control: ui.HTML(`<button type="button" class="` + btnClass + `" data-veil-toggle="` + btnAction + `">` + btnLabel + `</button>`)}),
+		ui.Explain(`<p>Activating VayuVeil makes this install <b>look at itself</b>: it `+
+			`probes which observation interfaces exist on this machine, which of them this process can `+
+			`open, and reports both against the policy registered for each one.</p>`+
+			`<p>ADR-0150 Phase 0 registers every channel's policy, grant model, indicator and audit `+
+			`level: it registers those decisions and enforces none of them on this host, with one exception it can prove: this process refuses to `+
+			`be dumped, checked against the kernel below. Enforcement is Phase 1 and later, and it `+
+			`lives in a compositor, a sandbox and a mandatory-access-control policy, not in this `+
+			`binary. A switch here that read as a shield would be the exact claim this ADR was `+
+			`written to prevent.</p>`)))
 
 	// ── What is actually enforced, and how big it is ──────────────────────────
-	selfChip := `<span class="mon-chip mon-chip--off">Unverified</span>`
+	selfState := ui.State("neutral", "Unverified")
 	switch {
 	case self.Known && self.Undumpable:
-		selfChip = `<span class="mon-chip mon-chip--on">Verified</span>`
+		selfState = ui.State("ok", "Verified")
 	case self.Known:
-		selfChip = `<span class="mon-chip mon-chip--off">Dumpable</span>`
+		selfState = ui.State("warn", "Dumpable")
 	}
-	b.WriteString(monAcc(saIcon("lock"), "This process refuses to be dumped",
-		"The one control VayuVeil enforces, and its exact size", selfChip, true,
-		`<div class="card"><p class="text-sm">`+veilSelfHeadline(self)+string(ui.Tip(self.Describe()))+`</p>`+
-			`<p class="text-sm">`+veilCoreHeadline(self)+string(ui.Tip(self.DescribeCoreLimit()))+`</p>`+
-			string(ui.Explain(ui.HTML(`<p>It is applied before the configuration is read and before the `+
-				`database is opened, so there is no moment at which a core file or a same-user read of `+
-				`<span class="mono">/proc/&lt;pid&gt;/mem</span> could reach a session token, the keystore `+
-				`key, decrypted mail or PGP material. Both lines above are read back from the kernel each `+
-				`time this page loads: a control that reports itself is not evidence.</p>`+
-				`<p>Two mechanisms rather than one, deliberately. Dumpability can be turned back on by a `+
-				`later call inside this process; the resource limit cannot be raised again by an `+
-				`unprivileged process once it is lowered. Undoing either one does not silently undo the `+
-				`other, and each is read back separately so this page can say which is holding.</p>`+
-				`<p><b>`+esc(vayuveil.SelfHardeningScope)+`</b> Set `+
-				`<span class="mono">VAYU_ALLOW_COREDUMP=1</span> if you are debugging a crash and need a `+
-				`core file; this page will then say so, because it reports what is true rather than which `+
-				`branch ran.</p>`)))+`</div>`))
+	coreState := ui.State("neutral", "Unverified")
+	switch {
+	case self.CoreLimitKnown && self.CoreLimitZero:
+		coreState = ui.State("ok", "Verified")
+	case self.CoreLimitKnown:
+		coreState = ui.State("warn", "Core file written")
+	}
+	process := ui.Section("This process", "The one control VayuVeil enforces, read back from the kernel on every load", ui.Join(
+		ui.Rows(
+			ui.Row{Label: "Refuses to be dumped", Hint: veilSelfHeadline(self) + " " + self.Describe(), Control: selfState},
+			ui.Row{Label: "No core file", Hint: veilCoreHeadline(self) + " " + self.DescribeCoreLimit(), Control: coreState},
+		),
+		ui.Explain(ui.HTML(`<p>It is applied before the configuration is read and before the `+
+			`database is opened, so there is no moment at which a core file or a same-user read of `+
+			`<span class="mono">/proc/&lt;pid&gt;/mem</span> could reach a session token, the keystore `+
+			`key, decrypted mail or PGP material. Both lines above are read back from the kernel each `+
+			`time this page loads: a control that reports itself is not evidence.</p>`+
+			`<p>Two mechanisms rather than one, deliberately. Dumpability can be turned back on by a `+
+			`later call inside this process; the resource limit cannot be raised again by an `+
+			`unprivileged process once it is lowered. Undoing either one does not silently undo the `+
+			`other, and each is read back separately so this page can say which is holding.</p>`+
+			`<p><b>`+esc(vayuveil.SelfHardeningScope)+`</b> Set `+
+			`<span class="mono">VAYU_ALLOW_COREDUMP=1</span> if you are debugging a crash and need a `+
+			`core file; this page will then say so, because it reports what is true rather than which `+
+			`branch ran.</p>`))))
 
-	// ── Asking root for what this process cannot apply itself ─────────────────
-	// Directly after the row that says what IS enforced, because the two are the
-	// same conversation: here is what holds, and here is the only honest way to
-	// close what does not.
-	b.WriteString(veilHardenCard(harden, sandbox, processStart))
+	// ── The posture report ────────────────────────────────────────────────────
+	posture := make([]ui.Row, 0, len(checks))
+	for _, c := range checks {
+		label := c.Title
+		if c.Permanent {
+			label += " (permanent)"
+		}
+		posture = append(posture, ui.Row{Label: label, Hint: c.Detail, Control: ui.HTML(veilStatusChip(c.Status))})
+	}
+	postureSec := ui.Section("Posture report", "What is true on this machine now", ui.Join(ui.Rows(posture...),
+		ui.Explain(`<p>Computed from what was <b>observed</b>, never from what is `+
+			`configured. Green means <b>verified enforcing</b>, not &ldquo;switched on&rdquo;, so at Phase 0 `+
+			`nothing here is green, and that is the report working rather than failing. A channel that could `+
+			`not be checked reads <i>unverified</i>: absent evidence is never a pass.</p>`)))
 
 	// ── The capture suite ─────────────────────────────────────────────────────
 	captured, refused, notPresent, notAttempted := vayuveil.RedTeamSummary(red)
-	suiteChip := `<span class="mon-chip mon-chip--off">Not run</span>`
-	if len(red) > 0 {
-		if captured > 0 {
-			suiteChip = `<span class="mon-chip mon-chip--off">` + strconv.Itoa(captured) + ` captured</span>`
-		} else {
-			suiteChip = `<span class="mon-chip mon-chip--off">` + strconv.Itoa(notAttempted) + ` not attempted</span>`
-		}
-	}
-	var suite strings.Builder
 	suiteWhy := ui.Explain(`<p>Real capture techniques, run against this host, judged on <b>whether ` +
 		`they came away holding content</b>, never on whether a call returned an error. A subsystem that ` +
 		`reports the right status while producing the wrong bytes passes every check written the other way.</p>` +
 		`<p>The techniques not attempted are not defended and not tested: they need a Wayland or AT-SPI ` +
 		`client this binary does not link. They are named rather than counted, because a suite that ` +
 		`silently skips what it cannot do reports a clean sweep it never performed.</p>`)
-	suite.WriteString(`<div class="card">`)
+	var suite ui.HTML
 	if len(red) == 0 {
-		suite.WriteString(`<p class="text-sm muted">Not run yet. Activating VayuVeil runs it.</p>` +
-			string(suiteWhy) + `</div>`)
+		suite = ui.Section("Capture suite", "", ui.Join(`<p class="text-sm muted">Not run yet. Activating VayuVeil runs it.</p>`, suiteWhy))
 	} else {
-		suite.WriteString(`<p class="text-sm"><b>` + strconv.Itoa(captured) + `</b> captured content · <b>` +
-			strconv.Itoa(refused) + `</b> came away empty · <b>` + strconv.Itoa(notPresent) +
-			`</b> had no target here · <b>` + strconv.Itoa(notAttempted) + `</b> not attempted</p>`)
+		var notTried strings.Builder
+		for _, name := range vayuveil.TechniquesNotAttempted(red) {
+			notTried.WriteString(`<li>` + esc(name) + `</li>`)
+		}
+		rows := make([][]ui.HTML, 0, len(red))
+		for _, r := range red {
+			rows = append(rows, []ui.HTML{ui.Text(r.Technique), ui.Text(attackOutcomeLabel(r.Outcome)), ui.Text(strconv.Itoa(r.Bytes))})
+		}
 		// How old this result is, stated rather than implied. Every other row on
 		// this page is read from the kernel at report time and says so; this one
 		// is metered, and presenting a minute-old sweep in the present tense
 		// would be the same defect as remembering a control.
-		suite.WriteString(`<p class="text-xs muted">` + esc(veilSuiteAge(suiteAt, time.Now().UTC())) + `</p>`)
-		suite.WriteString(`<p class="text-sm">Not attempted here:</p><ul class="text-sm muted">`)
-		for _, name := range vayuveil.TechniquesNotAttempted(red) {
-			suite.WriteString(`<li>` + esc(name) + `</li>`)
-		}
-		suite.WriteString(`</ul>`)
-		suite.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Technique</th>` +
-			`<th>Outcome</th><th>Bytes</th></tr></thead><tbody>`)
-		for _, r := range red {
-			suite.WriteString(`<tr><td class="text-xs">` + esc(r.Technique) + `</td><td class="text-xs">` +
-				esc(attackOutcomeLabel(r.Outcome)) + `</td><td class="text-xs">` +
-				strconv.Itoa(r.Bytes) + `</td></tr>`)
-		}
-		suite.WriteString(`</tbody></table></div>` + string(suiteWhy) + `</div>`)
+		suite = ui.Section("Capture suite", veilSuiteAge(suiteAt, time.Now().UTC()), ui.Join(
+			ui.HTML(`<p class="text-sm"><b>`+strconv.Itoa(captured)+`</b> captured content · <b>`+
+				strconv.Itoa(refused)+`</b> came away empty · <b>`+strconv.Itoa(notPresent)+
+				`</b> had no target here · <b>`+strconv.Itoa(notAttempted)+`</b> not attempted</p>`),
+			ui.HTML(`<p class="text-sm">Not attempted here:</p><ul class="text-sm muted">`+notTried.String()+`</ul>`),
+			ui.Table([]string{"Technique", "Outcome", "Bytes"}, rows, ""), suiteWhy))
 	}
-	b.WriteString(monAcc(saIcon("target"), "Capture suite", "Techniques actually run against this host, judged on bytes",
-		suiteChip, false, suite.String()))
 
 	// ── The registry ──────────────────────────────────────────────────────────
-	regChip := `<span class="mon-chip mon-chip--on">` + strconv.Itoa(len(chans)) + ` declared</span>`
-	var reg strings.Builder
-	reg.WriteString(`<div class="card"><div class="table-wrap"><table class="table"><thead><tr><th>Channel</th><th>Default</th>` +
-		`<th>Grant</th><th>Indicator</th><th>Audit</th><th>Enforced by</th></tr></thead><tbody>`)
+	reg := make([][]ui.HTML, 0, len(chans))
 	for _, c := range chans {
-		reg.WriteString(`<tr><td>` + esc(c.Name) + `<div class="text-xs muted mono">` + esc(string(c.ID)) +
-			`</div></td><td class="text-xs">` + esc(dispositionLabel(c.Default)) +
-			`</td><td class="text-xs">` + esc(grantLabel(c.Grant)) +
-			`</td><td class="text-xs">` + esc(indicatorLabel(c.Indicator)) +
-			`</td><td class="text-xs">` + esc(auditLabel(c.Audit)) +
-			`</td><td class="text-xs muted">` + esc(veilNeedsLabel(c.Needs)) + `</td></tr>`)
+		reg = append(reg, []ui.HTML{
+			ui.HTML(esc(c.Name) + `<div class="text-xs muted mono">` + esc(string(c.ID)) + `</div>`),
+			ui.Text(dispositionLabel(c.Default)), ui.Text(grantLabel(c.Grant)), ui.Text(indicatorLabel(c.Indicator)),
+			ui.Text(auditLabel(c.Audit)), ui.Text(veilNeedsLabel(c.Needs)),
+		})
 	}
-	reg.WriteString(`</tbody></table></div>` + string(ui.Explain(`<p>Every interface through which `+
-		`observation is possible, with four obligations answered for each: what happens by default, `+
-		`how a person says yes, what they see while it is in use, and what is written down. A channel `+
-		`added without answering all four fails the build. That is the only honest meaning of `+
-		`&ldquo;no loophole&rdquo;: not that everything was thought of, but that anything missed `+
-		`cannot be introduced silently.</p>`)) + `</div>`)
-	b.WriteString(monAcc(saIcon("list"), "The Observation Contract", "Every channel, and the four questions it must answer",
-		regChip, false, reg.String()))
-
-	// ── The posture report ────────────────────────────────────────────────────
-	postureChip := `<span class="mon-chip mon-chip--off">Nothing enforcing</span>`
-	if pass > 0 {
-		postureChip = `<span class="mon-chip mon-chip--on">` + strconv.Itoa(pass) + ` enforcing</span>`
-	}
-	var post strings.Builder
-	post.WriteString(`<div class="card">`)
-	for _, c := range checks {
-		// The finding is the chip and the title; how it was established is
-		// one tip away, so thirteen of them read as a list, not an essay.
-		post.WriteString(`<p class="text-sm">` + veilStatusChip(c.Status) + ` <b>` + esc(c.Title) + `</b>`)
-		if c.Permanent {
-			post.WriteString(` <span class="mon-chip mon-chip--off">Permanent</span>`)
-		}
-		if c.Detail != "" {
-			post.WriteString(string(ui.Tip(c.Detail)))
-		}
-		post.WriteString(`</p>`)
-	}
-	post.WriteString(string(ui.Explain(`<p>Computed from what was <b>observed</b>, never from what is `+
-		`configured. Green means <b>verified enforcing</b>, not &ldquo;switched on&rdquo;, so at Phase 0 `+
-		`nothing here is green, and that is the report working rather than failing. A channel that could `+
-		`not be checked reads <i>unverified</i>: absent evidence is never a pass.</p>`)) + `</div>`)
-	b.WriteString(monAcc(saIcon("search"), "Posture report", "What is actually true on this machine right now",
-		postureChip, true, post.String()))
+	registry := ui.Disclosure(ui.Icon("list"), "The Observation Contract", "Every channel, and the four questions it must answer",
+		ui.State("neutral", strconv.Itoa(len(chans))+" declared"), false, ui.Join(
+			ui.Table([]string{"Channel", "Default", "Grant", "Indicator", "Audit", "Enforced by"}, reg, ""),
+			ui.Explain(`<p>Every interface through which `+
+				`observation is possible, with four obligations answered for each: what happens by default, `+
+				`how a person says yes, what they see while it is in use, and what is written down. A channel `+
+				`added without answering all four fails the build. That is the only honest meaning of `+
+				`&ldquo;no loophole&rdquo;: not that everything was thought of, but that anything missed `+
+				`cannot be introduced silently.</p>`)))
 
 	// ── What this will never claim ────────────────────────────────────────────
-	b.WriteString(monAcc(saIcon("warn"), "What VayuVeil will never claim",
-		"The boundary, stated so no future wording quietly moves it",
-		`<span class="mon-chip mon-chip--off">By construction</span>`, false,
-		`<div class="card"><p class="text-sm muted">Not &ldquo;screenshot-proof&rdquo;. Not protection `+
+	never := ui.Disclosure(ui.Icon("warn"), "What VayuVeil will never claim",
+		"The boundary, stated so no future wording quietly moves it", ui.State("neutral", "By construction"), false,
+		`<p class="text-sm muted">Not &ldquo;screenshot-proof&rdquo;. Not protection `+
 			`against an attacker with root, a kernel or driver-level attacker, DMA-capable hardware, `+
 			`firmware, ME/PSP or SMM. Not protection against a camera pointed at the screen, an HDMI `+
 			`splitter, a hostile monitor, or electromagnetic reconstruction. Not protection against a `+
@@ -344,13 +328,16 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 			`this product keeps a searchable history of your screen it <i>is</i> the threat, whatever `+
 			`the encryption.</p><p class="text-sm muted">Each of these appears in the report above as a `+
 			`permanent row that no setting clears. A report where everything eventually goes green `+
-			`teaches you to stop reading it.</p></div>`))
+			`teaches you to stop reading it.</p>`)
 
-	b.WriteString(`</div>`) // mon-stack
-	_ = warn
-	_ = unver
 	_ = obs
-	return b.String()
+	return string(ui.Status(ui.StatusPage{
+		Title: "Shield",
+		Actions: `<span id="veil-status" class="text-sm muted" role="status" aria-live="polite"></span>` +
+			`<a class="btn btn--ghost btn--sm" href="/os/adr">ADR-0150</a>`,
+		Tone: tone, State: state, Detail: detail, Tabs: tabs,
+	}, control, process, ui.HTML(veilHardenCard(harden, sandbox, processStart)), postureSec, suite,
+		ui.HTML(`<div class="mon-stack">`)+registry+never+ui.HTML(`</div>`)))
 }
 
 // veilSelfHeadline and veilCoreHeadline say each self-hardening control in a
@@ -378,13 +365,6 @@ func veilCoreHeadline(s vayuveil.SelfHardening) string {
 	default:
 		return "The kernel would write a core file for this process if it crashed."
 	}
-}
-
-func tone(bad bool) string {
-	if bad {
-		return "warn"
-	}
-	return ""
 }
 
 func dispositionLabel(d vayuveil.Disposition) string {

@@ -174,23 +174,23 @@ func (a *App) handleOSVeilHardenRequest(w http.ResponseWriter, r *http.Request) 
 func veilHardenChip(v vayuveil.HardenVerdict) string {
 	switch v {
 	case vayuveil.HardenInForce:
-		return `<span class="mon-chip mon-chip--on">In force</span>`
+		return string(ui.State("ok", "In force"))
 	case vayuveil.HardenPending:
-		return `<span class="mon-chip mon-chip--off">Requested</span>`
+		return string(ui.State("accent", "Requested"))
 	case vayuveil.HardenAwaitingRestart:
-		return `<span class="mon-chip mon-chip--off">Awaiting restart</span>`
+		return string(ui.State("warn", "Awaiting restart"))
 	case vayuveil.HardenDidNotTake:
-		return `<span class="mon-chip mon-chip--off">Did not take</span>`
+		return string(ui.State("warn", "Did not take"))
 	case vayuveil.HardenSkipped:
-		return `<span class="mon-chip mon-chip--off">Partly skipped</span>`
+		return string(ui.State("warn", "Partly skipped"))
 	case vayuveil.HardenReverted:
-		return `<span class="mon-chip mon-chip--off">Reverted</span>`
+		return string(ui.State("warn", "Reverted"))
 	case vayuveil.HardenFailed:
-		return `<span class="mon-chip mon-chip--off">Failed</span>`
+		return string(ui.State("danger", "Failed"))
 	case vayuveil.HardenNotRequested:
-		return `<span class="mon-chip mon-chip--off">Not requested</span>`
+		return string(ui.State("neutral", "Not requested"))
 	default:
-		return `<span class="mon-chip mon-chip--off">Unverified</span>`
+		return string(ui.State("neutral", "Unverified"))
 	}
 }
 
@@ -210,7 +210,7 @@ func veilHardenCard(st vayuveil.HardenState, sb vayuveil.SandboxState, processSt
 	missing := vayuveil.UnverifiedHardening(sb)
 
 	var b strings.Builder
-	b.WriteString(`<div class="card"><div class="settings-block-title">What this asks for</div>`)
+	b.WriteString(`<div class="settings-block-title">What this asks for</div>`)
 	b.WriteString(`<p class="text-sm">` + string(ui.Brief(vayuveil.DescribeHardenVerdict(v, missing))) + `</p>`)
 
 	// The baseline, every row saying where its verification comes from. A row
@@ -219,12 +219,12 @@ func veilHardenCard(st vayuveil.HardenState, sb vayuveil.SandboxState, processSt
 		`<th>What it denies</th><th>Read back from</th><th>Now</th></tr></thead><tbody>`)
 	for _, d := range vayuveil.HardenBaseline() {
 		on, known := d.InForce(sb)
-		state := `<span class="mon-chip mon-chip--off">Unverified</span>`
+		state := string(ui.State("neutral", "Unverified"))
 		switch {
 		case known && on:
-			state = `<span class="mon-chip mon-chip--on">In force</span>`
+			state = string(ui.State("ok", "In force"))
 		case known:
-			state = `<span class="mon-chip mon-chip--off">Not in force</span>`
+			state = string(ui.State("warn", "Not in force"))
 		}
 		b.WriteString(`<tr><td class="text-xs mono">` + esc(d.Directive) + `</td><td class="text-xs muted">` +
 			esc(d.Denies) + `</td><td class="text-xs mono muted">` + esc(d.ReadBack) + `</td><td>` +
@@ -314,7 +314,7 @@ func veilHardenCard(st vayuveil.HardenState, sb vayuveil.SandboxState, processSt
 			`at all, which is what keeps decrypted mail and the keystore key off the disk.</p>`)
 	}
 
-	b.WriteString(string(ui.Explain(ui.HTML(why.String()))) + `</div>`)
+	b.WriteString(string(ui.Explain(ui.HTML(why.String()))))
 
 	return monAcc(saIcon("wall"), "Unit hardening", "Ask root for the directives this process can verify afterwards",
 		veilHardenChip(v), v != vayuveil.HardenInForce, b.String())

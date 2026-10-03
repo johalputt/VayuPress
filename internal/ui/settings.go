@@ -2,9 +2,9 @@
 
 package ui
 
-// State is a state as the page grammar shows it: a dot and a word. Filled
-// badges are for labels a person chose (Tag); a state the system reports is
-// this. The tone is ok, warn, danger, accent or neutral; anything else is
+// State is a state as the page grammar shows it: a dot and a word. A filled
+// badge is for a label a person chose; a state the system reports is this.
+// The tone is ok, warn, danger, accent or neutral; anything else is
 // neutral, so a mistyped tone can never read as a good one.
 func State(tone, text string) HTML {
 	switch tone {

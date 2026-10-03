@@ -215,53 +215,55 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleOSSecurity(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
+	tabs := saTabsFor(cfg, "shield", "/os/security")
 
 	u := currentUser(r)
 	if u == nil || a.userStore == nil {
 		// API-key session (no user record): 2FA is per-account, so explain.
-		body := shieldHeader(cfg, "/os/security") + `
-<div class="card"><p class="muted">Two-factor authentication applies to password accounts. You are signed in with an API key.</p></div>`
-		writeOSHTML(w, r, adminOSLayout(nonce, "Sign-in security", "security", cfg, htmpl.HTML(body)))
+		body := ui.Status(ui.StatusPage{Title: "Shield", Tabs: tabs, Tone: "neutral",
+			State:  "Two-factor sign-in is for password accounts",
+			Detail: ui.Text("You are signed in with an API key, which has no second factor to add.")})
+		writeOSHTML(w, r, adminOSLayout(nonce, "Sign-in security", "security", cfg, body))
 		return
 	}
 
 	_, enabled, _ := a.userStore.TOTPStatus(r.Context(), u.ID)
+	body := string(securityPage(enabled, tabs)) +
+		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-security.js?v=` + assetVer("js/admin-os-security.js") + `"></script>`
+	writeOSHTML(w, r, adminOSLayout(nonce, "Sign-in security", "security", cfg, htmpl.HTML(body)))
+}
 
-	var section string
+// securityPage is Sign-in security as a status page: whether a second factor
+// guards this account, said first, with the one control that changes it. Set
+// up rises in a sheet, as every form in the console does. One wrapper round
+// the page and its sheet: the script binds every 2FA control through it.
+func securityPage(enabled bool, tabs ui.HTML) ui.HTML {
+	return `<div data-totp-card>` + securityBody(enabled, tabs) + `</div>`
+}
+
+func securityBody(enabled bool, tabs ui.HTML) ui.HTML {
 	if enabled {
-		section = string(ui.Rows(ui.Row{Label: "Two-factor authentication",
-			Hint: "Active — a code from your authenticator is required at sign-in.", Control: ui.Tag("ok", "Enabled")})) + `
-  <div class="mt-4">
-    <button type="button" class="btn btn--danger btn--sm" data-totp-disable>Disable 2FA</button>
-  </div>`
-	} else {
-		section = string(ui.Rows(ui.Row{Label: "Two-factor authentication",
-			Hint: "Add a time-based one-time code (TOTP) from any authenticator app.", Control: ui.Tag("warn", "Disabled")})) + `
-  <div class="mt-4">
-    <button type="button" class="btn btn--primary btn--sm" data-totp-begin>Set up 2FA</button>
-  </div>
-  <div class="totp-enroll" data-totp-enroll hidden>
-    <div class="section-divider"></div>
-    <div class="settings-block-title">Scan this QR with your authenticator app</div>
-    <p class="text-sm muted">Open Google Authenticator, Aegis, 1Password, etc., tap “add / scan QR”, point it at the code below, then enter the 6-digit code to confirm. Can't scan? Enter the key manually.</p>
-    <img data-totp-qr alt="2FA setup QR code" width="180" height="180" style="background:var(--paper);padding:8px;border-radius:6px;display:none">
-    <div class="totp-key mt-2">Manual key: <code data-totp-key class="font-mono"></code></div>
-    <div class="totp-uri text-xs muted"><a data-totp-uri href="#" rel="noopener">Open in authenticator app ↗</a></div>
+		return ui.Status(ui.StatusPage{Title: "Shield", Tabs: tabs, Tone: "ok",
+			State:   "Two-factor sign-in is on",
+			Detail:  ui.Text("A code from your authenticator app is needed at every sign-in, as well as your password."),
+			Actions: `<button type="button" class="btn btn--sm" data-totp-disable>Turn off</button>`})
+	}
+	return ui.Join(ui.Status(ui.StatusPage{Title: "Shield", Tabs: tabs, Tone: "warn",
+		State:   "Two-factor sign-in is off",
+		Detail:  ui.Text("Your password alone signs you in. Add a code from any authenticator app, so a stolen password is not enough."),
+		Actions: `<button type="button" class="btn btn--primary" data-sheet="totp-sheet" data-totp-begin>Set up two-factor sign-in</button>`}),
+		ui.Sheet("totp-sheet", "Set up two-factor sign-in", `<div class="totp-enroll" data-totp-enroll hidden>
+    <p class="text-sm muted">Scan the code with your authenticator app (Google Authenticator, Aegis, 1Password), then enter the six digits it shows. Can't scan? Enter the key by hand.</p>
+    <img data-totp-qr alt="Two-factor setup code" width="180" height="180" class="totp-qr" hidden>
+    <div class="totp-key mt-2">Key: <code data-totp-key class="font-mono"></code></div>
+    <div class="totp-uri text-xs muted"><a data-totp-uri href="#" rel="noopener">Open in your authenticator app</a></div>
     <div class="field mt-3">
       <label class="field-label" for="totp-code">Verification code</label>
       <input id="totp-code" class="input" type="text" inputmode="numeric" autocomplete="one-time-code"
         maxlength="6" placeholder="000000" data-totp-code>
     </div>
-    <button type="button" class="btn btn--primary btn--sm" data-totp-verify>Verify &amp; enable</button>
-  </div>`
-	}
-
-	body := shieldHeader(cfg, "/os/security") + `
-<p class="page-sub">Lock down your account — two-factor authentication and sign-in protection, so only you reach your workspace.</p>
-<div class="card" data-totp-card>` + section + `</div>
-<script nonce="` + nonce + `" src="/os/static/js/admin-os-security.js?v=` + assetVer("js/admin-os-security.js") + `"></script>`
-
-	writeOSHTML(w, r, adminOSLayout(nonce, "Sign-in security", "security", cfg, htmpl.HTML(body)))
+    <button type="button" class="btn btn--primary btn--sm" data-totp-verify>Verify and turn on</button>
+  </div>`))
 }
 
 // handleOSTOTPBegin generates a fresh secret (stored disabled) and returns the

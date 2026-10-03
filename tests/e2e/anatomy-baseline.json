@@ -1,16 +1,1 @@
-{
-  "/os/security": {
-    "boxes": 1,
-    "nested": 0,
-    "badges": 0,
-    "zeroFigures": 0,
-    "inlineFields": 0
-  },
-  "/os/vayuveil": {
-    "boxes": 3,
-    "nested": 2,
-    "badges": 13,
-    "zeroFigures": 2,
-    "inlineFields": 0
-  }
-}
+{}
