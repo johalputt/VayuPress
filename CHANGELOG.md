@@ -8,6 +8,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.17.95] — 2026-10-03
+
+Every console page now keeps to the Still Air page grammar, and the lint
+enforces it. Mail is redesigned, Talk is one bar over its conversations,
+and the post editor, Website and Theme are documents.
+
 ### Security
 
 - **Mail's seal vouches only for what its signature covers.** The reader's
