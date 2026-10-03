@@ -25,6 +25,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   `javascript:` URL runs. The script now builds the way back from a fixed
   path and the encoded mailbox, and the attribute is gone.
 
+### Changed
+
+- **Talk is one bar over the conversations and the open one.** The bar says
+  where you are and who you are chatting as, with New chat and, behind one
+  button, what someone needs to reach you: your safety number and your link
+  (in the Tor world, your code). Each conversation in the list shows its
+  last message and when; a message that burns takes its preview with it. An
+  open conversation says whether you have compared safety numbers, that it
+  is end-to-end encrypted, and when your messages burn, and keeps Rename and
+  Keep under More. On a phone a conversation opens over the whole screen.
+
+### Fixed
+
+- **Your safety number now follows "Chatting as".** Switching mailbox
+  changed your share link and its QR code but left the previous mailbox's
+  safety number on show, so the number you read out could vouch for the
+  wrong key. It shows nothing until the new mailbox's number arrives.
+
 ## [3.17.94] — 2026-10-02
 
 Replies to contact messages go out through VayuMail, and Shield is the

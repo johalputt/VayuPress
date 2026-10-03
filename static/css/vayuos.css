@@ -2187,11 +2187,6 @@
 
 .vp-os .vm-readpane .vm-reader { box-shadow: var(--shadow-3); }
 
-/* VayuTalk share panel: the QR of the chat link (or, in the Tor world, of the
-   anonymous code). Always on white — a scanner needs the contrast in dark mode. */
-.vp-os .vtalk-share__qr { display: block; width: 164px; height: 164px; margin: .25rem 0 .6rem; padding: 6px; background: var(--paper); border-radius: var(--radius-surface); image-rendering: pixelated; }
-
-.vp-os .vtalk-share .vtalk-safety__num { word-break: break-all; }
 
 /* A mail domain whose DNS is not finished (read from the stored verdict). A
    border, not just a fill, so it survives forced-colors mode. */
@@ -3251,180 +3246,6 @@
 
 }
 
-.vp-os .vtalk { display: grid; grid-template-columns: minmax(15rem, 19rem) minmax(0, 1fr); gap: var(--sp-4); height: calc(100vh - 13rem); min-height: 30rem; margin-top: var(--sp-4); }
-
-/* ── Left rail ─────────────────────────────────────────────────────────────*/
-.vp-os .vtalk-side { display: flex; flex-direction: column; min-height: 0; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
-
-.vp-os .vtalk-identity { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-4); border-bottom: 1px solid var(--border); }
-
-.vp-os .vtalk-identity-meta { display: flex; flex-direction: column; min-width: 0; }
-
-.vp-os .vtalk-identity-meta strong { font-size: var(--text-sm); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.vp-os .vtalk-status { display: inline-flex; align-items: center; gap: .4rem; font-size: var(--text-xs); color: var(--text-2); }
-
-.vp-os .vtalk-status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); transition: background var(--t); }
-
-.vp-os .vtalk-status[data-state="online"] { color: var(--ok); }
-
-.vp-os .vtalk-status[data-state="online"]::before { background: var(--ok); }
-
-.vp-os .vtalk-status[data-state="offline"] { color: var(--warn); }
-
-.vp-os .vtalk-status[data-state="offline"]::before { background: var(--warn); }
-
-.vp-os .vtalk-newchat { display: flex; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); }
-
-.vp-os .vtalk-newchat .input { flex: 1; min-width: 0; }
-
-/* The short "why nothing happened" hint under the new-chat box (e.g. you typed
-   your own address). Self-clearing; it must not shift the layout when it goes. */
-.vp-os .vtalk-newchat-note { margin: 0 var(--sp-4) var(--sp-2); font-size: var(--text-xs); color: var(--text-3); }
-
-/* Inline rename editor (replaces window.prompt). */
-.vp-os .vtalk-rename { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; padding: 0 var(--sp-4) var(--sp-3); }
-
-.vp-os .vtalk-rename .input { flex: 1 1 12rem; min-width: 0; }
-
-/* Retries exhausted — the pill names the remedy instead of looping forever. */
-.vp-os .vtalk-status[data-state="failed"] { color: var(--danger); }
-
-.vp-os .vtalk-status[data-state="failed"]::before { background: var(--danger); }
-
-/* Safety-number verify (collapsible E2E check). */
-.vp-os .vtalk-safety { margin: 0 var(--sp-4) var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg-surface-2); }
-
-.vp-os .vtalk-safety__sum { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: var(--text-xs); font-weight: 600; color: var(--text-2); cursor: pointer; list-style: none; }
-
-.vp-os .vtalk-safety__sum::-webkit-details-marker { display: none; }
-
-.vp-os .vtalk-safety__sum:hover { color: var(--text); }
-
-.vp-os .vtalk-safety[open] .vtalk-safety__sum { color: var(--brand); }
-
-.vp-os .vtalk-safety__body { padding: 0 10px 10px; display: grid; gap: 8px; }
-
-.vp-os .vtalk-safety__num { font-family: var(--font-mono); font-size: 13px; color: var(--text); background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 8px; word-break: break-all; line-height: 1.6; }
-
-/* Conversations header + search + empty state. */
-.vp-os .vtalk-convos-head { display: flex; align-items: center; justify-content: space-between; padding: var(--sp-2) var(--sp-4) 4px; }
-
-.vp-os .vtalk-convos-title { font-size: 12px; color: var(--text-3); font-weight: 600; }
-
-.vp-os .vtalk-search-wrap { position: relative; margin: 0 var(--sp-4) var(--sp-2); }
-
-.vp-os .vtalk-search-ico { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
-
-.vp-os .vtalk-search { width: 100%; padding-left: 30px; }
-
-.vp-os .vtalk-convos:empty::before { content: "No conversations yet \2014  start one above."; display: block; padding: var(--sp-6) var(--sp-4); text-align: center; font-size: var(--text-xs); color: var(--text-3); line-height: 1.5; }
-
-.vp-os .vtalk-convos { list-style: none; margin: 0; padding: var(--sp-2); overflow-y: auto; flex: 1; min-height: 0; }
-
-.vp-os .vtalk-convo { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3); border-radius: var(--r); cursor: pointer; transition: background var(--t-fast); }
-
-.vp-os .vtalk-convo:hover { background: var(--bg-surface-2); }
-
-.vp-os .vtalk-convo--active { background: var(--brand-dim); }
-
-/* Rows are real buttons now (role=button + tab stop), so the focus ring has to be
-   visible — for exactly the keyboard users that change was made for. */
-.vp-os .vtalk-convo:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
-
-/* "No conversations match that search" — shown by the rail filter. */
-.vp-os .vtalk-search-none { margin: 0 var(--sp-4); font-size: var(--text-xs); color: var(--text-3); }
-
-.vp-os .vtalk-convo-meta { flex: 1; min-width: 0; }
-
-.vp-os .vtalk-convo-name { display: block; font-size: var(--text-sm); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.vp-os .vtalk-convo-badge { min-width: 1.25rem; height: 1.25rem; padding: 0 .35rem; display: inline-flex; align-items: center; justify-content: center; font-size: var(--text-xs); font-weight: 600; color: var(--on-accent); background: var(--brand); border-radius: var(--radius-small); }
-
-/* Avatars (JS-built rail + Go-built header share the round chip look). */
-.vp-os .vtalk-avatar { width: 2.1rem; height: 2.1rem; flex: none; display: inline-flex; align-items: center; justify-content: center; font-size: var(--text-sm); font-weight: 600; color: var(--on-accent); border-radius: var(--r-full); overflow: hidden; }
-
-.vp-os .vtalk-avatar--img { background: none; }
-
-.vp-os .vtalk-avatar--img img { width: 100%; height: 100%; object-fit: cover; display: block; }
-
-/* ── Main pane ─────────────────────────────────────────────────────────────*/
-.vp-os .vtalk-main { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
-
-.vp-os .vtalk-main[data-empty] .vtalk-thread-head,
-.vp-os .vtalk-main[data-empty] .vtalk-composer { display: none; }
-
-.vp-os .vtalk-thread-head { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border); }
-
-.vp-os .vtalk-head-meta { display: flex; flex-direction: column; min-width: 0; }
-
-.vp-os .vtalk-head-meta strong { font-size: var(--text-base); color: var(--text); }
-
-/* Presence line: "online" is asserted only when the server reports a live stream
-   (so instant delivery is a promise), and the negative is about a connection, not
-   about the person — store-mode messages still queue for them. */
-.vp-os .vtalk-presence { font-size: var(--text-xs); color: var(--text-3); }
-
-.vp-os .vtalk-presence--on { color: var(--ok); }
-
-/* A message that arrived but could not be read: sender known, content not. */
-.vp-os .vtalk-undec { font-size: var(--text-xs); color: var(--warn); }
-
-.vp-os .vtalk-thread { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4); }
-
-.vp-os .vtalk-hint { margin: auto; max-width: 24rem; text-align: center; color: var(--text-2); font-size: var(--text-sm); display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); }
-
-.vp-os .vtalk-hint-badge { width: 3rem; height: 3rem; display: flex; align-items: center; justify-content: center; font-size: 28px; border-radius: var(--radius-small); background: var(--brand-dim); border: 1px solid var(--border-strong); }
-
-/* ── Bubbles ───────────────────────────────────────────────────────────────*/
-.vp-os .vtalk-msg { display: flex; max-width: 78%; }
-
-.vp-os .vtalk-msg--in { align-self: flex-start; }
-
-.vp-os .vtalk-msg--out { align-self: flex-end; }
-
-.vp-os .vtalk-bubble { padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md); background: var(--bg-surface-2); border: 1px solid var(--border); }
-
-.vp-os .vtalk-msg--out .vtalk-bubble { border-color: transparent; color: var(--on-accent); }
-
-.vp-os .vtalk-bubble-text { font-size: var(--text-sm); line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
-
-.vp-os .vtalk-bubble-foot { display: flex; align-items: center; gap: var(--sp-2); margin-top: .35rem; font-size: var(--text-xs); opacity: .8; }
-
-.vp-os .vtalk-msg--in .vtalk-bubble-foot { color: var(--text-2); }
-
-.vp-os .vtalk-bubble-status.is-read { color: var(--ok); opacity: 1; }
-
-.vp-os .vtalk-msg--out .vtalk-bubble-status.is-read { color: var(--text-1); }
-
-.vp-os .vtalk-bubble-status.is-error { color: var(--warn); opacity: 1; }
-
-.vp-os .vtalk-bubble-status.is-expired { color: var(--text-3); }
-
-/* Burn-after-read countdown — appears once a message is read and ticks down. */
-.vp-os .vtalk-bubble-burn { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--warn); opacity: 1; white-space: nowrap; }
-
-.vp-os .vtalk-msg--out .vtalk-bubble-burn { color: var(--warn); }
-
-/* An armed (reading, counting down) message gets a subtle warm ring. */
-.vp-os .vtalk-msg--armed .vtalk-bubble { box-shadow: inset 0 0 0 1px var(--warn-dim, var(--warn-soft)); }
-
-/* Live-mode messages read as hotter: a dashed accent edge. */
-.vp-os .vtalk-msg--live .vtalk-bubble { border: 1px dashed var(--warn-soft); }
-
-/* Retry on a failed send: the bubble already holds the text, this resends it. */
-.vp-os .vtalk-bubble-retry { margin-left: auto; padding: 1px 8px; font: inherit; font-size: var(--text-xs); font-weight: 600; color: var(--warn); background: transparent; border: 1px solid currentColor; border-radius: var(--radius-control); cursor: pointer; }
-
-.vp-os .vtalk-bubble-retry:hover { background: var(--warn-dim, var(--warn-soft)); }
-
-.vp-os .vtalk-msg--out .vtalk-bubble-retry { color: var(--on-accent); border-color: var(--surface-2); }
-
-.vp-os .vtalk-msg--out .vtalk-bubble-retry:hover { background: var(--surface-press); }
-
-/* Live-mode composer toggle. */
-.vp-os .vtalk-live { cursor: pointer; user-select: none; gap: 4px; }
-
-.vp-os .vtalk-live input { accent-color: var(--warn); width: 15px; height: 15px; }
 
 /* ── VayuTor — onion services control page ─────────────────────────────────── */
 .vp-os .vt-hero { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; }
@@ -3533,116 +3354,6 @@
 
 }
 
-/* ── Composer ──────────────────────────────────────────────────────────────*/
-.vp-os .vtalk-composer { border-top: 1px solid var(--border); padding: var(--sp-3) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2); }
-
-.vp-os .vtalk-input { width: 100%; resize: none; min-height: 2.6rem; max-height: 10rem; padding: var(--sp-3); border-radius: var(--r); background: var(--bg-base); color: var(--text); border: 1px solid var(--border); font: inherit; font-size: var(--text-sm); }
-
-.vp-os .vtalk-input:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-dim); }
-
-.vp-os .vtalk-input:disabled { opacity: .5; }
-
-.vp-os .vtalk-composer-actions { display: flex; align-items: center; gap: var(--sp-3); }
-
-.vp-os .vtalk-opt { display: inline-flex; align-items: center; gap: var(--sp-2); }
-
-.vp-os .vtalk-opt .input { width: auto; }
-
-.vp-os .vtalk-opt--spacer { flex: 1; }
-
-.vp-os .vtalk-composer-actions .btn { margin-left: var(--sp-2); }
-
-/* ── Responsive: on a phone the rail and the thread are two VIEWS, not a stack ──
-   The old rule stacked a 40vh scrolling rail above the thread, so replying meant
-   scrolling past every conversation first and the composer sat below the fold. A
-   messenger on a phone shows one pane at a time with an explicit way back. */
-@media (max-width: 768px) {
-  .vp-os .vtalk { grid-template-columns: 1fr; height: auto; }
-
-  .vp-os .vtalk-thread { min-height: 22rem; }
-
-  .vp-os .vtalk-msg { max-width: 90%; }
-
-  .vp-os .vtalk-side { max-height: none; }
-
-  /* One pane at a time; the client sets data-view on the container. */
-  .vp-os .vtalk[data-view="list"] .vtalk-main { display: none; }
-
-  .vp-os .vtalk[data-view="thread"] .vtalk-side { display: none; }
-
-  /* Thread view fills the screen so the composer stays reachable. dvh, not vh:
-     on mobile a vh-sized box is taller than the visible area while the browser
-     chrome is showing. */
-  .vp-os .vtalk[data-view="thread"] { height: calc(100dvh - 11rem); grid-template-rows: minmax(0, 1fr); }
-
-  .vp-os .vtalk[data-view="thread"] .vtalk-main { min-height: 0; }
-
-  .vp-os .vtalk[data-view="thread"] .vtalk-back { display: inline-flex; }
-
-}
-
-/* Back to the conversation list. The mobile rules above reveal it in thread view;
-   on desktop both panes are visible, so it is never shown. */
-.vp-os .vtalk-back { display: none; }
-
-/* ── VayuTalk: key verification + reachability ──────────────────────────────*/
-.vp-os .vtalk-thread-head { flex-wrap: wrap; position: relative; }
-
-.vp-os .vtalk-head-meta { flex: 1; }
-
-.vp-os .vtalk-verify-btn { display: inline-flex; align-items: center; gap: .35rem; padding: .35rem .7rem; font-size: var(--text-xs); font-weight: 600; color: var(--text-2); background: var(--bg-surface-2); border: 1px solid var(--border); border-radius: var(--radius-control); cursor: pointer; transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast); }
-
-.vp-os .vtalk-verify-btn:hover { background: var(--bg-surface-3); color: var(--text); }
-
-.vp-os .vtalk-verify-btn.is-verified { color: var(--ok); border-color: var(--ok); background: var(--ok-dim); }
-
-/* Rename / Keep sit beside Verify; share its pill look. */
-.vp-os .vtalk-head-actions { display: inline-flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
-
-.vp-os .vtalk-head-btn { display: inline-flex; align-items: center; gap: .35rem; padding: .35rem .7rem; font-size: var(--text-xs); font-weight: 600; color: var(--text-2); background: var(--bg-surface-2); border: 1px solid var(--border); border-radius: var(--radius-control); cursor: pointer; transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast); }
-
-.vp-os .vtalk-head-btn:hover { background: var(--bg-surface-3); color: var(--text); }
-
-.vp-os .vtalk-head-btn.is-on { color: var(--brand); border-color: var(--brand); background: var(--brand-dim); }
-
-/* Kept pin in the conversation row (a chat you chose to preserve across reloads). */
-.vp-os .vtalk-convo-pin { flex: none; font-size: .8em; opacity: .85; line-height: 1; }
-
-/* Talk's line icons (admin-os-talk.js icon()): text-sized, currentColor, so they
-   take each control's colour and survive forced-colors mode. */
-.vp-os .vtalk-ico { width: 1.05em; height: 1.05em; vertical-align: -.15em; margin-right: .3em; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-
-.vp-os .vtalk-convo-pin .vtalk-ico { margin-right: 0; }
-
-.vp-os .vtalk-verify { flex-basis: 100%; margin-top: var(--sp-3); padding: var(--sp-3) var(--sp-4); background: var(--bg-base); border: 1px solid var(--border); border-radius: var(--r); }
-
-.vp-os .vtalk-verify-intro { font-size: var(--text-xs); color: var(--text-2); margin: 0 0 var(--sp-3); line-height: 1.5; }
-
-.vp-os .vtalk-safety-row { display: flex; align-items: baseline; gap: var(--sp-3); margin-bottom: var(--sp-2); }
-
-.vp-os .vtalk-safety-label { min-width: 3rem; font-size: var(--text-xs); color: var(--text-3); }
-
-.vp-os .vtalk-safety-code { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text); word-spacing: .15em; line-height: 1.6; overflow-wrap: anywhere; }
-
-.vp-os .vtalk-verify-toggle { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-3); font-size: var(--text-sm); color: var(--text); cursor: pointer; }
-
-.vp-os .vtalk-safety-missing { margin-top: var(--sp-2); font-size: var(--text-xs); color: var(--warn); line-height: 1.5; }
-
-.vp-os .vtalk-convo--verified .vtalk-convo-name::after { content: "\1F6E1"; margin-left: .35rem; font-size: .8em; opacity: .9; }
-
-.vp-os .vtalk-warn { margin-bottom: var(--sp-3); padding: var(--sp-3); font-size: var(--text-xs); color: var(--warn); line-height: 1.5; background: var(--warn-dim); border: 1px solid var(--warn); border-radius: var(--r); }
-
-/* A changed safety number is the loudest thing this pane can say: it means the
-   key was rebuilt or someone is in the middle, so it gets the danger palette. */
-.vp-os .vtalk-warn--key { color: var(--danger); background: var(--danger-dim); border-color: var(--danger); font-weight: 600; }
-
-/* "We could not check" — quieter than a verdict, because it is not one. */
-.vp-os .vtalk-warn--unknown { color: var(--text-2); background: var(--bg-surface-2); border-color: var(--border); font-weight: 400; }
-
-/* "Chat as" identity switcher (admins with multiple mailboxes) */
-.vp-os .vtalk-as { font-family: var(--font-body); font-size: var(--text-sm); font-weight: 600; color: var(--text); background: var(--bg-surface-2); border: 1px solid var(--border); border-radius: var(--r-sm); padding: .2rem .5rem; max-width: 100%; }
-
-.vp-os .vtalk-as:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-dim); }
 
 /* Stat strip — at-a-glance summary above the mailbox list. */
 
@@ -4405,9 +4116,6 @@
 /* Text beside the site mark in Theme Studio. */
 .vp-os .cz-logo__meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 
-/* The anonymous VayuTalk code — an identity to read aloud and copy, so it is
-   given the weight of one rather than of a sentence. */
-.vp-os .vtalk-anon { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-surface); padding: var(--sp-4); margin-bottom: var(--sp-4); }
 
 /* Live intelligence view container. */
 .vp-os .vm-liveview { display: block; }
@@ -5442,7 +5150,7 @@
 .vp-os[data-ui="still-air"] .vs-tier { margin: 0; padding: var(--space-5) 0; border: 0; border-top: 1px solid var(--border-1); border-radius: 0; background: none; }
 .vp-os[data-ui="still-air"] .card--danger .card-title > .sa-ico { color: var(--danger); }
 .vp-os[data-ui="still-air"] :is(.card--ok .card-title, .tone-ok) > .sa-ico { color: var(--ok); }
-.vp-os[data-ui="still-air"] :is(.empty-icon, .vm-readpane-empty-ico, .vtalk-hint-badge) .sa-ico { width: 28px; height: 28px; stroke-width: 1.25; }
+.vp-os[data-ui="still-air"] :is(.empty-icon, .vm-readpane-empty-ico, .vtalk-hint) .sa-ico { width: 28px; height: 28px; stroke-width: 1.25; }
 
 /* Lists and their filters: one row of controls that wraps as a row, a
    segmented status filter, and status carried by a dot and a word. */
@@ -7300,4 +7008,223 @@
   }
   .vp-os[data-ui="still-air"] .mx-phonebar .mx-tool { color: var(--accent); }
   .vp-os[data-ui="still-air"] .mx-phonebar .sa-ico { width: 22px; height: 22px; }
+}
+
+/* ── Talk (render 05) ────────────────────────────────────────────────────────
+   One bar over two columns, the conversations and the open one, each
+   scrolling alone while the page never does. The bar holds where you are,
+   who you are chatting as, what someone needs to reach you, and New chat. */
+.vp-os[data-ui="still-air"] .sa-content:has(> .vtalk) { padding: 0; overflow: hidden; }
+.vp-os[data-ui="still-air"] .sa-content > .vtalk {
+  height: 100%; display: grid; grid-template-columns: 340px minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr); grid-template-areas: "top top" "world world" "side main";
+}
+.vp-os[data-ui="still-air"] .vtalk-top {
+  grid-area: top; display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
+  min-height: 56px; padding: var(--space-2) var(--space-5); border-bottom: 1px solid var(--border-1);
+}
+.vp-os[data-ui="still-air"] .vtalk-crumb { display: flex; align-items: center; min-width: 0; margin: 0; font: var(--type-strong); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .vtalk-crumb__app { flex: none; }
+.vp-os[data-ui="still-air"] .vtalk-crumb__peer { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-os[data-ui="still-air"] .vtalk-crumb__peer::before { content: "\203A"; margin: 0 var(--space-2); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .vtalk-crumb:has(.vtalk-crumb__peer:not([hidden])) .vtalk-crumb__app { color: var(--text-2); font-weight: 400; }
+.vp-os[data-ui="still-air"] .vtalk-top__tools { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.vp-os[data-ui="still-air"] .vtalk-as-wrap { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.vp-os[data-ui="still-air"] .vtalk-as-label { font: var(--type-small); color: var(--text-3); white-space: nowrap; }
+.vp-os[data-ui="still-air"] .vtalk-as {
+  min-width: 0; max-width: 260px; height: 32px; padding: 0 var(--space-3); font: var(--type-small); font-weight: 600; color: var(--text-1);
+  background: var(--surface-input); border: 1px solid var(--border-2); border-radius: var(--radius-control);
+}
+.vp-os[data-ui="still-air"] .vtalk-as--one { display: inline-flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Connection state: a dot, and the word only when it is not the normal one. */
+.vp-os[data-ui="still-air"] .vtalk-status { display: inline-flex; align-items: center; gap: 6px; font: var(--type-small); color: var(--text-3); white-space: nowrap; }
+.vp-os[data-ui="still-air"] .vtalk-status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.vp-os[data-ui="still-air"] .vtalk-status[data-state="online"] { color: var(--ok); font-size: 0; gap: 0; }
+.vp-os[data-ui="still-air"] .vtalk-status[data-state="offline"] { color: var(--warn); }
+.vp-os[data-ui="still-air"] .vtalk-status[data-state="failed"] { color: var(--danger); }
+.vp-os[data-ui="still-air"] .vtalk-tool {
+  display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: var(--radius-control);
+  color: var(--text-2); cursor: pointer; transition: background-color var(--duration-micro) var(--ease-move), color var(--duration-micro) var(--ease-move);
+}
+.vp-os[data-ui="still-air"] .vtalk-tool:hover,
+.vp-os[data-ui="still-air"] .sa-pop[open] > .vtalk-tool { background: var(--surface-press); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .vtalk-new > summary { display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; }
+
+/* The popovers: what someone needs to reach you, and a new chat. */
+.vp-os[data-ui="still-air"] .vtalk-pop { width: 320px; max-width: calc(100vw - 32px); padding: var(--space-2) 0; }
+.vp-os[data-ui="still-air"] .vtalk-pop__part { display: grid; gap: var(--space-2); padding: var(--space-3) var(--space-4); }
+.vp-os[data-ui="still-air"] .vtalk-pop__part + .vtalk-pop__part { border-top: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .vtalk-pop__h { margin: 0; font: var(--type-label); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .vtalk-pop__note { margin: 0; font: var(--type-small); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .vtalk-pop__row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.vp-os[data-ui="still-air"] .vtalk-pop__row .input { flex: 1; min-width: 0; }
+.vp-os[data-ui="still-air"] .vtalk-pop .btn { justify-self: start; display: inline-flex; align-items: center; gap: var(--space-2); }
+.vp-os[data-ui="still-air"] .vtalk-pop--new { padding: var(--space-3) var(--space-4); display: grid; gap: var(--space-2); }
+.vp-os[data-ui="still-air"] .vtalk-newchat { display: grid; gap: var(--space-2); }
+.vp-os[data-ui="still-air"] .vtalk-invite { display: flex; gap: var(--space-2); align-items: flex-start; color: var(--text-2); }
+.vp-os[data-ui="still-air"] .vtalk-code {
+  display: block; padding: var(--space-2) var(--space-3); font: var(--type-mono); color: var(--text-1); overflow-wrap: anywhere;
+  background: var(--surface-sunken); border-radius: var(--radius-control);
+}
+/* Always on white: a scanner needs the contrast in the dark scheme too. */
+.vp-os[data-ui="still-air"] .vtalk-share__qr { display: block; width: 148px; height: 148px; padding: 6px; background: var(--paper); border-radius: var(--radius-control); image-rendering: pixelated; }
+.vp-os[data-ui="still-air"] .vtalk-world {
+  grid-area: world; display: flex; gap: var(--space-2); align-items: center; margin: 0; padding: var(--space-2) var(--space-5);
+  font: var(--type-small); color: var(--text-2); background: var(--surface-sunken); border-bottom: 1px solid var(--border-1);
+}
+
+/* The conversations. */
+.vp-os[data-ui="still-air"] .vtalk-side { grid-area: side; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .vtalk-find {
+  display: flex; align-items: center; gap: var(--space-2); margin: var(--space-3); padding: 0 var(--space-3); height: 36px;
+  color: var(--text-3); background: var(--surface-input); border: 1px solid var(--border-2); border-radius: var(--radius-control);
+}
+.vp-os[data-ui="still-air"] .vtalk-find:focus-within { border-color: var(--focus); }
+.vp-os[data-ui="still-air"] .vtalk-find input { flex: 1; min-width: 0; border: 0; background: none; color: var(--text-1); font: var(--type-body); outline: none; }
+.vp-os[data-ui="still-air"] .vtalk-convos { flex: 1; min-height: 0; margin: 0; padding: 0; list-style: none; overflow-y: auto; overscroll-behavior: contain; }
+.vp-os[data-ui="still-air"] .vtalk-convo {
+  display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-1);
+  cursor: pointer; transition: background-color var(--duration-micro) var(--ease-move);
+}
+.vp-os[data-ui="still-air"] .vtalk-convo:hover { background: var(--surface-hover); }
+.vp-os[data-ui="still-air"] .vtalk-convo--active { background: var(--surface-select); }
+.vp-os[data-ui="still-air"] .vtalk-convo:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.vp-os[data-ui="still-air"] .vtalk-convo-meta { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.vp-os[data-ui="still-air"] .vtalk-convo-line { display: flex; align-items: baseline; gap: var(--space-2); }
+.vp-os[data-ui="still-air"] .vtalk-convo-name { flex: 1; min-width: 0; font: var(--type-strong); color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-os[data-ui="still-air"] .vtalk-convo-time { flex: none; font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.vp-os[data-ui="still-air"] .vtalk-convo-pv { display: block; font: var(--type-small); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-os[data-ui="still-air"] .vtalk-convo-pin { flex: none; color: var(--text-3); }
+.vp-os[data-ui="still-air"] .vtalk-convo--verified .vtalk-convo-name { color: var(--text-1); }
+.vp-os[data-ui="still-air"] .vtalk-convo-badge {
+  flex: none; min-width: 20px; height: 20px; padding: 0 6px; display: inline-grid; place-items: center;
+  font: 600 12px/20px var(--font-ui); color: var(--on-accent); background: var(--accent); border-radius: 10px;
+}
+.vp-os[data-ui="still-air"] .vtalk-side__note { margin: var(--space-6) var(--space-4); text-align: center; font: var(--type-small); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .vtalk-convos:not(:empty) ~ .vtalk-side__empty { display: none; }
+.vp-os[data-ui="still-air"] .vtalk-avatar {
+  flex: none; width: 36px; height: 36px; display: inline-grid; place-items: center; overflow: hidden;
+  font: 600 13px/1 var(--font-ui); border-radius: 50%;
+}
+.vp-os[data-ui="still-air"] .vtalk-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.vp-os[data-ui="still-air"] .vtalk-ico { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.vp-os[data-ui="still-air"] :is(.vtalk-convo-pv, .vtalk-pill, .vtalk-menu__item, .vtalk-bubble-burn, .vtalk-undec, .vtalk-back) { display: inline-flex; align-items: center; gap: 6px; }
+.vp-os[data-ui="still-air"] .vtalk-convo-pv { display: flex; }
+
+/* The open conversation. */
+.vp-os[data-ui="still-air"] .vtalk-main { grid-area: main; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.vp-os[data-ui="still-air"] .vtalk-main[data-empty] :is(.vtalk-thread-head, .vtalk-composer) { display: none; }
+.vp-os[data-ui="still-air"] .vtalk-main > .vtalk-burn { display: none; }
+.vp-os[data-ui="still-air"] .vtalk-thread-head {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border-1);
+}
+.vp-os[data-ui="still-air"] .vtalk-head-meta { display: grid; flex: 1 1 14rem; min-width: 0; }
+.vp-os[data-ui="still-air"] .vtalk-head-name { font: var(--type-strong); color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-os[data-ui="still-air"] .vtalk-head-addr { font: var(--type-mono); font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-os[data-ui="still-air"] .vtalk-presence { font: var(--type-meta); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .vtalk-presence:empty { display: none; }
+.vp-os[data-ui="still-air"] .vtalk-presence--on { color: var(--ok); }
+.vp-os[data-ui="still-air"] .vtalk-undec { font: var(--type-meta); color: var(--warn); }
+.vp-os[data-ui="still-air"] .vtalk-head-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.vp-os[data-ui="still-air"] .vtalk-pill {
+  height: 28px; padding: 0 var(--space-3); font: var(--type-small); font-weight: 500; color: var(--text-2);
+  background: var(--surface-press); border: 0; border-radius: var(--radius-control); white-space: nowrap;
+}
+.vp-os[data-ui="still-air"] button.vtalk-pill { cursor: pointer; transition: background-color var(--duration-micro) var(--ease-move), color var(--duration-micro) var(--ease-move); }
+.vp-os[data-ui="still-air"] button.vtalk-pill:hover { color: var(--text-1); }
+.vp-os[data-ui="still-air"] .vtalk-verify-btn.is-verified { color: var(--ok); background: var(--ok-soft); }
+.vp-os[data-ui="still-air"] .vtalk-burn {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 var(--space-2) 0 var(--space-3);
+  color: var(--text-2); border: 1px solid var(--border-2); border-radius: var(--radius-control);
+}
+.vp-os[data-ui="still-air"] .vtalk-burn select { border: 0; background: none; color: var(--text-1); font: var(--type-small); font-weight: 500; cursor: pointer; }
+.vp-os[data-ui="still-air"] .vtalk-burn .sa-ico { width: 15px; height: 15px; }
+.vp-os[data-ui="still-air"] .vtalk-menu { min-width: 200px; padding: var(--space-1); }
+.vp-os[data-ui="still-air"] .vtalk-menu__item {
+  width: 100%; height: 34px; padding: 0 var(--space-3); border: 0; border-radius: var(--radius-control); background: none;
+  color: var(--text-1); font: var(--type-body); text-align: left; cursor: pointer;
+}
+.vp-os[data-ui="still-air"] .vtalk-menu__item:hover { background: var(--surface-press); }
+.vp-os[data-ui="still-air"] .vtalk-menu__item.is-on { color: var(--accent); }
+.vp-os[data-ui="still-air"] .vtalk-back { display: none; height: 32px; padding: 0 var(--space-2) 0 0; border: 0; background: none; color: var(--accent); font: var(--type-body); cursor: pointer; }
+.vp-os[data-ui="still-air"] .vtalk-rename { display: flex; flex-basis: 100%; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.vp-os[data-ui="still-air"] .vtalk-rename .input { flex: 1 1 12rem; min-width: 0; }
+
+/* The comparison of safety numbers, under the bar until it is closed. */
+.vp-os[data-ui="still-air"] .vtalk-verify { flex-basis: 100%; display: grid; gap: var(--space-2); padding: var(--space-3) var(--space-4); background: var(--surface-sunken); border-radius: var(--radius-surface); }
+.vp-os[data-ui="still-air"] .vtalk-verify-intro { margin: 0; font: var(--type-small); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .vtalk-safety-row { display: flex; align-items: baseline; gap: var(--space-3); }
+.vp-os[data-ui="still-air"] .vtalk-safety-label { min-width: 48px; font: var(--type-meta); color: var(--text-3); overflow-wrap: anywhere; }
+.vp-os[data-ui="still-air"] .vtalk-safety-code { font: var(--type-mono); color: var(--text-1); word-spacing: 0.15em; overflow-wrap: anywhere; }
+.vp-os[data-ui="still-air"] .vtalk-verify-toggle { display: flex; align-items: center; gap: var(--space-2); font: var(--type-body); color: var(--text-1); cursor: pointer; }
+.vp-os[data-ui="still-air"] .vtalk-safety-missing { margin: 0; font: var(--type-small); color: var(--warn); }
+
+/* The messages. */
+.vp-os[data-ui="still-air"] .vtalk-thread { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-5); }
+.vp-os[data-ui="still-air"] .vtalk-hint { margin: auto; max-width: 340px; display: grid; justify-items: center; gap: var(--space-3); text-align: center; font: var(--type-body); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .vtalk-hint p { margin: 0; }
+.vp-os[data-ui="still-air"] .vtalk-day { align-self: center; margin: var(--space-4) 0 var(--space-2); font: var(--type-meta); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .vtalk-msg { display: grid; justify-items: start; gap: 4px; max-width: 72%; margin-bottom: var(--space-2); transition: opacity var(--duration-standard) var(--ease-exit); }
+.vp-os[data-ui="still-air"] .vtalk-msg--out { align-self: flex-end; justify-items: end; }
+.vp-os[data-ui="still-air"] .vtalk-msg--in { align-self: flex-start; }
+.vp-os[data-ui="still-air"] .vtalk-msg--gone { opacity: 0; }
+.vp-os[data-ui="still-air"] .vtalk-bubble { padding: var(--space-3) var(--space-4); border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border-1); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .vtalk-msg--out .vtalk-bubble { background: var(--accent-soft); border-color: transparent; }
+.vp-os[data-ui="still-air"] .vtalk-msg--live .vtalk-bubble { border: 1px dashed var(--warn); }
+.vp-os[data-ui="still-air"] .vtalk-bubble-text { font: var(--type-body); font-size: 15px; line-height: 22px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.vp-os[data-ui="still-air"] .vtalk-bubble-foot { display: flex; align-items: center; gap: var(--space-2); font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.vp-os[data-ui="still-air"] .vtalk-bubble-status::before { content: "\00B7"; margin-right: var(--space-2); }
+.vp-os[data-ui="still-air"] .vtalk-bubble-status.is-read { color: var(--text-2); }
+.vp-os[data-ui="still-air"] .vtalk-bubble-status.is-read::after { content: " \2713"; }
+.vp-os[data-ui="still-air"] .vtalk-bubble-status.is-error { color: var(--warn); }
+.vp-os[data-ui="still-air"] .vtalk-bubble-burn { color: var(--warn); font-weight: 600; white-space: nowrap; }
+.vp-os[data-ui="still-air"] .vtalk-bubble-burn[hidden] { display: none; }
+.vp-os[data-ui="still-air"] .vtalk-bubble-unverified { display: inline-flex; align-items: center; gap: 4px; color: var(--warn); }
+.vp-os[data-ui="still-air"] .vtalk-bubble-retry {
+  padding: 0 var(--space-2); height: 22px; font: var(--type-meta); font-weight: 600; color: var(--warn);
+  background: none; border: 1px solid currentColor; border-radius: var(--radius-control); cursor: pointer;
+}
+.vp-os[data-ui="still-air"] .vtalk-warn { padding: var(--space-3) var(--space-4); font: var(--type-small); color: var(--warn); background: var(--warn-soft); border-radius: var(--radius-surface); }
+/* A changed safety number is the loudest thing this pane says: the key was
+   rebuilt, or someone is in the middle, so it takes the danger palette. */
+.vp-os[data-ui="still-air"] .vtalk-warn--key { color: var(--danger); background: var(--danger-soft); font-weight: 600; }
+/* "We could not check" is quieter than a verdict, because it is not one. */
+.vp-os[data-ui="still-air"] .vtalk-warn--unknown { color: var(--text-2); background: var(--surface-sunken); }
+
+/* The composer. */
+.vp-os[data-ui="still-air"] .vtalk-composer {
+  display: flex; align-items: flex-end; gap: var(--space-2); margin: 0 var(--space-5) var(--space-4); padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  background: var(--surface-input); border: 1px solid var(--border-2); border-radius: var(--radius-surface);
+}
+.vp-os[data-ui="still-air"] .vtalk-composer:focus-within { border-color: var(--focus); }
+.vp-os[data-ui="still-air"] .vtalk-input { flex: 1; min-height: 32px; max-height: 160px; padding: 6px 0; resize: none; border: 0; background: none; color: var(--text-1); font: var(--type-body); font-size: 15px; outline: none; }
+.vp-os[data-ui="still-air"] .vtalk-composer .btn { display: inline-flex; align-items: center; gap: var(--space-2); }
+
+/* Narrower than two columns: the list, and a conversation pushed over it,
+   with its own way back. dvh, not vh: a vh box is taller than what a phone
+   shows while its browser chrome is out. */
+@media (max-width: 900px) {
+  .vp-os[data-ui="still-air"] .sa-content > .vtalk { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "world" "side"; }
+}
+/* On a phone the content area is not a fixed height, so Talk sets its own:
+   the list above the tab bar, and a conversation over the whole screen with
+   the tab bar slid away, as Mail does with a message. */
+@media (max-width: 768px) {
+  .vp-os[data-ui="still-air"] .sa-content > .vtalk { height: calc(100dvh - var(--sysbar-h) - 60px - env(safe-area-inset-bottom)); }
+  .vp-os[data-ui="still-air"] .sa-content > .vtalk[data-view="thread"] { height: calc(100dvh - var(--sysbar-h)); }
+  .vp-os[data-ui="still-air"]:has(.vtalk[data-view="thread"]) .sa-tabbar { transform: translateY(100%); }
+  .vp-os[data-ui="still-air"] .vtalk-composer { margin-bottom: calc(var(--space-3) + env(safe-area-inset-bottom)); }
+}
+@media (max-width: 900px) {
+  .vp-os[data-ui="still-air"] .vtalk[data-view="thread"] { grid-template-areas: "main" "main" "main"; grid-template-rows: 0 0 minmax(0, 1fr); }
+  .vp-os[data-ui="still-air"] .vtalk[data-view="thread"] :is(.vtalk-top, .vtalk-world, .vtalk-side) { display: none; }
+  .vp-os[data-ui="still-air"] .vtalk[data-view="list"] .vtalk-main { display: none; }
+  .vp-os[data-ui="still-air"] .vtalk[data-view="thread"] .vtalk-back { display: inline-flex; }
+  .vp-os[data-ui="still-air"] .vtalk-as-label { display: none; }
+  .vp-os[data-ui="still-air"] .vtalk-top { padding: var(--space-2) var(--space-4); }
+  .vp-os[data-ui="still-air"] .vtalk-thread-head { padding: var(--space-2) var(--space-4); }
+  .vp-os[data-ui="still-air"] .vtalk-thread { padding: var(--space-4); }
+  .vp-os[data-ui="still-air"] .vtalk-msg { max-width: 86%; }
+  .vp-os[data-ui="still-air"] .vtalk-composer { margin: 0 var(--space-3) var(--space-3); }
 }

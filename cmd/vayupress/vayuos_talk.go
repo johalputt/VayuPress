@@ -230,21 +230,6 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	csrfTokenFor(w, r)
 
 	var body strings.Builder
-	tagline := `Ephemeral, end-to-end-encrypted chat — same relay as the app. Pick a self-destruct timer; messages burn a set time after they're read.`
-	if config.Cfg.OnionMode {
-		tagline = `Ephemeral, end-to-end-encrypted chat over your <code>.onion</code>. Your identity is an anonymous, rotatable code — not a mailbox. Share it so people can reach you; messages burn a set time after they're read.`
-	}
-	body.WriteString(`<div class="page-header"><h1>VayuTalk</h1><span class="muted text-sm">` + tagline + `</span></div>`)
-
-	// You are VIEWING the Tor world (this console is proxied into the separate Tor
-	// instance). Its chat is a DIFFERENT relay + an anonymous identity — it is not
-	// your Clearnet mailbox chat, and the mobile app (clearnet) cannot reach it.
-	// Say so plainly so "the app and website can't message each other" is never a
-	// mystery: switch to Clearnet in the sidebar to use mailbox chat with the app.
-	if config.Cfg.OnionMode {
-		body.WriteString(`<div class="settings-callout">` + saIcon("tor") + ` <strong>This is the Tor world's chat.</strong> It is separate from your Clearnet mailbox chat and the mobile app — they run on a different relay. To message your mailbox contacts or the app, switch to <a href="/os/world?target=clearnet"><strong>Clearnet</strong></a>.</div>`)
-	}
-
 	var idents []string
 	if a.vayuTalkEnabled() {
 		idents = a.talkIdentities(r)
@@ -256,7 +241,7 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	self := idents[0]
 
 	// Resolve our own fingerprint (minting the key if this is the first use) so
-	// the verify panel can show the user their own safety number to read out.
+	// the "You" panel can show the user their own safety number to read out.
 	// Only the default identity is minted eagerly; switching to another mints
 	// that one on demand via the peer endpoint, so a server with many mailboxes
 	// never pays for keygen it isn't using.
@@ -267,92 +252,96 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	if config.Cfg.OnionMode {
 		onionAttr = ` data-onion="1"`
 	}
-	body.WriteString(`<div class="vtalk" data-self="` + esc(self) + `" data-self-fp="` + esc(formatSafety(selfFP)) + `"` + onionAttr + `>`)
+	// /os/talk?t=<address> opens New chat with the address filled in, so people
+	// with mailboxes on this install can send each other a link to start a chat.
+	// The recipient still presses Start: a link never silently opens a
+	// conversation. Escaped by a direct call: this is the one value on the page
+	// from the URL, and code scanning credits an escape only where it sees the
+	// call (TestEscapesAreCalledByName).
+	invite := strings.TrimSpace(r.URL.Query().Get("t"))
 
-	// Left rail: identity (a "chat as" switcher when more than one is available),
-	// start-a-chat box, and the live conversation list (filled by JS).
-	body.WriteString(`<aside class="vtalk-side">`)
-	body.WriteString(`<div class="vtalk-identity">` + mailAvatarImg(self, a.mailboxAvatarSet()) + `<div class="vtalk-identity-meta">`)
+	body.WriteString(`<div class="vtalk" data-self="` + esc(self) + `" data-self-fp="` + esc(formatSafety(selfFP)) + `"` + onionAttr + ` data-view="list">`)
+
+	// The bar (render 05): where you are, who you are chatting as, and the two
+	// things you start from here: a new chat, and what someone needs to reach
+	// you (your safety number and your link, or in the Tor world your code).
+	body.WriteString(`<header class="vtalk-top"><p class="vtalk-crumb"><span class="vtalk-crumb__app">Talk</span><span class="vtalk-crumb__peer" id="vtalk-crumb" hidden></span></p><div class="vtalk-top__tools">`)
+	body.WriteString(`<span class="vtalk-status" id="vtalk-status" data-state="connecting">Connecting…</span>`)
+	body.WriteString(`<span class="vtalk-as-wrap"><span class="vtalk-as-label">Chatting as</span>`)
 	if len(idents) > 1 {
-		body.WriteString(`<select class="vtalk-as" id="vtalk-as" aria-label="Chat as">`)
+		body.WriteString(`<select class="vtalk-as" id="vtalk-as" aria-label="Chatting as">`)
 		for _, id := range idents {
 			body.WriteString(`<option value="` + esc(id) + `">` + esc(id) + `</option>`)
 		}
 		body.WriteString(`</select>`)
 	} else {
-		body.WriteString(`<strong>` + esc(self) + `</strong>`)
+		body.WriteString(`<strong class="vtalk-as vtalk-as--one">` + esc(self) + `</strong>`)
 	}
-	body.WriteString(`<span class="vtalk-status" id="vtalk-status" data-state="connecting">Connecting…</span></div></div>`)
-	// Safety number: an out-of-band E2E verification aid (same value the app shows).
-	// Comparing it with a contact confirms no one is in the middle. Collapsed by
-	// default so it never clutters the rail.
-	if sn := formatSafety(selfFP); sn != "" {
-		body.WriteString(`<details class="vtalk-safety">
-  <summary class="vtalk-safety__sum"><svg viewBox="0 0 20 20" width="15" height="15" fill="none" aria-hidden="true"><path d="M10 2.4l6 2.2v4.1c0 3.5-2.4 6-6 6.9-3.6-.9-6-3.4-6-6.9V4.6z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M7.4 10.1l1.8 1.8 3.4-3.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Your safety number</span></summary>
-  <div class="vtalk-safety__body">
-    <code class="vtalk-safety__num">` + esc(sn) + `</code>
-    <p class="text-xs muted">Read this to your contact (in person or on a call). If you both see the same number, your chat is end-to-end encrypted with no one in the middle.</p>
-    <button type="button" class="btn btn--sm" data-copy="` + esc(sn) + `">Copy number</button>
-  </div>
-</details>`)
-	}
-	// A link (clearnet) that opens a chat with this identity, as text and as a QR
-	// code, for a colleague to open on their own phone or console. The QR is an
-	// image served per identity so the "chat as" switcher can repoint it.
-	if !config.Cfg.OnionMode {
-		link := talkShareLink(self)
-		body.WriteString(`<details class="vtalk-safety vtalk-share">
-  <summary class="vtalk-safety__sum">Share a link to chat with me</summary>
-  <div class="vtalk-safety__body">
-    <img class="vtalk-share__qr" data-share-qr src="/os/talk/qr?as=` + qparam(self) + `" width="164" height="164" alt="QR code of the link below">
-    <code class="vtalk-safety__num" data-share-link>` + esc(link) + `</code>
-    <p class="text-xs muted">Anyone with a mailbox on this server can open it to start a chat with you. It carries no password and no key.</p>
-    <button type="button" class="btn btn--sm" data-copy="` + esc(link) + `" data-share-copy>Copy link</button>
-  </div>
-</details>`)
-	}
-	// Tor world: the identity is an anonymous, rotatable code — offer copy + rotate.
+	body.WriteString(`</span>`)
+
+	youLabel := "Your safety number and link"
 	if config.Cfg.OnionMode {
-		// Onion-to-onion federation status + toggle (ADR-0142): reaching a code on
-		// another .onion is opt-in and experimental; surface its state and let the
-		// operator flip it.
+		youLabel = "Your anonymous code"
+	}
+	body.WriteString(`<details class="sa-pop"><summary class="vtalk-tool" aria-label="` + youLabel + `" title="` + youLabel + `">` + saIcon("key") + `</summary><div class="sa-pop__panel vtalk-pop">`)
+	// Safety number: an out-of-band check (the same value the app shows).
+	// Reading it to a contact who sees the same number confirms no one is in
+	// the middle.
+	if sn := formatSafety(selfFP); sn != "" {
+		body.WriteString(`<section class="vtalk-pop__part"><h2 class="vtalk-pop__h">Your safety number</h2><code class="vtalk-code" data-self-safety>` + esc(sn) + `</code>` +
+			`<p class="vtalk-pop__note">Read it to your contact. If you both see the same number, no one is in the middle.</p>` +
+			`<button type="button" class="btn btn--sm" data-copy="` + esc(sn) + `">` + saIcon("copy") + `<span>Copy number</span></button></section>`)
+	}
+	if !config.Cfg.OnionMode {
+		// A link that opens a chat with this identity, as text and as a QR code
+		// for a colleague's phone. The QR is served per identity, so "chatting
+		// as" can repoint it.
+		link := talkShareLink(self)
+		body.WriteString(`<section class="vtalk-pop__part"><h2 class="vtalk-pop__h">A link to chat with you</h2>` +
+			`<img class="vtalk-share__qr" data-share-qr src="/os/talk/qr?as=` + qparam(self) + `" width="148" height="148" alt="QR code of the link below">` +
+			`<code class="vtalk-code" data-share-link>` + esc(link) + `</code>` +
+			`<p class="vtalk-pop__note">Anyone with a mailbox on this server can open it. It carries no password and no key.</p>` +
+			`<button type="button" class="btn btn--sm" data-copy="` + esc(link) + `" data-share-copy>` + saIcon("copy") + `<span>Copy link</span></button></section>`)
+	} else {
+		// The Tor world's identity is an anonymous, rotatable code: the code, not
+		// a link, since a link would open this install's console, where nobody
+		// outside can sign in and everybody inside already IS this code.
 		fedOn := a.talkOnionFederationEnabled(r.Context())
-		fedNote := `<p class="text-sm muted" id="vtalk-fed-note">Onion-to-onion delivery is <strong>off</strong> — you can be reached on this .onion; messaging a code on a different .onion is disabled.</p>`
+		fedNote := `<p class="vtalk-pop__note" id="vtalk-fed-note">Onion-to-onion delivery is <strong>off</strong> — you can be reached on this .onion; messaging a code on a different .onion is disabled.</p>`
 		fedBtn := `<button type="button" class="btn btn--sm btn--primary" id="vtalk-fed" data-on="0">Enable onion-to-onion</button>`
 		if fedOn {
-			fedNote = `<p class="text-sm muted" id="vtalk-fed-note">Onion-to-onion delivery is <strong>on</strong> (experimental). Set <code>VAYUOS_TOR_SOCKS_ADDR</code> to your tor's SOCKS address for sending to work.</p>`
+			fedNote = `<p class="vtalk-pop__note" id="vtalk-fed-note">Onion-to-onion delivery is <strong>on</strong> (experimental). Set <code>VAYUOS_TOR_SOCKS_ADDR</code> to your tor's SOCKS address for sending to work.</p>`
 			fedBtn = `<button type="button" class="btn btn--sm btn--ghost" id="vtalk-fed" data-on="1">Disable onion-to-onion</button>`
 		}
-		// The code, not a link: a link would open this install's console, where
-		// nobody outside can sign in and everybody inside already IS this code.
-		body.WriteString(`<div class="vtalk-anon"><p class="text-sm muted">This is your anonymous code — share it so people can reach you.</p>` +
-			`<img class="vtalk-share__qr" src="/os/talk/qr" width="164" height="164" alt="QR code of your anonymous code">` +
-			`<div class="ak-cred-actions"><button type="button" class="btn btn--sm" data-copy="` + esc(self) + `">Copy code</button><button type="button" class="btn btn--sm btn--ghost" id="vtalk-rotate">Rotate</button></div>` + fedNote + `<div class="ak-cred-actions">` + fedBtn + `</div></div>`)
+		body.WriteString(`<section class="vtalk-pop__part"><h2 class="vtalk-pop__h">Your anonymous code</h2>` +
+			`<img class="vtalk-share__qr" src="/os/talk/qr" width="148" height="148" alt="QR code of your anonymous code">` +
+			`<code class="vtalk-code">` + esc(self) + `</code><p class="vtalk-pop__note">Share it so people can reach you. Rotating it cuts off everyone who has it.</p>` +
+			`<div class="vtalk-pop__row"><button type="button" class="btn btn--sm" data-copy="` + esc(self) + `">` + saIcon("copy") + `<span>Copy code</span></button><button type="button" class="btn btn--sm btn--ghost" id="vtalk-rotate">Rotate</button></div></section>` +
+			`<section class="vtalk-pop__part">` + fedNote + `<div class="vtalk-pop__row">` + fedBtn + `</div></section>`)
 	}
-	// /os/talk?t=<address> pre-fills the new-chat box, so people with mailboxes
-	// on this install can send each other a link to start a chat. The value is escaped
-	// into the attribute; the recipient still has to press Start, so a link can
-	// never silently open a conversation. It is escaped by a direct call, not the
-	// page's esc alias: CodeQL credits an escaper only where it can see the call
-	// (go/reflected-xss), and this is the one value on the page from the URL.
-	invite := strings.TrimSpace(r.URL.Query().Get("t"))
+	body.WriteString(`</div></details>`)
+
+	// New chat. The Tor world's recipients are 70-character anonymous codes,
+	// not mail addresses: an email input with a "name@domain" placeholder
+	// invites the wrong thing and fights the paste.
+	peerType, peerPlaceholder, peerLabel := "email", "name@domain", "Their address"
+	if config.Cfg.OnionMode {
+		peerType, peerPlaceholder, peerLabel = "text", "paste their anonymous code", "Their anonymous code"
+	}
+	open := ""
+	if invite != "" {
+		open = " open"
+	}
+	body.WriteString(`<details class="sa-pop vtalk-new"` + open + `><summary class="btn btn--primary btn--sm">` + saIcon("plus") + `New chat</summary><div class="sa-pop__panel vtalk-pop vtalk-pop--new">`)
 	if invite != "" {
 		what := "An address"
 		if config.Cfg.OnionMode {
 			what = "A code"
 		}
-		body.WriteString(`<div class="settings-callout">` + saIcon("link") + what + ` came with this link — press <strong>Start</strong> to open the chat with <code>` + htmpl.HTMLEscapeString(invite) + `</code>.</div>`)
+		body.WriteString(`<p class="vtalk-pop__note vtalk-invite">` + saIcon("link") + what + ` came with your link. Press Start to open the chat.</p>`)
 	}
-	// The Tor world's recipients are 70-character anonymous codes, not mail
-	// addresses: an email input with a "name@domain" placeholder invites the wrong
-	// thing and fights the paste.
-	peerType, peerPlaceholder := "email", "name@domain"
-	if config.Cfg.OnionMode {
-		peerType, peerPlaceholder = "text", "paste their anonymous code"
-	}
-	// Recipient suggestions: the mailboxes this session may chat as (an admin's
-	// whole server, a holder's own), minus yourself. Starting a chat used to
-	// require knowing the exact address by heart.
+	// Suggestions: the mailboxes this session may chat as (an admin's whole
+	// server, a holder's own), minus yourself.
 	if len(idents) > 1 {
 		body.WriteString(`<datalist id="vtalk-directory">`)
 		for _, id := range idents {
@@ -363,26 +352,37 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 		}
 		body.WriteString(`</datalist>`)
 	}
-	body.WriteString(`<form class="vtalk-newchat" id="vtalk-newchat"><input class="input input--sm" id="vtalk-peer" type="` + peerType + `" autocomplete="off" spellcheck="false" placeholder="` + peerPlaceholder + `" aria-label="Recipient address" list="vtalk-directory" value="` + htmpl.HTMLEscapeString(invite) + `"><button class="btn btn--sm btn--primary" type="submit">Start</button></form>`)
-	body.WriteString(`<p class="vtalk-newchat-note" id="vtalk-newchat-note" hidden></p>`)
-	body.WriteString(`<div class="vtalk-convos-head"><span class="vtalk-convos-title">Conversations</span></div>`)
-	body.WriteString(`<div class="vtalk-search-wrap"><svg class="vtalk-search-ico" viewBox="0 0 20 20" width="15" height="15" fill="none" aria-hidden="true"><circle cx="9" cy="9" r="5.2" stroke="currentColor" stroke-width="1.5"/><path d="M13 13l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><input class="input input--sm vtalk-search" id="vtalk-search" type="search" placeholder="Search conversations…" aria-label="Search conversations" autocomplete="off"></div>`)
-	body.WriteString(`<ul class="vtalk-convos" id="vtalk-convos" aria-label="Conversations"></ul>`)
-	body.WriteString(`<p class="vtalk-search-none" id="vtalk-search-none" hidden>No conversations match that search.</p>`)
-	body.WriteString(`</aside>`)
+	body.WriteString(`<form class="vtalk-newchat" id="vtalk-newchat"><label class="vtalk-pop__h" for="vtalk-peer">` + peerLabel + `</label><div class="vtalk-pop__row"><input class="input input--sm" id="vtalk-peer" type="` + peerType + `" autocomplete="off" spellcheck="false" placeholder="` + peerPlaceholder + `" list="vtalk-directory" value="` + htmpl.HTMLEscapeString(invite) + `"><button class="btn btn--sm btn--primary" type="submit">Start</button></div></form>`)
+	body.WriteString(`<p class="vtalk-pop__note" id="vtalk-newchat-note" hidden></p>`)
+	body.WriteString(`</div></details></div></header>`)
 
-	// Right pane: thread header, message list, composer.
+	// You are VIEWING the Tor world (this console is proxied into the separate
+	// Tor instance). Its chat is a DIFFERENT relay and an anonymous identity:
+	// not your Clearnet mailbox chat, and the mobile app (clearnet) cannot
+	// reach it. Said plainly, so "the app and the website can't message each
+	// other" is never a mystery.
+	if config.Cfg.OnionMode {
+		body.WriteString(`<p class="vtalk-world">` + saIcon("tor") + `<span>This is the Tor world's chat, separate from your Clearnet mailbox chat and the app. To reach those, switch to <a href="/os/world?target=clearnet">Clearnet</a>.</span></p>`)
+	}
+
+	// The conversations: filled by admin-os-talk.js as messages arrive and
+	// from the contacts you chose to keep.
+	body.WriteString(`<aside class="vtalk-side" aria-label="Conversations"><label class="vtalk-find">` + saIcon("search") + `<input type="search" id="vtalk-search" placeholder="Search conversations" aria-label="Search conversations" autocomplete="off"></label>`)
+	body.WriteString(`<ul class="vtalk-convos" id="vtalk-convos"></ul>`)
+	body.WriteString(`<p class="vtalk-side__note vtalk-side__empty">No conversations yet. Start one with New chat.</p>`)
+	body.WriteString(`<p class="vtalk-side__note" id="vtalk-search-none" hidden>No conversation matches that.</p></aside>`)
+
+	// The conversation: its bar, the messages, the composer. The burn control
+	// is rendered once and the bar takes it in for each conversation.
 	body.WriteString(`<section class="vtalk-main" id="vtalk-main" data-empty="1">`)
 	body.WriteString(`<div class="vtalk-thread-head" id="vtalk-thread-head"></div>`)
-	body.WriteString(`<div class="vtalk-thread" id="vtalk-thread"><div class="vtalk-hint"><div class="vtalk-hint-badge">` + saIcon("lock") + `</div><p>Pick a conversation or start a new one. Messages are end-to-end encrypted and self-destruct on a timer once they're read. Turn on Live to keep nothing on the server at all.</p></div></div>`)
-	body.WriteString(`<form class="vtalk-composer" id="vtalk-composer">`)
-	body.WriteString(`<textarea class="vtalk-input" id="vtalk-input" rows="1" placeholder="Write a message…" aria-label="Message" disabled></textarea>`)
-	body.WriteString(`<div class="vtalk-composer-actions">`)
-	body.WriteString(`<label class="vtalk-opt"><span class="text-sm muted">Disappears</span><select class="input input--sm" id="vtalk-ttl" aria-label="Self-destruct timer (after reading)"><option value="5">5 sec after read</option><option value="60">1 min after read</option><option value="300" selected>5 min after read</option><option value="900">15 min after read</option><option value="1800">30 min after read</option><option value="3600">1 hour after read</option></select></label>`)
-	body.WriteString(`<label class="vtalk-opt vtalk-live" title="Live mode: not stored on the server; vanishes the instant it is read. Both of you must be online."><input type="checkbox" id="vtalk-live"><span class="text-sm">` + saIcon("timer") + ` Live</span></label>`)
-	body.WriteString(`<span class="vtalk-opt--spacer"></span>`)
-	body.WriteString(`<button class="btn btn--primary btn--sm" type="submit" id="vtalk-send" disabled>Send</button>`)
-	body.WriteString(`</div></form>`)
+	body.WriteString(`<label class="vtalk-burn" id="vtalk-burn">` + saIcon("timer") + `<select id="vtalk-ttl" aria-label="When your messages burn">` +
+		`<option value="5">Burn 5 s after reading</option><option value="60">Burn 1 min after reading</option><option value="300" selected>Burn 5 min after reading</option>` +
+		`<option value="900">Burn 15 min after reading</option><option value="1800">Burn 30 min after reading</option><option value="3600">Burn 1 hour after reading</option>` +
+		`<option value="live">Live: never stored</option></select></label>`)
+	body.WriteString(`<div class="vtalk-thread" id="vtalk-thread"><div class="vtalk-hint">` + saIcon("lock") + `<p>Pick a conversation or start a new one. Messages are end-to-end encrypted and burn on a timer once they are read.</p></div></div>`)
+	body.WriteString(`<form class="vtalk-composer" id="vtalk-composer"><textarea class="vtalk-input" id="vtalk-input" rows="1" placeholder="Write a message" aria-label="Message" disabled></textarea>` +
+		`<button class="btn btn--primary btn--sm" type="submit" id="vtalk-send" disabled>` + saIcon("send") + `Send</button></form>`)
 	body.WriteString(`</section>`)
 
 	body.WriteString(`</div>`) // .vtalk
@@ -429,9 +429,9 @@ if(fed){fed.addEventListener('click',function(){
 // rejected write must not claim success, because "share my code" is the whole point
 // of that control.
 Array.prototype.forEach.call(document.querySelectorAll('.vtalk [data-copy]'),function(b){b.addEventListener('click',function(){
-  var v=b.getAttribute('data-copy')||'',p=b.textContent;
-  var done=function(){b.textContent='Copied';setTimeout(function(){b.textContent=p;},1400);};
-  var fail=function(){b.textContent='Copy failed \u2014 select it manually';setTimeout(function(){b.textContent=p;},2600);};
+  var l=b.querySelector('span')||b,v=b.getAttribute('data-copy')||'',p=l.textContent;
+  var done=function(){l.textContent='Copied';setTimeout(function(){l.textContent=p;},1400);};
+  var fail=function(){l.textContent='Copy failed \u2014 select it manually';setTimeout(function(){l.textContent=p;},2600);};
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(v).then(done,function(){fail();});}else{fail();}
 });});
 // Client-side conversation filter: hide/show rows whose text does not match. The

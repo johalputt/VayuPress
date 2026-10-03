@@ -41,12 +41,13 @@
     composer: document.getElementById('vtalk-composer'),
     input: document.getElementById('vtalk-input'),
     ttl: document.getElementById('vtalk-ttl'),
-    live: document.getElementById('vtalk-live'),
+    burn: document.getElementById('vtalk-burn'),
+    crumb: document.getElementById('vtalk-crumb'),
     send: document.getElementById('vtalk-send')
   };
 
   // Live mode burns a message a few seconds after it is read (readable, then
-  // gone) and is never stored on the server — see the composer's 🔥 Live toggle.
+  // gone) and is never stored on the server: the burn control's last option.
   var LIVE_GRACE_SECONDS = 5;
 
   // peer(lowercased) -> { peer, messages:[], unread, item, dot }
@@ -99,7 +100,11 @@
     edit: 'M4 20h4L19 9l-4-4L4 16zM14 6l4 4',
     shield: 'M12 3l7 3v5c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6z',
     flame: 'M12 3c1 3 5 5.5 5 10a5 5 0 0 1-10 0c0-2.5 1.5-4 2.5-5.5.5 1.5 1.5 2.5 2.5 3 .3-2.5 0-5-0-7.5z',
-    alert: 'M12 4l9 16H3zM12 10v4M12 17.5v.01'
+    alert: 'M12 4l9 16H3zM12 10v4M12 17.5v.01',
+    back: 'M15 5l-7 7 7 7',
+    more: 'M5 11a1 1 0 1 0 0 2 1 1 0 1 0 0-2zM12 11a1 1 0 1 0 0 2 1 1 0 1 0 0-2zM19 11a1 1 0 1 0 0 2 1 1 0 1 0 0-2z',
+    check: 'M5 12.5l4.5 4.5L19 7.5',
+    lock: 'M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3'
   };
   function icon(name) {
     var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -126,16 +131,24 @@
   // attached in JS (never an inline onerror) so it stays strict-CSP-safe: a 404
   // (no picture) simply keeps the initials. It is same-origin only and never
   // reaches another host, so it is safe in the Tor world too.
+  // avatarTone is Mail's avatar tint for an address (mailAvatarIdx in
+  // vayuos.go: FNV-1a over its bytes, of six), so a person has one colour in
+  // Mail and in Talk. Talk draws its rows here; Mail's are drawn on the server.
+  function avatarTone(addr) {
+    var b = new TextEncoder().encode(addr), h = 2166136261;
+    for (var i = 0; i < b.length; i++) { h ^= b[i]; h = Math.imul(h, 16777619) >>> 0; }
+    return h % 6;
+  }
   function avatarEl(addr, label) {
-    var el = elem('span', 'vtalk-avatar', initials(label || addr));
     var a = norm(addr);
+    var el = elem('span', 'vtalk-avatar vm-av vm-av--' + avatarTone(a), initials(label || addr));
     if (!a) return el;
     var img = document.createElement('img');
     img.alt = '';
     img.addEventListener('load', function () {
       el.textContent = '';
       el.appendChild(img);
-      el.classList.add('vtalk-avatar--img');
+      el.className = 'vtalk-avatar vm-av vm-av--img';
     });
     img.src = '/os/vayumail/accounts/avatar?email=' + encodeURIComponent(a);
     return el;
@@ -238,8 +251,14 @@
     var item = elem('li', 'vtalk-convo');
     var av = avatarEl(peer, name);
     var meta = elem('span', 'vtalk-convo-meta');
+    var line = elem('span', 'vtalk-convo-line');
     var nameEl = elem('span', 'vtalk-convo-name', name);
-    meta.appendChild(nameEl);
+    var timeEl = elem('span', 'vtalk-convo-time');
+    line.appendChild(nameEl);
+    line.appendChild(timeEl);
+    meta.appendChild(line);
+    var pvEl = elem('span', 'vtalk-convo-pv');
+    meta.appendChild(pvEl);
     var pin = iconText(elem('span', 'vtalk-convo-pin'), 'pin', '');
     pin.title = 'Kept — stays in your list after reload';
     pin.hidden = !isKept(peer);
@@ -263,9 +282,46 @@
     });
     els.convos.appendChild(item);
 
-    var c = { peer: peer, messages: [], unread: 0, item: item, dot: dot, nameEl: nameEl, av: av, pin: pin };
+    var c = { peer: peer, messages: [], unread: 0, item: item, dot: dot, nameEl: nameEl, av: av, pin: pin, timeEl: timeEl, pvEl: pvEl };
     convos[peer] = c;
+    paintRow(c);
     return c;
+  }
+
+  // paintRow writes a row's second line from what is still on screen: the last
+  // message that has not burned, or, with none left, that messages burn. A
+  // preview outliving its message would keep on the list what the conversation
+  // has already destroyed.
+  function paintRow(c) {
+    var last = c.messages[c.messages.length - 1];
+    c.timeEl.textContent = last ? rowTime(last.createdAt) : '';
+    if (last) {
+      c.pvEl.textContent = (last.mine ? 'You: ' : '') + last.text;
+    } else {
+      iconText(c.pvEl, 'flame', 'Messages burn after reading');
+    }
+  }
+
+  // rowTime is the list's clock: now, a time today, then the day.
+  function rowTime(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var now = new Date(), ago = (now - d) / 1000;
+    if (ago < 60) return 'Now';
+    var day = dayLabel(iso);
+    if (day === 'Today') return fmtTime(iso);
+    if (day === 'Yesterday') return day;
+    if (ago < 6 * 86400) return d.toLocaleDateString(undefined, { weekday: 'short' });
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  }
+  function dayLabel(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var start = new Date(); start.setHours(0, 0, 0, 0);
+    var t = d.getTime();
+    if (t >= start.getTime()) return 'Today';
+    if (t >= start.getTime() - 86400000) return 'Yesterday';
+    return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
   }
 
   function activate(peer) {
@@ -287,8 +343,10 @@
       else convos[k].item.removeAttribute('aria-current');
     });
     els.main.removeAttribute('data-empty');
+    if (els.crumb) { els.crumb.textContent = displayName(peer); els.crumb.hidden = false; }
     buildHeader(peer);
     renderThread(c);
+    els.input.placeholder = 'Message ' + displayName(peer);
     els.input.disabled = false;
     els.send.disabled = false;
     els.input.focus();
@@ -301,22 +359,21 @@
     els.head.textContent = '';
     var name = displayName(peer);
     var av = avatarEl(peer, name);
-    // Back to the list. Only visible in the mobile thread view (see the CSS);
-    // on desktop both panes are on screen, so it stays hidden.
-    var back = elem('button', 'vtalk-head-btn vtalk-back');
+    // Back to the list. Only shown in the phone's thread view (see the CSS);
+    // on a wide screen both panes are on screen.
+    var back = elem('button', 'vtalk-back');
     back.type = 'button';
-    back.textContent = '← Chats';
+    iconText(back, 'back', 'Talk');
     back.setAttribute('aria-label', 'Back to conversations');
     back.addEventListener('click', function () { root.setAttribute('data-view', 'list'); });
     els.head.appendChild(back);
     var hmeta = elem('div', 'vtalk-head-meta');
-    hmeta.appendChild(elem('strong', null, name));
-    hmeta.appendChild(elem('span', 'text-sm muted', 'End-to-end encrypted · disappears when read'));
-    // Presence: a separate, honest line. See paintPresence for why the "offline"
-    // wording is about a connection, not about the person.
+    hmeta.appendChild(elem('strong', 'vtalk-head-name', name));
+    hmeta.appendChild(elem('span', 'vtalk-head-addr', peer));
+    // Presence: a separate, honest line. See paintPresence for why the
+    // negative wording is about a connection, not about the person.
     var presence = elem('span', 'vtalk-presence');
     presence.id = 'vtalk-presence';
-    paintPresence(peer);
     hmeta.appendChild(presence);
     // Messages that arrived but could not be read: the sender is known (routing
     // metadata), the content is not. Saying so beats a silent gap.
@@ -327,44 +384,50 @@
     }
 
     var actions = elem('div', 'vtalk-head-actions');
-
-    // Rename: choose a name to show instead of the address (the address itself is
-    // never shown outside the verify panel once a chat is added).
-    var rbtn = elem('button', 'vtalk-head-btn');
-    rbtn.type = 'button';
-    iconText(rbtn, 'edit', 'Rename');
-    rbtn.title = 'Show a name instead of the address';
-    rbtn.addEventListener('click', function () { renameContact(peer); });
-
-    // Keep: pin the contact so its row survives a reload (chats are ephemeral by
-    // default — nothing but this flag and the chosen name is ever persisted).
-    var kbtn = elem('button', 'vtalk-head-btn');
-    kbtn.type = 'button';
-    iconText(kbtn, 'pin', isKept(peer) ? 'Kept' : 'Keep');
-    kbtn.classList.toggle('is-on', isKept(peer));
-    kbtn.title = isKept(peer)
-      ? 'This contact stays in your list after reload'
-      : 'Keep this contact in your list after reload';
-    kbtn.addEventListener('click', function () { toggleKeep(peer); });
-
-    var vbtn = elem('button', 'vtalk-verify-btn');
+    // The safety-number pill says what this tab knows: verified only after you
+    // compared the numbers and said so, and it opens the comparison either way.
+    var vbtn = elem('button', 'vtalk-pill vtalk-verify-btn');
     vbtn.type = 'button';
     setVerifyBtn(vbtn, peer);
-    // The shield opens a panel: assistive tech needs to know that, and whether
-    // it is currently open.
     vbtn.setAttribute('aria-expanded', 'false');
     vbtn.setAttribute('aria-controls', 'vtalk-verify');
     vbtn.addEventListener('click', function () { toggleVerify(peer); });
-
-    actions.appendChild(rbtn);
-    actions.appendChild(kbtn);
     actions.appendChild(vbtn);
+    actions.appendChild(iconText(elem('span', 'vtalk-pill vtalk-pill--e2e'), 'lock', 'End-to-end encrypted'));
+    if (els.burn) actions.appendChild(els.burn);
+
+    // Rename and Keep, under More: rename shows a name instead of the address;
+    // keep pins the contact so its row survives a reload (chats are ephemeral,
+    // and nothing but that flag and the name is ever stored).
+    var more = elem('details', 'sa-pop vtalk-more');
+    var sum = elem('summary', 'vtalk-tool');
+    sum.setAttribute('aria-label', 'More');
+    sum.appendChild(icon('more'));
+    more.appendChild(sum);
+    var menu = elem('div', 'sa-pop__panel vtalk-menu');
+    menu.setAttribute('role', 'menu');
+    var rbtn = elem('button', 'vtalk-menu__item');
+    rbtn.type = 'button';
+    rbtn.setAttribute('role', 'menuitem');
+    iconText(rbtn, 'edit', 'Rename');
+    rbtn.addEventListener('click', function () { more.open = false; renameContact(peer); });
+    var kbtn = elem('button', 'vtalk-menu__item');
+    kbtn.type = 'button';
+    kbtn.setAttribute('role', 'menuitem');
+    iconText(kbtn, 'pin', isKept(peer) ? 'Kept in your list' : 'Keep in your list');
+    kbtn.classList.toggle('is-on', isKept(peer));
+    kbtn.addEventListener('click', function () { more.open = false; toggleKeep(peer); });
+    menu.appendChild(rbtn);
+    menu.appendChild(kbtn);
+    more.appendChild(menu);
+    actions.appendChild(more);
 
     els.head.appendChild(av);
     els.head.appendChild(hmeta);
     els.head.appendChild(actions);
+    paintPresence(peer);
 
-    // Collapsible verify panel (hidden until the shield is clicked).
+    // The comparison, hidden until the pill is pressed.
     var panel = elem('div', 'vtalk-verify');
     panel.id = 'vtalk-verify';
     panel.hidden = true;
@@ -440,7 +503,7 @@
   }
 
   function setVerifyBtn(btn, peer) {
-    iconText(btn, 'shield', verified[peer] ? 'Verified' : 'Verify');
+    iconText(btn, verified[peer] ? 'check' : 'shield', verified[peer] ? 'Safety number verified' : 'Compare safety numbers');
     btn.classList.toggle('is-verified', !!verified[peer]);
   }
 
@@ -620,7 +683,10 @@
       hint.appendChild(elem('p', null, 'No messages yet. Say hello — it will vanish once they read it.'));
       els.thread.appendChild(hint);
     } else {
+      var day = '';
       c.messages.forEach(function (m) {
+        var d = dayLabel(m.createdAt);
+        if (d !== day) { els.thread.appendChild(elem('p', 'vtalk-day', d)); day = d; }
         els.thread.appendChild(m.node);
         // Opening the thread reveals any incoming messages that arrived while it
         // was in the background — start their burn-after-read countdown now.
@@ -656,9 +722,9 @@
     m.burnEl = elem('span', 'vtalk-bubble-burn');
     m.burnEl.hidden = true;
     foot.appendChild(m.burnEl);
-    body.appendChild(foot);
     if (m.mode === 'live') row.classList.add('vtalk-msg--live');
     row.appendChild(body);
+    row.appendChild(foot);
     m.node = row;
     return row;
   }
@@ -673,11 +739,15 @@
     var c = getConvo(peer);
     if (!c) return;
     bubble(m);
+    var prev = c.messages[c.messages.length - 1];
     c.messages.push(m);
     if (m.id) byId[m.id] = m;
+    paintRow(c);
     if (active === c.peer) {
       var hint = els.thread.querySelector('.vtalk-hint');
       if (hint) hint.parentNode.removeChild(hint);
+      var d = dayLabel(m.createdAt);
+      if (!prev || dayLabel(prev.createdAt) !== d) els.thread.appendChild(elem('p', 'vtalk-day', d));
       els.thread.appendChild(m.node);
       scrollDown();
     } else if (!m.mine) {
@@ -755,7 +825,7 @@
       }
       if (m.burnEl) {
         m.burnEl.hidden = false;
-        iconText(m.burnEl, 'flame', fmtCountdown(remain));
+        iconText(m.burnEl, 'flame', 'Burns in ' + fmtCountdown(remain));
       }
     }
     if (!burning.length && burnTicker) { clearInterval(burnTicker); burnTicker = null; }
@@ -764,10 +834,10 @@
     if (m.timer) { clearTimeout(m.timer); m.timer = null; }
     if (m.node && m.node.parentNode) {
       m.node.classList.add('vtalk-msg--gone');
-      setTimeout(function () { if (m.node && m.node.parentNode) m.node.parentNode.removeChild(m.node); }, 400);
+      setTimeout(function () { if (m.node && m.node.parentNode) m.node.parentNode.removeChild(m.node); tidyDays(); }, 400);
     }
     var c = convos[m.peer];
-    if (c) { var i = c.messages.indexOf(m); if (i >= 0) c.messages.splice(i, 1); }
+    if (c) { var i = c.messages.indexOf(m); if (i >= 0) c.messages.splice(i, 1); paintRow(c); }
     // KEEP the id as a tombstone — do NOT delete byId[m.id].
     //
     // The server now keeps a per-reader cursor, so a reconnect should not re-flush
@@ -776,6 +846,13 @@
     // resurrect a message the user just watched burn. Belt and braces, because the
     // product's headline claim depends on it. A few bytes, gone with the tab.
     if (m.id) m.expired = true;
+  }
+  // tidyDays takes away a day's heading once every message under it has burned.
+  function tidyDays() {
+    Array.prototype.forEach.call(els.thread.querySelectorAll('.vtalk-day'), function (h) {
+      var next = h.nextElementSibling;
+      if (!next || next.classList.contains('vtalk-day')) h.parentNode.removeChild(h);
+    });
   }
   function setStatus(m, label, cls) {
     if (!m || !m.statusEl) return;
@@ -881,8 +958,9 @@
   function send() {
     var text = els.input.value.trim();
     if (!text || !active) return;
-    var burn = parseInt(els.ttl && els.ttl.value, 10) || 300; // burn-after-read seconds
-    var live = !!(els.live && els.live.checked);
+    var choice = els.ttl ? els.ttl.value : '300';
+    var live = choice === 'live';
+    var burn = live ? 300 : (parseInt(choice, 10) || 300); // burn-after-read seconds
     var mode = live ? 'live' : 'store';
     var to = active;
 
@@ -1007,9 +1085,9 @@
     // typed as, and sending it from another mailbox would be a leak, not a
     // convenience.
     els.input.value = '';
+    els.input.placeholder = 'Write a message';
     autogrow();
-    var av = root.querySelector('.vtalk-identity .vm-av');
-    if (av) av.textContent = initials(currentSelf);
+    if (els.crumb) { els.crumb.textContent = ''; els.crumb.hidden = true; }
     // The share panel belongs to the identity too: its link and QR would
     // otherwise invite people to chat with the mailbox just switched away from.
     var shareQR = root.querySelector('[data-share-qr]');
@@ -1022,13 +1100,23 @@
     }
     if (shareQR) shareQR.src = '/os/talk/qr?as=' + encodeURIComponent(currentSelf);
     // Refresh our own safety number for the new identity, then reconnect.
+    // Until it arrives, the panel shows no number rather than the last
+    // identity's: a number read out for the wrong mailbox is worse than none.
     selfFp = '';
+    paintSelfSafety();
     fetch('/os/talk/peer?email=' + encodeURIComponent(currentSelf), { headers: { 'Accept': 'application/json' } })
       .then(function (r) { return r.json(); })
-      .then(function (j) { if (j && j.safety) selfFp = j.safety; })
+      .then(function (j) { if (j && j.safety) { selfFp = j.safety; paintSelfSafety(); } })
       .catch(function () {});
     markStatus('connecting', 'Connecting…');
     connect();
+  }
+  function paintSelfSafety() {
+    var code = root.querySelector('[data-self-safety]');
+    if (!code) return;
+    code.textContent = selfFp || '—';
+    var copy = code.parentNode.querySelector('[data-copy]');
+    if (copy) { copy.setAttribute('data-copy', selfFp); copy.disabled = !selfFp; }
   }
   els.composer.addEventListener('submit', function (e) { e.preventDefault(); send(); });
   els.input.addEventListener('keydown', function (e) {

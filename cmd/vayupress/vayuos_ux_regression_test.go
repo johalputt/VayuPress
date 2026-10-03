@@ -94,7 +94,7 @@ func TestATalkSafetyNumberChangeIsLoud(t *testing.T) {
 
 // TestTalkKeyWarningIsStyled keeps the CSS contract honest for the danger variant.
 func TestTalkKeyWarningIsStyled(t *testing.T) {
-	block := cssBlock(t, adminOSCSS(t), ".vp-os .vtalk-warn--key {")
+	block := cssBlock(t, adminOSCSS(t), `.vp-os[data-ui="still-air"] .vtalk-warn--key {`)
 	if !strings.Contains(block, "var(--danger)") {
 		t.Errorf(".vtalk-warn--key must use the danger palette; block was:\n%s", block)
 	}
@@ -109,7 +109,7 @@ func TestTalkConversationRowsAreKeyboardReachable(t *testing.T) {
 			t.Errorf("conversation rows are missing %q — keyboard users cannot switch conversations without it", want)
 		}
 	}
-	if !strings.Contains(adminOSCSS(t), ".vp-os .vtalk-convo:focus-visible") {
+	if !strings.Contains(adminOSCSS(t), `.vp-os[data-ui="still-air"] .vtalk-convo:focus-visible`) {
 		t.Error("a focusable row needs a visible focus ring, or the tab stop is invisible")
 	}
 }

@@ -449,8 +449,8 @@ func TestTheShareQRIsOnlyEverForAnIdentityYouMayChatAs(t *testing.T) {
 	}
 }
 
-// /os/talk?t= pre-fills the new-chat box from a link anyone can send, and the
-// value is echoed twice: in the notice and in the input's value attribute.
+// /os/talk?t= pre-fills New chat from a link anyone can send. The value is
+// echoed once, escaped, in the field the reader presses Start on.
 func TestATalkInviteLinkIsEchoedAsText(t *testing.T) {
 	a, _, _ := appWithTalkWeb(t)
 	u := &users.User{ID: "u1", Email: "dana@example.com", Role: users.RoleAdmin}
@@ -461,7 +461,10 @@ func TestATalkInviteLinkIsEchoedAsText(t *testing.T) {
 	if strings.Contains(body, `<img src=x>`) {
 		t.Error("the invite reached the page as markup")
 	}
-	if n := strings.Count(body, `&#34;&gt;&lt;img src=x&gt;`); n != 2 {
-		t.Errorf("the invite should be shown escaped in the notice and the box; found %d", n)
+	if n := strings.Count(body, `&#34;&gt;&lt;img src=x&gt;`); n != 1 {
+		t.Errorf("the invite should be in New chat's field, escaped, once; found %d", n)
+	}
+	if !strings.Contains(body, `<details class="sa-pop vtalk-new" open>`) {
+		t.Error("a link with an address does not open New chat")
 	}
 }
