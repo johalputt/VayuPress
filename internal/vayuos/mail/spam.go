@@ -25,6 +25,25 @@ type SpamVerdict struct {
 	Reasons []string `json:"reasons,omitempty"`
 }
 
+// The DMARC outcome the SMTP receiver recorded on a message.
+const (
+	dmarcNoFailure   = iota
+	dmarcFailed      // alignment failed
+	dmarcQuarantined // failed under an enforcing policy
+)
+
+// dmarcOutcome reads the receiver's own verdict: the quarantine mark it sets,
+// else the Authentication-Results it prepends.
+func dmarcOutcome(h mail.Header) int {
+	switch {
+	case strings.EqualFold(strings.TrimSpace(h.Get("X-VayuMail-Auth-Quarantine")), "yes"):
+		return dmarcQuarantined
+	case strings.Contains(strings.ToLower(h.Get("Authentication-Results")), "dmarc=fail"):
+		return dmarcFailed
+	}
+	return dmarcNoFailure
+}
+
 // SpamThreshold is the score at or above which a message is filed as Junk.
 // Tuned to require several independent signals before acting.
 const SpamThreshold = 6
@@ -71,9 +90,10 @@ func ScoreSpam(raw []byte) SpamVerdict {
 		// Inbound authentication outcome (set by the SMTP receiver). A DMARC
 		// failure under an enforcing policy forces the message to Junk; a plain
 		// DMARC alignment failure contributes a smaller signal.
-		if strings.EqualFold(strings.TrimSpace(msg.Header.Get("X-VayuMail-Auth-Quarantine")), "yes") {
+		switch dmarcOutcome(msg.Header) {
+		case dmarcQuarantined:
 			add(SpamThreshold, "failed DMARC under an enforcing policy")
-		} else if ar := strings.ToLower(msg.Header.Get("Authentication-Results")); strings.Contains(ar, "dmarc=fail") {
+		case dmarcFailed:
 			add(2, "DMARC alignment failure")
 		}
 		if b, berr := readAll(msg); berr == nil {

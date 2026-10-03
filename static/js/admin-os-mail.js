@@ -1457,6 +1457,18 @@
       });
     });
 
+    // Not junk → back to the Inbox, and the sender into contacts, so their
+    // next message is not filed as junk either.
+    actions.querySelectorAll('[data-mail-notjunk]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        btn.disabled = true;
+        postJSON('/os/vayumail/message/action', { user: user, id: id, folder: folder, notjunk: true }).then(function (res) {
+          if (res.ok) { acctToast('Moved to Inbox, and the sender will not be filed as junk again'); advance(); }
+          else { btn.disabled = false; acctToast('Could not move it: ' + errText(res), true); }
+        });
+      });
+    });
+
     // Mark unread → drop the Seen flag and return to the folder (Gmail-style).
     actions.querySelectorAll('[data-mail-mark]').forEach(function (btn) {
       btn.addEventListener('click', function () {
@@ -1739,7 +1751,7 @@
         ['Older · newer message', 'j · k'], ['Open', 'Enter · o'],
         ['Reply · reply all · forward', 'r · a · f'], ['Compose', 'c'], ['Search', '/'],
         ['Select the row', 'x'], ['Archive', 'e'], ['Delete', '#'], ['Snooze', 's'], ['Pin', 'p'],
-        ['Mark unread', 'u'], ['Move to…', 'v'], ['Junk', '!'],
+        ['Mark unread', 'u'], ['Move to…', 'v'], ['Junk · in Junk, not junk', '!'],
         ['Full width · the list again', 'w'], ['Go to Inbox · Sent · Drafts', 'g then i · s · d'], ['Switch mailbox', '⌘⇧M · Ctrl+Shift+M'], ['These keys', '?']
       ];
       var h = '<div class="vm-help-title">Keyboard shortcuts</div><div class="vm-help-grid">';
@@ -1804,6 +1816,10 @@
     }
     // While selecting, the keys act on what is picked, through the selection
     // panel's own controls (the ones a pointer uses).
+    function inJunk() {
+      var f = document.querySelector('#vm-inbox-list input[name="folder"][data-vm-scope]');
+      return !!f && f.value.toLowerCase() === 'junk';
+    }
     function selVals(fragment) {
       var btns = document.querySelectorAll('.mx-select-host button[hx-vals]');
       for (var i = 0; i < btns.length; i++) {
@@ -1871,7 +1887,7 @@
         var host = document.querySelector('.mx-select-host');
         switch (e.key) {
           case 'e': selVals('"to":"Archive"'); return;
-          case '!': selVals('"to":"Junk"'); return;
+          case '!': selVals(inJunk() ? '"action":"notjunk"' : '"to":"Junk"'); return;
           case '#': selVals('"delete"'); return;
           case 'u': selVals('"mark":"unread"'); return;
           case 'p': selVals('"pin"'); return;
@@ -1891,7 +1907,7 @@
           case 'u': clickIn(reader, '[data-mail-mark="unread"], button[hx-vals*="unread"]'); return;
           case '#': clickIn(reader, '[aria-label="Move to Trash"], [aria-label="Delete for good"]'); return;
           case 'e': clickIn(reader, '[aria-label="Archive"]'); return;
-          case '!': clickIn(reader, '[aria-label="Junk"]'); return;
+          case '!': clickIn(reader, '[aria-label="Junk"], [aria-label="Not junk"]'); return;
           case 'p': clickIn(reader, '[aria-label="Pin"], [aria-label="Unpin"]'); return;
           case 's': e.preventDefault(); openMenu(reader, 'Snooze'); return;
           case 'v': e.preventDefault(); openMenu(reader, 'Move to'); return;

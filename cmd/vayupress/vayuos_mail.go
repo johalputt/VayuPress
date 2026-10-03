@@ -736,6 +736,8 @@ func (a *App) handleVayuOSMessageAction(w http.ResponseWriter, r *http.Request) 
 		Delete bool     `json:"delete"` // permanent delete
 		Mark   string   `json:"mark"`   // "read" or "unread"
 		Pin    *bool    `json:"pin"`    // pin (true) / unpin (false)
+		// NotJunk: back to the Inbox from Junk, and the sender to contacts.
+		NotJunk bool `json:"notjunk"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256*1024)).Decode(&in); err != nil {
 		writeAPIError(w, r, 400, "invalid_json", err.Error(), "")
@@ -778,6 +780,10 @@ func (a *App) handleVayuOSMessageAction(w http.ResponseWriter, r *http.Request) 
 	failed := 0
 	apply := func(id string) error {
 		switch {
+		case in.NotJunk:
+			_, err := a.vayuMail.NotJunk(rd, id)
+			action = "notjunk"
+			return err
 		case in.Mark == "read":
 			nid, err := a.vayuMail.MarkRead(rd, from, id)
 			lastID, action = nid, "read"

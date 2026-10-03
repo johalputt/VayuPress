@@ -629,6 +629,32 @@ test("reading full width: the list first, a message over it", async ({ page }) =
   await expect(list).toBeVisible();
 });
 
+// Not junk (pipeline 3ab): in Junk, ! (the key that files a message there
+// everywhere else) sends it back to the Inbox and remembers the sender; the
+// message's own page has the same as a button.
+test("a message in Junk is not junk, by its key or its page", async ({ page }) => {
+  const junk = "/os/vayumail/inbox?user=priya&folder=Junk";
+  await openInbox(page, junk);
+  const pane = page.locator("#vm-readpane");
+  await expect(pane.getByRole("button", { name: "Not junk" })).toBeVisible();
+  await expect(pane.getByRole("button", { name: "Junk", exact: true })).toHaveCount(0);
+  const subject = (await pane.locator(".mx-subject").textContent()).trim();
+  await page.locator("body").press("!");
+  await expect(pane).toContainText("is no longer filed as junk");
+  await expect(page.locator("#vm-inbox-list")).not.toContainText(subject);
+  await page.goto("/os/vayumail/inbox?user=priya");
+  await expect(page.locator("#vm-inbox-list")).toContainText(subject);
+  // The other, from its own page.
+  await page.goto(junk);
+  const link = page.locator("#vm-inbox-list .mx-row__open").first();
+  const other = (await link.locator(".mx-row__subj-text").textContent()).trim();
+  await page.goto(await link.getAttribute("href"));
+  await page.locator("[data-mail-actions]").getByRole("button", { name: "Not junk" }).click();
+  await page.waitForURL(/\/os\/vayumail\/inbox/);
+  await page.goto("/os/vayumail/inbox?user=priya");
+  await expect(page.locator("#vm-inbox-list")).toContainText(other);
+});
+
 // Print prints the open message, all of it, and nothing of the console
 // (pipeline 3y): the old print rules left the reader in its clipped column,
 // and the page came out with its address and no mail.

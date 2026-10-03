@@ -130,6 +130,10 @@ func main() {
 		must(os.MkdirAll(filepath.Join(root, dom, u, "."+f, "cur"), 0o700))
 	}
 	write("priya", "Inbox", msg{from: me, to: "priya@" + dom, subject: "Welcome", body: "Your mailbox is ready.", ageHours: 4}, false, false)
+	// Junk that is not, for Not junk (mail.spec): one by its key, one from the
+	// message's own page. In priya's mailbox, so ankush's screens stay as drawn.
+	write("priya", "Junk", msg{from: "Halcyon Billing <billing@halcyon.dev>", to: "priya@" + dom, subject: "Your invoice is ready", body: "The invoice for September is attached.", ageHours: 3}, false, false)
+	write("priya", "Junk", msg{from: "Ananya Iyer <ananya@iyer.example>", to: "priya@" + dom, subject: "Lunch on Friday", body: "Are you free on Friday?", ageHours: 5}, false, false)
 	long := "a-very-long-mailbox-name-for-the-wrapping-test"
 	write(long, "Inbox", msg{from: me, to: long + "@" + dom, subject: "Hello", body: "A mailbox whose address is long.", ageHours: 4}, true, false)
 	fmt.Printf("seeded %d messages in %s\n", n, filepath.Join(root, dom))

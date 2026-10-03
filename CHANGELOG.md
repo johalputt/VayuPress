@@ -19,6 +19,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   browser. The full view the old reader had was lost when the reader was
   redesigned; its leftover script and styles are gone with this.
 
+- **Not junk.** A message in Junk offers Not junk first (also `!`, the key
+  that files a message there everywhere else, and in selection mode for all
+  that is picked). It goes back to the Inbox and its sender joins the
+  mailbox's contacts, whose mail is no longer filed as junk. A message that
+  fails DMARC is still filed there whoever it claims to be from, and one
+  mailbox's contacts never let mail past another's filter.
+
 ### Fixed
 
 - **A message's tools stay in reach on a laptop.** Three columns at a 14-inch

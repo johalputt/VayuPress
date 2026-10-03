@@ -2142,6 +2142,9 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int) (st
 		}
 		b.WriteString(`<template id="vm-selpanel"><div class="mx-selpanel" data-vm-bulkbar><div class="mx-selpanel__stack" data-vm-sel-stack aria-hidden="true"></div>` +
 			`<h2 class="mx-selpanel__title" data-vm-sel-title></h2><p class="mx-selpanel__from" data-vm-sel-from></p><div class="mx-selpanel__acts">`)
+		if !readOnly && strings.EqualFold(folder, "Junk") {
+			b.WriteString(sel("inbox", "Not junk", `{"action":"notjunk"}`, ""))
+		}
 		if !readOnly && received && !strings.EqualFold(folder, "Archive") {
 			b.WriteString(sel("archive", "Archive", `{"action":"move","to":"Archive"}`, ""))
 		}
@@ -2459,6 +2462,9 @@ func (a *App) handleVayuOSInboxAction(w http.ResponseWriter, r *http.Request) {
 			return err
 		case "delete":
 			return a.vayuMail.DeleteMessage(rd, folder, id)
+		case "notjunk":
+			_, err := a.vayuMail.NotJunk(rd, id)
+			return err
 		case "snooze":
 			return a.vayuMail.Snooze(rd, folder, id, snoozeUntil(r.PostFormValue("snooze")))
 		case "move":
@@ -2911,6 +2917,17 @@ func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("HX-Trigger", "vm-mail-changed")
 
 	switch {
+	case r.FormValue("notjunk") == "1":
+		sender, err := a.vayuMail.NotJunk(rd, id)
+		if err != nil {
+			writeOSHTML(w, r, vayuReadpaneEmpty(mailChangeRefusal(err)))
+			return
+		}
+		msg := "Moved to Inbox."
+		if sender != "" {
+			msg += " Mail from " + html.EscapeString(sender) + " is no longer filed as junk."
+		}
+		writeOSHTML(w, r, vayuReadpaneEmpty(msg))
 	case r.FormValue("snooze") != "":
 		until := snoozeUntil(r.FormValue("snooze"))
 		if err := a.vayuMail.Snooze(rd, folder, id, until); err != nil {

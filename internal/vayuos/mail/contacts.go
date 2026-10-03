@@ -136,3 +136,17 @@ func (s *AccountStore) CountContacts(ctx context.Context, owner string) int {
 	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM vayumail_contacts WHERE owner=?`, normEmail(owner)).Scan(&n)
 	return n
 }
+
+// HasContact reports whether email is in owner's address book: one lookup on
+// the (owner, email) key, cheap enough to ask for every delivery.
+func (s *AccountStore) HasContact(ctx context.Context, owner, email string) bool {
+	if s == nil || s.db == nil {
+		return false
+	}
+	owner, email = normEmail(owner), normEmail(email)
+	if owner == "" || email == "" {
+		return false
+	}
+	var one int
+	return s.db.QueryRowContext(ctx, `SELECT 1 FROM vayumail_contacts WHERE owner=? AND email=?`, owner, email).Scan(&one) == nil
+}

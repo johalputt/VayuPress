@@ -132,6 +132,11 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		c.WriteString(`<button type="button" class="mx-back" data-mx-go="list">` + saIcon("chev-l") + esc(folder) + `</button>`)
 	}
 	if !readOnly {
+		// In Junk the first thing offered is to say it is not (pipeline 3ab),
+		// on the key that files a message there everywhere else.
+		if strings.EqualFold(folder, "Junk") {
+			tool("inbox", "Not junk", "!", paneVals("notjunk", "1"), `data-mail-notjunk`, false)
+		}
 		if !strings.EqualFold(folder, "Archive") {
 			tool("archive", "Archive", "e", paneVals("to", "Archive"), `data-mail-move="Archive"`, false)
 		}
@@ -342,6 +347,9 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 	// (render 05): what a message most needs, at the thumb.
 	if pane && !readOnly {
 		c.WriteString(`<nav class="mx-phonebar" aria-label="Message">`)
+		if strings.EqualFold(folder, "Junk") {
+			c.WriteString(`<button type="button" class="mx-tool"` + hxPost + paneVals("notjunk", "1") + ` aria-label="Not junk">` + saIcon("inbox") + `</button>`)
+		}
 		if received && !strings.EqualFold(folder, "Archive") {
 			c.WriteString(`<button type="button" class="mx-tool"` + hxPost + paneVals("to", "Archive") + ` aria-label="Archive">` + saIcon("archive") + `</button>`)
 		}

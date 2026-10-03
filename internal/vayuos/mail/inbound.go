@@ -165,7 +165,9 @@ func (e *Engine) DeliverInbound(envelopeFrom, recipientEmail string, raw []byte)
 	// Built-in heuristic junk filter (fully local — no external services). Mail
 	// scoring at or above the threshold is filed straight into the recipient's
 	// Junk folder instead of the inbox. Junk is NOT auto-forwarded.
-	if e.cfg.JunkFilterEnabled {
+	// A sender in the recipient's contacts is never filed as junk: "Not junk"
+	// saves the sender there, so the next message from them stays out of it.
+	if e.cfg.JunkFilterEnabled && !e.senderIsContact(local+"@"+domain, raw) {
 		if v := ScoreSpam(raw); v.IsSpam {
 			return e.maildir.DeliverTo(domain, local, "Junk", raw)
 		}
