@@ -1183,6 +1183,9 @@
 
 .vp-os .login-error { padding: 0.7rem 0.9rem; background: var(--danger-dim); border: 1px solid var(--danger); border-radius: var(--radius-surface); color: var(--danger); font-size: 14px; margin-bottom: 1.1rem; }
 
+/* What a mailbox reset disconnected (mail recovery): read as a list, not a paragraph, so a count the holder does not expect stands out. */
+.vp-os .login-list { margin: 0 0 1.1rem; padding-left: 1.2rem; display: flex; flex-direction: column; gap: 0.35rem; font-size: 14px; color: var(--text-2); }
+
 /* Theme switch (top-right) — small segmented control. */
 .vp-os .theme-switch { position: fixed; top: 1rem; right: 1rem; display: inline-flex; gap: 2px; padding: 3px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 999px; box-shadow: var(--shadow-3); }
 

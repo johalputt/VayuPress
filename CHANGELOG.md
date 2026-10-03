@@ -22,6 +22,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
+- **Mailbox recovery is Still Air.** The four recovery pages (send a reset
+  link, choose a new password, use a recovery code, ask your administrator)
+  and the pages they answer with were the old glass card on a gradient while
+  the sign-in they are reached from, and return to, is Still Air. They are
+  now built on that sign-in's own page, in light, dark or your system's
+  choice, with their protections unchanged: never cached, never indexed, and
+  no reset link sent on in a Referer. Sign-up, the member portal and payment
+  pages keep the site's own theme, as before.
 - **The test restore checks mail, media and the website, not only the
   database.** It counts each place in the restored copy and reports it ("3
   posts, 55 media files, 2 website files, 1,204 mail messages read back"). A
