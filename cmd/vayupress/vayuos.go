@@ -1317,7 +1317,7 @@ func (a *App) handleVayuOSSecurity(w http.ResponseWriter, r *http.Request) {
 		// One self-contained binary: a patched library arrives inside a signed
 		// release, so updating VayuPress is how these are applied, from the one
 		// place that does it (verified, backed up, rolled back on failure).
-		ui.Row{Label: "Applying an update", Hint: "A patched library arrives inside a signed VayuPress release.", Control: `<a class="btn btn--sm" href="/os/update">Open Updates</a>`},
+		ui.Row{Label: "Applying an update", Hint: "A patched library arrives inside a signed VayuPress release.", Control: `<a class="btn btn--sm" href="/os/update">Open updates</a>`},
 	)
 	body := string(ui.Status(page,
 		ui.Section("Libraries", "PGP and crypto, as this build embeds them", ui.Table([]string{"Library", "In this build", "Latest", "State"}, rows, "")),

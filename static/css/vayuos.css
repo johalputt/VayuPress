@@ -7241,7 +7241,7 @@
    sheet. */
 .vp-os[data-ui="still-air"] .sa-list__note { margin: var(--space-3) 0 0; font: var(--type-small); color: var(--text-3); }
 .vp-os[data-ui="still-air"] .vm-pgp__who { display: block; font: var(--type-body); color: var(--text-1); overflow-wrap: anywhere; }
-.vp-os[data-ui="still-air"] .vm-pgp__wkd { display: block; margin-top: 2px; font: var(--type-mono); font-size: 11px; color: var(--text-3); overflow-wrap: anywhere; }
+.vp-os[data-ui="still-air"] .vm-pgp__wkd { display: block; margin-top: 2px; font: var(--type-mono); font-size: 12px; color: var(--text-3); overflow-wrap: anywhere; }
 .vp-os[data-ui="still-air"] .vm-acct-new { display: grid; gap: var(--space-4); }
 .vp-os[data-ui="still-air"] .vm-acct-new .vm-addr { display: flex; align-items: center; gap: var(--space-2); }
 .vp-os[data-ui="still-air"] .vm-acct-new .vm-addr .input { flex: 1; min-width: 0; }
