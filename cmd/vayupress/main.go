@@ -1048,6 +1048,9 @@ func main() {
 
 	// ── VayuOS control layer (Phase 2): Publishing · Mail · PGP ──────────────
 	a.bootVayuOS()
+	if n := a.enrolSignedInMailboxes(context.Background(), dbpkg.DB); n > 0 {
+		logging.LogInfo("members", strconv.Itoa(n)+" signed-in mailbox"+plural(n)+" listed in Members")
+	}
 
 	// ── VayuShield + VayuAnalytics Enterprise: bot protection + engagement ───
 	a.bootVayuShield()

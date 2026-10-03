@@ -1947,6 +1947,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			auth.RecordAuthSuccess(ip)
+			a.enrolOnSignIn(r, addr)
 			auth.SetSessionCookieRemember(w, token, remember)
 			http.Redirect(w, r, loginDest, http.StatusSeeOther)
 			return

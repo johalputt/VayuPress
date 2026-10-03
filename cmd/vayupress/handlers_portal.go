@@ -294,14 +294,11 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 	if c, err := r.Cookie(memberCookie); err == nil && c.Value != "" {
 		_ = a.members.DestroySession(r.Context(), c.Value)
 	}
-	m, err := a.members.UpsertScoped(r.Context(), a.memberScope(r), emailAddr)
+	m, err := a.enrolMember(r, emailAddr)
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "db-error", "Could not sign you in", "")
 		return
 	}
-	// Record coarse, GDPR-safe join location once (country/region/city; no IP).
-	geo := geoFromHeaders(r)
-	a.members.SetGeoIfEmpty(r.Context(), m.ID, geo.Country, geo.Region, geo.City)
 	token, err := a.members.CreateSession(r.Context(), m.ID)
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "session-error", "Could not start your session", "")
@@ -383,6 +380,7 @@ func (a *App) handleMemberVayuMailDeviceRegister(w http.ResponseWriter, r *http.
 	}
 	mailAuthThrottle.Success(emailAddr)
 	auth.RecordAuthSuccess(lockKey)
+	a.enrolOnSignIn(r, emailAddr)
 
 	accts := a.vayuMail.Accounts()
 	// Reclaim never-approved devices before counting. Without this the ceiling

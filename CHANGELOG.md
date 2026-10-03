@@ -21,6 +21,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Everyone who signs in with a mailbox is listed in Members.** The member
+  portal's mailbox sign-in added the person to Members; the website's login
+  button, which takes the same mailbox password, and the VayuMail app's
+  sign-in did not, so people signed in and were never listed. All three now
+  list the holder, attributed to the site they signed in on, and a sign-in
+  never fails over the listing. At start-up, mailboxes still signed in from
+  before are listed too; anyone else is listed at their next sign-in, since
+  mailboxes keep no record of past sign-ins. Mail apps connecting over IMAP
+  or POP3 are not sign-ins to the site and are not counted.
 - **VayuVeil counted its permanent limits as findings on this host.** The
   six things it will never claim (an attacker with root, a kernel attacker,
   a camera on the screen and the rest) are always open by construction; they
