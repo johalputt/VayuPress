@@ -59,7 +59,7 @@ func TestTheMailboxDirectoryIsNotFencedOffByTheRefusal(t *testing.T) {
 	if body == "" {
 		t.Fatal("handleVayuOSInbox not found — this test no longer checks anything")
 	}
-	dir := strings.Index(body, "vayuMailboxTabs")
+	dir := strings.Index(body, "vayuMailboxDirectory")
 	refuse := strings.Index(body, "No mailbox has been assigned")
 	if dir < 0 {
 		t.Fatal("the mailbox handler no longer renders the directory at all")

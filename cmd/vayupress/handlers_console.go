@@ -302,7 +302,9 @@ func (a *App) handleTopologyPage(w http.ResponseWriter, r *http.Request) {
 		ui.Page("Topology", "How a request moves through the runtime, and what governs it. Each subsystem shows its state as of this page load.", ""),
 		`<p class="page-sub">Solid lines are the data path. Dashed lines are the control plane: fault points feed the escalation engine, which drives the mode engine, which constrains the write path. The install is `+ui.Text(saModeLabel(cur))+` now.</p>`,
 	))
-	fmt.Fprint(w, `<div class="topo-wrap"><svg class="topo-svg" viewBox="0 0 1000 600" role="img" aria-label="Runtime topology graph">
+	// The one diagram page (fidelity plan §3, "kept"): its kind is the
+	// diagram's, so the page grammar holds it to the rules a diagram can keep.
+	fmt.Fprint(w, `<div class="topo-wrap" data-page-kind="diagram"><svg class="topo-svg" viewBox="0 0 1000 600" role="img" aria-label="Runtime topology graph">
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="topo-arrow" d="M0,0 L10,5 L0,10 z"/></marker></defs>`)
 
 	// Band labels.

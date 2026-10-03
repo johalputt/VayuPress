@@ -242,5 +242,9 @@ func (a *App) handleOSQuickCreatePage(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "create-error", err.Error(), "")
 		return
 	}
+	if !a.awaitQueuedArticle(r.Context(), slug) {
+		writeAPIError(w, r, http.StatusAccepted, "queued", "The page is queued and will appear under Pages in a moment.", "")
+		return
+	}
 	writeJSON(w, r, http.StatusOK, map[string]string{"slug": slug})
 }

@@ -211,8 +211,14 @@ func (a *App) composeSheet(r *http.Request, page bool) (sheet, refusal string) {
 	if page {
 		cls += " mx-compose--page"
 	}
-	b.WriteString(`<form class="` + cls + `" data-mail-compose aria-labelledby="mx-compose-title">`)
-	b.WriteString(`<div class="mx-compose__head"><h2 class="mx-compose__title" id="mx-compose-title" data-c-title>` + esc(title) + `</h2>`)
+	// On its own page the sheet is the page: it carries the page's kind and
+	// its title is the page's h1. Over the reader it is an h2 under Mail's.
+	kind, h := "", "h2"
+	if page {
+		kind, h = ` data-page-kind="app"`, "h1"
+	}
+	b.WriteString(`<form class="` + cls + `" data-mail-compose` + kind + ` aria-labelledby="mx-compose-title">`)
+	b.WriteString(`<div class="mx-compose__head"><` + h + ` class="mx-compose__title" id="mx-compose-title" data-c-title>` + esc(title) + `</` + h + `>`)
 	if page {
 		b.WriteString(`<a class="mx-compose__tool" href="` + esc(back) + `" aria-label="Close">` + saIcon("x") + `</a>`)
 	} else {

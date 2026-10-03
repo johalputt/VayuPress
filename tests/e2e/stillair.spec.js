@@ -984,6 +984,34 @@ test("outside services reach the public pages, never the console", async ({ page
   await page.evaluate(() => new Promise((done) => window.vpPost("/os/api/website/csp", { mode: "strict" }, done, done)));
 });
 
+// Starting a post (fidelity plan §3): Home's field moved to the head's New
+// post and to the command bar, where what is typed can be the new post's
+// title. Home holds no form of its own any more.
+test("a post is started from Home's New post or the command bar's title", async ({ page }) => {
+  await openConsole(page);
+  await expect(page.locator("main input:not([type=hidden])")).toHaveCount(0);
+  await expect(page.locator("main .sa-home__head a.btn--primary")).toHaveAttribute("href", "/os/editor");
+  const title = "Notes from the walk " + Date.now().toString(36);
+  await page.keyboard.press("Control+k");
+  await page.locator(".cmd-input").fill(title);
+  await page.locator("#cmd-results .cmd-item", { hasText: "Start a post titled" }).click();
+  await expect(page).toHaveURL(/\/os\/editor\/[a-z0-9-]+$/);
+  await expect(page.locator("[data-editor-title]")).toHaveValue(title);
+});
+
+// A new page from its sheet opens in the editor with its title. The create
+// is queued, and the editor used to open before the row was written: a blank
+// "New post" with the title gone. The create now answers once it can be read.
+test("a new page opens in the editor with the title it was given", async ({ page }) => {
+  await openConsole(page);
+  await page.goto("/os/pages#page-new");
+  const title = "A page from the sheet " + Date.now().toString(36);
+  await page.locator("#page-compose-input").fill(title);
+  await page.locator("dialog#page-new").getByRole("button", { name: "Create and edit" }).click();
+  await expect(page).toHaveURL(/\/os\/editor\/[a-z0-9-]+$/);
+  await expect(page.locator("[data-editor-title]")).toHaveValue(title);
+});
+
 test("the command bar is operated by keyboard alone", async ({ page }) => {
   await openConsole(page);
   await page.keyboard.press("Control+k");
@@ -1217,7 +1245,7 @@ test("an app that is not set up says what it needs, and one button does the next
 // mark, then its bands: never on a strip of figures, never on a breadcrumb.
 // Backups is this kind too, once it is set up; on this fresh install it is
 // the Setup page above.
-const STATUS_PAGES = ["/os/update", "/os/storage", "/os/monitoring", "/os/vayuflow", "/os/faults", "/os/replay", "/os/governance"];
+const STATUS_PAGES = ["/os/update", "/os/storage", "/os/monitoring", "/os/vayuflow", "/os/faults", "/os/replay", "/os/governance", "/os/modes"];
 
 test("status pages open on their state, not on figures", async ({ page }) => {
   await openConsole(page);

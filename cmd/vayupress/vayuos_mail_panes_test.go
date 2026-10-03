@@ -157,7 +157,7 @@ func TestAnAdministratorOpensTheirOwnMailbox(t *testing.T) {
 	if list := switcher(holder); list != "" {
 		t.Errorf("a mailbox holder is answered with the install's mailboxes:\n%s", list)
 	}
-	if all := get("/os/vayumail/inbox?all=1"); !strings.Contains(all, "vm-dom-card") {
+	if all := get("/os/vayumail/inbox?all=1"); !strings.Contains(all, "<h1>Mailboxes <span class=\"sa-list__count\">") {
 		t.Error("All mailboxes does not open the directory")
 	}
 }

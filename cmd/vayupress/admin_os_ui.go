@@ -3858,7 +3858,39 @@ func (a *App) handleOSQuickCreatePost(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "create-error", err.Error(), "")
 		return
 	}
+	if !a.awaitQueuedArticle(r.Context(), slug) {
+		writeAPIError(w, r, http.StatusAccepted, "queued", "The draft is queued and will appear under Posts in a moment.", "")
+		return
+	}
 	writeJSON(w, r, http.StatusOK, map[string]string{"slug": slug})
+}
+
+// queuedArticleWait bounds how long a create that opens the editor waits for
+// its queued insert to be written. The writers apply a job in milliseconds;
+// the bound is for a queue under load, where answering "queued" beats opening
+// an editor on a post that does not exist yet.
+const queuedArticleWait = 5 * time.Second
+
+// awaitQueuedArticle reports whether the article with slug is readable,
+// waiting up to queuedArticleWait for the write queue to apply its insert.
+// The quick-create endpoints answer with a slug the browser opens at once: the
+// insert is queued, not written, so without this the editor opened before the
+// row existed and showed an empty "New post" with the title gone.
+func (a *App) awaitQueuedArticle(ctx context.Context, slug string) bool {
+	deadline := time.Now().Add(queuedArticleWait)
+	for {
+		if ok, err := a.articles.Repo.SlugExists(ctx, slug); err == nil && ok {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
 }
 
 // handleOSSearchReindex triggers a full search index rebuild without requiring a

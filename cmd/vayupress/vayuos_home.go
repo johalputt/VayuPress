@@ -42,15 +42,18 @@ func (a *App) stillAirHomeBody(ctx context.Context, cfg *osSettings, snap *admin
 	if m != mode.ModeNormal {
 		state = `<span class="sa-dot sa-dot--` + saModeTone(m) + `"></span>` + html.EscapeString(saModeLabel(m))
 	}
-	b.WriteString(`<header class="sa-home__head"><h1 class="sa-home__title">Home</h1>` +
-		`<span class="sa-home__date">` + now.Format("Monday, 2 January") + `</span>` +
-		`<span class="sa-home__state">` + state + ` · ` + now.Format("15:04") + `</span></header>`)
-
-	// ── Quick compose: a title and Enter starts a draft (admin-os.js). ──
+	// The page kind sits on the head: Home is laid out by its own sections
+	// rather than ui.Overview, whose wrapper would break .sa-content's direct
+	// children. Starting a post is the head's New post, and in the command bar
+	// a title typed and Enter (the quick-compose field this replaced was the
+	// one form in the page's flow).
+	newPost := ""
 	if cfg.AccessLevel >= osPathMinLevel("/os/editor") {
-		b.WriteString(`<div class="quick-compose sa-compose" role="search">` + saIcon("pencil") +
-			`<input id="quick-compose-input" class="quick-compose-input" type="text" placeholder="Start a post — type a title and press Enter" autocomplete="off" aria-label="Start a post: type a title and press Enter"></div>`)
+		newPost = `<a class="btn btn--primary btn--sm sa-home__new" href="/os/editor">` + saIcon("plus") + `New post</a>`
 	}
+	b.WriteString(`<header class="sa-home__head" data-page-kind="overview"><h1 class="sa-home__title">Home</h1>` +
+		`<span class="sa-home__date">` + now.Format("Monday, 2 January") + `</span>` +
+		`<span class="sa-home__state">` + state + ` · ` + now.Format("15:04") + `</span>` + newPost + `</header>`)
 
 	// ── Needs you ──
 	b.WriteString(saHomeNeeds(cfg.Notifications))
@@ -198,6 +201,11 @@ func (a *App) saHomeVisitors(ctx context.Context, cfg *osSettings) string {
 	points := make([]int, 0, len(series))
 	for _, d := range series {
 		points = append(points, d.Visitors)
+	}
+	// No visitor yet is a sentence, not three zeros (rule 3).
+	if ov.UniqueVisitors == 0 && ov.TotalPageviews == 0 {
+		return head + `<p class="sa-home__none">No visitors in the last ` + strconv.Itoa(saHomeVisitorDays) + ` days yet.</p>` +
+			`<p class="sa-home__more"><a href="/os/analytics">Open Analytics</a></p></section>`
 	}
 	dur := time.Duration(ov.AvgDuration * float64(time.Second))
 	var b strings.Builder

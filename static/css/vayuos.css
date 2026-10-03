@@ -1131,21 +1131,6 @@
 
 .vp-os .activity-time { font-size: var(--text-xs); color: var(--text-3); margin-top: 2px; }
 
-/* ── Quick compose ───────────────────────────────────────────── */
-.vp-os .quick-compose { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-4) var(--sp-5); background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r); margin-bottom: var(--sp-6); transition: border-color var(--t); }
-
-.vp-os .quick-compose:focus-within { border-color: var(--brand); }
-
-.vp-os .quick-compose-icon { font-size: 20px; flex-shrink: 0; }
-
-.vp-os .quick-compose-input { flex: 1; background: none; border: none; outline: none; font-size: var(--text-base); color: var(--text); }
-
-.vp-os .quick-compose-input::placeholder { color: var(--text-3); }
-/* The template picker keeps its own width; the title field takes what is left
-   and may shrink, so on a phone the picker is not crushed to its arrow. */
-.vp-os .quick-compose-input { min-width: 0; }
-.vp-os .quick-compose > select { flex: 0 0 auto; width: auto; }
-
 /* ── Settings forms ──────────────────────────────────────────── */
 
 .vp-os .settings-section { display: flex; flex-direction: column; gap: var(--sp-6); }
@@ -1983,36 +1968,6 @@
 
 .vp-os .vm-av--img img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
 
-/* Per-domain mailbox tabs — pure CSS (hidden radio + label + :checked sibling
-   rules), so no JS and no inline styles are needed (CSP-safe). Rules are emitted
-   for up to 10 domains; installs with more still work, only tabs 11+ won't be
-   selectable (no real install has that many mail domains). */
-.vp-os .vm-domtabs { position: relative; }
-
-.vp-os .vm-domtab-radio { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-
-.vp-os .vm-domtabs-strip { display: flex; gap: .35rem; flex-wrap: wrap; margin-bottom: var(--sp-3); border-bottom: 1px solid var(--border, var(--surface-press)); }
-
-.vp-os .vm-domtab-tab { cursor: pointer; padding: .5rem .95rem; border-radius: var(--radius-control) var(--radius-control) 0 0; font-weight: 600; color: var(--text-2, var(--text-3)); user-select: none; display: inline-flex; align-items: center; gap: .4rem; border: 1px solid transparent; border-bottom: none; margin-bottom: -1px; transition: color .12s, background .12s; }
-
-.vp-os .vm-domtab-tab:hover { color: var(--text, var(--on-accent)); }
-
-.vp-os .vm-domtab-panel { display: none; }
-
-.vp-os .vm-domtab-radio:focus-visible + .vm-domtab-radio + .vm-domtabs-strip label,
-.vp-os .vm-domtabs-strip label:focus-within { outline: 2px solid var(--brand, var(--accent)); outline-offset: 2px; }
-
-.vp-os #vm-dt-0:checked ~ .vm-domtab-panel[data-i="0"], .vp-os #vm-dt-1:checked ~ .vm-domtab-panel[data-i="1"],
-.vp-os #vm-dt-2:checked ~ .vm-domtab-panel[data-i="2"], .vp-os #vm-dt-3:checked ~ .vm-domtab-panel[data-i="3"],
-.vp-os #vm-dt-4:checked ~ .vm-domtab-panel[data-i="4"], .vp-os #vm-dt-5:checked ~ .vm-domtab-panel[data-i="5"],
-.vp-os #vm-dt-6:checked ~ .vm-domtab-panel[data-i="6"], .vp-os #vm-dt-7:checked ~ .vm-domtab-panel[data-i="7"],
-.vp-os #vm-dt-8:checked ~ .vm-domtab-panel[data-i="8"], .vp-os #vm-dt-9:checked ~ .vm-domtab-panel[data-i="9"] { display: block; }
-
-.vp-os #vm-dt-0:checked ~ .vm-domtabs-strip label[for="vm-dt-0"], .vp-os #vm-dt-1:checked ~ .vm-domtabs-strip label[for="vm-dt-1"],
-.vp-os #vm-dt-2:checked ~ .vm-domtabs-strip label[for="vm-dt-2"], .vp-os #vm-dt-3:checked ~ .vm-domtabs-strip label[for="vm-dt-3"],
-.vp-os #vm-dt-4:checked ~ .vm-domtabs-strip label[for="vm-dt-4"], .vp-os #vm-dt-5:checked ~ .vm-domtabs-strip label[for="vm-dt-5"],
-.vp-os #vm-dt-6:checked ~ .vm-domtabs-strip label[for="vm-dt-6"], .vp-os #vm-dt-7:checked ~ .vm-domtabs-strip label[for="vm-dt-7"],
-.vp-os #vm-dt-8:checked ~ .vm-domtabs-strip label[for="vm-dt-8"], .vp-os #vm-dt-9:checked ~ .vm-domtabs-strip label[for="vm-dt-9"] { color: var(--text, var(--on-accent)); background: var(--surface-2, var(--surface-hover)); border-color: var(--border, var(--surface-press)); }
 
 /* Per-mailbox address book (Contacts panel + save-contact control). */
 .vp-os .vm-contacts { display: flex; flex-direction: column; gap: var(--sp-3); }
@@ -2060,7 +2015,6 @@
 
 .vp-os .vm-date { white-space: nowrap; }
 
-.vp-os .vm-tab-badge { display: inline-block; min-width: 1.15rem; padding: 0 .32rem; margin-left: .3rem; font-size: 12px; font-weight: 600; line-height: 1.15rem; text-align: center; color: var(--on-accent); background: var(--accent); border-radius: var(--radius-small); }
 
 /* ── VayuMail message reader (v-reader) ────────────────────────────────────── */
 .vp-os .vm-reader-top { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .6rem; }
@@ -3526,8 +3480,7 @@
 .vp-os .htmx-request .htmx-indicator,
 .vp-os .htmx-request.htmx-indicator { opacity: 1; }
 
-/* ── VayuMail Mailbox: per-domain directory cards ──────────────────────────── */
-.vp-os .vm-dom-card + .vm-dom-card { margin-top: var(--sp-4); }
+/* ── VayuMail Accounts: a mail domain's head ─────────────────────────────── */
 
 .vp-os .vm-dom-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: var(--sp-3); }
 
@@ -4238,7 +4191,6 @@
 .vp-os .topbar,
 .vp-os .card,
 .vp-os .mon-acc,
-.vp-os .quick-compose,
 .vp-os .stat-card { transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4247,7 +4199,6 @@
   .vp-os .topbar,
   .vp-os .card,
   .vp-os .mon-acc,
-  .vp-os .quick-compose,
   .vp-os .stat-card { transition: none; }
 
 }
@@ -5623,8 +5574,7 @@
 /* ── Home ──────────────────────────────────────────────────────────────── */
 .vp-os[data-ui="still-air"] .sa-content > .sa-home__head,
 .vp-os[data-ui="still-air"] .sa-content > .sa-home__sec,
-.vp-os[data-ui="still-air"] .sa-content > .sa-home__cols,
-.vp-os[data-ui="still-air"] .sa-content > .sa-compose { max-width: 1080px; }
+.vp-os[data-ui="still-air"] .sa-content > .sa-home__cols { max-width: 1080px; }
 .vp-os[data-ui="still-air"] .sa-home__head { display: flex; align-items: baseline; gap: var(--space-5); flex-wrap: wrap; margin-bottom: var(--space-6); }
 .vp-os[data-ui="still-air"] .sa-home__title { font: var(--type-display); letter-spacing: -0.02em; }
 .vp-os[data-ui="still-air"] .sa-home__date { font: var(--type-body); color: var(--text-2); }
@@ -5637,14 +5587,7 @@
   .vp-os[data-ui="still-air"] .sa-home__head { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
   .vp-os[data-ui="still-air"] .sa-home__state { margin-left: 0; }
 }
-.vp-os[data-ui="still-air"] .sa-compose {
-  display: flex; align-items: center; gap: var(--space-3); height: 40px; padding: 0 var(--space-4);
-  margin-bottom: var(--space-2); background: var(--surface-2); border: 1px solid var(--border-1);
-  border-radius: var(--radius-surface); box-shadow: none;
-}
-.vp-os[data-ui="still-air"] .sa-compose .sa-ico { color: var(--text-3); }
-.vp-os[data-ui="still-air"] .sa-compose .quick-compose-input { flex: 1; border: 0; background: none; font: var(--type-body); color: var(--text-1); outline: none; padding: 0; }
-.vp-os[data-ui="still-air"] .sa-compose:focus-within { border-color: var(--focus); box-shadow: 0 0 0 3px var(--accent-soft); }
+.vp-os[data-ui="still-air"] .sa-home__new { align-self: center; }
 .vp-os[data-ui="still-air"] .sa-home__sec { margin-bottom: var(--space-2); }
 .vp-os[data-ui="still-air"] .sa-home__none { font: var(--type-small); color: var(--text-3); padding: var(--space-5) 0; }
 .vp-os[data-ui="still-air"] .sa-home__more { font: var(--type-small); margin-top: var(--space-3); }
@@ -5704,12 +5647,6 @@
 .vp-os[data-ui="still-air"] .sa-fact dd { font-variant-numeric: tabular-nums; }
 
 /* ── System state ─────────────────────────────────────────────────────── */
-.vp-os[data-ui="still-air"] .sa-mode__title { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
-.vp-os[data-ui="still-air"] .sa-mode__tag { height: 24px; font-size: 13px; }
-.vp-os[data-ui="still-air"] .sa-mode__tag .sa-ico { width: 13px; height: 13px; }
-.vp-os[data-ui="still-air"] .sa-mode__tag--ok { color: var(--ok); background: var(--ok-soft); }
-.vp-os[data-ui="still-air"] .sa-mode__tag--warn { color: var(--warn); background: var(--warn-soft); }
-.vp-os[data-ui="still-air"] .sa-mode__tag--danger { color: var(--danger); background: var(--danger-soft); }
 .vp-os[data-ui="still-air"] .sa-mode__cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-9); max-width: 1080px; }
 .vp-os[data-ui="still-air"] .sa-mode__list { list-style: none; margin: var(--space-3) 0 0; padding: 0; }
 .vp-os[data-ui="still-air"] .sa-mode__list li {
@@ -5773,7 +5710,6 @@
 .vp-os[data-ui="still-air"] [data-mail-compose] { display: grid; gap: var(--space-5); }
 .vp-os[data-ui="still-air"] [data-mail-compose] > .vm-row--tight { margin-top: calc(-1 * var(--space-3)); }
 .vp-os[data-ui="still-air"] .vm-ed-area { font: var(--type-body); font-size: 15px; line-height: 23px; }
-.vp-os[data-ui="still-air"] .vm-tab-badge { color: var(--on-accent); background: var(--accent); font: 600 12px/18px var(--font-ui); }
 .vp-os[data-ui="still-air"] .vm-msg-subject { font: var(--type-title); letter-spacing: -0.01em; }
 .vp-os[data-ui="still-air"] .vm-actions .btn .sa-ico,
 .vp-os[data-ui="still-air"] .vm-toolbar .btn .sa-ico { width: 14px; height: 14px; }

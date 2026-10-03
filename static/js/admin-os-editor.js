@@ -3162,7 +3162,7 @@
           .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
           .then(function (res) {
             if (res.ok && res.d.slug) { window.location.href = '/os/editor/' + res.d.slug; }
-            else { newPageBtn.disabled = false; if (window.vpToast) window.vpToast((res.d && (res.d.detail || res.d.title)) || 'Could not create page', 'error'); }
+            else { newPageBtn.disabled = false; if (window.vpToast) window.vpToast((res.d && res.d.error && res.d.error.message) || 'Could not create page', 'error'); }
           })
           .catch(function () { newPageBtn.disabled = false; if (window.vpToast) window.vpToast('Network error', 'error'); });
       });

@@ -92,24 +92,44 @@ func (a *App) shieldTrailBody(r *http.Request) string {
 		return b.String()
 	}
 
-	b.WriteString(`<div class="stat-grid">`)
-	b.WriteString(shieldStat("Blocked", strconv.FormatInt(tr.TotalBlocks, 10), "requests refused outright"))
-	b.WriteString(shieldStat("Challenged", strconv.FormatInt(tr.TotalChallenges, 10), "asked to prove a real browser"))
-	if tr.TotalChallenges >= 10 {
-		rate := float64(tr.TotalSolved) / float64(tr.TotalChallenges) * 100
-		b.WriteString(shieldStat("Solved", fmt.Sprintf("%.0f%%", rate), "of challenges passed"))
-	} else {
-		// Below ten samples a percentage is noise dressed as a measurement, and an
-		// operator who retunes thresholds on it is acting on nothing.
-		b.WriteString(shieldStat("Solved", strconv.FormatInt(tr.TotalSolved, 10), "too few to state a rate"))
-	}
-	b.WriteString(`</div>`)
+	b.WriteString(shieldTrailFigures(tr))
 
 	b.WriteString(shieldTrailTable("Why requests were refused", tr.Reasons, tr.TotalBlocks))
 	b.WriteString(shieldTrailTable("What was being hit", tr.Paths, tr.TotalBlocks))
 	b.WriteString(shieldTrailTable("Where from", tr.Countries, tr.TotalBlocks))
 	b.WriteString(shieldTrailHourly(tr))
 	b.WriteString(shieldTrailRetentionNote(tr))
+	return b.String()
+}
+
+// shieldTrailFigures is the trail's tiles, a figure only when it says
+// something (rule 3): with blocks but no challenge, Challenged and Solved both
+// drew a 0, and "nobody was challenged" is one line. Each count of nothing
+// stays out of the tiles and is said instead.
+func shieldTrailFigures(tr botdb.Trail) string {
+	var b strings.Builder
+	b.WriteString(`<div class="stat-grid">`)
+	if tr.TotalBlocks > 0 {
+		b.WriteString(shieldStat("Blocked", strconv.FormatInt(tr.TotalBlocks, 10), "requests refused outright"))
+	}
+	if tr.TotalChallenges > 0 {
+		b.WriteString(shieldStat("Challenged", strconv.FormatInt(tr.TotalChallenges, 10), "asked to prove a real browser"))
+		if tr.TotalChallenges >= 10 {
+			rate := float64(tr.TotalSolved) / float64(tr.TotalChallenges) * 100
+			b.WriteString(shieldStat("Solved", fmt.Sprintf("%.0f%%", rate), "of challenges passed"))
+		} else {
+			// Below ten samples a percentage is noise dressed as a measurement,
+			// and an operator who retunes thresholds on it is acting on nothing.
+			b.WriteString(shieldStat("Solved", strconv.FormatInt(tr.TotalSolved, 10)+" of "+strconv.FormatInt(tr.TotalChallenges, 10), "too few to state a rate"))
+		}
+	}
+	b.WriteString(`</div>`)
+	switch {
+	case tr.TotalChallenges == 0:
+		b.WriteString(`<p class="muted text-sm">Nobody was challenged in this window: every request was let through or refused outright.</p>`)
+	case tr.TotalBlocks == 0:
+		b.WriteString(`<p class="muted text-sm">Nothing was refused outright in this window.</p>`)
+	}
 	return b.String()
 }
 

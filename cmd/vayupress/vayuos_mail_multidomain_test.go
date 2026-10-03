@@ -49,26 +49,31 @@ func TestEmailDomain(t *testing.T) {
 	}
 }
 
-// TestVayuMailboxDomainCard pins the per-domain mailbox directory: a secondary
-// domain's rows link the FULL address (so the read path opens its own Maildir)
-// and the card carries the domain header + secondary badge; the primary keeps a
-// bare local-part link (byte-identical).
-func TestVayuMailboxDomainCard(t *testing.T) {
+// TestVayuMailboxDomainSection pins the per-domain mailbox directory: a
+// secondary domain's rows link the FULL address (so the read path opens its
+// own Maildir) and its section says it is the secondary; the primary keeps a
+// bare local-part link. Neither carries a filled badge (rule 4).
+func TestVayuMailboxDomainSection(t *testing.T) {
 	a := &App{}
-	sec := a.vayuMailboxDomainCard("vayupress.com", "example.test",
-		[]vmail.MailboxSummary{{Username: "hello", Domain: "vayupress.com", Total: 3, Unseen: 1}}, false)
-	for _, want := range []string{"vayupress.com", `badge--muted">Secondary<`, "hello@vayupress.com", "user=hello%40vayupress.com", "1 unseen"} {
+	sec := string(a.vayuMailboxDomainSection("vayupress.com", "example.test",
+		[]vmail.MailboxSummary{{Username: "hello", Domain: "vayupress.com", Total: 3, Unseen: 1}}, false))
+	for _, want := range []string{"vayupress.com", "Secondary · 1 mailbox · 1 unseen", "hello@vayupress.com", "user=hello%40vayupress.com"} {
 		if !strings.Contains(sec, want) {
-			t.Errorf("secondary card missing %q\n%s", want, sec)
+			t.Errorf("secondary section missing %q\n%s", want, sec)
 		}
 	}
-	prim := a.vayuMailboxDomainCard("example.test", "example.test",
-		[]vmail.MailboxSummary{{Username: "admin", Domain: "example.test", Total: 2}}, true)
+	prim := string(a.vayuMailboxDomainSection("example.test", "example.test",
+		[]vmail.MailboxSummary{{Username: "admin", Domain: "example.test", Total: 2}}, true))
 	if !strings.Contains(prim, `user=admin"`) {
-		t.Errorf("primary card should link the bare local part:\n%s", prim)
+		t.Errorf("primary section should link the bare local part:\n%s", prim)
 	}
-	if !strings.Contains(prim, ">Primary</span>") {
-		t.Errorf("primary card missing the primary badge")
+	if !strings.Contains(prim, "Primary · 1 mailbox<") {
+		t.Errorf("primary section does not say it is the primary, or counts a zero:\n%s", prim)
+	}
+	for _, html := range []string{sec, prim} {
+		if strings.Contains(html, `class="badge`) || strings.Contains(html, "vm-tab-badge") {
+			t.Errorf("a filled badge in the directory:\n%s", html)
+		}
 	}
 }
 

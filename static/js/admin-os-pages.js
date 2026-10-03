@@ -40,7 +40,7 @@
           if (res.ok && res.d.slug) {
             window.location.href = '/os/editor/' + res.d.slug;
           } else {
-            setText(createStatus, (res.d && (res.d.detail || res.d.title)) || 'Could not create page');
+            setText(createStatus, (res.d && res.d.error && res.d.error.message) || 'Could not create page');
             input.disabled = false;
           }
         })

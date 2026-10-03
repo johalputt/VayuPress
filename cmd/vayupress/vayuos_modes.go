@@ -22,6 +22,7 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 type saModeEffect struct {
@@ -97,11 +98,8 @@ func (a *App) stillAirModesPage(w http.ResponseWriter, r *http.Request, cfg *osS
 	history := mode.Global.History()
 	admin := cfg.AccessLevel >= accessAdmin
 
-	var b strings.Builder
-	b.WriteString(`<div class="page-header"><h1 class="sa-mode__title"><span class="badge sa-mode__tag sa-mode__tag--` + saModeTone(cur) + `">` +
-		saIcon(map[string]string{"ok": "check-c", "warn": "warn", "danger": "error"}[saModeTone(cur)]) + html.EscapeString(saModeLabel(cur)) + `</span>` +
-		html.EscapeString(saModeTitle(cur)) + `</h1></div>`)
-
+	// A status page (render 08): the mode is the state sentence, with its
+	// mark, where it was a filled tag beside the title.
 	lede := "VayuOS has not changed mode since it started " + saUptime(time.Since(bootTime)) + " ago."
 	if n := len(history); n > 0 {
 		last := history[n-1]
@@ -111,13 +109,14 @@ func (a *App) stillAirModesPage(w http.ResponseWriter, r *http.Request, cfg *osS
 		}
 		lede = "Since " + config.InSite(last.OccurredAt).Format("15:04 on 2 January") + ". " + reason + "."
 	}
-	b.WriteString(`<p class="page-sub">` + html.EscapeString(lede))
+	detail := html.EscapeString(lede)
 	// The machine cause, when a machine caused it; "operator" says nothing the
 	// reason did not.
 	if n := len(history); n > 0 && history[n-1].Cause != "" && history[n-1].Cause != "operator" {
-		b.WriteString(` <span class="mono">` + html.EscapeString(history[n-1].Cause) + `</span>`)
+		detail += ` <code>` + html.EscapeString(history[n-1].Cause) + `</code>`
 	}
-	b.WriteString(`</p>`)
+
+	var b strings.Builder
 
 	// What this mode refuses — and, by saying "everything else", what works.
 	b.WriteString(`<div class="sa-mode__cols"><section><div class="section-head"><span class="section-head__title">Refused in this mode</span></div>`)
@@ -185,7 +184,8 @@ func (a *App) stillAirModesPage(w http.ResponseWriter, r *http.Request, cfg *osS
 document.addEventListener('click',function(e){var btn=e.target.closest('[data-mode-to]');if(btn)vpMode(btn.getAttribute('data-mode-to'),btn.hasAttribute('data-mode-force'));});`
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Robots-Tag", "noindex")
-	fmt.Fprint(w, adminOSShellHead(nonce, "System state", "modes", cfg)+b.String()+adminOSShellFoot(nonce, script, false))
+	page := ui.Status(ui.StatusPage{Title: "System state", Tone: saModeTone(cur), State: saModeTitle(cur), Detail: ui.HTML(detail)}, ui.HTML(b.String()))
+	fmt.Fprint(w, adminOSShellHead(nonce, "System state", "modes", cfg)+string(page)+adminOSShellFoot(nonce, script, false))
 }
 
 // saModeStripText summarises what a mode refuses for the state strip, from the

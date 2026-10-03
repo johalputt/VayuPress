@@ -1862,15 +1862,18 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	// Maildir is domain-partitioned, so every domain's accounts come from its own
 	// tree.
 	if mailboxDirectoryRequested(a.isAdminRequest(r), a.ownMailboxKey(r), requested, r.URL.Query().Get("all") != "") {
-		body.WriteString(head)
 		primary, err := a.vayuMail.Mailboxes()
 		if err != nil {
-			body.WriteString(`<div class="empty-state">Could not read mailboxes: ` + html.EscapeString(err.Error()) + `</div>`)
-			writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
+			page := ui.List(ui.ListPage{Title: "Mailboxes"}, ui.Callout("danger", ui.Text("Could not read the mailboxes: "+err.Error())), "")
+			writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, page))
 			return
 		}
-		body.WriteString(a.vayuMailboxTabs(domain, primary, a.mailSecondaryHosts(r.Context())))
-		writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
+		sections, boxes, unseen := a.vayuMailboxDirectory(domain, primary, a.mailSecondaryHosts(r.Context()))
+		count := itoaSafe(boxes) + " " + map[bool]string{true: "mailbox", false: "mailboxes"}[boxes == 1]
+		if unseen > 0 {
+			count += " · " + itoaSafe(unseen) + " unseen"
+		}
+		writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, ui.List(ui.ListPage{Title: "Mailboxes", Count: count}, sections, "")))
 		return
 	}
 
@@ -1912,7 +1915,9 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg.MailSide = side
 	body.WriteString(`<span id="vm-inbox-spin" class="htmx-indicator vm-spin" aria-hidden="true">loading…</span>`)
-	body.WriteString(`<div class="vm-split">`)
+	// The Mail plan's panes are their own kind, "app": the fidelity plan
+	// leaves Mail's anatomy to that plan's renders (§3).
+	body.WriteString(`<div class="vm-split" data-page-kind="app">`)
 	body.WriteString(`<div id="vm-inbox-list" class="vm-inbox-list">`)
 	body.WriteString(list)
 	body.WriteString(`</div>`)
@@ -1931,108 +1936,62 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
-// vayuMailboxTabs renders the mailbox directory as one tab per mail domain
-// (VayuDomains): a tab strip on top, and only the selected domain's mailboxes
-// showing beneath it. The primary domain is the first, selected tab. Pure CSS
-// (hidden radio + label + :checked sibling rules in vayuos.css) so it stays
-// CSP-safe — no inline styles, no JavaScript. A single-domain install renders
-// just that domain's card with no tab chrome.
-func (a *App) vayuMailboxTabs(primaryDom string, primary []vmail.MailboxSummary, secHosts []string) string {
-	unseenOf := func(boxes []vmail.MailboxSummary) int {
-		n := 0
-		for _, b := range boxes {
-			n += b.Unseen
+// vayuMailboxDirectory is the administrator's Mailbox page when no mailbox is
+// named: each mail domain's mailboxes, the primary first, a section each, so
+// the domains are never mixed into one list (VayuDomains). It also returns
+// the counts the page's title carries. The radio-button tabs this replaced
+// shown one domain at a time and only as many as the stylesheet had rules for.
+func (a *App) vayuMailboxDirectory(primaryDom string, primary []vmail.MailboxSummary, secHosts []string) (sections ui.HTML, boxes, unseen int) {
+	add := func(dom string, list []vmail.MailboxSummary, isPrimary bool) {
+		sections += a.vayuMailboxDomainSection(dom, primaryDom, list, isPrimary)
+		boxes += len(list)
+		for _, b := range list {
+			unseen += b.Unseen
 		}
-		return n
 	}
-	type domTab struct {
-		dom       string
-		isPrimary bool
-		unseen    int
-		card      string
-	}
-	tabs := []domTab{{primaryDom, true, unseenOf(primary), a.vayuMailboxDomainCard(primaryDom, primaryDom, primary, true)}}
+	add(primaryDom, primary, true)
 	for _, sh := range secHosts {
 		sb, err := a.vayuMail.MailboxesForDomain(sh)
 		if err != nil {
 			continue
 		}
-		tabs = append(tabs, domTab{sh, false, unseenOf(sb), a.vayuMailboxDomainCard(sh, primaryDom, sb, false)})
+		add(sh, sb, false)
 	}
-	// One domain: no tab chrome needed — render its card directly (byte-identical
-	// to the pre-tabs single-domain layout).
-	if len(tabs) == 1 {
-		return tabs[0].card
-	}
-	var b strings.Builder
-	b.WriteString(`<div class="vm-domtabs">`)
-	// Hidden radios first, so the :checked ~ sibling rules can reach the strip and
-	// the panels that follow.
-	for i := range tabs {
-		checked := ""
-		if i == 0 {
-			checked = " checked"
-		}
-		b.WriteString(`<input type="radio" name="vm-domtab" id="vm-dt-` + itoaSafe(i) + `" class="vm-domtab-radio"` + checked + `>`)
-	}
-	b.WriteString(`<div class="vm-domtabs-strip" role="tablist">`)
-	for i, t := range tabs {
-		tier := ` <span class="badge badge--muted">Secondary</span>`
-		if t.isPrimary {
-			tier = ` <span class="badge badge--accent">Primary</span>`
-		}
-		un := ""
-		if t.unseen > 0 {
-			un = ` <span class="vm-tab-badge">` + itoaSafe(t.unseen) + `</span>`
-		}
-		b.WriteString(`<label class="vm-domtab-tab" for="vm-dt-` + itoaSafe(i) + `">` + html.EscapeString(t.dom) + tier + un + `</label>`)
-	}
-	b.WriteString(`</div>`)
-	for i, t := range tabs {
-		b.WriteString(`<div class="vm-domtab-panel" data-i="` + itoaSafe(i) + `">` + t.card + `</div>`)
-	}
-	b.WriteString(`</div>`)
-	return b.String()
+	return sections, boxes, unseen
 }
 
-// vayuMailboxDomainCard renders one mail domain's mailbox directory as its own
-// card (VayuDomains) so domains are shown separately rather than mixed into one
-// list. dom is the card's domain; primaryDomain is the install's primary, used to
-// keep the primary's ?user= link a bare local part (byte-identical) while a
-// secondary links the full address so the read path resolves its own Maildir.
-func (a *App) vayuMailboxDomainCard(dom, primaryDomain string, boxes []vmail.MailboxSummary, isPrimary bool) string {
-	var rows strings.Builder
+// vayuMailboxDomainSection is one mail domain's mailboxes, a flush table under
+// the domain's name. dom is the section's domain; primaryDomain is the
+// install's primary, so the primary's ?user= link stays the bare local part
+// while a secondary links the full address and the read path resolves its own
+// Maildir.
+func (a *App) vayuMailboxDomainSection(dom, primaryDomain string, boxes []vmail.MailboxSummary, isPrimary bool) ui.HTML {
 	avSet := a.mailboxAvatarSet()
 	unseenTotal := 0
+	var rows [][]ui.HTML
 	for _, bx := range boxes {
 		key, addr := mailboxRef(bx, dom, primaryDomain)
-		unseen := ""
+		// A count is a number, said only when it is not zero.
+		unseen := ui.HTML("")
 		if bx.Unseen > 0 {
-			unseen = `<span class="vm-tab-badge">` + itoaSafe(bx.Unseen) + `</span>`
+			unseen = ui.HTML(`<strong>` + itoaSafe(bx.Unseen) + `</strong>`)
 			unseenTotal += bx.Unseen
 		}
-		rows.WriteString(`<tr><td><a class="vm-from" href="/os/vayumail/inbox?user=` + qparam(key) + `">` + mailAvatarImg(addr, avSet) + `<span class="vm-name">` + html.EscapeString(addr) + `</span></a></td><td>` + itoaSafe(bx.Total) + `</td><td>` + unseen + `</td></tr>`)
+		rows = append(rows, []ui.HTML{
+			ui.HTML(`<a class="vm-from" href="/os/vayumail/inbox?user=` + qparam(key) + `">` + mailAvatarImg(addr, avSet) + `<span class="vm-name">` + html.EscapeString(addr) + `</span></a>`),
+			ui.Text(itoaSafe(bx.Total)), unseen,
+		})
 	}
-	if len(boxes) == 0 {
-		rows.WriteString(`<tr><td colspan="3" class="muted">No mailboxes on this domain yet. Create one under <a href="/os/vayumail/accounts">Accounts</a>.</td></tr>`)
-	}
-	roleBadge := `<span class="badge badge--muted">Secondary</span>`
+	hint := []string{"Secondary"}
 	if isPrimary {
-		roleBadge = `<span class="badge badge--accent">Primary</span>`
+		hint[0] = "Primary"
 	}
-	unit := "mailboxes"
-	if len(boxes) == 1 {
-		unit = "mailbox"
-	}
-	unseenBadge := ""
+	hint = append(hint, itoaSafe(len(boxes))+" "+map[bool]string{true: "mailbox", false: "mailboxes"}[len(boxes) == 1])
 	if unseenTotal > 0 {
-		unseenBadge = ` <span class="vm-tab-badge">` + itoaSafe(unseenTotal) + ` unseen</span>`
+		hint = append(hint, itoaSafe(unseenTotal)+" unseen")
 	}
-	return `<div class="card vm-dom-card">
-  <div class="vm-dom-head"><span class="vm-dom-name">` + html.EscapeString(dom) + `</span> ` + roleBadge +
-		` <span class="vm-dom-count">` + itoaSafe(len(boxes)) + ` ` + unit + `</span>` + unseenBadge + `</div>
-  <div class="table-wrap"><table class="table vm-list"><thead><tr><th>Mailbox</th><th>Inbox</th><th>Unseen</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div>
-</div>`
+	return ui.Section(dom, strings.Join(hint, " · "),
+		ui.Table([]string{"Mailbox", "Inbox", "Unseen"}, rows, "No mailboxes on this domain yet. Make one under Accounts."))
 }
 
 // inboxPageSize is how many messages a folder view renders at once. The list is

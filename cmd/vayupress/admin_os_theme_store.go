@@ -52,23 +52,19 @@ func (a *App) handleOSThemeStore(w http.ResponseWriter, r *http.Request) {
 		activeLabel = active
 	}
 
-	body := `<div class="page-header">
-  <div>
-    <h1>Theme Store</h1>
-  </div>
+	// A gallery (fidelity plan §3, "kept as a gallery"): the title with its
+	// count, one line of state, then the themes. The four figure tiles it
+	// opened on are gone: the counts read as the title's, and "0 external
+	// assets" was a zero drawn as a figure for what is a property of every
+	// theme, said in the line instead.
+	body := `<div data-page-kind="gallery"><div class="page-header">
+  <h1>Theme store <span class="sa-list__count">` + intToStr(len(store)) + ` themes in ` + intToStr(len(theme.Categories())) + ` styles</span></h1>
   <div class="page-actions">
     <span class="text-sm muted" data-store-status></span>
     <a class="btn btn--ghost btn--sm" href="/os/theme">Open Theme Studio</a>
   </div>
 </div>
-<p class="page-sub">Browse the full catalogue and deploy any theme to your live site in one click — every theme is fully sovereign, with no external assets. Search or filter by category to find your look.</p>
-
-<div class="stat-grid mb-6">
-  <div class="stat-card"><div class="stat-card__label">Themes</div><div class="stat-card__value">` + intToStr(len(store)) + `</div><div class="stat-card__bottom"><span class="muted text-xs">ready to deploy</span></div></div>
-  <div class="stat-card"><div class="stat-card__label">Categories</div><div class="stat-card__value">` + intToStr(len(theme.Categories())) + `</div><div class="stat-card__bottom"><span class="muted text-xs">curated styles</span></div></div>
-  <div class="stat-card"><div class="stat-card__label">Active theme</div><div class="stat-card__value stat-card__value--sm">` + html.EscapeString(activeLabel) + `</div><div class="stat-card__bottom"><span class="muted text-xs">live on your site</span></div></div>
-  <div class="stat-card"><div class="stat-card__label">External assets</div><div class="stat-card__value">0</div><div class="stat-card__bottom"><span class="muted text-xs">fully sovereign</span></div></div>
-</div>
+<p class="sa-list__note">Your site uses <strong>` + html.EscapeString(activeLabel) + `</strong>. Any theme deploys in one click and loads nothing from outside your server.</p>
 
 <div class="store" data-theme-store data-active-theme="` + html.EscapeString(active) + `">
   <div class="store-toolbar">
@@ -77,7 +73,7 @@ func (a *App) handleOSThemeStore(w http.ResponseWriter, r *http.Request) {
       <input type="search" class="input" data-store-search placeholder="Search themes…" aria-label="Search themes" autocomplete="off">
     </label>
   </div>
-  <div class="store-meta text-sm muted"><span data-store-count>` + intToStr(len(store)) + `</span> themes · deploy instantly · fully sovereign, no external assets</div>
+  <div class="store-meta text-sm muted"><span data-store-count>` + intToStr(len(store)) + `</span> themes</div>
   <div class="store-grid" data-store-grid>` + themeStoreCards(active) + `</div>
   <div class="store-empty" data-store-empty hidden>No themes match your filters.</div>
 </div>
@@ -91,6 +87,7 @@ func (a *App) handleOSThemeStore(w http.ResponseWriter, r *http.Request) {
     <button type="button" class="store-preview__close" data-store-preview-close aria-label="Close preview">&times;</button>
   </div>
   <iframe class="store-preview__frame" data-store-preview-frame title="Live theme preview" loading="lazy" referrerpolicy="no-referrer"></iframe>
+</div>
 </div>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-theme-store.js?v=` + assetVer("js/admin-os-theme-store.js") + `"></script>`
 

@@ -279,7 +279,10 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body.WriteString(`<div class="vtalk" data-self="` + esc(self) + `" data-self-fp="` + esc(formatSafety(selfFP)) + `"` + onionAttr +
-		picAttr + ` data-view="list">`)
+		picAttr + ` data-view="list" data-page-kind="app">`)
+	// Render 05 has no title on screen: the bar says where you are. A page
+	// still has one h1, for the reader that navigates by headings.
+	body.WriteString(`<h1 class="vp-sr-only">Talk</h1>`)
 
 	// The bar (render 05): where you are, who you are chatting as, and the two
 	// things you start from here: a new chat, and what someone needs to reach

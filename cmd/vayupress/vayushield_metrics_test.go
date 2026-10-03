@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -288,5 +289,25 @@ func TestTheTrailsFiguresAreFactsNotProse(t *testing.T) {
 	}
 	if strings.Contains(out, `<p class="muted`) {
 		t.Errorf("the hourly section states a figure as prose:\n%s", out)
+	}
+}
+
+// The trail's tiles draw a figure only when it says something (rule 3); a
+// count of nothing is a line instead. One seed per rule.
+func TestTheTrailDrawsNoZeroFigure(t *testing.T) {
+	zero := regexp.MustCompile(`stat-card__value">0<`)
+	// Blocks but no challenge: Challenged and Solved are a sentence, not two 0s.
+	out := shieldTrailFigures(botdb.Trail{TotalBlocks: 12})
+	if zero.MatchString(out) || !strings.Contains(out, "Nobody was challenged") {
+		t.Errorf("blocks without a challenge drew a zero, or did not say so:\n%s", out)
+	}
+	// Challenges but no block: Blocked is the sentence.
+	out = shieldTrailFigures(botdb.Trail{TotalChallenges: 3})
+	if zero.MatchString(out) || !strings.Contains(out, "Nothing was refused outright") {
+		t.Errorf("challenges without a block drew a zero, or did not say so:\n%s", out)
+	}
+	// Under ten challenges none solved: the tile says "0 of 3", not a bare 0.
+	if !strings.Contains(out, `stat-card__value">0 of 3<`) {
+		t.Errorf("an unsolved handful should read as a count of the challenges:\n%s", out)
 	}
 }

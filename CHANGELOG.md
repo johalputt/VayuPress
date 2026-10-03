@@ -27,6 +27,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
+- **Every console page keeps to the page grammar, and the lint enforces it.**
+  Each page now says which kind it is and is held to the rules: one surface
+  level, state as a dot and a word, a figure only when it says something,
+  forms in sheets. Home starts a post from its New post button or the
+  command bar (type a title, choose "Start a post titled …") instead of a
+  field in the page, and says "No visitors yet" rather than drawing zeros.
+  System state is a status page whose sentence is the mode. The theme store
+  opens on its count and one line, without its row of figures. An
+  administrator's Mailbox lists each mail domain's mailboxes as a section,
+  with no limit on how many domains it shows. Shield's trail draws no
+  "Challenged 0" or "Solved 0"; it says nobody was challenged. Sign-in
+  security and VayuVeil follow in the next release.
 - **Talk is one bar over the conversations and the open one.** The bar says
   where you are and who you are chatting as, with New chat and, behind one
   button, what someone needs to reach you: your safety number and your link
@@ -59,6 +71,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **A post or page started from its title opens with that title.** The
+  create was queued, and the editor opened before it was written: a blank
+  "New post" with the title gone. It now opens once the draft can be read,
+  and says "queued" if the queue is slow. A failed new page also says why,
+  where it said only "Could not create page".
 - **A new app password's Copy and Download work on Connect.** The page never
   loaded the script behind them, so both buttons did nothing.
 - **A menu clicked while it closes opens again.** Every console menu plays a

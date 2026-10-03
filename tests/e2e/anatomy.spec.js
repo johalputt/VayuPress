@@ -6,22 +6,30 @@
 // of zero figures, forms loose in the page. This walk counts those on every
 // page the rail offers.
 //
-// It is a ratchet. anatomy-baseline.json holds each page's counts; a page may
-// get better and never worse. A page that says which kind it is
-// (data-page-kind) is held to the rules outright, so a page is converted once
-// and stays converted. A page the baseline has never seen is held to the rules
-// too. ANATOMY_UPDATE=1 records the counts as the baseline instead of
-// comparing with it; CI's update_baselines job does that, on CI's runner and
-// in the same place in the run as the check, because the counts depend on
+// It enforces (fidelity plan step 9). Every page says which kind it is
+// (data-page-kind) and is held to the rules outright. The one exception is
+// NOT_YET_CONVERTED: pages queued for a later release, which may get better
+// and never worse than their counts in anatomy-baseline.json. Any other page
+// without a kind fails. ANATOMY_UPDATE=1 records those pages' counts instead
+// of comparing with them; CI's update_baselines job does that, on CI's runner
+// and in the same place in the run as the check, because the counts depend on
 // what the install holds and on what the runner can reach.
 const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
 
 const BASELINE = path.join(__dirname, "anatomy-baseline.json");
-const KINDS = ["overview", "list", "document", "settings", "status", "setup"];
+// The six kinds, and the three the plans keep by name: the theme store's
+// gallery and topology's diagram (fidelity plan §3), and "app", Mail and
+// Talk, whose anatomy is the Mail plan's renders (§3, "Mail | All").
+const KINDS = ["overview", "list", "document", "settings", "status", "setup", "gallery", "diagram", "app"];
 // Kinds whose pages edit in place: everywhere else a form rises in a sheet.
-const EDITS_IN_PLACE = ["settings", "document"];
+// An app's composer and search are its work, not a form loose in a page.
+const EDITS_IN_PLACE = ["settings", "document", "app"];
+// Pages not yet given a kind, queued by name: Sign-in security and VayuVeil
+// move to the grammar with pipeline item 104, the release after this plan's.
+// Adding a page here is a decision for the pipeline, not a way past the lint.
+const NOT_YET_CONVERTED = ["/os/security", "/os/vayuveil"];
 
 function anatomy() {
   const main = document.querySelector("main#main-content");
@@ -33,7 +41,9 @@ function anatomy() {
   };
   const all = [...main.querySelectorAll("*")].filter(visible);
   // A box: bordered on every side, rounded, and big enough to hold content.
-  const boxes = all.filter((e) => {
+  // Menus and sheets float over the page (rule 2 names them), so neither they
+  // nor what they hold are boxes in it.
+  const boxes = all.filter((e) => !e.closest(".sa-pop__panel, dialog, .sa-sheet")).filter((e) => {
     const s = getComputedStyle(e);
     const b = e.getBoundingClientRect();
     return ["Top", "Right", "Bottom", "Left"].every((k) => parseFloat(s[`border${k}Width`]) > 0 && s[`border${k}Style`] !== "none") &&
@@ -48,13 +58,15 @@ function anatomy() {
     return b.height >= 14 && b.height <= 24 && s.backgroundColor !== "rgba(0, 0, 0, 0)" &&
       getComputedStyle(e.parentElement).backgroundColor !== s.backgroundColor &&
       e.children.length <= 2 && t.length > 1 && t.length < 24 &&
-      !e.matches("button, a, input, kbd, select, code, .sa-dot, [class*=avatar], [data-label]");
+      // Mail's avatars (.vm-av) are avatars, and a conversation's size
+      // (.mx-thread) is the Mail plan's count beside it, not a state.
+      !e.matches("button, a, input, kbd, select, code, .sa-dot, [class*=avatar], .vm-av, .mx-thread, [data-label]");
   }).length;
   // A live reading (data-live, ui.Figure.Live) is left out: whether Monitoring's
   // latency reads 0 depends on how much traffic the tests before this one made,
   // so counting it failed a commit that changed one Go test (5 in the
   // baseline, 10 on the run). The ratchet compares what a page is.
-  const figures = [...main.querySelectorAll(".stat-card__value, [class*='figure'] [class*='value']")]
+  const figures = [...main.querySelectorAll(".stat-card__value, .sa-kpi__v, [class*='figure'] [class*='value']")]
     .filter(visible).filter((e) => !e.closest("[data-live]"));
   const zeroFigures = figures.filter((e) => /^[$€₹£]?\s*0([.,]0+)?\s*(%|ms|s|B)?$/.test(e.textContent.trim())).length;
   // A field that only finds or goes somewhere is navigation, not a form: a
@@ -124,8 +136,9 @@ test("every console page keeps to the page grammar, or at least no further from 
     if (a.crumb) findings.push(`${href}: a breadcrumb; the rail already says where you are`);
     if (a.titles !== 1) findings.push(`${href}: ${a.titles} titles (h1); a page has exactly one`);
     const base = baseline[href];
-    if (process.env.ANATOMY_UPDATE && !a.kinds.length) continue; // recording, not comparing
-    if (a.kinds.length || !base) {
+    const waiting = NOT_YET_CONVERTED.includes(href) && !a.kinds.length;
+    if (process.env.ANATOMY_UPDATE && waiting) continue; // recording, not comparing
+    if (!waiting || !base) {
       for (const f of ruleBreaks(a)) findings.push(`${href}: ${f}`);
     } else {
       for (const m of METRICS) {
@@ -141,7 +154,11 @@ test("every console page keeps to the page grammar, or at least no further from 
     "total".padEnd(34) + METRICS.map((m) => String(totals[m]).padStart(13)).join("")].join("\n"));
   fs.mkdirSync(test.info().outputDir, { recursive: true });
   fs.writeFileSync(path.join(test.info().outputDir, "anatomy.json"), JSON.stringify(counts, null, 2));
-  if (process.env.ANATOMY_UPDATE) fs.writeFileSync(BASELINE, JSON.stringify(counts, null, 2) + "\n");
+  // Only the pages still waiting are recorded: every other page is held to the
+  // rules, so a count for it would be a number nothing reads.
+  if (process.env.ANATOMY_UPDATE) {
+    fs.writeFileSync(BASELINE, JSON.stringify(Object.fromEntries(NOT_YET_CONVERTED.filter((h) => counts[h]).map((h) => [h, counts[h]])), null, 2) + "\n");
+  }
 
   expect(findings).toEqual([]);
 });
@@ -175,11 +192,11 @@ test("Mail's administration keeps to the page grammar, as tabs", async ({ page }
   expect(findings).toEqual([]);
 });
 
-// Mail's own pages with Mail on (Outbox and Connect a device, 8.12), held to
-// the rules outright once the listener checks they run are in. The mailbox
-// and compose are not here: they are the Mail plan's three panes, which the
-// fidelity plan leaves to that plan's renders, and mail.spec.js holds them.
-const MAIL_OWN = ["/os/vayumail/sent", "/os/vayumail/connect"];
+// Mail's own pages with Mail on, held to the rules outright once the checks
+// they run are in: Outbox and Connect a device (8.12), the mailbox directory
+// an administrator opens Mail on, and the Mail plan's surfaces, a mailbox,
+// compose and Talk, as the "app" kind (step 9).
+const MAIL_OWN = ["/os/vayumail/sent", "/os/vayumail/connect", "/os/vayumail/inbox", "/os/vayumail/inbox?user=ankush", "/os/vayumail/compose", "/os/talk"];
 test("Mail's own pages keep to the page grammar", async ({ page }) => {
   const base = process.env.MAIL_BASE_URL;
   if (!base) throw new Error("MAIL_BASE_URL is not set: boot the second install (.github/actions/boot-vayupress)");
@@ -188,7 +205,10 @@ test("Mail's own pages keep to the page grammar", async ({ page }) => {
   const findings = [];
   for (const href of MAIL_OWN) {
     await page.goto(base + href);
-    await page.waitForLoadState("networkidle");
+    // Talk holds its stream open, so its page is measured once it is
+    // connected rather than once the network is quiet, which it never is.
+    if (href === "/os/talk") await expect(page.locator("#vtalk-status")).toHaveAttribute("data-state", "online");
+    else await page.waitForLoadState("networkidle");
     const a = await page.evaluate(anatomy);
     for (const f of ruleBreaks(a)) findings.push(`${href}: ${f}`);
     if (a.crumb) findings.push(`${href}: a breadcrumb`);

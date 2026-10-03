@@ -431,6 +431,7 @@ document.addEventListener('click', function (e) {
     el.addEventListener('click', function () {
       close();
       if (data.post) run(data);
+      if (data.start) startPost(data.start);
       // An action of this page is its own control, pressed: the same request,
       // confirmation and outcome as a pointer gets.
       if (data.target && document.contains(data.target)) data.target.click();
@@ -490,9 +491,17 @@ document.addEventListener('click', function (e) {
         var keys = b.getAttribute('aria-keyshortcuts');
         return { kind: 'here', text: b.getAttribute('data-cmd'), where: b.getAttribute('data-cmd-where') || '', icon: icon, hint: keys ? 'Key: ' + keys : '', target: b };
       }), q);
-      group('Actions', (index.actions || []).filter(function (a) { return hit(a.label); }).slice(0, cap).map(function (a) {
+      var acts = (index.actions || []).filter(function (a) { return hit(a.label); }).slice(0, cap).map(function (a) {
         return { kind: 'action', text: a.label, href: a.href || null, post: a.post || null, icon: a.icon, hint: a.hint, done: a.done };
-      }), q);
+      });
+      // What is typed can be a new post's title (Home's quick-compose field
+      // moved here, fidelity plan §3). Offered only where the index offers
+      // New post, which it does only to a session that may write.
+      var title = input.value.trim();
+      if (title && (index.actions || []).some(function (a) { return a.href === '/os/editor'; })) {
+        acts.push({ kind: 'start', text: 'Start a post titled “' + title + '”', icon: 'pencil', hint: 'A draft with this title, opened in the editor', start: title });
+      }
+      group('Actions', acts, q);
     }
     if (want('Settings') && (q || kind !== 0)) {
       group('Settings', (index.settings || []).filter(function (st) { return hit(st.label + ' ' + st.where); }).slice(0, cap).map(function (st) {
@@ -517,6 +526,25 @@ document.addEventListener('click', function (e) {
     items[n].el.setAttribute('aria-selected', 'true');
     items[n].el.scrollIntoView({ block: 'nearest' });
     showPreview(items[n].data);
+  }
+
+  // A draft with the typed title, opened in the editor.
+  function startPost(title) {
+    fetch('/os/api/posts/quick-create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': cookie('vp_csrf') },
+      body: JSON.stringify({ title: title }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        // The server answers with an error body ({error: {code, message}})
+        // when it cannot, including "queued" when the draft is still on its
+        // way: that is said, not reported as a failure.
+        if (data.slug) { window.location.href = '/os/editor/' + data.slug; return; }
+        var e = data.error || {};
+        toast(e.message || 'Could not start the post', e.code === 'queued' ? 'info' : 'error');
+      })
+      .catch(function () { toast('Network error', 'error'); });
   }
 
   // One request, and what the server said about it. A backup answers 200
@@ -611,34 +639,6 @@ document.addEventListener('click', function (e) {
    input hooks no longer exist in the Go templates — a handler for a selector
    nothing renders is dead weight that pretends a feature exists. The
    selector-parity test pins this. */
-
-/* ── Quick compose ───────────────────────────────────────────── */
-(function initQuickCompose() {
-  var input = $('#quick-compose-input');
-  if (!input) return;
-  input.addEventListener('keydown', function (e) {
-    if (e.key !== 'Enter') return;
-    var title = input.value.trim();
-    if (!title) return;
-    input.disabled = true;
-    var csrf = cookie('vp_csrf');
-    fetch('/os/api/posts/quick-create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-      body: JSON.stringify({ title: title }),
-    })
-    .then(function (r) { return r.json(); })
-    .then(function (data) {
-      if (data.slug) {
-        window.location.href = '/os/editor/' + data.slug;
-      } else {
-        toast(data.error || 'Could not create post', 'error');
-        input.disabled = false;
-      }
-    })
-    .catch(function () { toast('Network error', 'error'); input.disabled = false; });
-  });
-})();
 
 /* ── Data-action dispatcher ──────────────────────────────────
    Generic click router for [data-action] buttons. Note: 'toggle-sidebar' is
@@ -1500,14 +1500,12 @@ window.vpRelTime = relativeTime;
     if (isTyping(e.target)) return;
     var list = rows();
     var hasList = list.length > 0;
-    var composer = $('#quick-compose-input');
     if (e.key === 'n') {
-      // n = "new post": focus quick compose where it exists, otherwise open the
-      // editor — but only from a post list. This layer sat outside its wrapper and
-      // threw before reaching here for a long time; once it ran, an unscoped "n"
-      // would have thrown the operator out of Mail or Talk into the post editor.
-      if (composer) { e.preventDefault(); composer.focus(); }
-      else if (hasList) { window.location.href = '/os/editor'; }
+      // n = "new post", only from a post list. This layer sat outside its
+      // wrapper and threw before reaching here for a long time; once it ran,
+      // an unscoped "n" would have thrown the operator out of Mail or Talk
+      // into the post editor.
+      if (hasList) window.location.href = '/os/editor';
       return;
     }
     if (!hasList) return;
