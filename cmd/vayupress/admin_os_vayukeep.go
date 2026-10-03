@@ -25,6 +25,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
@@ -965,10 +966,6 @@ func (a *App) handleOSVayuKeepRestore(w http.ResponseWriter, r *http.Request) {
 // rather than joined onto a path — this endpoint deletes files, so treating a
 // browser-supplied string as a filename would be the most dangerous traversal
 // primitive on the page.
-//
-// It refuses to delete the last remaining copy. An operator clearing out old
-// backups should not be able to click their way to having none, and the button
-// that would do it looks identical to the one that removes the ninth of ten.
 func (a *App) handleOSVayuKeepDelete(w http.ResponseWriter, r *http.Request) {
 	if !a.keepGuard(w, r) {
 		return
@@ -978,30 +975,57 @@ func (a *App) handleOSVayuKeepDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
 
-	gens, err := a.vayuKeep.List()
-	if err != nil {
+	g, err := a.deleteRestorePoint(body.Name)
+	switch {
+	case errors.Is(err, errOnlyRestorePoint):
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "detail": onlyRestorePointRefusal})
+	case errors.Is(err, errNoRestorePoint):
+		writeAPIError(w, r, http.StatusNotFound, "not-found", err.Error(), "")
+	case err != nil:
 		writeAPIError(w, r, http.StatusInternalServerError, "vayukeep-error", err.Error(), "")
-		return
-	}
-	if len(gens) <= 1 {
-		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false,
-			"detail": "That is your only restore point. Take a new one first if you really want to remove it."})
-		return
-	}
-	for _, g := range gens {
-		if g.Name != body.Name {
-			continue
-		}
-		if derr := a.vayuKeep.Delete(g); derr != nil {
-			writeAPIError(w, r, http.StatusInternalServerError, "vayukeep-error", derr.Error(), "")
-			return
-		}
+	default:
 		dbpkg.AuditLog("vayukeep.delete", dbpkg.AuditActor(r), g.Name, humanBytes(g.Bytes))
 		writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "reload": true,
 			"detail": g.Name + " deleted (" + humanBytes(g.Bytes) + " freed)."})
-		return
 	}
-	writeAPIError(w, r, http.StatusNotFound, "not-found", "no restore point by that name", "")
+}
+
+var (
+	errOnlyRestorePoint = errors.New("the only restore point")
+	errNoRestorePoint   = errors.New("no restore point by that name")
+)
+
+// onlyRestorePointRefusal is what either page says when asked to delete the
+// last restore point.
+const onlyRestorePointRefusal = "That is your only restore point. Take a new one first if you really want to remove it."
+
+// restorePointDeletes serialises deleteRestorePoint, so two deletes at once
+// (Backups in one tab, Storage in another) cannot each see the other's file
+// still there and together remove the last copy.
+var restorePointDeletes sync.Mutex
+
+// deleteRestorePoint removes one restore point by name, never the last one.
+// It is the only way a restore point is deleted by hand: Backups and Storage
+// both list the same files, and the button that would remove the last copy
+// looks identical to the one that removes the ninth of ten, so the rule lives
+// here rather than on either page.
+func (a *App) deleteRestorePoint(name string) (vayukeep.Generation, error) {
+	restorePointDeletes.Lock()
+	defer restorePointDeletes.Unlock()
+	gens, err := a.vayuKeep.List()
+	if err != nil {
+		return vayukeep.Generation{}, err
+	}
+	for _, g := range gens {
+		if g.Name != name {
+			continue
+		}
+		if len(gens) == 1 {
+			return g, errOnlyRestorePoint
+		}
+		return g, a.vayuKeep.Delete(g)
+	}
+	return vayukeep.Generation{}, errNoRestorePoint
 }
 
 // handleOSVayuKeepRetention saves how much history to keep and applies it.

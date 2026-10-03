@@ -21,9 +21,12 @@ package main
 // requested path must exactly match a file currently enumerated by
 // managedStorageFiles() (re-scanned on each call), so path traversal is
 // impossible and the live database / WAL can never be served or removed.
+// Two listed files are not removed either: the last restore point (the rule
+// Backups uses, deleteRestorePoint) and a log this server is writing to.
 
 import (
 	"encoding/json"
+	"errors"
 	"html"
 	htmpl "html/template"
 	"net/http"
@@ -49,14 +52,29 @@ func storageBackupDir() string { return config.EnvOr("VAYU_BACKUP_DIR", "/var/ba
 // updateBackupDir is where the self-update engine writes pre-update DB backups.
 func updateBackupDir() string { return filepath.Join(config.Cfg.CacheDir, "update-backups") }
 
-// managedFile is one operator-manageable artefact.
+// managedFile is one operator-manageable artefact. Keep, when set, is why it
+// cannot be deleted, as the table shows it in place of Delete.
 type managedFile struct {
 	Path     string
 	Name     string
 	Category string
 	Size     int64
 	ModTime  time.Time
+	Keep     string
 }
+
+// What a managed file is, as the Type column names it. A database copy and a
+// restore point were both "Database backup", though one is the whole database
+// in the clear, left by an update, and the other is Backups' encrypted,
+// tested archive: an operator clearing space needs to tell them apart.
+const (
+	fileRestorePoint = "Restore point"
+	fileDatabaseCopy = "Database copy"
+	fileLog          = "Log"
+	fileTemp         = "Temp file"
+)
+
+const writingLogRefusal = "This server writes its output to it: deleting it frees no space until a restart, and loses what is written after."
 
 // liveDBPaths returns the paths that must NEVER be offered for download/delete.
 func liveDBPaths() map[string]bool {
@@ -72,8 +90,9 @@ func liveDBPaths() map[string]bool {
 // managedStorageFiles enumerates every file the panel manages, freshly scanned.
 // Scans are one level deep (these locations are flat) and only ever return
 // regular files; the live database and its WAL/SHM are always excluded.
-func managedStorageFiles() []managedFile {
+func (a *App) managedStorageFiles() []managedFile {
 	live := liveDBPaths()
+	points := a.restorePointPaths()
 	var out []managedFile
 
 	add := func(category, dir string, include func(name string) bool) {
@@ -109,19 +128,31 @@ func managedStorageFiles() []managedFile {
 
 	// Database backups: the self-update pre-update snapshots, the script's
 	// timestamped backups next to the DB, and any dedicated backup dir.
-	add("Database backup", updateBackupDir(), nil)
-	add("Database backup", filepath.Dir(config.Cfg.DBPath), func(name string) bool {
+	add(fileDatabaseCopy, updateBackupDir(), nil)
+	add(fileDatabaseCopy, filepath.Dir(config.Cfg.DBPath), func(name string) bool {
 		return strings.Contains(name, ".backup-") || strings.HasSuffix(name, ".bak") || strings.HasSuffix(name, ".db.old")
 	})
-	add("Database backup", storageBackupDir(), nil)
+	add(fileDatabaseCopy, storageBackupDir(), nil)
 
 	// Logs.
-	add("Log", storageLogDir(), func(name string) bool {
+	add(fileLog, storageLogDir(), func(name string) bool {
 		return strings.Contains(name, ".log")
 	})
 
 	// Temporary files (export staging, probes, leftover restore artefacts).
-	add("Temp file", config.Cfg.TmpDir, nil)
+	add(fileTemp, config.Cfg.TmpDir, nil)
+
+	for i := range out {
+		switch f := &out[i]; {
+		case points[f.Path]:
+			f.Category = fileRestorePoint
+			if len(points) == 1 {
+				f.Keep = "Your only restore point"
+			}
+		case f.Category == fileLog && isServerOutput(f.Path):
+			f.Keep = "Being written"
+		}
+	}
 
 	// De-duplicate (the DB dir and a custom backup dir could overlap) and sort
 	// newest-first within a stable category order.
@@ -143,12 +174,44 @@ func managedStorageFiles() []managedFile {
 	return deduped
 }
 
+// restorePointPaths is Backups' own listing of its restore points, so Storage
+// names one only where Backups would.
+func (a *App) restorePointPaths() map[string]bool {
+	points := map[string]bool{}
+	if a.vayuKeep == nil {
+		return points
+	}
+	gens, _ := a.vayuKeep.List()
+	for _, g := range gens {
+		points[filepath.Clean(g.Path)] = true
+	}
+	return points
+}
+
+// isServerOutput reports whether this process writes its standard output or
+// error to path. A unit from before 5 July 2026 appended both to log files in
+// the log directory (StandardOutput=append:); one written since logs to the
+// journal, and then no log file is open. The open descriptor is asked rather
+// than the file's name, which says nothing about which unit an install runs.
+func isServerOutput(path string) bool {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	for _, out := range []*os.File{os.Stdout, os.Stderr} {
+		if oi, err := out.Stat(); err == nil && os.SameFile(fi, oi) {
+			return true
+		}
+	}
+	return false
+}
+
 // managedFileByPath returns the managed file at the cleaned path, or ok=false if
 // it is not currently a managed artefact (the authorisation check for both
 // download and delete).
-func managedFileByPath(p string) (managedFile, bool) {
+func (a *App) managedFileByPath(p string) (managedFile, bool) {
 	clean := filepath.Clean(p)
-	for _, f := range managedStorageFiles() {
+	for _, f := range a.managedStorageFiles() {
 		if f.Path == clean {
 			return f, true
 		}
@@ -163,7 +226,7 @@ func (a *App) handleOSStorage(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 
 	st := collectSysStats(config.Cfg.DBPath, config.Cfg.CacheDir, config.Cfg.MediaDir, updateBackupDir())
-	files := managedStorageFiles()
+	files := a.managedStorageFiles()
 	var totalManaged int64
 	for _, f := range files {
 		totalManaged += f.Size
@@ -192,7 +255,8 @@ func (a *App) handleOSStorage(w http.ResponseWriter, r *http.Request) {
 		cacheSection(st.CacheSize),
 		ui.Section("Backups, logs and temporary files", humanBytes(totalManaged)+" in "+strconv.Itoa(len(files))+" file"+plural(len(files)),
 			ui.Join(`<p class="page-sub">`+ui.Brief("Download one to keep it off the server, or delete it to reclaim the space. "+
-				"The live database and its journal are never listed and cannot be deleted from here.")+`</p>`,
+				"A database copy is the whole database, unencrypted, left by an update; a restore point is an encrypted backup from Backups. "+
+				"The live database and its journal are never listed, and the only restore point cannot be deleted.")+`</p>`,
 				ui.HTML(storageFilesTable(files)),
 				`<div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>`)),
 	)
@@ -261,15 +325,20 @@ func storageFilesTable(files []managedFile) string {
 	var rows strings.Builder
 	for _, f := range files {
 		enc := html.EscapeString(f.Path)
+		pick := `<input type="checkbox" data-file-select value="` + enc + `" aria-label="Select ` + html.EscapeString(f.Name) + `">`
+		del := `<button type="button" class="btn btn--danger btn--sm" data-file-delete data-path="` + enc + `" data-name="` + html.EscapeString(f.Name) + `">Delete</button>`
+		if f.Keep != "" {
+			pick, del = "", `<span class="muted text-sm">`+html.EscapeString(f.Keep)+`</span>`
+		}
 		rows.WriteString(`<tr data-file-row>
-  <td><input type="checkbox" data-file-select value="` + enc + `" aria-label="Select ` + html.EscapeString(f.Name) + `"></td>
+  <td>` + pick + `</td>
   <td class="row-title">` + html.EscapeString(f.Name) + `</td>
   <td><span class="chip">` + html.EscapeString(f.Category) + `</span></td>
   <td class="muted text-sm">` + humanBytes(f.Size) + `</td>
   <td class="muted text-sm">` + config.FormatSite(f.ModTime, "2 Jan 2006 15:04") + `</td>
   <td class="row-actions">
     <a class="btn btn--ghost btn--sm" href="/os/api/storage/download?path=` + qparam(f.Path) + `" download>Download</a>
-    <button type="button" class="btn btn--danger btn--sm" data-file-delete data-path="` + enc + `" data-name="` + html.EscapeString(f.Name) + `">Delete</button>
+    ` + del + `
   </td>
 </tr>`)
 	}
@@ -290,7 +359,7 @@ func (a *App) handleOSStorageDownload(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
 		return
 	}
-	f, ok := managedFileByPath(r.URL.Query().Get("path"))
+	f, ok := a.managedFileByPath(r.URL.Query().Get("path"))
 	if !ok {
 		writeAPIError(w, r, http.StatusNotFound, "not-managed", "That file is not a downloadable VayuPress artefact.", "")
 		return
@@ -339,26 +408,42 @@ func (a *App) handleOSStorageDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deleted, freed := 0, int64(0)
+	freed := int64(0)
+	removed := []string{}
 	var failed []string
 	for _, p := range paths {
-		f, ok := managedFileByPath(p)
+		f, ok := a.managedFileByPath(p)
 		if !ok {
 			failed = append(failed, filepath.Base(p))
 			continue
 		}
-		if err := os.Remove(f.Path); err != nil {
+		var err error
+		switch {
+		case f.Category == fileRestorePoint:
+			_, err = a.deleteRestorePoint(f.Name)
+			if errors.Is(err, errOnlyRestorePoint) {
+				failed = append(failed, f.Name+": "+onlyRestorePointRefusal)
+				continue
+			}
+		case f.Keep != "":
+			failed = append(failed, f.Name+": "+writingLogRefusal)
+			continue
+		default:
+			err = os.Remove(f.Path)
+		}
+		if err != nil {
 			logging.LogError("storage", "delete managed file "+f.Path, err.Error())
 			failed = append(failed, f.Name)
 			continue
 		}
-		deleted++
+		removed = append(removed, f.Path)
 		freed += f.Size
 		dbpkg.AuditLog("storage.delete", dbpkg.AuditActor(r), f.Name, "deleted managed file via VayuOS")
 	}
 
 	resp := map[string]interface{}{
-		"deleted": deleted,
+		"deleted": len(removed),
+		"removed": removed,
 		"freed":   humanBytes(freed),
 	}
 	if len(failed) > 0 {

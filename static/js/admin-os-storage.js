@@ -32,7 +32,7 @@
         var n = res.d.deleted || 0;
         var freed = res.d.freed ? ' · freed ' + res.d.freed : '';
         if (res.d.failed && res.d.failed.length) {
-          show('Deleted ' + n + freed + ' · failed: ' + res.d.failed.join(', '), true);
+          show('Deleted ' + n + freed + ' · not deleted: ' + res.d.failed.join(' · '), true);
         } else {
           show('Deleted ' + n + ' file' + (n === 1 ? '' : 's') + freed, false);
         }
@@ -96,9 +96,10 @@
         confirm: 'Delete',
       }, function () {
         b.disabled = true;
-        deletePaths([path], function () {
+        deletePaths([path], function (d) {
+          b.disabled = false;
           var row = b.closest('[data-file-row]');
-          if (row) row.remove();
+          if (row && (d.removed || []).indexOf(path) >= 0) row.remove();
           refreshBulk();
         });
       });
@@ -140,8 +141,9 @@
         confirm: 'Delete',
       }, function () {
         bulkDelete.disabled = true;
-        deletePaths(paths, function () {
-          paths.forEach(function (p) {
+        // Only the rows the server removed go: a refused file stays listed.
+        deletePaths(paths, function (d) {
+          (d.removed || []).forEach(function (p) {
             var box = document.querySelector('[data-file-select][value="' + (window.CSS && CSS.escape ? CSS.escape(p) : p) + '"]');
             var row = box && box.closest('[data-file-row]');
             if (row) row.remove();

@@ -8,6 +8,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **Storage no longer deletes your only restore point.** Storage lists
+  Backups' restore points beside every other file, and its Delete removed the
+  last one as readily as any log, where Backups refused. Both pages now delete
+  a restore point through one rule (never the last, and one delete at a time,
+  so two at once from two tabs cannot remove the last two). The last is shown
+  as kept, with nothing to select. Deleting a log the server is writing its
+  output to is refused too: that happens only on an install still on the
+  service unit from before July 2026, which appended output to
+  `/var/log/vayupress`. Since then the server logs to the system journal, and
+  every file in that folder is old and safe to delete.
+- **Storage says what each backup is.** A whole, unencrypted copy of the
+  database left by an update was listed as a "Database backup", exactly like
+  the encrypted, tested restore point beside it. They now read "Database copy"
+  and "Restore point", and the page says what each is.
+- **A file Storage did not delete stays in the list.** A refused delete
+  removed the file's row anyway, so it looked deleted until the page was
+  reloaded. Only the rows the server removed now go, and the reason for each
+  refusal is shown.
+
 ## [3.17.96] — 2026-10-03
 
 Released ahead of the next plan for what was broken in 3.17.95 on a laptop

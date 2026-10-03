@@ -1110,6 +1110,50 @@ test("refresh every page starts at once and shows its progress", async ({ page }
   expect(post.ok()).toBeTruthy();
 });
 
+// A delete the server refuses (the only restore point, a log being written)
+// leaves its row: the page removes only the rows the server says it removed.
+// The files are drawn into the real page, since the suite's install has none
+// worth deleting, and the server's answer is the one it gives a refusal.
+test("storage keeps the row of a file it did not delete", async ({ page }) => {
+  await openConsole(page);
+  const row = (path, name) => `<tr data-file-row><td><input type="checkbox" data-file-select value="${path}" aria-label="Select ${name}"></td>` +
+    `<td class="row-title">${name}</td><td><span class="chip">Restore point</span></td><td></td><td></td>` +
+    `<td class="row-actions"><button type="button" class="btn btn--danger btn--sm" data-file-delete data-path="${path}" data-name="${name}">Delete</button></td></tr>`;
+  const table = `<div class="bulk-bar" data-file-bulkbar hidden><span class="text-sm"><span data-file-bulk-count>0</span> selected</span>` +
+    `<button type="button" class="btn btn--danger btn--sm" data-file-bulk-delete>Delete selected</button></div>` +
+    `<div class="table-wrap"><table class="table"><tbody>${row("/b/vk-old.vpbk", "vk-old.vpbk")}${row("/b/vk-new.vpbk", "vk-new.vpbk")}</tbody></table></div>`;
+  await page.route("**/os/storage", async (route) => {
+    const res = await route.fetch();
+    const html = (await res.text()).replace(/<div class="table-empty">[^<]*<\/div>|<div class="bulk-bar"[\s\S]*?<\/table><\/div>/, table);
+    await route.fulfill({ response: res, body: html });
+  });
+  const asked = [];
+  await page.route("**/os/api/storage/delete", async (route) => {
+    const paths = JSON.parse(route.request().postData()).paths;
+    asked.push(paths);
+    const removed = paths.filter((p) => p === "/b/vk-old.vpbk");
+    await route.fulfill({ json: { deleted: removed.length, removed, freed: "6 B",
+      failed: paths.includes("/b/vk-new.vpbk") ? ["vk-new.vpbk: That is your only restore point."] : undefined } });
+  });
+  await page.goto("/os/storage");
+  const rows = page.locator("[data-file-row] .row-title");
+  await expect(rows).toHaveText(["vk-old.vpbk", "vk-new.vpbk"]);
+
+  await page.locator('[data-file-select][value="/b/vk-new.vpbk"]').check();
+  await page.locator('[data-file-select][value="/b/vk-old.vpbk"]').check();
+  await page.locator("[data-file-bulk-delete]").click();
+  await page.locator(".vp-confirm").getByRole("button", { name: "Delete" }).click();
+  await expect(page.locator("#action-msg")).toContainText("not deleted: vk-new.vpbk: That is your only restore point.");
+  await expect(rows).toHaveText(["vk-new.vpbk"]);
+
+  await page.locator('[data-file-delete][data-path="/b/vk-new.vpbk"]').click();
+  await page.locator(".vp-confirm").getByRole("button", { name: "Delete" }).click();
+  await expect.poll(() => asked.length).toBe(2);
+  await expect(page.locator("#action-msg")).toContainText("Deleted 0");
+  await expect(rows).toHaveText(["vk-new.vpbk"]);
+  await expect(page.locator('[data-file-delete][data-path="/b/vk-new.vpbk"]')).toBeEnabled();
+});
+
 // Settings compares every row with the value it loaded with: the bar counts
 // real changes, Discard puts them back, Save sends them and they survive a
 // reload. Typing a letter and deleting it is no change.

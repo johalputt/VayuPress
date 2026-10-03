@@ -45,21 +45,21 @@ func TestManagedFileByPathAuthorises(t *testing.T) {
 	mustWrite(t, backup, "backup")
 
 	// The backup is a managed artefact.
-	if _, ok := managedFileByPath(backup); !ok {
+	if _, ok := (&App{}).managedFileByPath(backup); !ok {
 		t.Errorf("expected backup %q to be managed", backup)
 	}
 	// The live DB and WAL must NEVER be managed (no download/delete).
-	if _, ok := managedFileByPath(dbPath); ok {
+	if _, ok := (&App{}).managedFileByPath(dbPath); ok {
 		t.Error("live DB must not be a managed file")
 	}
-	if _, ok := managedFileByPath(dbPath + "-wal"); ok {
+	if _, ok := (&App{}).managedFileByPath(dbPath + "-wal"); ok {
 		t.Error("live WAL must not be a managed file")
 	}
 	// Arbitrary system files and traversal are rejected.
-	if _, ok := managedFileByPath("/etc/passwd"); ok {
+	if _, ok := (&App{}).managedFileByPath("/etc/passwd"); ok {
 		t.Error("/etc/passwd must not be managed")
 	}
-	if _, ok := managedFileByPath(filepath.Join(cacheDir, "update-backups", "..", "..", "vayupress.db")); ok {
+	if _, ok := (&App{}).managedFileByPath(filepath.Join(cacheDir, "update-backups", "..", "..", "vayupress.db")); ok {
 		t.Error("traversal to the live DB must not resolve as managed")
 	}
 }
