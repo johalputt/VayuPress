@@ -1655,7 +1655,7 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 	// Backups that are not proven. This verdict used to sit on the Operations
 	// hub; Home and the bell are where an operator looks without being sent, and
 	// a broken recovery path is otherwise silent until the day it is needed.
-	if n, ok := backupNotification(a.vayuKeepStatus(), a.vayuKeepErr, time.Now().UTC()); ok {
+	if n, ok := backupNotification(a.vayuKeepStatus(), a.vayuKeepErr, time.Now().UTC(), leftOut(backupPlaces(filepath.Dir(config.Cfg.DBPath)))); ok {
 		state(n.Href, n.Title, n.Detail, n.Kind, n.Severity)
 	}
 	if since, why := a.keepRun.held(); !since.IsZero() {

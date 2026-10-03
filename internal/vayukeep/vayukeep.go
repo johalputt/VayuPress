@@ -94,6 +94,11 @@ type Config struct {
 	// is asked before each chunk and blocks while the host is busy. Nil runs
 	// at full speed, as tests and the command line want.
 	Pace func() pacedio.Pacer
+	// Census, when set, reads the drill's restored data directory beyond the
+	// database (mail, media, the website) and returns what it found as one
+	// phrase; an error fails the drill. The database alone passing proved
+	// nothing about the rest of what an operator would restore.
+	Census func(ctx context.Context, restoredDataDir string) (string, error)
 	// Log receives one-line operational messages.
 	Log func(level, msg string)
 }
@@ -136,6 +141,8 @@ type Status struct {
 	LastDrillOK    bool
 	LastDrillError string
 	LastDrillRows  int64
+	// LastDrillContents is the census of the last passing drill.
+	LastDrillContents string
 }
 
 // RPO returns how long ago the newest generation was taken — the amount of work

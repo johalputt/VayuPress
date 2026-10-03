@@ -37,6 +37,7 @@ type DrillResult struct {
 	OK         bool
 	Err        string
 	Rows       int64
+	Contents   string
 	Duration   time.Duration
 }
 
@@ -84,6 +85,7 @@ func (e *Engine) Drill(ctx context.Context) DrillResult {
 		s.LastDrillOK = res.OK
 		s.LastDrillError = res.Err
 		s.LastDrillRows = res.Rows
+		s.LastDrillContents = res.Contents
 	})
 	// A drill that found no generation says nothing worth keeping, and on a
 	// new install, whose target may not exist yet, saving it would only log a
@@ -153,6 +155,15 @@ func (e *Engine) drill(ctx context.Context) DrillResult {
 			}
 			res.Rows = rows
 		}
+	}
+	if e.cfg.Census != nil {
+		contents, err := e.cfg.Census(ctx, dest)
+		if err != nil {
+			res.Err = "the restored backup is incomplete: " + err.Error()
+			res.Duration = e.cfg.Now().Sub(start)
+			return res
+		}
+		res.Contents = contents
 	}
 
 	res.OK = true

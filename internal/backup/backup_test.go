@@ -291,3 +291,35 @@ func TestAFileThatGrowsDuringTheBackupIsTakenAsOpened(t *testing.T) {
 		t.Errorf("the restored file (%d bytes) is not a prefix of the file as it grew (%d bytes)", len(got), len(now))
 	}
 }
+
+// A data folder that is itself a link (moved to a larger disk) is archived
+// whole; before, the walk met a link at the root and archived nothing. A link
+// inside the folder is still skipped.
+func TestALinkedDataFolderIsArchivedWhole(t *testing.T) {
+	real := makeTree(t)
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "elsewhere.txt"), []byte("x"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(real, "linked")); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "data")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := Create(&buf, "correct horse battery staple", link); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	dest := t.TempDir()
+	if err := Extract(bytes.NewReader(buf.Bytes()), "correct horse battery staple", dest); err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(dest, "vayudata", "mail", "secret.key")); err != nil || string(got) != "PRIVATE" {
+		t.Errorf("a linked data folder's mail was not archived: %q %v", got, err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "linked", "elsewhere.txt")); err == nil {
+		t.Error("a link inside the data folder was followed")
+	}
+}

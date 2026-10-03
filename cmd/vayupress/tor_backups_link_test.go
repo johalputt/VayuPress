@@ -18,7 +18,7 @@ func TestTheTorWorldsBackupNoticeLeadsToItsRail(t *testing.T) {
 	defer func(v bool) { config.Cfg.OnionMode = v }(config.Cfg.OnionMode)
 	config.Cfg.OnionMode = true
 
-	n, ok := backupNotification(vayukeep.Status{}, "", time.Now().UTC())
+	n, ok := backupNotification(vayukeep.Status{}, "", time.Now().UTC(), nil)
 	if !ok {
 		t.Fatal("backups that are not set up raise no notice; the test proves nothing")
 	}

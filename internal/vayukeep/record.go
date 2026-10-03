@@ -34,6 +34,7 @@ type drillRecord struct {
 	OK         bool      `json:"ok"`
 	Error      string    `json:"error,omitempty"`
 	Rows       int64     `json:"rows"`
+	Contents   string    `json:"contents,omitempty"`
 	Generation string    `json:"generation"`
 	Proven     *provenOn `json:"proven,omitempty"`
 }
@@ -50,7 +51,7 @@ type provenOn struct {
 // failure to write costs only what this file exists to keep, so it is logged
 // rather than failing the drill.
 func (e *Engine) saveDrillRecord(res DrillResult) {
-	rec := drillRecord{At: res.At, OK: res.OK, Error: res.Err, Rows: res.Rows, Generation: res.Generation}
+	rec := drillRecord{At: res.At, OK: res.OK, Error: res.Err, Rows: res.Rows, Contents: res.Contents, Generation: res.Generation}
 	if name := e.ProvenGeneration(); name != "" {
 		if fi, err := os.Stat(filepath.Join(e.cfg.TargetDir, name)); err == nil {
 			rec.Proven = &provenOn{Name: name, Bytes: fi.Size(), Modified: fi.ModTime().UnixNano()}
@@ -126,6 +127,7 @@ func (e *Engine) loadDrillRecord() {
 			return
 		}
 		s.LastDrill, s.LastDrillOK, s.LastDrillError, s.LastDrillRows = rec.At, rec.OK, rec.Error, rec.Rows
+		s.LastDrillContents = rec.Contents
 	})
 }
 

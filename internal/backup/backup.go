@@ -493,7 +493,14 @@ func CreateWithOptions(w io.Writer, passphrase, srcDir string, opts Options) err
 	gz := gzip.NewWriter(enc)
 	tw := tar.NewWriter(gz)
 
-	srcDir = filepath.Clean(srcDir)
+	// The walk follows no links, the root included: a data directory that is
+	// itself a link (moved to a larger disk, say) would archive nothing at
+	// all. The root is the operator's own choice, so it is resolved; links
+	// inside it are still skipped, and Backups names them.
+	srcDir, err = filepath.EvalSymlinks(filepath.Clean(srcDir))
+	if err != nil {
+		return err
+	}
 	err = filepath.Walk(srcDir, func(path string, info os.FileInfo, werr error) error {
 		if werr != nil {
 			return werr

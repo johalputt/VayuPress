@@ -141,6 +141,7 @@ func (a *App) buildKeepConfig(ctx context.Context) vayukeep.Config {
 		RetainGenerations: a.keepInt(ctx, settings.KeyVayuKeepRetainGen, config.Cfg.VayuKeepRetainGen),
 		RetainDays:        a.keepInt(ctx, settings.KeyVayuKeepRetainDays, config.Cfg.BackupRetainDays),
 		Snapshot:          a.keepRun.snapshot,
+		Census:            backupCensus(filepath.Dir(config.Cfg.DBPath)),
 		Pace:              func() pacedio.Pacer { return a.keepRun.show(pace.Host().NewJob(sealChunks)) },
 		Pressure: func() bool {
 			g := a.sovereign

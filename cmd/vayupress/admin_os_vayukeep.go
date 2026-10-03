@@ -68,7 +68,9 @@ type keepVerdict struct {
 	Detail ui.HTML // one line under it
 }
 
-func keepStatusVerdict(st vayukeep.Status, bootErr string, now time.Time) keepVerdict {
+// left names what a backup leaves out though the install keeps data there
+// (leftOut); a backup that restores is still only part of the site then.
+func keepStatusVerdict(st vayukeep.Status, bootErr string, now time.Time, left []string) keepVerdict {
 	at := func(target string) string { return `<code>` + html.EscapeString(target) + `</code>` }
 	switch {
 	case bootErr != "":
@@ -93,6 +95,10 @@ func keepStatusVerdict(st vayukeep.Status, bootErr string, now time.Time) keepVe
 		return keepVerdict{"warn", "Stale", "The newest backup is from " + humanAgo(st.NewestGen, now),
 			ui.HTML("Check that writes are reaching " + at(st.Target) + ".")}
 	}
+	if len(left) > 0 {
+		return keepVerdict{"warn", "Partial", "Backed up " + humanAgo(st.NewestGen, now) + ", but not all of it",
+			ui.Text("Not in it: " + strings.Join(left, ", ") + ". What a backup holds, below, says why.")}
+	}
 	loss := strings.TrimSuffix(humanAgo(st.NewestGen, now), " ago")
 	if loss == "just now" {
 		loss = "a minute"
@@ -103,8 +109,8 @@ func keepStatusVerdict(st vayukeep.Status, bootErr string, now time.Time) keepVe
 
 // backupNotification is the verdict as a notification: none while backups are
 // proven, otherwise at the verdict's own tone.
-func backupNotification(st vayukeep.Status, bootErr string, now time.Time) (osNotification, bool) {
-	v := keepStatusVerdict(st, bootErr, now)
+func backupNotification(st vayukeep.Status, bootErr string, now time.Time, left []string) (osNotification, bool) {
+	v := keepStatusVerdict(st, bootErr, now, left)
 	if v.Tone == "ok" {
 		return osNotification{}, false
 	}
@@ -126,8 +132,15 @@ func drillSummary(st vayukeep.Status, now time.Time) string {
 		return "FAILED " + humanAgo(st.LastDrill, now) + " — " + st.LastDrillError
 	}
 	s := "passed " + humanAgo(st.LastDrill, now)
+	var read []string
 	if st.LastDrillRows > 0 {
-		s += " (" + strconv.FormatInt(st.LastDrillRows, 10) + " post" + plural(int(st.LastDrillRows)) + " read back)"
+		read = append(read, strconv.FormatInt(st.LastDrillRows, 10)+" post"+plural(int(st.LastDrillRows)))
+	}
+	if st.LastDrillContents != "" {
+		read = append(read, st.LastDrillContents)
+	}
+	if len(read) > 0 {
+		s += " (" + strings.Join(read, ", ") + " read back)"
 	}
 	return s
 }
@@ -419,12 +432,12 @@ func (p keepPrefs) withDefaults() keepPrefs {
 // osVayuKeepBody builds the Backups page: a Status page (render 05) once
 // automatic backup is on or has been asked for, the Setup page until then.
 // proven is the newest restore point that passed a test restore.
-func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vayukeep.Generation, proven string, now time.Time, currentTarget string, envManaged bool, prefs keepPrefs, run string) string {
+func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vayukeep.Generation, proven string, now time.Time, currentTarget string, envManaged bool, prefs keepPrefs, run string, places []backupPlace) string {
 	if !st.Enabled && bootErr == "" && !envManaged {
 		return run + keepSetupPage(currentTarget) + keepScripts(nonce)
 	}
 	prefs = prefs.withDefaults()
-	v := keepStatusVerdict(st, bootErr, now)
+	v := keepStatusVerdict(st, bootErr, now, leftOut(places))
 	// Every control reports into this line, and a toast; the sheets report into
 	// their own (data-sheet-status), next to the button that was pressed.
 	actions := `<span id="vk-status" class="text-xs muted" role="status" aria-live="polite"></span>`
@@ -446,7 +459,7 @@ func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vay
 		if st.LastError != "" {
 			details = append(details, ui.Fact{Key: "Last error", Value: ui.Text(st.LastError)})
 		}
-		sections = append(sections, points, ui.Section("Details", "", ui.Facts(details...)),
+		sections = append(sections, points, ui.Section("Details", "", ui.Facts(details...)), keepHoldsSection(places),
 			ui.Section("Settings", "", ui.Rows(
 				ui.Row{Label: "Back up automatically", Hint: strings.ToUpper(every[:1]) + every[1:] + " at most, when something changed. Keeps " +
 					strconv.Itoa(prefs.RetainGens) + " restore points or " + strconv.Itoa(prefs.RetainDays) + " days, whichever keeps more.",
@@ -645,7 +658,7 @@ func (a *App) handleOSVayuKeep(w http.ResponseWriter, r *http.Request) {
 				RetainGens: a.keepInt(r.Context(), settings.KeyVayuKeepRetainGen, config.Cfg.VayuKeepRetainGen),
 				RetainDays: a.keepInt(r.Context(), settings.KeyVayuKeepRetainDays, config.Cfg.BackupRetainDays),
 				EveryMin:   a.keepEveryMin(r.Context()),
-			}, keepRunHTML(&a.keepRun)))))
+			}, keepRunHTML(&a.keepRun), backupPlaces(filepath.Dir(config.Cfg.DBPath))))))
 }
 
 // ── Endpoints ────────────────────────────────────────────────────────────────

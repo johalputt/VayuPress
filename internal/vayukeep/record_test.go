@@ -4,6 +4,7 @@ package vayukeep
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -233,5 +234,37 @@ func TestADrillWithNoBackupRecordsNothing(t *testing.T) {
 	}
 	if len(warned) > 0 {
 		t.Errorf("a drill with no backup logged %q", warned)
+	}
+}
+
+// The census reads the restored copy beyond the database: what it reports is
+// kept with the drill, across a restart, and its refusal fails the drill.
+func TestTheDrillRunsTheCensus(t *testing.T) {
+	var saw string
+	h := newHarness(t, func(c *Config) {
+		c.Census = func(_ context.Context, restored string) (string, error) {
+			saw = restored
+			if _, err := os.Stat(filepath.Join(restored, "settings.json")); err != nil {
+				return "", err
+			}
+			return "2 mail messages", nil
+		}
+	})
+	_, res := proveNewest(t, h)
+	if saw == "" || res.Contents != "2 mail messages" {
+		t.Fatalf("the census saw %q and reported %q", saw, res.Contents)
+	}
+	if st := h.engine.Status(); st.LastDrillContents != "2 mail messages" {
+		t.Errorf("the status reads the census as %q", st.LastDrillContents)
+	}
+	if st := h.restart(t).Status(); st.LastDrillContents != "2 mail messages" {
+		t.Errorf("after a restart the census reads %q", st.LastDrillContents)
+	}
+
+	h.engine.cfg.Census = func(context.Context, string) (string, error) {
+		return "", errors.New("it holds no mail, though this server has some")
+	}
+	if res := h.engine.Drill(context.Background()); res.OK || res.Err != "the restored backup is incomplete: it holds no mail, though this server has some" {
+		t.Errorf("a census refusal gave ok=%v %q", res.OK, res.Err)
 	}
 }

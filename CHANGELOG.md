@@ -8,6 +8,34 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Backups says what a backup holds.** A new section lists the database and
+  every place this install keeps data (media, the website's files, mail, PGP
+  keys, onion address keys and the key files), each as "In every backup" or
+  "Not backed up" with the reason, worked out from where the install actually
+  keeps them. Below that, what no backup holds and the operator must keep:
+  the start-up settings, the backup passphrase, `VAYU_SECRET` where it is
+  set, and Talk, which never stores messages. A backup that leaves data out
+  (a folder that is a link, or one outside the database's folder) reads
+  "Partial" on the page and in the bell, never "Protected".
+
+### Changed
+
+- **The test restore checks mail, media and the website, not only the
+  database.** It counts each place in the restored copy and reports it ("3
+  posts, 55 media files, 2 website files, 1,204 mail messages read back"). A
+  backup that lacks a place where this server keeps data fails its test
+  restore, saying which.
+
+### Fixed
+
+- **A data folder that is itself a link is backed up.** The archive did not
+  follow a link even at its root, so a database folder moved to another disk
+  and linked back produced backups with nothing in them. The folder is now
+  resolved first; links inside it are still not followed, and Backups names
+  any that hold data.
+
 ## [3.17.97] — 2026-10-03
 
 A hotfix for what the operator found after updating to 3.17.96: Backups
