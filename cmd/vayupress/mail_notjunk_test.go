@@ -32,8 +32,8 @@ func folderIDs(t *testing.T, a *App, rd vmail.Reader, folder string) []string {
 	return ids
 }
 
-// "Not junk" (pipeline 3ab): the message goes back to the Inbox, the sender
-// joins the mailbox's contacts, and their next message is not filed as junk.
+// "Not junk" (pipeline 3ab): the message goes back to the Inbox and the
+// sender joins the mailbox's contacts.
 func TestNotJunkRescuesTheMessageAndItsSender(t *testing.T) {
 	if !vmail.ScoreSpam(junkFrom("deals@shop.example", "")).IsSpam {
 		t.Fatal("the seed is not junk to the filter, so nothing below would test anything")
@@ -66,37 +66,8 @@ func TestNotJunkRescuesTheMessageAndItsSender(t *testing.T) {
 	if !a.vayuMail.Accounts().HasContact(context.Background(), "dana@example.com", "deals@shop.example") {
 		t.Fatal("the sender was not remembered")
 	}
-	// The sender's next message stays out of Junk.
-	if _, err := a.vayuMail.DeliverInbound("deals@shop.example", "dana@example.com", junkFrom("deals@shop.example", "")); err != nil {
-		t.Fatal(err)
-	}
-	if n := len(folderIDs(t, a, rd, "Junk")); n != 0 {
-		t.Error("a contact's next message was filed as junk")
-	}
-	// But not one that proves it is not from them: a failed DMARC is filed as before.
-	if _, err := a.vayuMail.DeliverInbound("deals@shop.example", "dana@example.com", junkFrom("deals@shop.example", "Authentication-Results: mail.example.com; dmarc=fail\r\n")); err != nil {
-		t.Fatal(err)
-	}
-	if n := len(folderIDs(t, a, rd, "Junk")); n != 1 {
-		t.Error("a forged message in a contact's name, failing DMARC, passed the junk filter")
-	}
-	// A contact is one mailbox's: dana's trust lets nothing past eve's filter.
-	if err := a.vayuMail.Accounts().Create(context.Background(), "eve@example.com", "x", "Eve", vmail.RoleMailbox); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := a.vayuMail.DeliverInbound("deals@shop.example", "eve@example.com", junkFrom("deals@shop.example", "")); err != nil {
-		t.Fatal(err)
-	}
-	if ids := folderIDs(t, a, vmail.ReadAsSystem("eve", "test"), "Junk"); len(ids) != 1 {
-		t.Error("one mailbox's contact passed another mailbox's junk filter")
-	}
-	// Anyone else's junk is still junk.
-	if _, err := a.vayuMail.DeliverInbound("other@spam.example", "dana@example.com", junkFrom("other@spam.example", "")); err != nil {
-		t.Fatal(err)
-	}
-	if n := len(folderIDs(t, a, rd, "Junk")); n != 2 {
-		t.Error("a stranger's junk was not filed as junk")
-	}
+	// What delivery then does with the sender's mail, and when it believes
+	// the From, is the engine's: TestAContactIsTrustedOnlyWhenAuthenticated.
 }
 
 // A read-only mailbox can neither move the message nor add the contact, and

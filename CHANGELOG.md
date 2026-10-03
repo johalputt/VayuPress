@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+
+- **A contact's mail skips the junk filter only when it proves it is theirs.**
+  Found in this release's audit, before it shipped: as first built, Not junk
+  trusted any message whose From named a contact unless DMARC failed, and a
+  domain with no DMARC policy never fails, so a forged message in a
+  contact's name reached the Inbox past the filter. A contact is now trusted
+  only when this server's own verdict shows the message came from their
+  domain: DMARC passed, or, with no DMARC policy, SPF or DKIM passed for a
+  domain aligned with it. Only mail that arrived through the receiver is
+  judged on that verdict; mail delivered any other way carries headers its
+  writer chose, and is never trusted on them.
+
 ### Added
 
 - **Read a message full width, or always.** Full width in a message's tools
@@ -25,9 +38,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - **Not junk.** A message in Junk offers Not junk first (also `!`, the key
   that files a message there everywhere else, and in selection mode for all
   that is picked). It goes back to the Inbox and its sender joins the
-  mailbox's contacts, whose mail is no longer filed as junk. A message that
-  fails DMARC is still filed there whoever it claims to be from, and one
-  mailbox's contacts never let mail past another's filter.
+  mailbox's contacts, whose mail is no longer filed as junk when it proves it
+  is theirs (see Security). One mailbox's contacts never let mail past
+  another's filter.
 
 ### Fixed
 

@@ -7,6 +7,8 @@ import (
 	"context"
 	netmail "net/mail"
 	"strings"
+
+	"github.com/emersion/go-msgauth/dmarc"
 )
 
 // NotJunk is "this is not junk" (pipeline 3ab): the message goes back to the
@@ -32,17 +34,43 @@ func (e *Engine) NotJunk(rd Reader, id string) (string, error) {
 }
 
 // senderIsContact reports whether a message's From is in the recipient's
-// contacts and the message did not fail DMARC. Trusting your contacts is what
-// every mail service does; trusting a message that proves it is not from them
-// would let anyone who knows whom you trust past the junk filter in their
-// name, so a failed DMARC is filed as before.
+// contacts and this server's own verdict shows it came from that domain:
+// DMARC passed, or, where the domain publishes no DMARC policy, SPF or DKIM
+// passed for a domain aligned with it (domainsAligned, relaxed, as DMARC
+// itself would). Trusting a From that nothing authenticates would let anyone
+// who knows whom you trust past the junk filter in their name. Call it only
+// for stamped mail (deliver), whose first Authentication-Results is ours.
 func (e *Engine) senderIsContact(recipient string, raw []byte) bool {
 	msg, err := netmail.ReadMessage(bytes.NewReader(raw))
-	if err != nil || dmarcOutcome(msg.Header) != dmarcNoFailure {
+	if err != nil || !fromAuthenticated(msg.Header.Get("Authentication-Results")) {
 		return false
 	}
 	addr, _ := headerFrom(raw)
 	return addr != "" && e.accounts.HasContact(context.Background(), recipient, addr)
+}
+
+// fromAuthenticated reads this server's Authentication-Results (verifyInbound
+// writes it: "host; spf=… smtp.mailfrom=…; dkim=… header.d=…; dmarc=…
+// header.from=…") and reports whether the From domain authenticated the
+// message.
+func fromAuthenticated(ar string) bool {
+	v := map[string]string{}
+	for _, f := range strings.FieldsFunc(strings.ToLower(ar), func(r rune) bool { return r == ';' || r == ' ' || r == '\t' }) {
+		if k, val, ok := strings.Cut(f, "="); ok {
+			if _, seen := v[k]; !seen {
+				v[k] = val
+			}
+		}
+	}
+	switch v["dmarc"] {
+	case "pass":
+		return true
+	case "none":
+		from := v["header.from"]
+		return v["spf"] == "pass" && domainsAligned(v["smtp.mailfrom"], from, dmarc.AlignmentRelaxed) ||
+			v["dkim"] == "pass" && domainsAligned(v["header.d"], from, dmarc.AlignmentRelaxed)
+	}
+	return false
 }
 
 // headerFrom is a message's From address and display name, from its header

@@ -135,6 +135,15 @@ const forwardLoopHeader = "X-VayuMail-Forwarded"
 // relayed to the mailbox's auto-forward address when one is set (best-effort —
 // a forwarding problem never fails local delivery).
 func (e *Engine) DeliverInbound(envelopeFrom, recipientEmail string, raw []byte) (string, error) {
+	return e.deliver(envelopeFrom, recipientEmail, raw, false)
+}
+
+// deliver is DeliverInbound. stamped says raw came through the inbound SMTP
+// server, which strips any verdict a sender wrote and puts its own
+// Authentication-Results first (smtpd), so that header can be believed. Mail
+// delivered any other way (a local send, the submission relay) carries
+// headers its writer chose, and is never trusted on them.
+func (e *Engine) deliver(envelopeFrom, recipientEmail string, raw []byte, stamped bool) (string, error) {
 	if e.maildir == nil {
 		return "", errors.New("vayumail: not started")
 	}
@@ -167,7 +176,7 @@ func (e *Engine) DeliverInbound(envelopeFrom, recipientEmail string, raw []byte)
 	// Junk folder instead of the inbox. Junk is NOT auto-forwarded.
 	// A sender in the recipient's contacts is never filed as junk: "Not junk"
 	// saves the sender there, so the next message from them stays out of it.
-	if e.cfg.JunkFilterEnabled && !e.senderIsContact(local+"@"+domain, raw) {
+	if e.cfg.JunkFilterEnabled && !(stamped && e.senderIsContact(local+"@"+domain, raw)) {
 		if v := ScoreSpam(raw); v.IsSpam {
 			return e.maildir.DeliverTo(domain, local, "Junk", raw)
 		}

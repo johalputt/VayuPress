@@ -803,7 +803,7 @@ func (e *Engine) Start(ctx context.Context) error {
 func (e *Engine) inboundDeliver(from string, rcpts []string, raw []byte) error {
 	var firstErr error
 	for _, rcpt := range rcpts {
-		if _, derr := e.DeliverInbound(from, rcpt, raw); derr != nil && firstErr == nil {
+		if _, derr := e.deliver(from, rcpt, raw, true); derr != nil && firstErr == nil {
 			firstErr = derr
 		}
 	}
