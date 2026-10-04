@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // StandardFolders are the mailbox folders surfaced in the panel, in order.
@@ -26,14 +28,157 @@ func canonicalFolder(name string) string {
 	return "Inbox"
 }
 
+// Your own folders are Maildir++ subfolders beside the standard ones, found
+// by listing the account's directory: the folder on disk is the record, so
+// IMAP, the console and a restored backup cannot disagree about which exist.
+
+// maxFolderName bounds a folder's name, in characters.
+const maxFolderName = 40
+
+// reservedFolderName is the console's list of messages held to send later
+// (Send later), which a folder of the same name would hide.
+const reservedFolderName = "Scheduled"
+
+// ValidFolderName reports whether name can be one of your own folders:
+// letters, digits, spaces, '-' and '_', at most 40 characters, not starting
+// or ending with a space. A '.' is refused because Maildir++ reads it as a
+// level (and ".." as the parent), a '/' because a path would be built from
+// it; anything else is refused so the name is safe in IMAP's quoted strings,
+// a path and a URL alike. A standard folder's name is not one of yours.
+func ValidFolderName(name string) bool {
+	n := utf8.RuneCountInString(name)
+	if n == 0 || n > maxFolderName || strings.TrimSpace(name) != name || isStandardFolder(name) || strings.EqualFold(name, reservedFolderName) {
+		return false
+	}
+	for _, r := range name {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != ' ' && r != '-' && r != '_' {
+			return false
+		}
+	}
+	return true
+}
+
+// customFolders lists the account's own folders, sorted without regard to
+// case. A directory whose name is not a valid folder name is not listed,
+// so nothing put there by hand becomes a path the console builds.
+func (m *Maildir) customFolders(domain, username string) []string {
+	entries, err := os.ReadDir(m.accountDir(domain, username))
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if name, ok := strings.CutPrefix(e.Name(), "."); ok && e.IsDir() && ValidFolderName(name) {
+			out = append(out, name)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i]) < strings.ToLower(out[j]) })
+	return out
+}
+
+// folderKey is the name a folder is recorded under where no account is to
+// hand (the IMAP UID store): a standard folder's canonical spelling, or one
+// of your own as named. A rename is a new key, so a client resynchronises it
+// under a new UIDVALIDITY, as RFC 3501 asks of a renamed mailbox.
+func folderKey(name string) string {
+	if ValidFolderName(name) {
+		return name
+	}
+	return canonicalFolder(name)
+}
+
+// Folders lists an account's folders: the standard ones in their order, then
+// its own.
+func (m *Maildir) Folders(domain, username string) []string {
+	return append(append([]string{}, StandardFolders...), m.customFolders(domain, username)...)
+}
+
+// resolveFolder names the folder name refers to in this account: a standard
+// folder in its canonical spelling, one of the account's own as it is on
+// disk, or Inbox for anything else, as canonicalFolder always has. Matching
+// is without regard to case, as IMAP clients and the console both expect.
+func (m *Maildir) resolveFolder(domain, username, name string) string {
+	if isStandardFolder(name) || !ValidFolderName(name) {
+		return canonicalFolder(name)
+	}
+	for _, f := range m.customFolders(domain, username) {
+		if strings.EqualFold(f, name) {
+			return f
+		}
+	}
+	return "Inbox"
+}
+
 // folderDir returns the Maildir directory for a folder. Inbox is the account
 // root; other folders are Maildir++ subfolders (.Sent, .Junk, …).
 func (m *Maildir) folderDir(domain, username, folder string) string {
 	base := m.accountDir(domain, username)
-	if folder == "" || strings.EqualFold(folder, "Inbox") {
+	f := m.resolveFolder(domain, username, folder)
+	if f == "Inbox" {
 		return base
 	}
-	return filepath.Join(base, "."+canonicalFolder(folder))
+	return filepath.Join(base, "."+f)
+}
+
+// Folder errors, said as the person reads them.
+var (
+	ErrFolderName   = errors.New("a folder name is letters, digits, spaces, '-' and '_', up to 40 characters, and not the name of a standard folder")
+	ErrFolderExists = errors.New("there is already a folder with that name")
+	ErrNoSuchFolder = errors.New("there is no folder with that name")
+)
+
+// CreateFolder makes one of the account's own folders.
+func (m *Maildir) CreateFolder(domain, username, name string) error {
+	if !ValidFolderName(name) {
+		return ErrFolderName
+	}
+	if m.resolveFolder(domain, username, name) != "Inbox" {
+		return ErrFolderExists
+	}
+	dir := filepath.Join(m.accountDir(domain, username), "."+name)
+	for _, sub := range []string{"tmp", "new", "cur"} {
+		if err := os.MkdirAll(filepath.Join(dir, sub), 0o700); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// RenameFolder renames one of the account's own folders, its mail with it.
+func (m *Maildir) RenameFolder(domain, username, from, to string) error {
+	old := m.resolveFolder(domain, username, from)
+	if isStandardFolder(old) {
+		return ErrNoSuchFolder
+	}
+	if !ValidFolderName(to) {
+		return ErrFolderName
+	}
+	// A change of case alone is the same folder; anything else must be free.
+	if !strings.EqualFold(old, to) && m.resolveFolder(domain, username, to) != "Inbox" {
+		return ErrFolderExists
+	}
+	base := m.accountDir(domain, username)
+	return os.Rename(filepath.Join(base, "."+old), filepath.Join(base, "."+to))
+}
+
+// DeleteFolder removes one of the account's own folders. Its mail is moved to
+// Trash first, so deleting a folder never deletes a message outright: Trash's
+// retention decides that, as for any message deleted.
+func (m *Maildir) DeleteFolder(domain, username, name string) error {
+	f := m.resolveFolder(domain, username, name)
+	if isStandardFolder(f) {
+		return ErrNoSuchFolder
+	}
+	msgs, err := m.ListFolder(domain, username, f)
+	if err != nil {
+		return err
+	}
+	for _, msg := range msgs {
+		if err := m.MoveBetween(domain, username, msg.ID, f, "Trash"); err != nil {
+			return fmt.Errorf("moving %s to Trash: %w", msg.ID, err)
+		}
+	}
+	return os.RemoveAll(filepath.Join(m.accountDir(domain, username), "."+f))
 }
 
 // ensureFolder creates the tmp/new/cur dirs for a folder.
@@ -157,7 +302,7 @@ func (m *Maildir) Search(domain, username, q string, limit int) ([]SearchResult,
 	const maxScan = 5000
 	scanned := 0
 	out := []SearchResult{}
-	for _, folder := range StandardFolders {
+	for _, folder := range m.Folders(domain, username) {
 		msgs, err := m.ListFolder(domain, username, folder)
 		if err != nil {
 			continue

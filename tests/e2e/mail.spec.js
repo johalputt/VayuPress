@@ -376,7 +376,8 @@ test("a message sent later waits under Scheduled, and Cancel returns it to Draft
   await host.locator("[data-c-body]").fill("For the morning.");
   await host.locator("[data-c-later] summary").click();
   const morning = host.locator('[data-c-later-preset="morning"]');
-  await expect(morning).toContainText("Tomorrow morning · ");
+  await expect(morning).toContainText("Tomorrow morning");
+  await expect(morning.locator(".mx-compose__at")).not.toBeEmpty();
   await morning.click();
   await expect(host).toBeHidden({ timeout: 20000 });
   const fragment = (folder) => page.evaluate(async (f) => (await fetch("/os/vayumail/inbox/fragment?user=priya&folder=" + f)).text(), folder);
@@ -389,6 +390,36 @@ test("a message sent later waits under Scheduled, and Cancel returns it to Draft
   await row.getByRole("button", { name: "Cancel" }).click();
   await expect(row).toHaveCount(0);
   await expect.poll(() => fragment("Drafts"), { timeout: 10000 }).toContain(subject);
+});
+
+// A folder of your own: made from the sidebar, it opens; renamed and deleted
+// from its header's menu, and deleting it opens Inbox. Priya's mailbox, so
+// no other spec's sidebar shows it.
+test("a folder of your own is made, renamed and deleted", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/os/vayumail/inbox?user=priya");
+  await expect(page.locator("#vm-inbox-list .mx-head")).toBeVisible();
+  const title = page.locator("#vm-inbox-list .mx-head__main .mx-head__title");
+  const name = "Projects " + Date.now();
+  await page.locator("#vm-folders .mx-newfolder summary").click();
+  await page.locator("#vm-folders .mx-newfolder__name").fill(name);
+  await page.locator("#vm-folders .mx-newfolder__form button").click();
+  await expect(title).toHaveText(name);
+  await expect(page).toHaveURL(/folder=Projects/);
+  await expect(page.locator("#vm-folders a[aria-current=page]")).toContainText(name);
+  await page.locator('#vm-inbox-list [aria-label="Folder options"]').click();
+  const renamed = "Done " + Date.now();
+  await page.locator("#vm-inbox-list .mx-folderform input[name=name]").fill(renamed);
+  await page.locator("#vm-inbox-list .mx-folderform button").click();
+  await expect(title).toHaveText(renamed);
+  await expect(page.locator("#vm-folders")).not.toContainText(name);
+  await page.locator('#vm-inbox-list [aria-label="Folder options"]').click();
+  await page.locator("#vm-inbox-list .mx-folderform__delete").click();
+  const dialog = page.locator(".vp-confirm");
+  await expect(dialog).toContainText("Its mail moves to Trash.");
+  await dialog.getByRole("button", { name: "Confirm" }).click();
+  await expect(title).toHaveText("Inbox");
+  await expect(page.locator("#vm-folders")).not.toContainText(renamed);
 });
 
 // The compose page is the same sheet, full width: a deep link, or a browser

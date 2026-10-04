@@ -22,7 +22,7 @@ func TestTheMailSidebarIsTheOpenMailbox(t *testing.T) {
 	s.Route = "/os/vayumail/inbox"
 	s.MailSide = &osMailSide{
 		User: "dana", Address: "dana@example.com", Name: "Dana Kaur", Admin: true,
-		Folders: mailFolderNav("dana", "Sent", "pinned", map[string]int{"Inbox": 3}, map[string]int{"unread": 2, "pinned": 1}, false),
+		Folders: mailFolderNav(mailNav{User: "dana", Active: "Sent", View: "pinned", Counts: map[string]int{"Inbox": 3}, ViewCounts: map[string]int{"unread": 2, "pinned": 1}}),
 		Used:    900 << 20, Quota: 1 << 30,
 	}
 	out := stillAirShellHead("n", "Mailbox", "vayuos", s)

@@ -151,16 +151,12 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		}
 		// Move: a menu of the folders this message can go to.
 		c.WriteString(`<details class="sa-pop"><summary class="mx-tool" title="Move to… (v)" aria-label="Move to">` + saIcon("move") + `</summary><div class="sa-pop__panel sa-menu" role="menu">`)
-		for _, f := range vmail.StandardFolders {
-			// Snoozed is excluded: only the snooze action files there.
-			if strings.EqualFold(f, folder) || strings.EqualFold(f, "Snoozed") {
-				continue
-			}
+		for _, f := range a.moveTargets(rd, folder) {
 			attrs := `data-mail-move="` + esc(f) + `"`
 			if pane {
 				attrs = hxPost + paneVals("to", f)
 			}
-			c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" ` + attrs + `>` + saIcon(mailFolderIcons[f]) + `<span class="sa-menu__text">` + esc(f) + `</span></button>`)
+			c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" ` + attrs + `>` + saIcon(mailFolderIcon(f)) + `<span class="sa-menu__text">` + esc(f) + `</span></button>`)
 		}
 		c.WriteString(`</div></details>`)
 	}

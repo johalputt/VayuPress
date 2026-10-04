@@ -470,9 +470,13 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 	// The editor is a document (render 02): its bar leads back to the posts,
 	// and the width the sections would take is the writing's and the
 	// inspector's.
-	if app != nil && len(app.Sections) > 1 && !app.Tabbed && active != "editor" {
+	//
+	// An open mailbox has a sidebar whatever its app's sections: its folders
+	// are the way between Inbox, Sent, Scheduled and the rest, and a studio
+	// client's Mail, which has no sections, otherwise drew none at all.
+	mailOpen := app != nil && app.Key == "mail" && s.MailSide != nil
+	if app != nil && (len(app.Sections) > 1 || mailOpen) && !app.Tabbed && active != "editor" {
 		side.WriteString(`<nav class="sa-appside" aria-label="` + html.EscapeString(app.Label) + `">`)
-		mailOpen := app.Key == "mail" && s.MailSide != nil
 		// While a mailbox is open its own sections are the sidebar, and the
 		// rest of Mail is gathered for saMailSide to fold away.
 		out := &side

@@ -308,11 +308,12 @@ func (m *Maildir) Deliver(domain, username string, raw []byte) (string, error) {
 	return name, nil
 }
 
-// AccountSize returns the total bytes used by an account across ALL folders
-// (Inbox, Sent, Drafts, Archive, Junk, Trash) — used for quota accounting.
+// AccountSize returns the total bytes used by an account across ALL folders,
+// its own included (a folder outside the count would be room outside the
+// quota) — used for quota accounting.
 func (m *Maildir) AccountSize(domain, username string) int64 {
 	var total int64
-	for _, folder := range StandardFolders {
+	for _, folder := range m.Folders(domain, username) {
 		dir := m.folderDir(domain, username, folder)
 		for _, sub := range []string{"new", "cur"} {
 			entries, err := os.ReadDir(filepath.Join(dir, sub))

@@ -4774,6 +4774,23 @@
 .vp-os[data-ui="still-air"] .sa-appside__item:hover { background: var(--surface-hover); color: var(--text-1); text-decoration: none; }
 .vp-os[data-ui="still-air"] .sa-appside__item[aria-current="page"] { background: var(--surface-select); color: var(--text-1); font-weight: 500; }
 .vp-os[data-ui="still-air"] .sa-appside__item[aria-current="page"] .sa-ico { color: var(--accent); }
+/* New folder: a sidebar item that opens into its name field. */
+.vp-os[data-ui="still-air"] .mx-newfolder > summary { list-style: none; cursor: pointer; }
+.vp-os[data-ui="still-air"] .mx-newfolder > summary::-webkit-details-marker { display: none; }
+.vp-os[data-ui="still-air"] .mx-newfolder__form { display: flex; gap: var(--space-2); padding: var(--space-2) 10px var(--space-3); }
+.vp-os[data-ui="still-air"] .mx-newfolder__name {
+  flex: 1; min-width: 0; padding: var(--space-2) var(--space-3); border: 1px solid var(--border-2);
+  border-radius: var(--radius-control); background: var(--surface-1); color: var(--text-1); font: var(--type-small);
+}
+/* A folder of your own: Rename and Delete in the header's menu. The header
+   and the search below it are both sticky at one level, and the search comes
+   later, so an open menu in the header is lifted over it. */
+.vp-os[data-ui="still-air"] .mx-head:has(details[open]) { z-index: 3; }
+.vp-os[data-ui="still-air"] .mx-head__folder .sa-pop__panel { width: 260px; padding: var(--space-3); }
+.vp-os[data-ui="still-air"] .mx-folderform { display: flex; align-items: flex-end; gap: var(--space-2); margin-bottom: var(--space-2); }
+.vp-os[data-ui="still-air"] .mx-folderform__label { display: flex; flex: 1; flex-direction: column; gap: var(--space-1); min-width: 0; font: var(--type-meta); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .mx-folderform__label .mx-newfolder__name { width: 100%; }
+.vp-os[data-ui="still-air"] .mx-folderform__delete { width: 100%; color: var(--danger); }
 .vp-os[data-ui="still-air"] .sa-appside__label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vp-os[data-ui="still-air"] .sa-attn { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); flex: none; }
 /* Mail's folders (render 04) are items of the sidebar itself, whichever way
@@ -6861,10 +6878,15 @@
 .vp-os[data-ui="still-air"] .mx-compose__enc .sa-ico { width: 14px; height: 14px; }
 .vp-os[data-ui="still-air"] .mx-compose__status { margin-left: auto; padding: 0 var(--space-2); font: var(--type-small); color: var(--text-3); }
 .vp-os[data-ui="still-air"] :is(.mx-compose__more, .mx-compose__later) .sa-pop__panel { top: auto; bottom: calc(100% + 8px); left: 0; right: auto; width: 280px; padding: var(--space-2); }
-/* Send later: the presets, then a time of the sender's own choosing. */
-.vp-os[data-ui="still-air"] .mx-compose__when { flex-direction: column; align-items: stretch; gap: var(--space-2); cursor: default; }
-.vp-os[data-ui="still-air"] .mx-compose__when:hover { background: none; }
-.vp-os[data-ui="still-air"] .mx-compose__when .mx-compose__input { padding: var(--space-2) var(--space-3); border: 1px solid var(--border-2); border-radius: var(--radius-control); }
+/* Send later: the presets (the name, and its time to the right), then a
+   time of the sender's own choosing. Later in the sheet than .mx-compose__opt,
+   whose centring it overrides, so these are double-classed. */
+.vp-os[data-ui="still-air"] .mx-compose__later .sa-pop__panel { width: 320px; max-width: calc(100vw - 32px); }
+.vp-os[data-ui="still-air"] .mx-compose__opt[data-c-later-preset] { justify-content: space-between; }
+.vp-os[data-ui="still-air"] .mx-compose__at { color: var(--text-3); white-space: nowrap; }
+.vp-os[data-ui="still-air"] .mx-compose__opt.mx-compose__when { flex-direction: column; align-items: stretch; gap: var(--space-2); cursor: default; }
+.vp-os[data-ui="still-air"] .mx-compose__opt.mx-compose__when:hover { background: none; }
+.vp-os[data-ui="still-air"] .mx-compose__when .mx-compose__input { width: 100%; padding: var(--space-2) var(--space-3); border: 1px solid var(--border-2); border-radius: var(--radius-control); }
 .vp-os[data-ui="still-air"] .mx-compose__later [data-c-later-go] { margin: 0 var(--space-3) var(--space-2); }
 /* A held message under Scheduled: its row is not a link, and its two
    actions sit under its line. */

@@ -19,6 +19,9 @@ func TestSanitizeMailFolder(t *testing.T) {
 		`<script>`:    "Inbox",       // markup → default
 		`Inbox"onx`:   "Inbox",       // quote → default
 		"a'b":         "Inbox",       // apostrophe → default
+		"Café 2026":   "Café 2026",   // your own folder, as the engine allows it
+		"Scheduled":   "Scheduled",   // the list Send later holds
+		"a.b":         "Inbox",       // a Maildir++ level → default
 	}
 	for in, want := range cases {
 		if got := sanitizeMailFolder(in); got != want {

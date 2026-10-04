@@ -22,6 +22,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   why; a deleted mailbox's scheduled mail is deleted with it. A message the
   server was stopped in the middle of sending is not sent again by itself,
   since it may already have gone: it waits, saying so, for you to choose.
+- **Your own folders in Mail.** New folder in the mailbox's sidebar makes
+  one; its header's menu renames or deletes it, and deleting a folder moves
+  its mail to Trash rather than deleting any of it. Your folders are in every
+  Move menu and in search, count toward the mailbox's quota, and are the same
+  folders over IMAP, where mail apps can now create, rename and delete them
+  too (a read-only mailbox may not). A message snoozed from one of them wakes
+  back into it. A name is letters, digits, spaces, '-' and '_', up to 40
+  characters.
 
 ### Changed
 
@@ -36,6 +44,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **A studio client's Mail had no sidebar.** Their Mail app has no sections,
+  so the console drew none, and Sent, Drafts and the views could be reached
+  only by a link. An open mailbox now shows its folders for whoever holds it.
 - **"Ask your administrator" now reaches the administrator.** A person locked
   out of their mailbox was told "your administrator has been told", but the
   request only sat in a folded section of Mail's Accounts tab, and nothing in

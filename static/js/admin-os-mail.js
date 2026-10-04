@@ -1061,7 +1061,7 @@
     // its time it waits under Scheduled, where it can be sent or cancelled.
     var later = compose.querySelector('[data-c-later]');
     function laterLabel(d) {
-      return d.toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      return d.toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
     }
     function atHour(daysAhead, hour) {
       var d = new Date();
@@ -1090,7 +1090,11 @@
         var p = laterPresets();
         later.querySelectorAll('[data-c-later-preset]').forEach(function (b) {
           var it = p[b.getAttribute('data-c-later-preset')];
-          b.textContent = it[0] + ' · ' + laterLabel(it[1]);
+          var at = document.createElement('span');
+          at.className = 'mx-compose__at';
+          at.textContent = laterLabel(it[1]);
+          b.textContent = it[0];
+          b.appendChild(at);
           // Monday is tomorrow on a Sunday: one button is enough.
           b.hidden = b.getAttribute('data-c-later-preset') === 'monday' && it[1].getTime() === p.morning[1].getTime();
         });

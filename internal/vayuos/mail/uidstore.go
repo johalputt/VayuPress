@@ -85,7 +85,7 @@ func (s *UIDStore) Validity(account, folder string) (uint32, error) {
 	if s == nil || s.db == nil {
 		return 1, nil
 	}
-	account, folder = normEmail(account), canonicalFolder(folder)
+	account, folder = normEmail(account), folderKey(folder)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.ensureMailbox(account, folder); err != nil {
@@ -112,7 +112,7 @@ func (s *UIDStore) UIDNext(account, folder string) (uint32, error) {
 	if s == nil || s.db == nil {
 		return 1, nil
 	}
-	account, folder = normEmail(account), canonicalFolder(folder)
+	account, folder = normEmail(account), folderKey(folder)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.ensureMailbox(account, folder); err != nil {
@@ -133,7 +133,7 @@ func (s *UIDStore) Assign(account, folder, msgBase string) (uint32, error) {
 	if s == nil || s.db == nil {
 		return 0, errors.New("vayumail: no uid store")
 	}
-	account, folder = normEmail(account), canonicalFolder(folder)
+	account, folder = normEmail(account), folderKey(folder)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

@@ -114,7 +114,7 @@ func holdFor(t *testing.T, a *App, owner, subject string) int64 {
 func TestScheduledListIsTheMailboxsOwn(t *testing.T) {
 	a := scheduledApp(t)
 	rd := a.mailReader(withUser(httptest.NewRequest(http.MethodGet, "/", nil), danaHolder()), "")
-	nav := mailFolderNav(rd.Key(), "Inbox", "", a.folderUnread(rd), nil, false)
+	nav := a.mailNavFor(rd, "Inbox", "", nil, false)
 	if strings.Contains(nav, "folder=Scheduled") {
 		t.Fatal("the sidebar offers Scheduled with nothing scheduled")
 	}
@@ -128,7 +128,7 @@ func TestScheduledListIsTheMailboxsOwn(t *testing.T) {
 	if !strings.Contains(body, ">Send now<") || !strings.Contains(body, ">Cancel<") {
 		t.Fatalf("a held message without its actions:\n%s", body)
 	}
-	nav = mailFolderNav(rd.Key(), "Inbox", "", a.folderUnread(rd), nil, false)
+	nav = a.mailNavFor(rd, "Inbox", "", nil, false)
 	if !strings.Contains(nav, "folder=Scheduled") || !strings.Contains(nav, `aria-label="1"`) {
 		t.Fatalf("the sidebar does not offer Scheduled (1):\n%s", nav)
 	}

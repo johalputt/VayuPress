@@ -122,8 +122,54 @@ func (e *Engine) ACMEChallengeError() string {
 // Accounts returns the admin-managed mail account store (nil until Start).
 func (e *Engine) Accounts() *AccountStore { return e.accounts }
 
-// Folders returns the standard mailbox folder names.
-func (e *Engine) Folders() []string { return StandardFolders }
+// FoldersFor lists the folders of the mailbox rd reads: the standard ones,
+// then its own.
+func (e *Engine) FoldersFor(rd Reader) ([]string, error) {
+	if err := e.readAuthorised(rd); err != nil {
+		return nil, err
+	}
+	if e.maildir == nil {
+		return nil, errors.New("vayumail: not started")
+	}
+	dom, local := e.mailboxKey(rd.Key())
+	return e.maildir.Folders(dom, local), nil
+}
+
+// CreateFolder makes one of the mailbox's own folders.
+func (e *Engine) CreateFolder(rd Reader, name string) error {
+	if err := e.writeAuthorised(rd); err != nil {
+		return err
+	}
+	if e.maildir == nil {
+		return errors.New("vayumail: not started")
+	}
+	dom, local := e.mailboxKey(rd.Key())
+	return e.maildir.CreateFolder(dom, local, name)
+}
+
+// RenameFolder renames one of the mailbox's own folders.
+func (e *Engine) RenameFolder(rd Reader, from, to string) error {
+	if err := e.writeAuthorised(rd); err != nil {
+		return err
+	}
+	if e.maildir == nil {
+		return errors.New("vayumail: not started")
+	}
+	dom, local := e.mailboxKey(rd.Key())
+	return e.maildir.RenameFolder(dom, local, from, to)
+}
+
+// DeleteFolder removes one of the mailbox's own folders, its mail to Trash.
+func (e *Engine) DeleteFolder(rd Reader, name string) error {
+	if err := e.writeAuthorised(rd); err != nil {
+		return err
+	}
+	if e.maildir == nil {
+		return errors.New("vayumail: not started")
+	}
+	dom, local := e.mailboxKey(rd.Key())
+	return e.maildir.DeleteFolder(dom, local, name)
+}
 
 // mailboxKey resolves a mailbox identifier — which may be a bare local part (the
 // historic form, resolving to the primary domain, byte-identical) or a full

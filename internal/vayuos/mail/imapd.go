@@ -329,6 +329,8 @@ func (s *IMAPServer) handle(conn net.Conn) {
 			}
 		case "STATUS":
 			s.doStatus(line, sess, tag, arg)
+		case "CREATE", "DELETE", "RENAME":
+			s.doFolderCmd(line, sess, tag, cmd, arg)
 		case "SELECT", "EXAMINE":
 			s.doSelect(line, sess, tag, arg, cmd == "EXAMINE")
 		case "FETCH":
@@ -490,7 +492,7 @@ func (s *IMAPServer) doList(line func(string), sess *imapSession, tag, cmd, arg 
 	// LIST that asks about subscriptions — otherwise Thunderbird for Android /
 	// K-9, which only syncs folders it sees as subscribed, would sync nothing.
 	subscribed := strings.EqualFold(cmd, "LSUB") || strings.Contains(strings.ToUpper(arg), "SUBSCRIBED")
-	for _, f := range StandardFolders {
+	for _, f := range s.maildir.Folders(sess.authedDomain, sess.authedUser) {
 		name := f
 		if strings.EqualFold(f, "Inbox") {
 			name = "INBOX"
@@ -505,6 +507,54 @@ func (s *IMAPServer) doList(line func(string), sess *imapSession, tag, cmd, arg 
 		line("* " + cmd + " (" + attrs + `) "/" "` + name + `"`)
 	}
 	line(tag + " OK " + cmd + " completed")
+}
+
+// doFolderCmd is CREATE, DELETE and RENAME, on the mailbox's own folders
+// only (the Maildir layer refuses a standard one). A trailing "/" is the
+// hierarchy delimiter some clients append to CREATE; the namespace is flat,
+// so it is dropped. DELETE moves the folder's mail to Trash rather than
+// expunging it, as the console does.
+func (s *IMAPServer) doFolderCmd(line func(string), sess *imapSession, tag, cmd, arg string) {
+	if !sess.authed() {
+		line(tag + " NO Not authenticated")
+		return
+	}
+	if sess.readOnlyUser {
+		line(tag + " NO Mailbox is read-only")
+		return
+	}
+	names := tokenizeQuoted(arg)
+	for i := range names {
+		names[i] = strings.TrimSuffix(names[i], "/")
+	}
+	var err error
+	switch {
+	case cmd == "CREATE" && len(names) == 1:
+		if strings.EqualFold(names[0], "INBOX") || isStandardFolder(names[0]) {
+			line(tag + " NO [ALREADYEXISTS] Mailbox already exists")
+			return
+		}
+		err = s.maildir.CreateFolder(sess.authedDomain, sess.authedUser, names[0])
+	case cmd == "DELETE" && len(names) == 1:
+		err = s.maildir.DeleteFolder(sess.authedDomain, sess.authedUser, names[0])
+	case cmd == "RENAME" && len(names) == 2:
+		err = s.maildir.RenameFolder(sess.authedDomain, sess.authedUser, names[0], names[1])
+	default:
+		line(tag + " BAD " + cmd + " arguments invalid")
+		return
+	}
+	switch {
+	case errors.Is(err, ErrFolderExists):
+		line(tag + " NO [ALREADYEXISTS] " + err.Error())
+	case errors.Is(err, ErrNoSuchFolder):
+		line(tag + " NO [NONEXISTENT] " + err.Error())
+	case errors.Is(err, ErrFolderName):
+		line(tag + " NO [CANNOT] " + err.Error())
+	case err != nil:
+		line(tag + " NO " + cmd + " failed")
+	default:
+		line(tag + " OK " + cmd + " completed")
+	}
 }
 
 // mailboxMatches does a permissive IMAP wildcard match (* and % both match any
@@ -530,7 +580,7 @@ func (s *IMAPServer) doStatus(line func(string), sess *imapSession, tag, arg str
 		return
 	}
 	mbox, items := cutSpace(arg)
-	folder := canonicalFolder(strings.Trim(mbox, `"`))
+	folder := s.maildir.resolveFolder(sess.authedDomain, sess.authedUser, strings.Trim(mbox, `"`))
 	msgs, _ := s.maildir.ListFolder(sess.authedDomain, sess.authedUser, folder)
 	unseen := 0
 	for _, m := range msgs {
@@ -618,7 +668,7 @@ func (s *IMAPServer) doSelect(line func(string), sess *imapSession, tag, arg str
 		line(tag + " NO Not authenticated")
 		return
 	}
-	folder := canonicalFolder(strings.Trim(strings.TrimSpace(arg), `"`))
+	folder := s.maildir.resolveFolder(sess.authedDomain, sess.authedUser, strings.Trim(strings.TrimSpace(arg), `"`))
 	if err := s.snapshot(sess, folder); err != nil {
 		line(tag + " NO Cannot open mailbox")
 		return
@@ -788,7 +838,7 @@ func (s *IMAPServer) doCopy(line func(string), sess *imapSession, tag, arg strin
 		return
 	}
 	seqPart, mbox := cutSpace(arg)
-	dest := canonicalFolder(strings.Trim(strings.TrimSpace(mbox), `"`))
+	dest := s.maildir.resolveFolder(sess.authedDomain, sess.authedUser, strings.Trim(strings.TrimSpace(mbox), `"`))
 	targets := s.resolveSet(sess, seqPart, byUID)
 	srcUIDs, dstUIDs := []string{}, []string{}
 	// COPY adds bytes: the source stays where it is. Measured once and carried,
@@ -835,7 +885,7 @@ func (s *IMAPServer) doMove(w *bufio.Writer, line func(string), sess *imapSessio
 		return
 	}
 	seqPart, mbox := cutSpace(arg)
-	dest := canonicalFolder(strings.Trim(strings.TrimSpace(mbox), `"`))
+	dest := s.maildir.resolveFolder(sess.authedDomain, sess.authedUser, strings.Trim(strings.TrimSpace(mbox), `"`))
 	targets := s.resolveSet(sess, seqPart, byUID)
 	moved := map[string]bool{}
 	for _, m := range targets {
@@ -1170,7 +1220,7 @@ func (s *IMAPServer) doAppend(br *bufio.Reader, w *bufio.Writer, line func(strin
 	folder := "Inbox"
 	flags := map[byte]bool{}
 	if fields := tokenizeAppendHead(head); len(fields) > 0 {
-		folder = canonicalFolder(strings.Trim(fields[0], `"`))
+		folder = s.maildir.resolveFolder(sess.authedDomain, sess.authedUser, strings.Trim(fields[0], `"`))
 	}
 	if i := strings.IndexByte(head, '('); i >= 0 {
 		if j := strings.IndexByte(head, ')'); j > i {

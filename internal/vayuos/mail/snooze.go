@@ -98,14 +98,6 @@ func (e *Engine) Snooze(rd Reader, folder, id string, until time.Time) error {
 		return errors.New("vayumail: not started")
 	}
 	username := rd.Key()
-	folder = canonicalFolder(folder)
-	switch folder {
-	case "Sent", "Drafts", "Snoozed":
-		return errors.New("this folder cannot be snoozed")
-	}
-	if until.Before(time.Now()) {
-		return errors.New("the wake time is in the past")
-	}
 	// mailboxKey, like every other folder operation on the engine. This method
 	// predates VayuDomains and assumed username was a bare localpart on the
 	// primary domain: it hardcoded e.cfg.Domain, passed username straight through
@@ -114,6 +106,14 @@ func (e *Engine) Snooze(rd Reader, folder, id string, until time.Time) error {
 	// a mailbox that does not exist. Snooze therefore did nothing at all outside
 	// the primary domain, and said so nowhere.
 	dom, local := e.mailboxKey(username)
+	folder = e.maildir.resolveFolder(dom, local, folder)
+	switch folder {
+	case "Sent", "Drafts", "Snoozed":
+		return errors.New("this folder cannot be snoozed")
+	}
+	if until.Before(time.Now()) {
+		return errors.New("the wake time is in the past")
+	}
 	raw, err := e.maildir.ReadRawFolder(dom, local, folder, id)
 	if err != nil {
 		return err
@@ -152,7 +152,7 @@ func (e *Engine) sweepSnoozes(now time.Time) {
 		// all for every mailbox outside the primary domain.
 		dom, local := e.mailboxKey(r.Mailbox)
 		if local != "" {
-			_ = e.maildir.MoveBetween(dom, local, r.ID, "Snoozed", canonicalFolder(r.OrigFolder))
+			_ = e.maildir.MoveBetween(dom, local, r.ID, "Snoozed", e.maildir.resolveFolder(dom, local, r.OrigFolder))
 		}
 		e.accounts.clearSnooze(ctx, r.Mailbox, r.ID)
 	}

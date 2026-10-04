@@ -1498,21 +1498,20 @@ func mailFolderParam(r *http.Request) string {
 }
 
 // sanitizeMailFolder is the pure barrier behind mailFolderParam, shared by the
-// POST action handlers that read the folder from the form. Invalid input falls
-// back to "Inbox". html.EscapeString is a no-op on the allowed charset
+// POST action handlers that read the folder from the form. A folder is a
+// standard one, Scheduled, or a name the engine would make a folder of
+// (vmail.ValidFolderName: letters, digits, spaces, '-' and '_'), one rule for
+// both, so the console cannot refuse a folder the mailbox has. Anything else
+// falls back to "Inbox". html.EscapeString is a no-op on the allowed charset
 // (byte-identical output) but routes the value through a recognised sanitiser
 // so go/reflected-xss is cleared on every downstream HTML sink.
 func sanitizeMailFolder(f string) string {
-	if f == "" || len(f) > 64 {
-		return "Inbox"
+	allowed := isScheduledFolder(f) || vmail.ValidFolderName(f)
+	for _, s := range vmail.StandardFolders {
+		allowed = allowed || strings.EqualFold(f, s)
 	}
-	for i := 0; i < len(f); i++ {
-		c := f[i]
-		ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-			(c >= '0' && c <= '9') || c == ' ' || c == '_' || c == '-'
-		if !ok {
-			return "Inbox"
-		}
+	if !allowed {
+		return "Inbox"
 	}
 	return html.EscapeString(f)
 }
@@ -1776,59 +1775,104 @@ var mailFolderIcons = map[string]string{
 // the current folder, the current view and the counts beside the list never
 // go stale while the list changes: a folder switch, a row action and the
 // new-mail poll all refresh it. viewCounts are the open folder's.
-func mailFolderNav(user, active, view string, counts, viewCounts map[string]int, oob bool) string {
+func mailFolderNav(n mailNav) string {
 	var sb strings.Builder
 	sb.WriteString(`<div id="vm-folders" class="sa-appside__folders"`)
-	if oob {
+	if n.OOB {
 		sb.WriteString(` hx-swap-oob="true"`)
 	}
 	sb.WriteString(`>`)
-	item := func(q, label, icon, cur string, n int) {
+	user := qparam(n.User)
+	item := func(q, label, icon, cur string, count int) {
 		full := "/os/vayumail/inbox?" + q
 		frag := "/os/vayumail/inbox/fragment?" + q
 		badge := ""
-		if n > 0 {
-			badge = `<span class="sa-appside__count" aria-label="` + itoaSafe(n) + `">` + notifCap(n) + `</span>`
+		if count > 0 {
+			badge = `<span class="sa-appside__count" aria-label="` + itoaSafe(count) + `">` + notifCap(count) + `</span>`
 		}
+		// Every part of the URL is qparam-encoded, so it needs no escaping;
+		// the label is a folder's own name, so it does.
 		sb.WriteString(`<a class="sa-appside__item" href="` + full + `" hx-get="` + frag + `" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin" hx-push-url="` + full + `"` + cur + `>` +
-			saIcon(icon) + `<span class="sa-appside__label">` + label + `</span>` + badge + `</a>`)
+			saIcon(icon) + `<span class="sa-appside__label">` + esc(label) + `</span>` + badge + `</a>`)
+	}
+	current := func(f string) string {
+		if strings.EqualFold(f, n.Active) {
+			return ` aria-current="page"`
+		}
+		return ""
 	}
 	for _, f := range vmail.StandardFolders {
-		cur := ""
-		if strings.EqualFold(f, active) {
-			cur = ` aria-current="page"`
-		}
-		item("user="+qparam(user)+"&folder="+qparam(f), f, mailFolderIcons[f], cur, counts[f])
+		item("user="+user+"&folder="+qparam(f), f, mailFolderIcons[f], current(f), n.Counts[f])
 	}
 	// Scheduled is there while something is (or while it is open), and has
 	// no views: it is a list of held messages, not a folder of mail.
-	if isScheduledFolder(active) {
-		item("user="+qparam(user)+"&folder="+scheduledFolder, scheduledFolder, "calendar", ` aria-current="page"`, counts[scheduledFolder])
+	if c := n.Counts[scheduledFolder]; c > 0 || isScheduledFolder(n.Active) {
+		item("user="+user+"&folder="+scheduledFolder, scheduledFolder, "calendar", current(scheduledFolder), c)
+	}
+	// Your own folders, then the way to make one (not offered to a read-only
+	// mailbox, which the engine would refuse).
+	if len(n.Own) > 0 || n.Writable {
+		sb.WriteString(`<div class="sa-appside__group">Folders</div>`)
+		for _, f := range n.Own {
+			item("user="+user+"&folder="+qparam(f), f, "folder", current(f), 0)
+		}
+		if n.Writable {
+			sb.WriteString(`<details class="mx-newfolder"><summary class="sa-appside__item">` + saIcon("plus") + `<span class="sa-appside__label">New folder</span></summary>` +
+				`<form class="mx-newfolder__form" hx-post="/os/vayumail/folders/action" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin">` +
+				`<input type="hidden" name="user" value="` + esc(n.User) + `"><input type="hidden" name="folder" value="` + esc(n.Active) + `"><input type="hidden" name="action" value="create">` +
+				`<input class="mx-newfolder__name" name="name" required maxlength="40" aria-label="Folder name" placeholder="Folder name" autocomplete="off">` +
+				`<button type="submit" class="btn btn--sm">Create</button></form></details>`)
+		}
+	}
+	if isScheduledFolder(n.Active) {
 		sb.WriteString(`</div>`)
 		return sb.String()
-	}
-	if n := counts[scheduledFolder]; n > 0 {
-		item("user="+qparam(user)+"&folder="+scheduledFolder, scheduledFolder, "calendar", "", n)
 	}
 	// Views filter the open folder; choosing the view in force again shows
 	// the whole folder.
 	sb.WriteString(`<div class="sa-appside__group">Views</div>`)
 	for _, v := range mailViews {
-		q, cur := "user="+qparam(user)+"&folder="+qparam(active)+"&view="+v.Key, ""
-		if v.Key == view {
-			q, cur = "user="+qparam(user)+"&folder="+qparam(active), ` aria-current="true"`
+		q, cur := "user="+user+"&folder="+qparam(n.Active)+"&view="+v.Key, ""
+		if v.Key == n.View {
+			q, cur = "user="+user+"&folder="+qparam(n.Active), ` aria-current="true"`
 		}
-		item(q, v.Label, v.Icon, cur, viewCounts[v.Key])
+		item(q, v.Label, v.Icon, cur, n.ViewCounts[v.Key])
 	}
 	sb.WriteString(`</div>`)
 	return sb.String()
+}
+
+// mailNav is what the Mail sidebar's folders and views are drawn from.
+type mailNav struct {
+	User, Active, View string
+	// Own are the mailbox's own folders; Writable offers New folder.
+	Own                []string
+	Writable           bool
+	Counts, ViewCounts map[string]int
+	// OOB sends it out of band beside a list swap.
+	OOB bool
+}
+
+// mailNavFor is the sidebar for the mailbox rd reads, with active open.
+func (a *App) mailNavFor(rd vmail.Reader, active, view string, viewCounts map[string]int, oob bool) string {
+	return mailFolderNav(mailNav{User: rd.Key(), Active: active, View: view, Own: a.ownFolders(rd),
+		Writable: !a.vayuMail.ReaderReadOnly(rd), Counts: a.folderUnread(rd), ViewCounts: viewCounts, OOB: oob})
+}
+
+// ownFolders lists the folders of rd's mailbox that are its own.
+func (a *App) ownFolders(rd vmail.Reader) []string {
+	all, err := a.vayuMail.FoldersFor(rd)
+	if err != nil {
+		return nil
+	}
+	return all[len(vmail.StandardFolders):]
 }
 
 // vayuInboxSwap is the folder view as an HTMX swap returns it: the list, and
 // the sidebar's folders and views out of band.
 func (a *App) vayuInboxSwap(rd vmail.Reader, folder, view string, limit int) string {
 	body, facts := a.vayuInboxBody(rd, folder, view, limit)
-	return body + mailFolderNav(rd.Key(), folder, view, a.folderUnread(rd), facts.Counts, true)
+	return body + a.mailNavFor(rd, folder, view, facts.Counts, true)
 }
 
 // mailboxDirectoryRequested reports whether a mailbox page carrying no ?user= is
@@ -1922,7 +1966,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	pageLimit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
 	list, facts := a.vayuInboxBody(rd, folder, view, pageLimit)
 	side := &osMailSide{User: user, Address: mbox, Avatar: mailAvatarImg(mbox, a.mailboxAvatarSet()), Admin: a.isAdminRequest(r),
-		Folders: mailFolderNav(user, folder, view, a.folderUnread(rd), facts.Counts, false),
+		Folders: a.mailNavFor(rd, folder, view, facts.Counts, false),
 		Used:    a.vayuMail.MailboxUsage(mbox), Quota: a.vayuMail.MailboxQuota(mbox)}
 	if acc := a.vayuMail.Accounts(); acc != nil {
 		side.Name = acc.FullNameFor(r.Context(), mbox)
@@ -2102,6 +2146,9 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int) (st
 		b.WriteString(`<span class="mx-head__note">` + itoaSafe(counts["unread"]) + ` unread</span>`)
 	}
 	b.WriteString(`<span class="mx-head__fill"></span>`)
+	if !readOnly && vmail.ValidFolderName(folder) {
+		b.WriteString(ownFolderMenu(user, folder))
+	}
 	if !readOnly {
 		b.WriteString(`<a class="btn btn--ghost btn--sm btn--icon" href="/os/vayumail/compose?user=` + qparam(user) + `" title="Write a message (c)" aria-label="Write a message"` + mailCmd("Write a message", "Mail", "c") + `>` + saIcon("pencil") + `</a>`)
 	}
@@ -2166,13 +2213,8 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int) (st
 		}
 		if !readOnly {
 			b.WriteString(`<details class="sa-pop mx-selpanel__menu"><summary class="btn mx-selpanel__act">` + saIcon("move") + `Move to…</summary><div class="sa-pop__panel sa-menu" role="menu">`)
-			for _, f := range vmail.StandardFolders {
-				// Snoozed is excluded: only the snooze action files there (a
-				// manual move would sleep forever with no wake row).
-				if strings.EqualFold(f, folder) || strings.EqualFold(f, "Snoozed") {
-					continue
-				}
-				b.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"move","to":"` + esc(f) + `"}'` + inc + `>` + saIcon(mailFolderIcons[f]) + `<span class="sa-menu__text">` + esc(f) + `</span></button>`)
+			for _, f := range a.moveTargets(rd, folder) {
+				b.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"move","to":"` + esc(f) + `"}'` + inc + `>` + saIcon(mailFolderIcon(f)) + `<span class="sa-menu__text">` + esc(f) + `</span></button>`)
 			}
 			b.WriteString(`</div></details>`)
 		}
@@ -2542,7 +2584,7 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 	// Filter bar — results update instantly over HTMX as you type or change a
 	// filter (debounced), swapping #vm-search-results with no full-page reload.
 	folderOpts := `<option value="">All folders</option>`
-	for _, f := range vmail.StandardFolders {
+	for _, f := range append(append([]string{}, vmail.StandardFolders...), a.ownFolders(rd)...) {
 		sel := ""
 		if strings.EqualFold(f, sf.folder) {
 			sel = ` selected`

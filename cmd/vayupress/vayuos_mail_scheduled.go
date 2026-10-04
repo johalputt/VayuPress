@@ -155,5 +155,5 @@ func (a *App) handleVayuOSScheduledAction(w http.ResponseWriter, r *http.Request
 		note = "Not done: " + err.Error()
 	}
 	writeOSFragment(w, a.vayuScheduledBody(r.Context(), rd, note)+
-		mailFolderNav(rd.Key(), scheduledFolder, "", a.folderUnread(rd), nil, true))
+		a.mailNavFor(rd, scheduledFolder, "", nil, true))
 }
