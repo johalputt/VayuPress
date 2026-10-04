@@ -171,6 +171,11 @@ func (e *Engine) deliver(envelopeFrom, recipientEmail string, raw []byte, stampe
 			}
 		}
 	}
+	// A blocked sender's mail goes straight to Trash: not the inbox, and not
+	// forwarded or answered (blocked.go says why not refused here).
+	if e.blockedAtDelivery(local+"@"+domain, envelopeFrom, raw) {
+		return e.maildir.DeliverTo(domain, local, "Trash", raw)
+	}
 	// Built-in heuristic junk filter (fully local — no external services). Mail
 	// scoring at or above the threshold is filed straight into the recipient's
 	// Junk folder instead of the inbox. Junk is NOT auto-forwarded.

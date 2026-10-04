@@ -1875,6 +1875,24 @@ func (a *App) vayuInboxSwap(rd vmail.Reader, folder, view string, limit int) str
 	return body + a.mailNavFor(rd, folder, view, facts.Counts, true)
 }
 
+// mailSide is the open mailbox's sidebar (Mail plan §3.1), with folder and
+// view current; a page of the mailbox that is not a folder (Bring mail in)
+// passes "".
+func (a *App) mailSide(r *http.Request, rd vmail.Reader, folder, view string, viewCounts map[string]int) *osMailSide {
+	mbox := mailAddrOf(rd.Key(), a.vayuMail.Config().Domain)
+	side := &osMailSide{User: rd.Key(), Address: mbox, Avatar: mailAvatarImg(mbox, a.mailboxAvatarSet()), Admin: a.isAdminRequest(r),
+		Folders: a.mailNavFor(rd, folder, view, viewCounts, false),
+		Used:    a.vayuMail.MailboxUsage(mbox), Quota: a.vayuMail.MailboxQuota(mbox), Writable: !a.vayuMail.ReaderReadOnly(rd)}
+	if acc := a.vayuMail.Accounts(); acc != nil {
+		side.Name = acc.FullNameFor(r.Context(), mbox)
+	}
+	if u := currentUser(r); u != nil && a.userStore != nil {
+		side.Reading = true
+		side.FullOpen = a.userStore.MailLayout(r.Context(), u.ID) == users.MailLayoutFull
+	}
+	return side
+}
+
 // mailboxDirectoryRequested reports whether a mailbox page carrying no ?user= is
 // the DIRECTORY rather than a mail read.
 //
@@ -1961,20 +1979,10 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	// the pane overlays the list (see vayuos.css .vm-split).
 	// Outside #vm-inbox-list on purpose: the fragment swaps that element's
 	// contents, so an indicator inside it would be replaced mid-request.
-	mbox := mailAddrOf(user, domain)
 	view := mailViewParam(r)
 	pageLimit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
 	list, facts := a.vayuInboxBody(rd, folder, view, pageLimit)
-	side := &osMailSide{User: user, Address: mbox, Avatar: mailAvatarImg(mbox, a.mailboxAvatarSet()), Admin: a.isAdminRequest(r),
-		Folders: a.mailNavFor(rd, folder, view, facts.Counts, false),
-		Used:    a.vayuMail.MailboxUsage(mbox), Quota: a.vayuMail.MailboxQuota(mbox), Writable: !a.vayuMail.ReaderReadOnly(rd)}
-	if acc := a.vayuMail.Accounts(); acc != nil {
-		side.Name = acc.FullNameFor(r.Context(), mbox)
-	}
-	if u := currentUser(r); u != nil && a.userStore != nil {
-		side.Reading = true
-		side.FullOpen = a.userStore.MailLayout(r.Context(), u.ID) == users.MailLayoutFull
-	}
+	side := a.mailSide(r, rd, folder, view, facts.Counts)
 	cfg.MailSide = side
 	body.WriteString(`<span id="vm-inbox-spin" class="htmx-indicator vm-spin" aria-hidden="true">loading…</span>`)
 	// The Mail plan's panes are their own kind, "app": the fidelity plan
@@ -2148,6 +2156,13 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int) (st
 	b.WriteString(`<span class="mx-head__fill"></span>`)
 	if !readOnly && vmail.ValidFolderName(folder) {
 		b.WriteString(ownFolderMenu(user, folder))
+	}
+	// Trash and Junk empty at once, not only by retention (blocked.go,
+	// EmptyFolder). The confirm says how many go, and that it is for good.
+	if !readOnly && len(all) > 0 && (strings.EqualFold(folder, "Trash") || strings.EqualFold(folder, "Junk")) {
+		n := itoaSafe(len(all)) + " " + map[bool]string{true: "message", false: "messages"}[len(all) == 1]
+		b.WriteString(`<button type="button" class="btn btn--ghost btn--sm" hx-post="/os/vayumail/inbox/action"` + hxVals("user", user, "folder", folder, "action", "empty") +
+			` hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-confirm="Delete the ` + n + ` in ` + esc(folder) + ` for good?">Empty ` + esc(folder) + `</button>`)
 	}
 	if !readOnly {
 		b.WriteString(`<a class="btn btn--ghost btn--sm btn--icon" href="/os/vayumail/compose?user=` + qparam(user) + `" title="Write a message (c)" aria-label="Write a message"` + mailCmd("Write a message", "Mail", "c") + `>` + saIcon("pencil") + `</a>`)
@@ -2506,6 +2521,13 @@ func (a *App) handleVayuOSInboxAction(w http.ResponseWriter, r *http.Request) {
 		ids = ids[:500]
 	}
 	action := strings.TrimSpace(r.PostFormValue("action"))
+	if action == "empty" {
+		// The whole folder, not a selection: no ids are needed or used.
+		ids = nil
+		if _, err := a.vayuMail.EmptyFolder(rd, folder); err != nil {
+			w.Header().Set("HX-Trigger", `{"vm-inbox-result":{"done":0,"failed":1}}`)
+		}
+	}
 	apply := func(id string) error {
 		switch action {
 		case "mark":

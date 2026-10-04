@@ -417,6 +417,8 @@ func (s *AccountStore) SetActive(ctx context.Context, email string, active bool)
 //	autoreply_log      auto-reply dedupe bookkeeping
 //	scheduled          mail held to send later, which must not go out from a
 //	                   mailbox that is gone
+//	blocked            senders the mailbox refuses, which a new holder of the
+//	                   address did not choose
 //
 // vayumail_aliases is deliberately absent. An alias is operator configuration,
 // visible and editable in the console, and silently deleting it on account
@@ -431,6 +433,7 @@ var perAddressTables = [][2]string{
 	{"vayumail_snooze", "mailbox"},
 	{"vayumail_autoreply_log", "mailbox"},
 	{"vayumail_scheduled", "owner"},
+	{"vayumail_blocked", "mailbox"},
 }
 
 // Delete removes an account and the per-address state that outlived it.

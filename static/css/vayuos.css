@@ -1979,6 +1979,7 @@
 .vp-os .vm-contacts { display: flex; flex-direction: column; gap: var(--sp-3); }
 
 .vp-os .vm-contacts-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); flex-wrap: wrap; }
+.vp-os .vm-blocked-head { margin-top: var(--sp-4); }
 
 .vp-os .vm-contacts-title { margin: 0; font-size: 15px; }
 
@@ -6026,6 +6027,9 @@
 
 /* The reader (Mail plan §3.3): its tools stay put while the message scrolls
    under them, and the docked reply stays at its foot. */
+/* Contacts open in the reading pane, which pads nothing of its own (the
+   reader lays out its own edges), so it keeps off them itself. */
+.vp-os[data-ui="still-air"] .vm-readpane > .vm-contacts { padding: var(--space-6) var(--space-7); }
 .vp-os[data-ui="still-air"] .vm-readpane > .mx-reader { display: flex; flex-direction: column; min-height: 100%; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
 .vp-os[data-ui="still-air"] .mx-rtools {
   position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: var(--space-2);

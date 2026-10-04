@@ -36,6 +36,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   of someone else's mailbox, and an import into it, are recorded in that
   mailbox's access record, where its holder sees them; a handed-over mailbox
   cannot be downloaded by an administrator at all.
+- **Block a sender, and empty Trash or Junk now.** Block, in a message's
+  More menu, stops mail from its sender: a server that names them as the
+  sender is refused for that mailbox alone, and a message only signed with
+  their address (as newsletters send) goes straight to Trash, unforwarded and
+  unanswered. Blocked senders are listed under Contacts, with Unblock. Trash
+  and Junk have Empty, which says how many messages go for good before it
+  deletes them.
 - **Your own folders in Mail.** New folder in the mailbox's sidebar makes
   one; its header's menu renames or deletes it, and deleting a folder moves
   its mail to Trash rather than deleting any of it. Your folders are in every

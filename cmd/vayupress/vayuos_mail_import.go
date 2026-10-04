@@ -33,6 +33,11 @@ func (a *App) handleVayuOSMailImport(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	csrfTokenFor(w, r)
 	rd := a.mailReader(r, mailUserParam(r))
+	// The page is the mailbox's, so its sidebar stays, with this current.
+	if rd.Key() != "" {
+		cfg.MailSide = a.mailSide(r, rd, "", "", nil)
+		cfg.MailSide.Importing = true
+	}
 	body := ui.HTML(`<div id="mx-import">` + a.mailImportBody(r.Context(), rd, "") + `</div>`)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Bring mail in", "vayuos", cfg, body))
 }

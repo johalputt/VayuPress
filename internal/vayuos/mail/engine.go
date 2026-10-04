@@ -800,7 +800,7 @@ func (e *Engine) Start(ctx context.Context) error {
 			e.inboundErr = fmt.Errorf("tls: %w", terr)
 		}
 
-		smtpd := NewSMTPServer(e.cfg, e.inboundDeliver).WithTLS(e.tlsConf).WithRecipientCheck(e.isLocalRecipient)
+		smtpd := NewSMTPServer(e.cfg, e.inboundDeliver).WithTLS(e.tlsConf).WithRecipientCheck(e.isLocalRecipient).WithBlockCheck(e.senderRefused)
 		if err := smtpd.Start(ctx); err != nil {
 			e.inboundErr = errors.Join(e.inboundErr, fmt.Errorf("smtp receive: %w", err))
 		} else {

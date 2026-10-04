@@ -1745,6 +1745,12 @@
   // counts per-message failures and fires this event (via HX-Trigger); the shell
   // shows one toast. Before this, every per-message error was swallowed
   // (`_ = apply(id)`), so a half-done batch looked exactly like a clean one.
+  // A write that answers with a sentence rather than a redraw (Block).
+  document.body.addEventListener('vm-said', function (e) {
+    var d = (e && e.detail) || {};
+    if (d.text) acctToast(d.text, d.warn ? 'warn' : undefined);
+  });
+
   document.body.addEventListener('vm-inbox-result', function (e) {
     var d = (e && e.detail) || {};
     if (!d.failed) return;

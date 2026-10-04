@@ -394,7 +394,11 @@ func saMailSide(m *osMailSide, more string) string {
 	// Every folder as mbox files in a zip: the way to take the mail
 	// elsewhere (vayuos_mail_download.go).
 	if m.Writable {
-		b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/import?user=` + qparam(m.User) + `">` + saIcon("upload") + `<span class="sa-appside__label">Bring mail in</span></a>`)
+		cur := ""
+		if m.Importing {
+			cur = ` aria-current="page"`
+		}
+		b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/import?user=` + qparam(m.User) + `"` + cur + `>` + saIcon("upload") + `<span class="sa-appside__label">Bring mail in</span></a>`)
 	}
 	b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/download?user=` + qparam(m.User) + `" download>` + saIcon("download") + `<span class="sa-appside__label">Download all mail</span></a>`)
 	if m.Admin {

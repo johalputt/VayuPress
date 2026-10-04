@@ -50,15 +50,19 @@ func (a *App) contactOwner(r *http.Request, userParam string) (string, bool) {
 // target (#vm-contacts-panel); every mutation returns the whole panel via
 // hx-swap="outerHTML". userKey is threaded through so an admin acting on another
 // mailbox stays scoped to it.
-func (a *App) vayuContactsPanel(ctx context.Context, owner, userKey string) string {
-	return a.vayuContactsPanelWith(ctx, owner, userKey, "", "", "")
+func (a *App) vayuContactsPanel(r *http.Request, owner, userKey string) string {
+	return a.vayuContactsPanelWith(r, owner, userKey, "", "", "")
 }
 
 // vayuContactsPanelWith is the panel plus an optional failure notice and the
 // values the operator typed. A rejected save used to re-render the panel
 // unchanged — their entry gone, nothing said — which reads as "the button is
 // broken" rather than "that address is not valid".
-func (a *App) vayuContactsPanelWith(ctx context.Context, owner, userKey, errMsg, typedEmail, typedName string) string {
+//
+// It takes the request, not only its context, so the blocked list at its foot
+// is read with the request's own authority (mailReader).
+func (a *App) vayuContactsPanelWith(r *http.Request, owner, userKey, errMsg, typedEmail, typedName string) string {
+	ctx := r.Context()
 	// Direct html.EscapeString calls, not a local alias: typedEmail and
 	// typedName come straight from the form, and CodeQL credits the escaper
 	// only when it can see the call (go/reflected-xss).
@@ -102,6 +106,7 @@ func (a *App) vayuContactsPanelWith(ctx context.Context, owner, userKey, errMsg,
 		}
 		b.WriteString(`</ul>`)
 	}
+	b.WriteString(a.blockedSection(a.mailReader(r, userKey), userKey))
 	b.WriteString(`</div>`)
 	return b.String()
 }
@@ -114,7 +119,7 @@ func (a *App) handleVayuOSContacts(w http.ResponseWriter, r *http.Request) {
 		writeOSFragment(w, `<div class="empty-state">Select a mailbox to manage its contacts.</div>`)
 		return
 	}
-	writeOSFragment(w, a.vayuContactsPanel(r.Context(), owner, mailUserParam(r)))
+	writeOSFragment(w, a.vayuContactsPanel(r, owner, mailUserParam(r)))
 }
 
 // handleVayuOSContactAdd saves a contact typed into the panel's add form and
@@ -131,10 +136,10 @@ func (a *App) handleVayuOSContactAdd(w http.ResponseWriter, r *http.Request) {
 	if err := a.vayuMail.Accounts().AddContact(r.Context(), owner, email, name); err != nil {
 		// Say what was wrong AND keep what they typed. The old silent re-render
 		// was indistinguishable from a dead button.
-		writeOSFragment(w, a.vayuContactsPanelWith(r.Context(), owner, userKey, contactErrText(err), email, name))
+		writeOSFragment(w, a.vayuContactsPanelWith(r, owner, userKey, contactErrText(err), email, name))
 		return
 	}
-	writeOSFragment(w, a.vayuContactsPanel(r.Context(), owner, userKey))
+	writeOSFragment(w, a.vayuContactsPanel(r, owner, userKey))
 }
 
 // contactErrText turns a failed address-book write into something a person can
@@ -156,11 +161,11 @@ func (a *App) handleVayuOSContactDelete(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := a.vayuMail.Accounts().DeleteContact(r.Context(), owner, r.FormValue("email")); err != nil {
-		writeOSFragment(w, a.vayuContactsPanelWith(r.Context(), owner, userKey,
+		writeOSFragment(w, a.vayuContactsPanelWith(r, owner, userKey,
 			"Could not remove that contact — please try again.", "", ""))
 		return
 	}
-	writeOSFragment(w, a.vayuContactsPanel(r.Context(), owner, userKey))
+	writeOSFragment(w, a.vayuContactsPanel(r, owner, userKey))
 }
 
 // handleVayuOSContactSave is the one-click "Save contact" on a message: it files

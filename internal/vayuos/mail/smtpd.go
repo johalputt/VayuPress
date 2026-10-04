@@ -46,6 +46,9 @@ type SMTPServer struct {
 	// a Maildir per address, so a single connection could spray hundreds of
 	// thousands of directories. Unknown recipients are now refused with 550 5.1.1.
 	recipientExists func(addr string) bool
+	// senderBlocked refuses a recipient whose mailbox blocks the envelope
+	// sender (WithBlockCheck).
+	senderBlocked func(from, rcpt string) bool
 	// senderAllowed, when set on the submission server, reports whether an
 	// authenticated user may send as a given From/MAIL FROM address — the
 	// sender-login binding that stops one mailbox spoofing another (audit M5).
@@ -92,6 +95,14 @@ func (s *SMTPServer) WithTLS(t *tls.Config) *SMTPServer {
 // alias (audit H4). Returns the server for chaining.
 func (s *SMTPServer) WithRecipientCheck(exists func(addr string) bool) *SMTPServer {
 	s.recipientExists = exists
+	return s
+}
+
+// WithBlockCheck wires the blocked-sender check for the inbound server: a
+// recipient whose mailbox blocks the envelope sender is refused at RCPT, to
+// that recipient alone (blocked.go).
+func (s *SMTPServer) WithBlockCheck(refused func(from, rcpt string) bool) *SMTPServer {
+	s.senderBlocked = refused
 	return s
 }
 
@@ -382,6 +393,9 @@ func (s *SMTPServer) handle(conn net.Conn) {
 				// Local domain, but no such mailbox/alias: refuse rather than accept
 				// and auto-create a Maildir per address (audit H4).
 				write("550 5.1.1 No such user here")
+				continue
+			} else if s.senderBlocked != nil && s.senderBlocked(from, addr) {
+				write("550 5.7.1 This recipient does not accept mail from this sender")
 				continue
 			}
 			rcpts = append(rcpts, addr)

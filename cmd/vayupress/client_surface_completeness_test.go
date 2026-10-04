@@ -117,7 +117,8 @@ func TestEveryControlOnAClientsOwnPagesIsReachable(t *testing.T) {
 //     That file also drives the operator's Accounts page, so its endpoint list
 //     cannot be asserted wholesale — these two are the composer's.
 //   - attachment is rendered only on a message that HAS an attachment.
-//   - scheduled/action is rendered only beside a message held to send later.
+//   - scheduled/action is rendered only beside a message held to send later,
+//     and blocked/action (Block) only in a message's reader.
 //   - download is a link (navigation, so not derived), and import/action is
 //     posted from the Bring mail in page, which the render above does not open.
 func TestTheComposerAndAttachmentEndpointsAreReachable(t *testing.T) {
@@ -128,6 +129,7 @@ func TestTheComposerAndAttachmentEndpointsAreReachable(t *testing.T) {
 		"/os/vayumail/scheduled/action": "the client schedules a message and can neither send it now nor cancel it",
 		"/os/vayumail/download":         "the client is offered Download all mail and refused it",
 		"/os/vayumail/import/action":    "the client is offered Bring mail in and cannot start it",
+		"/os/vayumail/blocked/action":   "the client is offered Block on a message and cannot block",
 	} {
 		if !clientPathAllowed(path) {
 			t.Errorf("%s is refused to a bound client: %s", path, consequence)

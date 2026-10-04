@@ -247,6 +247,12 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" ` + attrs + `><span class="sa-menu__text">Mark unread</span><kbd class="sa-menu__key">u</kbd></button>`)
 	}
 	c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" data-vm-print><span class="sa-menu__text">Print</span></button>`)
+	if !readOnly && received && fromAddr != "" {
+		// Block (blocked.go): what it does is said before it is done.
+		c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" hx-post="/os/vayumail/blocked/action" hx-swap="none"` +
+			hxVals("user", user, "action", "block", "sender", fromAddr) +
+			` hx-confirm="Block ` + esc(fromAddr) + `? Their mail will be refused, or put straight in Trash."><span class="sa-menu__text">Block ` + esc(fromAddr) + `</span></button>`)
+	}
 	if !readOnly && !strings.EqualFold(folder, "Trash") {
 		attrs := `data-mail-delete`
 		if pane {
