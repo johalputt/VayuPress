@@ -591,6 +591,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/draft", a.handleVayuOSDraft)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/scheduled/action", a.handleVayuOSScheduledAction)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/folders/action", a.handleVayuOSFolderAction)
+		pr.Get("/os/vayumail/download", a.handleVayuOSMailDownload)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/import", a.handleVayuOSMailImport)
+		pr.Get("/os/vayumail/import/fragment", a.handleVayuOSMailImportFragment)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/import/action", a.handleVayuOSMailImportAction)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/message/action", a.handleVayuOSMessageAction)
 		// Split reading pane: load a message beside the list + act on it in place.
 		pr.Get("/os/vayumail/inbox/readpane", a.handleVayuOSReadpane)
@@ -1528,6 +1532,8 @@ type osMailSide struct {
 	// offered only to a session with an account to keep it on.
 	Reading  bool
 	FullOpen bool
+	// Writable: not a read-only mailbox, so Bring mail in is offered.
+	Writable bool
 }
 
 // osSite is one hosted site in the switcher.

@@ -22,6 +22,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   why; a deleted mailbox's scheduled mail is deleted with it. A message the
   server was stopped in the middle of sending is not sent again by itself,
   since it may already have gone: it waits, saying so, for you to choose.
+- **Bring mail in from another provider.** Bring mail in, in the mailbox's
+  sidebar, copies a mailbox here over IMAP: every folder into its
+  counterpart, any other folder as one of your own, with what you have read
+  and pinned there. It runs in the background at the server's pace and can
+  be stopped; it records what it has copied, so stopping, a restart or
+  running it again carries on from there and copies only what is new. The
+  connection is TLS only (993, or 143 with STARTTLS), goes only to a public
+  address, and the password is used for the copy and never stored. Gmail's
+  All Mail and Starred are left out, since they repeat other folders.
+- **Download all mail.** The mailbox's sidebar downloads every folder as mbox
+  files in one zip, which other mail apps import. An administrator's download
+  of someone else's mailbox, and an import into it, are recorded in that
+  mailbox's access record, where its holder sees them; a handed-over mailbox
+  cannot be downloaded by an administrator at all.
 - **Your own folders in Mail.** New folder in the mailbox's sidebar makes
   one; its header's menu renames or deletes it, and deleting a folder moves
   its mail to Trash rather than deleting any of it. Your folders are in every

@@ -29,7 +29,10 @@ type Engine struct {
 	cfg    Config
 	bridge Bridge
 	db     *sql.DB
-	dkim   *DKIM // primary-domain signer (cfg.Domain)
+	// importer runs Bring mail in (imapimport.go), made on first use.
+	importer   *importer
+	importOnce sync.Once
+	dkim       *DKIM // primary-domain signer (cfg.Domain)
 	// dkimByDomain caches per-domain signers for mail_enabled secondary senders
 	// (VayuDomains Stage 3c). They share the primary's private key file (keyed by
 	// selector) but carry the sender domain in the signature's d= tag, so each
@@ -769,6 +772,7 @@ func (e *Engine) Start(ctx context.Context) error {
 	// sender against are open.
 	e.failInterruptedScheduled(ctx)
 	go e.scheduledSender()
+	e.failInterruptedImports()
 
 	// Inbound receive side. Enabled by default so a configured domain can
 	// receive external mail; disabled with VAYUOS_MAIL_INBOUND=off. Binding the

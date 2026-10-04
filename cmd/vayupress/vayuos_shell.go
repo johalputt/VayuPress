@@ -391,6 +391,12 @@ func saMailSide(m *osMailSide, more string) string {
 	}
 	b.WriteString(`<div class="mx-foot">`)
 	b.WriteString(`<button type="button" class="sa-appside__item" hx-get="/os/vayumail/contacts?user=` + qparam(m.User) + `" hx-target="#vm-readpane" hx-swap="innerHTML">` + saIcon("audience") + `<span class="sa-appside__label">Contacts</span></button>`)
+	// Every folder as mbox files in a zip: the way to take the mail
+	// elsewhere (vayuos_mail_download.go).
+	if m.Writable {
+		b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/import?user=` + qparam(m.User) + `">` + saIcon("upload") + `<span class="sa-appside__label">Bring mail in</span></a>`)
+	}
+	b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/download?user=` + qparam(m.User) + `" download>` + saIcon("download") + `<span class="sa-appside__label">Download all mail</span></a>`)
 	if m.Admin {
 		b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/accounts/settings?user=` + qparam(m.Address) + `">` + saIcon("filter") + `<span class="sa-appside__label">Rules and replies</span></a>`)
 	}

@@ -1967,7 +1967,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	list, facts := a.vayuInboxBody(rd, folder, view, pageLimit)
 	side := &osMailSide{User: user, Address: mbox, Avatar: mailAvatarImg(mbox, a.mailboxAvatarSet()), Admin: a.isAdminRequest(r),
 		Folders: a.mailNavFor(rd, folder, view, facts.Counts, false),
-		Used:    a.vayuMail.MailboxUsage(mbox), Quota: a.vayuMail.MailboxQuota(mbox)}
+		Used:    a.vayuMail.MailboxUsage(mbox), Quota: a.vayuMail.MailboxQuota(mbox), Writable: !a.vayuMail.ReaderReadOnly(rd)}
 	if acc := a.vayuMail.Accounts(); acc != nil {
 		side.Name = acc.FullNameFor(r.Context(), mbox)
 	}
