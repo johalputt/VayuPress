@@ -324,11 +324,26 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 			}
 			c.WriteString(`<p class="mx-seal mx-seal--` + map[string]string{"ok": "ok", "danger": "danger", "": "plain"}[s.Tone] + `">` + saIcon(icon) + `<span>` + esc(s.Text) + `</span></p>`)
 		}
+		if o := vmail.ParseListUnsubscribe(stored); o.Any() && received && !readOnly {
+			c.WriteString(mailUnsubscribeLine(user, folder, id, o))
+		}
 	}
 	c.WriteString(`<div class="mx-msg__body">` + a.mailBodyHTML(pm, raw, v) + `</div>`)
 
 	// Attachments as cards: a type tile, the name, the size, and download.
 	if len(pm.Attachments) > 0 {
+		// Pictures shown in place, from the attachment endpoint, which serves
+		// a picture inline only when its bytes are one.
+		var thumbs strings.Builder
+		for _, att := range pm.Attachments {
+			if picture, ok := mailPreviewable(att.ContentType); ok && picture && att.Size <= 10<<20 {
+				u := "/os/vayumail/attachment?" + q + "&idx=" + itoaSafe(att.Index) + "&inline=1"
+				thumbs.WriteString(`<a class="mx-preview" href="` + esc(u) + `" target="_blank" rel="noopener"><img src="` + esc(u) + `" alt="` + esc(att.Filename) + `" loading="lazy"></a>`)
+			}
+		}
+		if thumbs.Len() > 0 {
+			c.WriteString(`<div class="mx-previews">` + thumbs.String() + `</div>`)
+		}
 		c.WriteString(`<ul class="mx-files" aria-label="Attachments">`)
 		for _, att := range pm.Attachments {
 			dl := "/os/vayumail/attachment?" + q + "&idx=" + itoaSafe(att.Index)
@@ -337,7 +352,11 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 			c.WriteString(`<li><a class="mx-file" href="` + esc(dl) + `" download data-mx-file><span class="mx-file__type" aria-hidden="true">` + esc(mailFileType(att.Filename, att.ContentType)) +
 				`<svg class="mx-file__ring" viewBox="0 0 36 36"><circle cx="18" cy="18" r="16" pathLength="100"/></svg><span class="mx-file__tick">` + saIcon("check") + `</span></span>` +
 				`<span class="mx-file__meta"><span class="mx-file__name">` + esc(att.Filename) + `</span><span class="mx-file__size">` + esc(humanBytes(att.Size)) + `</span></span>` +
-				`<span class="mx-file__dl" aria-hidden="true">` + saIcon("download") + `</span><span class="vp-sr-only">Download</span></a></li>`)
+				`<span class="mx-file__dl" aria-hidden="true">` + saIcon("download") + `</span><span class="vp-sr-only">Download</span></a>`)
+			if _, ok := mailPreviewable(att.ContentType); ok {
+				c.WriteString(`<a class="mx-file__open" href="` + esc(dl+"&inline=1") + `" target="_blank" rel="noopener">Open<span class="vp-sr-only"> ` + esc(att.Filename) + `</span></a>`)
+			}
+			c.WriteString(`</li>`)
 		}
 		c.WriteString(`</ul>`)
 	}
@@ -392,11 +411,11 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 // sanitiser with remote images off unless asked for.
 func (a *App) mailBodyHTML(pm vmail.ParsedMessage, raw []byte, v readerView) string {
 	hasHTML := strings.TrimSpace(pm.HTML) != ""
-	note := `<p class="mx-images-off">Pictures stay off until you ask: loading one tells the sender you opened this message.</p>`
+	note := `<p class="mx-images-off">Pictures stay off until you ask. They load through this server, so the sender learns that the message was opened, but not your address or device.</p>`
 	switch {
 	case hasHTML && v.HTML:
 		if v.Images {
-			return `<div class="vm-html">` + mailHTMLPolicyImages.Sanitize(pm.HTML) + `</div>`
+			return `<div class="vm-html">` + proxyImageSources(mailHTMLPolicyImages.Sanitize(pm.HTML)) + `</div>`
 		}
 		return note + `<div class="vm-html">` + mailHTMLNoImages(pm.HTML) + `</div>`
 	case strings.TrimSpace(pm.Text) != "":

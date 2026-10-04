@@ -593,6 +593,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/folders/action", a.handleVayuOSFolderAction)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/blocked/action", a.handleVayuOSBlockedAction)
 		pr.Get("/os/vayumail/download", a.handleVayuOSMailDownload)
+		pr.Get("/os/vayumail/picture", a.handleVayuOSMailPicture)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/unsubscribe", a.handleVayuOSUnsubscribe)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/import", a.handleVayuOSMailImport)
 		pr.Get("/os/vayumail/import/fragment", a.handleVayuOSMailImportFragment)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/import/action", a.handleVayuOSMailImportAction)

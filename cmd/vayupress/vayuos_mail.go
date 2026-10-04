@@ -904,6 +904,17 @@ func mailSafeFilename(s string) string {
 	return s
 }
 
+// mailPreviewTypes are what an attachment may open as in place, by its bytes:
+// pictures the browser draws, and PDFs its own viewer shows. Never SVG.
+var mailPreviewTypes = map[string]bool{"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true, "application/pdf": true}
+
+// mailPreviewable reports whether an attachment, by what it declares, is one
+// to offer opening in place; the endpoint decides by its bytes.
+func mailPreviewable(ctype string) (picture, ok bool) {
+	ct := strings.ToLower(strings.TrimSpace(strings.SplitN(ctype, ";", 2)[0]))
+	return ct != "application/pdf", mailPreviewTypes[ct]
+}
+
 // handleVayuOSAttachment streams a single attachment from a stored message as a
 // forced download. The message is PGP-decrypted (ReadFolderMessage) before the
 // MIME part is extracted, so encrypted mail's attachments download in the clear.
@@ -938,10 +949,21 @@ func (a *App) handleVayuOSAttachment(w http.ResponseWriter, r *http.Request) {
 	if ctype == "" {
 		ctype = "application/octet-stream"
 	}
-	// Force a download (never inline-render, so a text/html attachment cannot
-	// script), and forbid content-type sniffing.
+	// Opened in place (?inline=1) only when the bytes are a picture or a PDF,
+	// whatever the message declares, and typed by what they are: anything
+	// else, a text/html attachment above all, is a download, so it can never
+	// render as a page of this origin.
+	disposition := "attachment"
+	if r.URL.Query().Get("inline") == "1" {
+		if sniffed := http.DetectContentType(data); mailPreviewTypes[sniffed] {
+			ctype, disposition = sniffed, "inline"
+			if sniffed != "application/pdf" {
+				w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+			}
+		}
+	}
 	w.Header().Set("Content-Type", ctype)
-	w.Header().Set("Content-Disposition", `attachment; filename="`+mailSafeFilename(fn)+`"`)
+	w.Header().Set("Content-Disposition", disposition+`; filename="`+mailSafeFilename(fn)+`"`)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	w.Header().Set("Cache-Control", "private, no-store")

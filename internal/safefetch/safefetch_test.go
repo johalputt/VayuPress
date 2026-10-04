@@ -229,3 +229,14 @@ func TestTorEgressRoutesInsteadOfBlocking(t *testing.T) {
 		t.Fatalf("host guard should allow (route over Tor), got %v", err)
 	}
 }
+
+// Post is under Get's guards: a private host is refused before any
+// connection, and a scheme off the list is too.
+func TestPostIsGuardedLikeGet(t *testing.T) {
+	c := New(Options{})
+	for _, u := range []string{"http://127.0.0.1/unsubscribe", "http://10.0.0.1/x", "file:///etc/passwd"} {
+		if _, err := c.Post(context.Background(), u, "application/x-www-form-urlencoded", []byte("a=b")); !errors.Is(err, ErrBlockedAddress) {
+			t.Errorf("Post(%q): %v, want ErrBlockedAddress", u, err)
+		}
+	}
+}

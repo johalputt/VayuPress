@@ -43,6 +43,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   unanswered. Blocked senders are listed under Contacts, with Unblock. Trash
   and Junk have Empty, which says how many messages go for good before it
   deletes them.
+- **Unsubscribe, pictures through this server, and attachments that open.**
+  Mail from a list says so above the message, with Unsubscribe. When the
+  list offers one-click leaving it is done from here, but only when the
+  sender's DKIM signature covers that request, as RFC 8058 requires; a
+  signature that does not verify, or leaves the request out, falls back to
+  the list's mail address, and with neither the list's own page is offered
+  instead. Pictures you choose to show now load through this server, so the
+  sender learns that the message was opened but not your address or device;
+  only real PNG, JPEG, GIF or WebP files come back, never SVG, and the server
+  fetches only addresses it put in a message it showed you. Picture and PDF
+  attachments open in place, and pictures show as thumbnails above the list.
+  Whether a file opens is decided by its bytes, not by its name or by the
+  type the message gives it, so an HTML file sent as a picture still
+  downloads.
 - **Your own folders in Mail.** New folder in the mailbox's sidebar makes
   one; its header's menu renames or deletes it, and deleting a folder moves
   its mail to Trash rather than deleting any of it. Your folders are in every

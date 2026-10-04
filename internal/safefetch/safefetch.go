@@ -16,6 +16,7 @@
 package safefetch
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -346,6 +347,24 @@ func (c *Client) Get(ctx context.Context, rawURL string) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	return c.do(req)
+}
+
+// Post sends body to rawURL as contentType, under every guard Get has: the
+// scheme allowlist, the public-host pre-flight, the pinned dial and the size
+// cap on the answer. A redirect is followed as net/http follows one (a GET
+// after 301/302/303, the same POST after 307/308), and every hop is dialled
+// through the same guarded transport.
+func (c *Client) Post(ctx context.Context, rawURL, contentType string, body []byte) (*Result, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", contentType)
+	return c.do(req)
+}
+
+func (c *Client) do(req *http.Request) (*Result, error) {
 	if !c.schemes[strings.ToLower(req.URL.Scheme)] {
 		return nil, fmt.Errorf("%w: scheme %q not allowed", ErrBlockedAddress, req.URL.Scheme)
 	}

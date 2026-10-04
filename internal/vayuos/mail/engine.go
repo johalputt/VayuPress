@@ -32,7 +32,10 @@ type Engine struct {
 	// importer runs Bring mail in (imapimport.go), made on first use.
 	importer   *importer
 	importOnce sync.Once
-	dkim       *DKIM // primary-domain signer (cfg.Domain)
+	// unsubscriber posts and verifies Unsubscribe (unsubscribe.go).
+	unsubscriber *unsubscriber
+	unsubOnce    sync.Once
+	dkim         *DKIM // primary-domain signer (cfg.Domain)
 	// dkimByDomain caches per-domain signers for mail_enabled secondary senders
 	// (VayuDomains Stage 3c). They share the primary's private key file (keyed by
 	// selector) but carry the sender domain in the signature's d= tag, so each
