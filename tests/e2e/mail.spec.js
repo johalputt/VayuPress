@@ -721,9 +721,11 @@ test("on a phone, a message from a short folder is shown whole", async ({ page }
   await expect(body).toBeVisible();
   await expect(page.locator("body")).toHaveAttribute("data-mx-screen", "message");
   await page.waitForTimeout(400);
+  // The middle of what of the body is on the screen: Sent's newest message
+  // may be longer than a phone, and a point below the screen hits nothing.
   const shown = await body.evaluate((b) => {
     const r = b.getBoundingClientRect();
-    return b.contains(document.elementFromPoint(r.left + 8, r.top + r.height / 2));
+    return b.contains(document.elementFromPoint(r.left + 8, (r.top + Math.min(r.bottom, innerHeight)) / 2));
   });
   expect(shown, "the message body is cut off below the list's height").toBe(true);
 });
