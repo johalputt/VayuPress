@@ -209,3 +209,14 @@ func TestSnoozeFromYourOwnFolderWakesThere(t *testing.T) {
 		t.Fatalf("the snoozed message woke elsewhere: Work holds %d", len(work))
 	}
 }
+
+// A folder's path stays inside the account directory whatever its name,
+// independently of ValidFolderName.
+func TestAnOwnFolderPathStaysInTheAccount(t *testing.T) {
+	if dir, err := ownFolderDir("/m/example.com/bob", "Work"); err != nil || dir != "/m/example.com/bob/.Work" {
+		t.Fatalf("Work: %q, %v", dir, err)
+	}
+	if dir, err := ownFolderDir("/m/example.com/bob", "/../../../alice/cur"); err == nil {
+		t.Fatalf("a name climbing out of the account was given %q", dir)
+	}
+}

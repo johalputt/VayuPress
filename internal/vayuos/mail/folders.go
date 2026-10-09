@@ -135,7 +135,10 @@ func (m *Maildir) CreateFolder(domain, username, name string) error {
 	if m.resolveFolder(domain, username, name) != "Inbox" {
 		return ErrFolderExists
 	}
-	dir := filepath.Join(m.accountDir(domain, username), "."+name)
+	dir, err := ownFolderDir(m.accountDir(domain, username), name)
+	if err != nil {
+		return err
+	}
 	for _, sub := range []string{"tmp", "new", "cur"} {
 		if err := os.MkdirAll(filepath.Join(dir, sub), 0o700); err != nil {
 			return err
@@ -158,7 +161,29 @@ func (m *Maildir) RenameFolder(domain, username, from, to string) error {
 		return ErrFolderExists
 	}
 	base := m.accountDir(domain, username)
-	return os.Rename(filepath.Join(base, "."+old), filepath.Join(base, "."+to))
+	src, err := ownFolderDir(base, old)
+	if err != nil {
+		return err
+	}
+	dst, err := ownFolderDir(base, to)
+	if err != nil {
+		return err
+	}
+	return os.Rename(src, dst)
+}
+
+// ownFolderDir is where the own folder name is kept: a Maildir++ ".name"
+// directory inside the account directory base. It checks where the path
+// lands rather than trusting that the name passed ValidFolderName: that rule
+// is a choice about names and may widen, and the bound on where a folder
+// can be written must not move with it.
+func ownFolderDir(base, name string) (string, error) {
+	base = filepath.Clean(base)
+	dir := filepath.Clean(filepath.Join(base, "."+name))
+	if !strings.HasPrefix(dir, base+string(filepath.Separator)) {
+		return "", ErrFolderName
+	}
+	return dir, nil
 }
 
 // DeleteFolder removes one of the account's own folders. Its mail is moved to

@@ -67,15 +67,19 @@ func (a *App) handleVayuOSMailImportAction(w http.ResponseWriter, r *http.Reques
 	note := ""
 	switch r.PostFormValue("action") {
 	case "start":
-		port, _ := strconv.Atoi(r.PostFormValue("port"))
-		req := vmail.ImportRequest{Host: r.PostFormValue("host"), Port: port, Username: r.PostFormValue("username"), Password: r.PostFormValue("password")}
+		// The record names the server from the form itself, never from the
+		// request that also holds the password: nothing the record keeps (it
+		// is hashed into the ledger's chain) shares a value with a secret.
+		host := strings.TrimSpace(r.PostFormValue("host"))
 		if rd.IsOperator() {
 			addr := mailAddrOf(rd.Key(), a.vayuMail.Config().Domain)
-			if err := a.vayuMail.AppendLedger(r.Context(), addr, rd.Actor(), "import", "mail was brought in from "+strings.TrimSpace(req.Host)); err != nil {
+			if err := a.vayuMail.AppendLedger(r.Context(), addr, rd.Actor(), "import", "mail was brought in from "+host); err != nil {
 				note = "Not started: it could not be recorded."
 				break
 			}
 		}
+		port, _ := strconv.Atoi(r.PostFormValue("port"))
+		req := vmail.ImportRequest{Host: host, Port: port, Username: r.PostFormValue("username"), Password: r.PostFormValue("password")}
 		if err := a.vayuMail.StartImport(rd, req, pace.Host().NewJob(importPacing)); err != nil {
 			note = "Not started: " + err.Error() + "."
 		}
