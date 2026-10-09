@@ -169,12 +169,6 @@ func (s *AccountStore) AppendLedger(ctx context.Context, mailbox, actor, action,
 	_ = s.db.QueryRowContext(ctx,
 		`SELECT entry_hash FROM mail_access_ledger ORDER BY seq DESC LIMIT 1`).Scan(&prev)
 	ts := time.Now().UTC().Format(time.RFC3339Nano)
-	// Code scanning reads the mailbox address here as a password: it is loaded
-	// by the users query whose column list names must_change_password, and the
-	// heuristic marks a whole row by any column it names. What is hashed is the
-	// entry itself (time, mailbox, actor, action, detail) for tamper evidence,
-	// not a secret kept as a hash, so a password hash would be the wrong tool.
-	// codeql[go/weak-sensitive-data-hashing]
 	sum := sha256.Sum256([]byte(prev + "\x00" + ts + "\x00" + mbox + "\x00" + actor + "\x00" + action + "\x00" + detail))
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO mail_access_ledger(ts,mailbox,actor,action,detail,prev_hash,entry_hash) VALUES(?,?,?,?,?,?,?)`,

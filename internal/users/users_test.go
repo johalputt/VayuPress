@@ -5,6 +5,8 @@ package users
 import (
 	"context"
 	"database/sql"
+	"os"
+	"strings"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -19,6 +21,19 @@ func newTestStore(t *testing.T) *Store {
 	_, err = db.Exec(`CREATE TABLE users(id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,name TEXT NOT NULL DEFAULT '',password_hash TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'author',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,last_login DATETIME,totp_secret TEXT NOT NULL DEFAULT '',totp_enabled INTEGER NOT NULL DEFAULT 0,totp_last_step INTEGER NOT NULL DEFAULT 0,avatar_url TEXT NOT NULL DEFAULT '',bio TEXT NOT NULL DEFAULT '',socials TEXT NOT NULL DEFAULT '{}',mail_address TEXT NOT NULL DEFAULT '',must_change_password INTEGER NOT NULL DEFAULT 0,username TEXT NOT NULL DEFAULT '',client_domain_id TEXT NOT NULL DEFAULT '')`)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Profiles are read through the view the migration makes; its own file,
+	// so the view tested is the one shipped.
+	view, err := os.ReadFile("../db/migrations/105-user-profiles-view.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range strings.Split(string(view), "\n") {
+		if stmt = strings.TrimSpace(stmt); stmt != "" && !strings.HasPrefix(stmt, "--") {
+			if _, err := db.Exec(stmt); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	return New(db)
 }
@@ -131,5 +146,25 @@ func TestTOTPLifecycle(t *testing.T) {
 	secret, enabled, _ = s.TOTPStatus(ctx, u.ID)
 	if secret != "" || enabled {
 		t.Fatalf("after disable: secret=%q enabled=%v", secret, enabled)
+	}
+}
+
+// A client's first sign-in must change the password the operator chose, read
+// back from the store as every request reads it; setting a password of their
+// own lets them go.
+func TestTheFirstSignInFlagIsReadBack(t *testing.T) {
+	s, ctx := newTestStore(t), context.Background()
+	u, err := s.CreateClient(ctx, "e@x.test", "E", "correct-horse", "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.GetByID(ctx, u.ID); err != nil || !got.MustChangePassword {
+		t.Fatalf("an issued client is not asked to change the password: %+v, %v", got, err)
+	}
+	if err := s.SetPassword(ctx, "e@x.test", "a-password-of-their-own"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.GetByEmail(ctx, "e@x.test"); err != nil || got.MustChangePassword {
+		t.Fatalf("a changed password is still asked for: %+v, %v", got, err)
 	}
 }

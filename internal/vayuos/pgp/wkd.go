@@ -80,7 +80,6 @@ func zbase32(data []byte) string {
 // other WKD client (GnuPG, Thunderbird, …). Any static-analysis alert flagging
 // SHA-1 here is therefore a known false positive.
 func wkdLocalHash(localpart string) string {
-	// codeql[go/weak-sensitive-data-hashing] WKD requires SHA-1 of the public local-part (above).
 	sum := sha1.Sum([]byte(strings.ToLower(localpart))) //nolint:gosec // WKD spec mandates SHA-1 for the public directory key (not sensitive data)
 	return zbase32(sum[:])
 }

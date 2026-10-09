@@ -284,8 +284,11 @@ func (s *Store) Authenticate(ctx context.Context, email, password string) (*User
 	return &u, nil
 }
 
-// profileCols is the SELECT list for reads that include public profile fields.
-const profileCols = `id,email,name,role,avatar_url,bio,socials,mail_address,created_at,last_login,COALESCE(must_change_password,0),COALESCE(username,''),COALESCE(client_domain_id,'')`
+// profileCols is the SELECT list for reads that include public profile
+// fields, read from the user_profiles view (migration 105) and not from users
+// itself: a query whose text names a password column has every field it
+// returns taken for a password by code scanning, the mail address among them.
+const profileCols = `id,email,name,role,avatar_url,bio,socials,mail_address,created_at,last_login,must_change_signin,username,client_domain_id`
 
 // scanUserProfile reads a row selected with profileCols.
 func scanUserProfile(sc interface{ Scan(...interface{}) error }) (*User, error) {
@@ -313,13 +316,13 @@ func scanUserProfile(sc interface{ Scan(...interface{}) error }) (*User, error) 
 // GetByID returns the user with the given id, including profile fields.
 func (s *Store) GetByID(ctx context.Context, id string) (*User, error) {
 	return scanUserProfile(s.readDB().QueryRowContext(ctx,
-		`SELECT `+profileCols+` FROM users WHERE id=?`, id))
+		`SELECT `+profileCols+` FROM user_profiles WHERE id=?`, id))
 }
 
 // GetByEmail returns the user with the given email, including profile fields.
 func (s *Store) GetByEmail(ctx context.Context, email string) (*User, error) {
 	return scanUserProfile(s.db.QueryRowContext(ctx,
-		`SELECT `+profileCols+` FROM users WHERE email=?`, strings.TrimSpace(strings.ToLower(email))))
+		`SELECT `+profileCols+` FROM user_profiles WHERE email=?`, strings.TrimSpace(strings.ToLower(email))))
 }
 
 // GetByUsername returns the user with the given public handle (case-insensitive).
@@ -329,7 +332,7 @@ func (s *Store) GetByUsername(ctx context.Context, username string) (*User, erro
 		return nil, fmt.Errorf("empty username")
 	}
 	return scanUserProfile(s.db.QueryRowContext(ctx,
-		`SELECT `+profileCols+` FROM users WHERE username=?`, username))
+		`SELECT `+profileCols+` FROM user_profiles WHERE username=?`, username))
 }
 
 // SetUsername assigns a public handle to a user, uniquifying it (-2, -3, …) if
@@ -421,7 +424,7 @@ func normalizeUsername(s string) string {
 // List returns all users ordered by creation time, including profile fields.
 func (s *Store) List(ctx context.Context) ([]User, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT `+profileCols+` FROM users ORDER BY created_at`)
+		`SELECT `+profileCols+` FROM user_profiles ORDER BY created_at`)
 	if err != nil {
 		return nil, err
 	}

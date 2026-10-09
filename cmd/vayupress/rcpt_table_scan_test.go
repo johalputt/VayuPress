@@ -66,7 +66,7 @@ func usersStoreWith(t *testing.T, n int) *users.Store {
 	// first version of this file did.
 	for _, m := range []string{
 		"020-users-sessions", "038-user-profiles", "039-user-mailbox",
-		"050-user-must-change-password", "051-user-username", "079-client-domain",
+		"050-user-must-change-password", "051-user-username", "079-client-domain", "105-user-profiles-view",
 	} {
 		applyMigration(t, db, m)
 	}

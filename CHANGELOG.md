@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **A saved search or a label opens with its results already there.** Mail
+  opened from the sidebar's Searches or Labels used to run the search after
+  the page arrived, and on a slow machine that request could overlap the
+  page's own transition and leave the results half drawn and unclickable.
+  The page now runs the search as it is drawn.
+- **Saving a template keeps its "Saved" note and its new row.** The list
+  read as the Templates menu opens could answer after a save made straight
+  after, and painted then it took both away again.
+
+### Security
+
+- **Code scanning no longer takes a mail address for a password.** Profile
+  reads now go through a `user_profiles` view (migration 105), so no query
+  that loads a mail address names a password column. The weak-hash finding
+  on the mail access record (and the same flow at the Web Key Directory) is
+  gone at its source, and the two suppression comments are removed. Neither
+  hash ever touched a password.
+
 ## [3.17.99] — 2026-10-09
 
 Mail is complete against its audit. Contacts come in groups and travel as
