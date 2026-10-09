@@ -109,7 +109,7 @@ func mailListTime(t, now time.Time) string {
 // mailListRow is one message as the list draws it. link opens it: in the
 // reader beside the list, or for a draft in compose. count is the number of
 // messages in its conversation, 0 when it stands alone.
-func mailListRow(m vmail.StoredMessage, who, link string, draft bool, count int, now time.Time, avSet map[string]bool) string {
+func mailListRow(m vmail.StoredMessage, who, link string, draft bool, count int, now time.Time, avSet map[string]bool, labels []string) string {
 	subj := m.Subject
 	if subj == "" {
 		subj = "(no subject)"
@@ -162,7 +162,7 @@ func mailListRow(m vmail.StoredMessage, who, link string, draft bool, count int,
 		}
 		b.WriteString(`</span>`)
 	}
-	b.WriteString(`</span>`)
+	b.WriteString(mailRowLabels(labels) + `</span>`)
 	if m.Preview != "" {
 		b.WriteString(`<span class="mx-row__pv">` + esc(m.Preview) + `</span>`)
 	}

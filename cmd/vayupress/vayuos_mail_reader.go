@@ -68,6 +68,10 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		}
 	}
 	convo := a.mailConversation(rd, folder, cur, msgs)
+	var msgLabels []string
+	if byMsg, err := a.vayuMail.LabelsByMessage(rd); err == nil {
+		msgLabels = byMsg[cur.MessageID]
+	}
 
 	pm := vmail.ParseMessage(raw)
 	subj := strings.TrimSpace(pm.Subject)
@@ -159,6 +163,10 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 			c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" ` + attrs + `>` + saIcon(mailFolderIcon(f)) + `<span class="sa-menu__text">` + esc(f) + `</span></button>`)
 		}
 		c.WriteString(`</div></details>`)
+		if pane && cur.MessageID != "" {
+			allLabels, _ := a.vayuMail.Labels(rd)
+			c.WriteString(labelMenu(user, folder, id, allLabels, msgLabels))
+		}
 	}
 	c.WriteString(`<span class="mx-rtools__sep" aria-hidden="true"></span>`)
 	if pane && received && !readOnly && !strings.EqualFold(folder, "Snoozed") {
@@ -274,7 +282,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 	if n > 1 {
 		c.WriteString(` <span aria-hidden="true">·</span> ` + strconv.Itoa(n) + ` messages`)
 	}
-	c.WriteString(`</p></header>`)
+	c.WriteString(`</p>` + readerLabels(user, msgLabels) + `</header>`)
 
 	// The rest of the conversation, folded to one line each above the
 	// message; a line opens in place, and loads its words only then.

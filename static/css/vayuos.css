@@ -5987,6 +5987,8 @@
 .vp-os[data-ui="still-air"] .mx-row.vm-active :is(.mx-row__time, .mx-row__pv, .mx-row__marks) { color: var(--mx-on-sel-2); }
 .vp-os[data-ui="still-air"] .mx-row.vm-active .mx-row__dot { background: var(--mx-on-sel); }
 .vp-os[data-ui="still-air"] .mx-row.vm-active .mx-thread { color: var(--mx-sel); background: var(--mx-on-sel); }
+/* On the selected row a label reads as the count beside it does, in the row's own colours. */
+.vp-os[data-ui="still-air"] .mx-row.vm-active .mx-label { color: var(--mx-sel); background: var(--mx-on-sel); }
 /* The avatars' tints are translucent, so on the selection they darken into
    it; the avatar inverts as the thread count does. */
 .vp-os[data-ui="still-air"] .mx-row.vm-active .mx-row__open > .vm-av:not(.vm-av--img) { color: var(--mx-sel); background: var(--mx-on-sel); }
@@ -6112,6 +6114,14 @@
 .vp-os[data-ui="still-air"] .mx-seal .sa-ico { width: 14px; height: 14px; }
 .vp-os[data-ui="still-air"] .mx-seal--ok { color: var(--ok); background: var(--ok-soft); }
 .vp-os[data-ui="still-air"] .mx-seal--danger { color: var(--danger); background: var(--danger-soft); }
+/* Labels: quiet chips on a list row, and under the reader's subject, where each opens its search. */
+.vp-os[data-ui="still-air"] .mx-labels { display: inline-flex; flex-wrap: wrap; gap: 4px; margin: 0 0 0 var(--space-2); vertical-align: middle; }
+.vp-os[data-ui="still-air"] .mx-rbody header .mx-labels { display: flex; margin: var(--space-2) 0 0; }
+.vp-os[data-ui="still-air"] .mx-label { display: inline-block; max-width: 12em; padding: 1px 8px; border-radius: 999px; font: var(--type-small); line-height: 18px; color: var(--text-2); background: var(--surface-press); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: none; }
+.vp-os[data-ui="still-air"] a.mx-label:hover { color: var(--text-1); }
+.vp-os[data-ui="still-air"] .mx-labelmenu .sa-menu__item[aria-checked="false"] .sa-ico { visibility: hidden; }
+.vp-os[data-ui="still-air"] .mx-labelmenu__new { display: flex; gap: var(--space-2); padding: var(--space-2); border-top: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .mx-labelmenu__new .input { flex: 1 1 auto; min-width: 0; }
 /* What a sent message did not reach, one line a recipient, in the seal's danger tone. */
 .vp-os[data-ui="still-air"] .mx-bounces { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; gap: var(--space-1); }
 .vp-os[data-ui="still-air"] .mx-bounces li { display: flex; gap: var(--space-2); align-items: flex-start; padding: var(--space-2) var(--space-3); border-radius: var(--radius-control); color: var(--danger); background: var(--danger-soft); font: var(--type-small); overflow-wrap: anywhere; }
@@ -6992,6 +7002,7 @@
 .vp-os[data-ui="still-air"][data-mx-screens] .mx-row.vm-active :is(.mx-row__who, .mx-row__subj-text) { color: var(--text-1); }
 .vp-os[data-ui="still-air"][data-mx-screens] .mx-row.vm-active :is(.mx-row__time, .mx-row__pv, .mx-row__marks) { color: var(--text-3); }
 .vp-os[data-ui="still-air"][data-mx-screens] .mx-row.vm-active .mx-thread { color: var(--text-2); background: var(--surface-press); }
+.vp-os[data-ui="still-air"][data-mx-screens] .mx-row.vm-active .mx-label { color: var(--text-2); background: var(--surface-press); }
 .vp-os[data-ui="still-air"][data-mx-screens] .mx-row.vm-active .mx-row__dot { background: var(--accent); }
 .vp-os[data-ui="still-air"][data-mx-screens] .mx-row { transition: background-color var(--duration-major) var(--ease-move); }
 .vp-os[data-ui="still-air"][data-mx-screens] .mx-row.is-just-read { background: var(--accent-soft); }

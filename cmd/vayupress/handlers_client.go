@@ -101,6 +101,7 @@ var clientSurface = []clientSurfaceEntry{
 	{Prefix: "/os/vayumail/unsubscribe", Audience: audienceClient},
 	{Prefix: "/os/vayumail/search", Audience: audienceClient},
 	{Prefix: "/os/vayumail/searches", Audience: audienceClient},
+	{Prefix: "/os/vayumail/labels", Audience: audienceClient},
 	{Prefix: "/os/vayumail/attachment", Audience: audienceClient},
 	{Prefix: "/os/vayumail/contacts", Audience: audienceClient},
 	{Prefix: "/os/vayumail/unseen", Audience: audienceClient},

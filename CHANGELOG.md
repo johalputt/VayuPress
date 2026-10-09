@@ -108,6 +108,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   recipient it missed, with the status code. A report another server sends
   back is read the same way and shown on the Sent copy, but only for mail
   this server sent, since a report is easy to forge.
+- **Labels in Mail.** Label, in the reader, puts a name on a message, so one
+  message can be in several places without being copied; a label follows
+  the message from folder to folder. A message's labels show on its row and
+  under its subject, the sidebar lists every label in use, and each opens
+  the search `label:name` across all mail. Labels are the console's: mail
+  apps over IMAP see folders only. A message with no Message-ID cannot be
+  labelled, and a mailbox keeps at most 100 labels.
 - **Your own folders in Mail.** New folder in the mailbox's sidebar makes
   one; its header's menu renames or deletes it, and deleting a folder moves
   its mail to Trash rather than deleting any of it. Your folders are in every

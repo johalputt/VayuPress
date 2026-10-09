@@ -1833,7 +1833,7 @@ func mailFolderNav(n mailNav) string {
 		}
 	}
 	if isScheduledFolder(n.Active) {
-		sb.WriteString(mailSearchesGroup(n.User, n.Searches, false) + `</div>`)
+		sb.WriteString(mailSearchesGroup(n.User, n.Searches, false) + mailLabelsGroup(n.User, n.Labels, false) + `</div>`)
 		return sb.String()
 	}
 	// Views filter the open folder; choosing the view in force again shows
@@ -1846,7 +1846,7 @@ func mailFolderNav(n mailNav) string {
 		}
 		item(q, v.Label, v.Icon, cur, n.ViewCounts[v.Key])
 	}
-	sb.WriteString(mailSearchesGroup(n.User, n.Searches, false))
+	sb.WriteString(mailSearchesGroup(n.User, n.Searches, false) + mailLabelsGroup(n.User, n.Labels, false))
 	sb.WriteString(`</div>`)
 	return sb.String()
 }
@@ -1857,8 +1857,8 @@ type mailNav struct {
 	// Own are the mailbox's own folders; Writable offers New folder.
 	Own      []string
 	Writable bool
-	// Searches are the mailbox's saved searches.
-	Searches           []string
+	// Searches are the mailbox's saved searches, Labels its labels in use.
+	Searches, Labels   []string
 	Counts, ViewCounts map[string]int
 	// OOB sends it out of band beside a list swap.
 	OOB bool
@@ -1867,7 +1867,8 @@ type mailNav struct {
 // mailNavFor is the sidebar for the mailbox rd reads, with active open.
 func (a *App) mailNavFor(rd vmail.Reader, active, view string, viewCounts map[string]int, oob bool) string {
 	searches, _ := a.vayuMail.SavedSearches(rd)
-	return mailFolderNav(mailNav{User: rd.Key(), Active: active, View: view, Own: a.ownFolders(rd), Searches: searches,
+	labels, _ := a.vayuMail.Labels(rd)
+	return mailFolderNav(mailNav{User: rd.Key(), Active: active, View: view, Own: a.ownFolders(rd), Searches: searches, Labels: labels,
 		Writable: !a.vayuMail.ReaderReadOnly(rd), Counts: a.folderUnread(rd), ViewCounts: viewCounts, OOB: oob})
 }
 
@@ -2309,6 +2310,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int) (st
 		}
 	}
 	shown := map[string]bool{}
+	labels, _ := a.vayuMail.LabelsByMessage(rd)
 	var pinned, rest []vmail.StoredMessage
 	for _, m := range msgs {
 		k := threadKey(m)
@@ -2348,7 +2350,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int) (st
 		if !received {
 			m.Seen = true // what you sent and drafted is not waiting for you
 		}
-		b.WriteString(mailListRow(m, who, link, isDrafts, n, now, avSet))
+		b.WriteString(mailListRow(m, who, link, isDrafts, n, now, avSet, labels[m.MessageID]))
 	}
 	for _, m := range pinned {
 		row(m, "Pinned")
@@ -2803,13 +2805,14 @@ func (a *App) mailSearchRows(rd vmail.Reader, sf searchFilters, matched []vmail.
 	}
 	b.WriteString(`<ol class="mx-list">`)
 	avSet, now, group := a.mailboxAvatarSet(), time.Now(), ""
+	labels, _ := a.vayuMail.LabelsByMessage(rd)
 	for _, m := range matched {
 		if m.Folder != group {
 			group = m.Folder
 			b.WriteString(`<li class="mx-group" aria-hidden="true">` + esc(group) + `</li>`)
 		}
 		link := "/os/vayumail/message?user=" + qparam(user) + "&folder=" + qparam(m.Folder) + "&id=" + qparam(m.ID)
-		b.WriteString(mailListRow(m.StoredMessage, m.From, link, false, 0, now, avSet))
+		b.WriteString(mailListRow(m.StoredMessage, m.From, link, false, 0, now, avSet, labels[m.MessageID]))
 	}
 	b.WriteString(`</ol>`)
 	return b.String()

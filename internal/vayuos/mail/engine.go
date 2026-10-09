@@ -248,6 +248,13 @@ func (e *Engine) Search(rd Reader, q SearchQuery, limit int) ([]SearchResult, er
 	if e.maildir == nil {
 		return nil, errors.New("vayumail: not started")
 	}
+	if q.Label != "" {
+		ids, err := e.labelled(rd, q.Label)
+		if err != nil {
+			return nil, err
+		}
+		q.labelled = ids
+	}
 	dom, local := e.mailboxKey(rd.Key())
 	return e.maildir.Search(dom, local, q, limit)
 }

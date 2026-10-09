@@ -734,6 +734,30 @@ test("a contact group goes into To as its people", async ({ page }) => {
   expect(r.ok()).toBe(true);
 });
 
+// A label is put on from the reader's Label menu: it shows under the
+// subject and in the sidebar's Labels, whose link finds the message across
+// all mail; ticked off again, it is gone from both.
+test("a label is put on a message and found from the sidebar", async ({ page }) => {
+  await openInbox(page);
+  const pane = page.locator("#vm-readpane");
+  const subject = (await pane.locator(".mx-subject").textContent()).trim();
+  await pane.locator('summary[aria-label="Label"]').click();
+  const field = pane.locator('.mx-labelmenu__new input[name="label"]');
+  await field.fill("Follow up");
+  await field.press("Enter");
+  await expect(pane.locator(".mx-rbody .mx-label", { hasText: "Follow up" })).toBeVisible();
+  const side = page.locator("#vm-labels a", { hasText: "Follow up" });
+  await expect(side).toBeVisible();
+  await side.click();
+  await expect(page.locator(".mx-search__input")).toHaveValue('label:"Follow up"');
+  await expect(page.locator("#vm-search-results .mx-row", { hasText: subject }).first()).toBeVisible();
+  await page.locator("#vm-search-results .mx-row__open", { hasText: subject }).first().click();
+  await pane.locator('summary[aria-label="Label"]').click();
+  await pane.locator('.mx-labelmenu [role="menuitemcheckbox"]', { hasText: "Follow up" }).click();
+  await expect(pane.locator(".mx-rbody .mx-label")).toHaveCount(0);
+  await expect(page.locator("#vm-labels a")).toHaveCount(0);
+});
+
 // An attachment's download fills a ring on its tile and settles to a tick,
 // and arrives under its own name; a file added to compose slides into the
 // attachment row (Mail plan §8, item 7).
@@ -996,6 +1020,13 @@ for (const scheme of ["light", "dark"]) {
       await openInbox(page);
       await page.locator(".mx-row", { hasText: "Newsletter draft, October" }).locator(".mx-row__open").click();
       await expect(page.locator("#vm-readpane .mx-seal")).toBeVisible();
+      // A label is drawn on the selected row and under the subject; it is put
+      // on here and taken off at the end so no other test sees it.
+      const pane = page.locator("#vm-readpane");
+      await pane.locator('summary[aria-label="Label"]').click();
+      await pane.locator('.mx-labelmenu__new input[name="label"]').fill("Ink");
+      await pane.locator('.mx-labelmenu__new input[name="label"]').press("Enter");
+      await expect(page.locator("#vm-inbox-list .mx-row.vm-active .mx-label", { hasText: "Ink" })).toBeVisible();
       // The selection fades in over --duration-micro while its text turns at
       // once, so a reading inside those 90 ms is white on near-white. What is
       // judged is the colour the row settles on: wait out its transitions.
@@ -1022,6 +1053,7 @@ for (const scheme of ["light", "dark"]) {
           ["selected initials", sel && sel.querySelector(".mx-row__open > .vm-av")],
           ["preview", other && other.querySelector(".mx-row__pv")], ["time", other && other.querySelector(".mx-row__time")],
           ["seal", document.querySelector("#vm-readpane .mx-seal span")],
+          ["selected label", sel && sel.querySelector(".mx-label")], ["label", document.querySelector("#vm-readpane .mx-rbody .mx-label")],
         ]) out[name] = el ? Math.round(ratio(el) * 100) / 100 : "missing";
         return out;
       });
@@ -1029,6 +1061,9 @@ for (const scheme of ["light", "dark"]) {
         expect(r, `${name}: no element to measure`).not.toBe("missing");
         expect(r, `${name} is ${r}:1 in ${scheme}, under 4.5:1`).toBeGreaterThanOrEqual(4.5);
       }
+      await pane.locator('summary[aria-label="Label"]').click();
+      await pane.locator('.mx-labelmenu [role="menuitemcheckbox"]', { hasText: "Ink" }).click();
+      await expect(pane.locator(".mx-rbody .mx-label")).toHaveCount(0);
     });
   });
 }
