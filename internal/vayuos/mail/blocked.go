@@ -124,10 +124,7 @@ func (e *Engine) senderRefused(from, rcpt string) bool {
 	if e.accounts == nil {
 		return false
 	}
-	if target := e.accounts.ResolveAlias(context.Background(), rcpt); target != "" {
-		rcpt = target
-	}
-	return e.accounts.isBlocked(context.Background(), rcpt, from)
+	return e.accounts.isBlocked(context.Background(), e.mailboxFor(rcpt), from)
 }
 
 // blockedAtDelivery is the delivery-time check: the mailbox blocks the

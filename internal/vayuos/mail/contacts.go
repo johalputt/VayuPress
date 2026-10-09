@@ -85,9 +85,19 @@ func (s *AccountStore) DeleteContact(ctx context.Context, owner, email string) e
 	if s.db == nil {
 		return nil
 	}
-	_, err := s.db.ExecContext(ctx,
-		`DELETE FROM vayumail_contacts WHERE owner=? AND email=?`, normEmail(owner), normEmail(email))
-	return err
+	// A group's members are contacts, so a contact removed leaves its groups.
+	owner, email = normEmail(owner), normEmail(email)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, q := range []string{`DELETE FROM vayumail_contacts WHERE owner=? AND email=?`, `DELETE FROM vayumail_contact_groups WHERE owner=? AND email=?`} {
+		if _, err := tx.ExecContext(ctx, q, owner, email); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // SearchContacts returns the owner mailbox's contacts matching q (a case-

@@ -88,5 +88,5 @@ func (a *App) handleVayuOSKeysAction(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "unknown action", "")
 		return
 	}
-	writeOSFragment(w, a.contactsPanel(r, owner, userKey, "", "", "", said))
+	writeOSFragment(w, a.contactsPanel(r, owner, userKey, "", "", "", contactsSaid{keys: said}))
 }

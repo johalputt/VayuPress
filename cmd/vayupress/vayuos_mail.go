@@ -1194,9 +1194,14 @@ func (a *App) handleVayuOSAliasAction(w http.ResponseWriter, r *http.Request) {
 		// The alias lives on the target mailbox's own domain, so a secondary-domain
 		// mailbox gets secondary-domain aliases (VayuDomains).
 		aliasDomain := emailDomain(target, fallbackDomain)
-		if local == "" || strings.ContainsAny(local, "@ \t") {
+		switch {
+		case local == "" || strings.ContainsAny(local, "@ \t"):
 			opErr = errors.New("invalid alias name")
-		} else {
+		case strings.Contains(local, "*") && local != "*":
+			// The catch-all is "*" alone (mailboxFor); "a*" would read as a
+			// pattern and match nothing but itself.
+			opErr = errors.New("* alone is the catch-all; it cannot be part of an alias")
+		default:
 			alias := local + "@" + aliasDomain
 			opErr = accts.CreateAlias(r.Context(), alias, target)
 			if opErr == nil {

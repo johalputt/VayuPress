@@ -1980,7 +1980,16 @@
 
 .vp-os .vm-contacts-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); flex-wrap: wrap; }
 .vp-os .vm-blocked-head { margin-top: var(--sp-4); }
-.vp-os .vm-keys-head { margin-top: var(--sp-4); }
+.vp-os :is(.vm-keys-head, .vm-groups-head) { margin-top: var(--sp-4); }
+.vp-os .vm-contacts-transfer { display: flex; gap: var(--sp-2); flex-wrap: wrap; align-items: center; }
+.vp-os .vm-contacts-import { margin: 0; }
+.vp-os .vm-contacts-import label:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* A group is a row of the contacts list that opens to its form, so it is a block where a contact row is a flex line. */
+.vp-os .vm-contact.vm-group { display: block; }
+.vp-os .vm-group__sum { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); cursor: pointer; list-style: none; }
+.vp-os .vm-group__sum::-webkit-details-marker { display: none; }
+.vp-os .vm-group__form { display: grid; gap: var(--sp-2); margin-top: var(--sp-2); }
+.vp-os .vm-group__buttons { display: flex; gap: var(--sp-2); }
 .vp-os .vm-key-fp { display: block; font: var(--type-mono); color: var(--text-3); white-space: normal; overflow-wrap: anywhere; }
 .vp-os .vm-keys-said { margin: 0 0 var(--sp-2); font-size: 13px; color: var(--text-2); }
 .vp-os .vm-keys-add { margin-top: var(--sp-2); }

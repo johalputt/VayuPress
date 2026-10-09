@@ -690,6 +690,32 @@ test("a search is saved to the sidebar, and runs from there", async ({ page }) =
   await expect(page.locator("#vm-searches a")).toHaveCount(0);
 });
 
+// A group made in Contacts goes into To as its people when its name is
+// chosen; it is deleted again so the mailbox is left as it was found.
+test("a contact group goes into To as its people", async ({ page }) => {
+  await openInbox(page);
+  await page.locator("button.sa-appside__item", { hasText: "Contacts" }).click();
+  await page.locator(".vm-contacts summary", { hasText: "New group" }).click();
+  const form = page.locator(".vm-keys-add .vm-group__form");
+  await form.locator('input[name="name"]').fill("Crew");
+  await form.locator('textarea[name="members"]').fill("priya@mail.test\nrohan@h.test");
+  await form.locator('button[value="save"]').click();
+  await expect(page.locator(".vm-contacts")).toContainText("Saved Crew.");
+  await page.goto("/os/vayumail/compose?user=ankush");
+  const to = page.locator('[data-c-chips="to"]');
+  await to.locator("[data-c-chip-input]").fill("crew");
+  await to.locator("[data-c-chip-input]").press("Enter");
+  await expect(to.locator('.vm-chip span[title="priya@mail.test"]')).toHaveCount(1);
+  await expect(to.locator('.vm-chip span[title="rohan@h.test"]')).toHaveCount(1);
+  await expect(to.locator(".vm-chip")).toHaveCount(2);
+  const csrf = (await page.context().cookies()).find((c) => c.name === "vp_csrf");
+  const r = await page.request.post("/os/vayumail/contacts/groups", {
+    headers: { "X-CSRF-Token": csrf ? decodeURIComponent(csrf.value) : "" },
+    form: { user: "ankush", action: "delete", was: "Crew" },
+  });
+  expect(r.ok()).toBe(true);
+});
+
 // An attachment's download fills a ring on its tile and settles to a tick,
 // and arrives under its own name; a file added to compose slides into the
 // attachment row (Mail plan §8, item 7).

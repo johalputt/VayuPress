@@ -191,3 +191,24 @@ func TestTheSettingsPageIsForAdministratorsOnly(t *testing.T) {
 		t.Errorf("a non-admin was shown another mailbox's settings (status %d)", rec.Code)
 	}
 }
+
+// The catch-all is the alias "*" alone: explained in the mailbox's Aliases, created
+// and labelled as such, and a "*" inside a name is refused in words.
+func TestTheCatchAllAlias(t *testing.T) {
+	a := appWithMailAccounts(t)
+	admin := &users.User{ID: "admin1", Email: "boss@example.com", Role: users.RoleAdmin}
+	rec := postForm(a.handleVayuOSAliasAction, "/os/vayumail/aliases/action", "op=alias-create&local=sa*les&target=dana@example.com", admin)
+	if !strings.Contains(rec.Body.String(), "* alone is the catch-all; it cannot be part of an alias") {
+		t.Fatalf("a * inside a name was not refused:\n%.1500s", rec.Body.String())
+	}
+	postForm(a.handleVayuOSAliasAction, "/os/vayumail/aliases/action", "op=alias-create&local=*&target=dana@example.com", admin)
+	body, _ := a.mailboxSettingsSections(context.Background(), "dana@example.com")
+	if !strings.Contains(body, `<td class="mono">*@example.com <span class="muted text-xs">catch-all</span></td>`) ||
+		!strings.Contains(body, "An alias named * is the catch-all") {
+		t.Fatalf("the catch-all is not named in the card:\n%s", body)
+	}
+	aliases, _ := a.vayuMail.Accounts().ListAliases(context.Background())
+	if len(aliases) != 1 || aliases[0].Alias != "*@example.com" {
+		t.Fatalf("aliases %+v", aliases)
+	}
+}

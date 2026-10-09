@@ -648,6 +648,9 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/contacts/add", a.handleVayuOSContactAdd)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/contacts/delete", a.handleVayuOSContactDelete)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/contacts/save", a.handleVayuOSContactSave)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/contacts/groups", a.handleVayuOSContactGroups)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/contacts/import", a.handleVayuOSContactsImport)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/contacts/export", a.handleVayuOSContactsExport)
 		// Devices: GET fragment backs the self-refresh poller so a newly-registered
 		// pending device surfaces without a reload.
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/devices/fragment", a.handleVayuOSDevicesFragment)

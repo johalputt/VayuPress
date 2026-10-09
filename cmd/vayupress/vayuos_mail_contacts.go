@@ -62,12 +62,18 @@ func (a *App) vayuContactsPanel(r *http.Request, owner, userKey string) string {
 // It takes the request, not only its context, so the blocked list at its foot
 // is read with the request's own authority (mailReader).
 func (a *App) vayuContactsPanelWith(r *http.Request, owner, userKey, errMsg, typedEmail, typedName string) string {
-	return a.contactsPanel(r, owner, userKey, errMsg, typedEmail, typedName, "")
+	return a.contactsPanel(r, owner, userKey, errMsg, typedEmail, typedName, contactsSaid{})
 }
 
-// contactsPanel is the panel, with keysSaid, what a change to the mailbox's
-// keys did, said beside them.
-func (a *App) contactsPanel(r *http.Request, owner, userKey, errMsg, typedEmail, typedName, keysSaid string) string {
+// contactsSaid is what a change to one part of the panel did, said beside
+// that part.
+type contactsSaid struct {
+	// book is an import's result, said under the panel's heading.
+	book, groups, keys string
+}
+
+// contactsPanel is the panel, with said beside the part a change was made to.
+func (a *App) contactsPanel(r *http.Request, owner, userKey, errMsg, typedEmail, typedName string, said contactsSaid) string {
 	ctx := r.Context()
 	// Direct html.EscapeString calls, not a local alias: typedEmail and
 	// typedName come straight from the form, and CodeQL credits the escaper
@@ -83,6 +89,7 @@ func (a *App) contactsPanel(r *http.Request, owner, userKey, errMsg, typedEmail,
 	b.WriteString(`<div class="vm-contacts-head"><h2 class="vm-contacts-title">Contacts</h2>` +
 		`<span class="muted text-sm">` + itoaSafe(len(contacts)) + ` saved · ` + html.EscapeString(owner) + `</span></div>`)
 	b.WriteString(`<p class="muted text-sm vm-contacts-sub">Private to this mailbox. These power the recipient suggestions when you compose from here.</p>`)
+	b.WriteString(contactsTransfer(userKey, said.book))
 	if errMsg != "" {
 		b.WriteString(saCallout("danger", html.EscapeString(errMsg)))
 	}
@@ -115,8 +122,9 @@ func (a *App) contactsPanel(r *http.Request, owner, userKey, errMsg, typedEmail,
 		}
 		b.WriteString(`</ul>`)
 	}
+	b.WriteString(a.groupsSection(ctx, owner, userKey, said.groups))
 	rd := a.mailReader(r, userKey)
-	b.WriteString(a.keysSection(rd, userKey, keysSaid))
+	b.WriteString(a.keysSection(rd, userKey, said.keys))
 	b.WriteString(a.blockedSection(rd, userKey))
 	b.WriteString(`</div>`)
 	return b.String()
@@ -231,6 +239,14 @@ func (a *App) composeContactsDatalistFor(ctx context.Context, owner string) stri
 					b.WriteString(` label="` + html.EscapeString(c.Name) + `"`)
 				}
 				b.WriteString(`>`)
+			}
+		}
+		// A group is offered by its name; chosen, it is its people
+		// (admin-os-mail.js reads data-group).
+		if groups, err := a.vayuMail.Accounts().ContactGroups(ctx, owner); err == nil {
+			for _, g := range groups {
+				b.WriteString(`<option value="` + html.EscapeString(g.Name) + `" label="Group · ` + itoaSafe(len(g.Members)) + ` ` + pluralWord(len(g.Members), "person", "people") +
+					`" data-group="` + html.EscapeString(strings.Join(g.Members, ",")) + `">`)
 			}
 		}
 	}

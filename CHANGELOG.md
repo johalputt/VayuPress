@@ -87,6 +87,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   and their signatures checked, in this mailbox. A key is the mailbox's own,
   never the server's, and never stands in for the key of an address this
   server serves.
+- **Contact groups, and contacts in and out as vCards.** Contacts has
+  Groups: a name on some of your contacts, made or edited from a list of
+  addresses (an address not yet a contact becomes one). In compose, typing a
+  group's name in To, Cc or Bcc puts in everyone in it. Contacts exports the
+  address book as a vCard file and imports one from a phone or another mail
+  service (vCard 2.1, 3.0 and 4.0; up to 4 MB and 5000 cards), with each
+  card's groups; a card with no name keeps the name a contact already has,
+  and the import says what it saved, passed over and could not make. A
+  mailbox keeps up to 50 groups of 500 people.
+- **A catch-all address.** An alias named `*` in a mailbox's Aliases takes
+  mail for any address on its domain that has no mailbox or alias of its
+  own. A real mailbox or alias always comes first, a block in the catch-all's
+  mailbox holds for the mail it takes, and a catch-all lets no one send as
+  the addresses it takes. A `*` inside a longer alias name is refused.
 - **Your own folders in Mail.** New folder in the mailbox's sidebar makes
   one; its header's menu renames or deletes it, and deleting a folder moves
   its mail to Trash rather than deleting any of it. Your folders are in every

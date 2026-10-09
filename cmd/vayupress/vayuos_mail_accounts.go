@@ -214,13 +214,17 @@ func (a *App) vayuCardAliases(ctx context.Context, ac vmail.Account) string {
 
 	var b strings.Builder
 	b.WriteString(`<details class="vm-ooo vm-acct__sub"><summary><span class="field-label">Aliases</span> ` + state + `</summary>`)
-	b.WriteString(`<p class="muted text-xs">Extra addresses that deliver into this mailbox — no separate login, revocable any time.</p>`)
+	b.WriteString(`<p class="muted text-xs">Extra addresses that deliver into this mailbox — no separate login, revocable any time. An alias named * is the catch-all: it takes mail for any address @` + html.EscapeString(domain) + ` that has no mailbox or alias of its own.</p>`)
 	b.WriteString(`<div class="table-wrap"><table class="table"><tbody>`)
 	if len(mine) == 0 {
 		b.WriteString(`<tr><td class="muted">No aliases yet.</td><td></td></tr>`)
 	}
 	for _, al := range mine {
-		b.WriteString(`<tr><td class="mono">` + html.EscapeString(al.Alias) + `</td><td>` +
+		catchAll := ""
+		if strings.HasPrefix(al.Alias, "*@") {
+			catchAll = ` <span class="muted text-xs">catch-all</span>`
+		}
+		b.WriteString(`<tr><td class="mono">` + html.EscapeString(al.Alias) + catchAll + `</td><td>` +
 			`<button type="button" class="btn btn--sm btn--danger"` + post + hxVals("op", "alias-delete", "alias", al.Alias) +
 			` hx-confirm="Delete alias ` + html.EscapeString(al.Alias) + `? Mail sent to it will bounce.">Delete</button></td></tr>`)
 	}

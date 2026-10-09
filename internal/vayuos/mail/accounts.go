@@ -234,6 +234,16 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 		PRIMARY KEY(owner, email));`); err != nil {
 		return s, err
 	}
+	// Contact groups: a name on some of a mailbox's contacts
+	// (contactgroups.go). The name compares without case, so Team and team
+	// are one group.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS vayumail_contact_groups(
+		owner TEXT NOT NULL,
+		name TEXT NOT NULL COLLATE NOCASE,
+		email TEXT NOT NULL,
+		PRIMARY KEY(owner, name, email));`); err != nil {
+		return s, err
+	}
 	// Alias addresses: extra receive-only addresses that deliver into an existing
 	// mailbox (single-level: an alias always points at a real account, never at
 	// another alias — enforced at creation).
@@ -445,6 +455,7 @@ func (s *AccountStore) SetActive(ctx context.Context, email string, active bool)
 //	recovery_tokens    the same, via an unexpired magic link
 //	recovery_requests  a pending "operator, please help me back in" ticket
 //	contacts           the holder's private address book
+//	contact_groups     the groups in it
 //	filters            rules that would run on somebody else's mail
 //	snooze             per-mailbox scheduling state
 //	autoreply_log      auto-reply dedupe bookkeeping
@@ -465,6 +476,7 @@ var perAddressTables = [][2]string{
 	{"vayumail_recovery_tokens", "email"},
 	{"vayumail_recovery_requests", "email"},
 	{"vayumail_contacts", "owner"},
+	{"vayumail_contact_groups", "owner"},
 	{"vayumail_filters", "mailbox"},
 	{"vayumail_snooze", "mailbox"},
 	{"vayumail_autoreply_log", "mailbox"},

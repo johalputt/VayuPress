@@ -1388,7 +1388,9 @@ func (e *Engine) submissionSenderAllowed(authUser, fromAddr string) bool {
 	}
 	// Only a LOCAL mailbox owned by someone else is forbidden; an external From is
 	// out of scope for this intra-server guard (recipient-side SPF/DKIM covers it).
-	if !e.isLocalRecipient(fromAddr) {
+	// The addresses a catch-all takes mail for are no one's mailbox, so they
+	// stay outside this guard, as they were before the catch-all existed.
+	if !e.isMailboxOrAlias(fromAddr) {
 		return true
 	}
 	// Tolerate a differently-cased login that still names the same identity.
@@ -1428,11 +1430,47 @@ func (e *Engine) submissionSenderAllowed(authUser, fromAddr string) bool {
 	return false
 }
 
-// isLocalRecipient reports whether addr is a mailbox on this instance. The
+// isLocalRecipient reports whether this instance takes mail for addr: a
+// mailbox or alias here, or any other address on a domain with a catch-all.
+func (e *Engine) isLocalRecipient(addr string) bool {
+	return e.isMailboxOrAlias(addr) || e.catchAllFor(addr) != ""
+}
+
+// catchAllFor is the mailbox that takes mail for addresses on addr's domain
+// that have no mailbox or alias of their own: the target of the alias
+// "*@domain", or "" when the domain has none or is not served here.
+func (e *Engine) catchAllFor(addr string) string {
+	_, domain := splitAddress(addr)
+	if e.accounts == nil || !e.cfg.AcceptsMailDomain(domain) {
+		return ""
+	}
+	return e.accounts.ResolveAlias(context.Background(), "*@"+domain)
+}
+
+// mailboxFor is the mailbox mail to addr is filed in: an alias's target, the
+// address itself when it is a mailbox here, or else its domain's catch-all.
+// An exact alias and a real mailbox come first, so a catch-all never takes
+// mail meant for either.
+func (e *Engine) mailboxFor(addr string) string {
+	if e.accounts == nil {
+		return addr
+	}
+	if target := e.accounts.ResolveAlias(context.Background(), addr); target != "" {
+		return target
+	}
+	if e.bridge != nil && !e.bridge.IsLocalRecipient(addr) {
+		if target := e.catchAllFor(addr); target != "" {
+			return target
+		}
+	}
+	return addr
+}
+
+// isMailboxOrAlias reports whether addr is a mailbox on this instance. The
 // recipient domain must match the configured domain; the address is then an
 // alias (delivering into its target mailbox) or an account confirmed through
 // the bridge (CMS user or admin-managed mail account).
-func (e *Engine) isLocalRecipient(addr string) bool {
+func (e *Engine) isMailboxOrAlias(addr string) bool {
 	_, domain := splitAddress(addr)
 	// The recipient must be on a domain this install serves — the primary, or a
 	// mail_enabled secondary (VayuDomains Stage 3b). Byte-identical to the historic

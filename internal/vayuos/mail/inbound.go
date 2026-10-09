@@ -147,12 +147,8 @@ func (e *Engine) deliver(envelopeFrom, recipientEmail string, raw []byte, stampe
 	if e.maildir == nil {
 		return "", errors.New("vayumail: not started")
 	}
-	// Alias resolution: file into the target mailbox instead.
-	if e.accounts != nil {
-		if target := e.accounts.ResolveAlias(context.Background(), recipientEmail); target != "" {
-			recipientEmail = target
-		}
-	}
+	// An alias, or a catch-all, files into its target mailbox instead.
+	recipientEmail = e.mailboxFor(recipientEmail)
 	local, domain := splitAddress(recipientEmail)
 	if local == "" {
 		return "", errors.New("vayumail: invalid recipient")

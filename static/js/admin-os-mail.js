@@ -722,8 +722,19 @@
         });
       }
       function sync() { hidden.value = list.join(', '); paintEnc(); }
+      // A contact group's name, as the suggestions offer it, is its people.
+      function groupOf(t) {
+        var opts = document.querySelectorAll('#vm-contacts option[data-group]');
+        for (var i = 0; i < opts.length; i++) {
+          if (opts[i].value.toLowerCase() === t.toLowerCase()) return opts[i].getAttribute('data-group').split(',');
+        }
+        return [t];
+      }
       function addFromText(text) {
-        (text || '').split(/[,;\n]/).forEach(function (t) { t = t.trim(); if (t && list.indexOf(t) === -1) list.push(t); });
+        (text || '').split(/[,;\n]/).forEach(function (t) {
+          t = t.trim();
+          if (t) groupOf(t).forEach(function (a) { if (list.indexOf(a) === -1) list.push(a); });
+        });
       }
       input.addEventListener('keydown', function (e) {
         if (e.key === 'Enter' || e.key === ',' || e.key === ';') {

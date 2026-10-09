@@ -184,3 +184,56 @@ func TestDeliverInboundAliasAndForward(t *testing.T) {
 		t.Fatal("loop-tagged message was forwarded again")
 	}
 }
+
+// A catch-all ("*@domain") takes mail for an address on its domain that has
+// no mailbox or alias of its own, and nothing else: not a mailbox's mail, not
+// an alias's, not another domain's. A block in its mailbox holds for what it
+// takes, and the addresses it takes stay no one's to send as.
+func TestACatchAllTakesOnlyWhatNothingElseDoes(t *testing.T) {
+	t.Parallel()
+	s := aliasTestStore(t)
+	ctx := context.Background()
+	if err := s.Create(ctx, "bob@example.com", "hash", "Bob", RoleMailbox); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateAlias(ctx, "sales@example.com", "bob@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	cfg.Domain = "example.com"
+	e := &Engine{cfg: cfg, maildir: NewMaildir(t.TempDir()), accounts: s, db: s.db,
+		bridge: loopbackBridge{localSet: map[string]bool{"ankush@example.com": true, "bob@example.com": true}}}
+	if e.isLocalRecipient("anyone@example.com") {
+		t.Fatal("an unknown address was taken with no catch-all")
+	}
+	if err := s.CreateAlias(ctx, "*@example.com", "ankush@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	for addr, want := range map[string]string{"anyone@example.com": "ankush@example.com", "bob@example.com": "bob@example.com", "sales@example.com": "bob@example.com"} {
+		if got := e.mailboxFor(addr); got != want {
+			t.Errorf("mail to %s is filed in %s, want %s", addr, got, want)
+		}
+	}
+	// A catch-all left on a domain this install no longer serves takes nothing.
+	if err := s.CreateAlias(ctx, "*@gone.example", "ankush@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if !e.isLocalRecipient("anyone@example.com") || e.isLocalRecipient("anyone@other.com") || e.isLocalRecipient("anyone@gone.example") {
+		t.Fatal("the catch-all takes the wrong domains")
+	}
+	if _, err := e.DeliverInbound("x@y.test", "anyone@example.com", []byte("From: x@y.test\r\nSubject: s\r\n\r\nb")); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := e.maildir.Stats("example.com", "ankush"); st.Messages != 1 {
+		t.Fatalf("the catch-all's mailbox has %d messages", st.Messages)
+	}
+	if err := e.BlockSender(ReadAsOwner("ankush"), "pest@y.test"); err != nil {
+		t.Fatal(err)
+	}
+	if !e.senderRefused("pest@y.test", "anyone@example.com") {
+		t.Fatal("the catch-all's mailbox blocks pest, but mail to anyone@ from pest was taken")
+	}
+	if !e.submissionSenderAllowed("bob@example.com", "anyone@example.com") || e.submissionSenderAllowed("bob@example.com", "ankush@example.com") {
+		t.Fatal("the catch-all changed who may send as what")
+	}
+}
