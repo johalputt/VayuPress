@@ -690,6 +690,24 @@ test("a search is saved to the sidebar, and runs from there", async ({ page }) =
   await expect(page.locator("#vm-searches a")).toHaveCount(0);
 });
 
+// On a phone a message opened from a folder with one message in it is shown
+// whole: the screen it is pushed onto is the height of the phone, not of the
+// one-row list beneath it.
+test("on a phone, a message from a short folder is shown whole", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/os/vayumail/inbox?user=ankush&folder=Sent");
+  await page.locator("#vm-inbox-list .mx-row__open").first().click();
+  const body = page.locator("#vm-readpane .mx-msg__body").first();
+  await expect(body).toBeVisible();
+  await expect(page.locator("body")).toHaveAttribute("data-mx-screen", "message");
+  await page.waitForTimeout(400);
+  const shown = await body.evaluate((b) => {
+    const r = b.getBoundingClientRect();
+    return b.contains(document.elementFromPoint(r.left + 8, r.top + r.height / 2));
+  });
+  expect(shown, "the message body is cut off below the list's height").toBe(true);
+});
+
 // A group made in Contacts goes into To as its people when its name is
 // chosen; it is deleted again so the mailbox is left as it was found.
 test("a contact group goes into To as its people", async ({ page }) => {

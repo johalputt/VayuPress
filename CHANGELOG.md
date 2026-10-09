@@ -101,6 +101,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   own. A real mailbox or alias always comes first, a block in the catch-all's
   mailbox holds for the mail it takes, and a catch-all lets no one send as
   the addresses it takes. A `*` inside a longer alias name is refused.
+- **Mail that did not arrive says so.** When this server gives up on a
+  message (the receiving server refused it, or every retry was spent), the
+  sender finds a delivery report in their Inbox naming who it did not reach
+  and what that server said, and the message in Sent carries a line for each
+  recipient it missed, with the status code. A report another server sends
+  back is read the same way and shown on the Sent copy, but only for mail
+  this server sent, since a report is easy to forge.
 - **Your own folders in Mail.** New folder in the mailbox's sidebar makes
   one; its header's menu renames or deletes it, and deleting a folder moves
   its mail to Trash rather than deleting any of it. Your folders are in every
@@ -141,6 +148,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   lost its left third, and compose's More options was cut off by the edge of
   the compose sheet. Every console menu and panel is now moved in, as it
   opens, by what it overhangs of the screen or of any box that clips it.
+- **On a phone, a message opened from a short folder was cut off.** Its
+  screen was only as tall as the folder's list, so in a folder of one or two
+  messages the body fell below the cut. The message now takes the height of
+  the phone.
 - **On a phone, Contacts in Mail's sidebar showed nothing.** It opened into
   the reading pane, which a phone keeps out of sight until a message is
   pushed. Contacts is now pushed as a message is, with Back to the list.

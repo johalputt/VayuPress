@@ -99,9 +99,13 @@ func TestTheMailCardDoesNotDenyThatItStopsDelivery(t *testing.T) {
 // than rejected, which is a widening that costs nobody access. That is luck, not
 // method. The set is pinned so the next addition has to justify itself.
 var mailPredicateCallSites = map[string]string{
-	"internal/vayuos/mail/config.go":   "AcceptsMailDomain itself, and the MailAccepts hook it consults",
-	"internal/vayuos/mail/smtpd.go":    "the RCPT gate — the delivery refusal the card describes",
-	"internal/vayuos/mail/engine.go":   "isLocalRecipient — the same refusal from the other side",
+	"internal/vayuos/mail/config.go": "AcceptsMailDomain itself, and the MailAccepts hook it consults",
+	"internal/vayuos/mail/smtpd.go":  "the RCPT gate — the delivery refusal the card describes",
+	"internal/vayuos/mail/engine.go": "isLocalRecipient and its catch-all — the same refusal from the other side",
+	// A delivery report is believed only about mail from a domain served here.
+	// With the domain's mail off, a report about it is not believed: nothing is
+	// deleted and no one is locked out, so the card's promise stands.
+	"internal/vayuos/mail/bounces.go":  "readDeliveryReport — believes a report only about mail sent from a served domain",
 	"internal/vayuos/mail/recovery.go": "validRecoveryContact — refuses a recovery address on a hosted domain",
 	"cmd/vayupress/vayuos.go":          "wires MailAccepts to the registry-backed predicate",
 	// NOT a consumer of the value: it hands the predicate to the account store.

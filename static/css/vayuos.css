@@ -6112,6 +6112,11 @@
 .vp-os[data-ui="still-air"] .mx-seal .sa-ico { width: 14px; height: 14px; }
 .vp-os[data-ui="still-air"] .mx-seal--ok { color: var(--ok); background: var(--ok-soft); }
 .vp-os[data-ui="still-air"] .mx-seal--danger { color: var(--danger); background: var(--danger-soft); }
+/* What a sent message did not reach, one line a recipient, in the seal's danger tone. */
+.vp-os[data-ui="still-air"] .mx-bounces { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; gap: var(--space-1); }
+.vp-os[data-ui="still-air"] .mx-bounces li { display: flex; gap: var(--space-2); align-items: flex-start; padding: var(--space-2) var(--space-3); border-radius: var(--radius-control); color: var(--danger); background: var(--danger-soft); font: var(--type-small); overflow-wrap: anywhere; }
+.vp-os[data-ui="still-air"] .mx-bounces .sa-ico { flex: none; width: 14px; height: 14px; margin-top: 2px; }
+.vp-os[data-ui="still-air"] .mx-bounces__code { font: var(--type-mono); opacity: 0.8; }
 .vp-os[data-ui="still-air"] .mx-msg__body { margin-top: var(--space-6); }
 .vp-os[data-ui="still-air"] .mx-text { max-width: 64ch; font: 400 15px/25px var(--font-ui); color: var(--text-1); white-space: pre-wrap; overflow-wrap: anywhere; }
 .vp-os[data-ui="still-air"] .mx-text--quoted { color: var(--text-3); border-left: 2px solid var(--border-2); padding-left: var(--space-4); margin-top: var(--space-3); }
@@ -6992,7 +6997,10 @@
 .vp-os[data-ui="still-air"][data-mx-screens] .mx-row.is-just-read { background: var(--accent-soft); }
 
 @media (max-width: 768px) {
-  .vp-os[data-ui="still-air"] .sa-main:has(.vm-split) { position: relative; }
+  /* With Mail's sidebar out of the flow the content is the main area's only
+     row, so it takes the whole height: in the auto row it would be as tall as
+     its list, and a message opened from a short folder was cut off there. */
+  .vp-os[data-ui="still-air"] .sa-main:has(.vm-split) { position: relative; grid-template-rows: minmax(0, 1fr); }
   /* The mailboxes: Mail's sidebar, as the screen above the list. */
   .vp-os[data-ui="still-air"] .sa-appside:has(.mx-account) { display: none; }
   .vp-os[data-ui="still-air"]:is([data-mx-screen="boxes"], [data-mx-from="boxes"]) .sa-appside:has(.mx-account) {

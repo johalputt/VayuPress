@@ -324,6 +324,14 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 			}
 			c.WriteString(`<p class="mx-seal mx-seal--` + map[string]string{"ok": "ok", "danger": "danger", "": "plain"}[s.Tone] + `">` + saIcon(icon) + `<span>` + esc(s.Text) + `</span></p>`)
 		}
+		// What this message did not reach, from the queue or a report.
+		if bounces, _ := a.vayuMail.Bounces(rd, cur.MessageID); len(bounces) > 0 {
+			c.WriteString(`<ul class="mx-bounces">`)
+			for _, b := range bounces {
+				c.WriteString(`<li>` + saIcon("alert") + `<span><strong>Not delivered to ` + esc(b.Recipient) + `.</strong> ` + esc(b.Reason) + ` <span class="mx-bounces__code">` + esc(b.Status) + `</span></span></li>`)
+			}
+			c.WriteString(`</ul>`)
+		}
 		if o := vmail.ParseListUnsubscribe(stored); o.Any() && received && !readOnly {
 			c.WriteString(mailUnsubscribeLine(user, folder, id, o))
 		}

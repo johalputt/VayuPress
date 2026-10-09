@@ -795,6 +795,7 @@ func (e *Engine) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("vayumail: queue init: %w", err)
 	}
+	q.OnFailure(e.deliveryFailed)
 	e.queue = q
 	go e.worker()
 	go e.retentionLoop()

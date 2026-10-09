@@ -22,7 +22,13 @@ type Queue struct {
 	db      *sql.DB
 	cfg     Config
 	deliver DeliverFunc
+	// failed hears of each message the queue gives up on, once, as it is
+	// marked failed (bounces.go tells its sender).
+	failed func(from string, to []string, raw []byte, cause error)
 }
+
+// OnFailure sets what hears of a message the queue gives up on.
+func (q *Queue) OnFailure(f func(from string, to []string, raw []byte, cause error)) { q.failed = f }
 
 // NewQueue creates a queue over db, creating its table if needed.
 func NewQueue(db *sql.DB, cfg Config, deliver DeliverFunc) (*Queue, error) {
@@ -127,6 +133,9 @@ func (q *Queue) ProcessDue(ctx context.Context, now time.Time) (delivered, faile
 			_, _ = q.db.ExecContext(ctx,
 				`UPDATE vayumail_queue SET state='failed', attempts=?, last_error=? WHERE id=?`,
 				attempts, derr.Error(), it.id)
+			if q.failed != nil {
+				q.failed(it.from, it.to, it.raw, derr)
+			}
 			continue
 		}
 		// Exponential backoff capped to keep next_attempt sane.

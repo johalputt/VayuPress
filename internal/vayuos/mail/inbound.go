@@ -167,6 +167,9 @@ func (e *Engine) deliver(envelopeFrom, recipientEmail string, raw []byte, stampe
 			}
 		}
 	}
+	// A delivery report for mail this mailbox sent is read for what failed,
+	// whatever folder it is filed in (bounces.go).
+	e.readDeliveryReport(local+"@"+domain, raw)
 	// A blocked sender's mail goes straight to Trash: not the inbox, and not
 	// forwarded or answered (blocked.go says why not refused here).
 	if e.blockedAtDelivery(local+"@"+domain, envelopeFrom, raw) {
