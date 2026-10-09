@@ -153,6 +153,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **Two code-scanning findings are recorded as what they are.** The mail
+  access record's SHA-256 chain and the Web Key Directory's SHA-1 were each
+  reported as a password hashed too cheaply. Neither hashes a password: the
+  first chains the entries of the access record so an edit shows, the second
+  is the public directory key the WKD standard defines. The scanner took a
+  mailbox address for a password because the query that loads it names the
+  must-change-password column. Each line now carries the scanner's own
+  suppression comment, with the reason beside it.
 - **golang.org/x/net 0.60.0.** Its HTTP/2 frame reader let a peer's
   trailer fields escape the header list size limit, so a client could make
   the server hold more header data than it allows. The dependency scan on
