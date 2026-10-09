@@ -28,6 +28,19 @@
      box, then plays the entrance from there: the panel grows out of what was
      pressed instead of from a corner fixed in CSS. Set through the CSSOM, so
      the style policy admits it. */
+  // A panel hangs from one edge of its control, which near the other edge
+  // of a phone's screen puts part of it off the screen (Talk's key panel
+  // opened from a control left of centre lost its left third). It is moved
+  // sideways by what it overhangs, through the translate property, so the
+  // entrance's transform still plays.
+  function keepOnScreen(panel) {
+    var gutter = 8;
+    panel.style.translate = '';
+    var r = panel.getBoundingClientRect();
+    var room = document.documentElement.clientWidth;
+    var dx = r.left < gutter ? gutter - r.left : (r.right > room - gutter ? room - gutter - r.right : 0);
+    if (dx) panel.style.translate = Math.round(dx) + 'px 0';
+  }
   function openFrom(panel, trigger, point) {
     var at = point;
     if (!at && trigger) {
@@ -35,12 +48,15 @@
       at = { x: t.left + t.width / 2, y: t.top + t.height / 2 };
     }
     if (!panel || !at) return;
+    // Measured at rest: the entrance began as the panel appeared, and its
+    // scale would put every edge a little inside where it lands.
+    panel.style.animation = 'none';
+    keepOnScreen(panel);
     var r = panel.getBoundingClientRect();
     var x = Math.min(Math.max(at.x - r.left, 0), r.width);
     var y = Math.min(Math.max(at.y - r.top, 0), r.height);
     panel.style.transformOrigin = Math.round(x) + 'px ' + Math.round(y) + 'px';
-    // The entrance began as the panel appeared; play it again from here.
-    panel.style.animation = 'none';
+    // Then the entrance plays again, from here.
     void panel.offsetWidth;
     panel.style.animation = '';
   }

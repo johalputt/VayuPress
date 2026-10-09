@@ -129,6 +129,21 @@ test("your safety number follows who you are chatting as", async ({ browser }) =
   await a.context().close();
 });
 
+// On a phone the key panel, opened from a control left of the screen's
+// right edge, lies wholly on the screen (it lost its left third, 2026-10-09;
+// vayuos.js keepOnScreen moves any popover in by what it overhangs).
+test("on a phone, the key panel is on the screen", async ({ browser }) => {
+  const a = await talkAs(browser, ANKUSH, { width: 390, height: 844 });
+  await a.locator("summary.vtalk-tool").first().click();
+  const panel = a.locator(".vtalk-pop").first();
+  await expect(panel).toBeVisible();
+  await expect.poll(async () => {
+    const r = await panel.evaluate((e) => { const b = e.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.right)]; });
+    return r[0] >= 0 && r[1] <= 390;
+  }, { message: "the key panel runs off the screen" }).toBe(true);
+  await a.context().close();
+});
+
 // A link with an address opens New chat with it filled in; Start is still the
 // reader's to press.
 test("a chat link opens New chat with the address", async ({ page }) => {
