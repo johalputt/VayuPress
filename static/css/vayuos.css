@@ -6890,11 +6890,22 @@
 .vp-os[data-ui="still-air"] .mx-compose__enc--ok { color: var(--ok); }
 .vp-os[data-ui="still-air"] .mx-compose__enc .sa-ico { width: 14px; height: 14px; }
 .vp-os[data-ui="still-air"] .mx-compose__status { margin-left: auto; padding: 0 var(--space-2); font: var(--type-small); color: var(--text-3); }
-.vp-os[data-ui="still-air"] :is(.mx-compose__more, .mx-compose__later) .sa-pop__panel { top: auto; bottom: calc(100% + 8px); left: 0; right: auto; width: 280px; padding: var(--space-2); }
+.vp-os[data-ui="still-air"] :is(.mx-compose__more, .mx-compose__later, .mx-compose__tpl) .sa-pop__panel { top: auto; bottom: calc(100% + 8px); left: 0; right: auto; width: 280px; padding: var(--space-2); }
 /* Send later: the presets (the name, and its time to the right), then a
    time of the sender's own choosing. Later in the sheet than .mx-compose__opt,
    whose centring it overrides, so these are double-classed. */
 .vp-os[data-ui="still-air"] .mx-compose__later .sa-pop__panel { width: 320px; max-width: calc(100vw - 32px); }
+.vp-os[data-ui="still-air"] .mx-compose__tpl .sa-pop__panel { width: 320px; max-width: calc(100vw - 32px); }
+.vp-os[data-ui="still-air"] .mx-compose__tpls { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: auto; }
+.vp-os[data-ui="still-air"] .mx-compose__tpl-row { display: flex; align-items: center; gap: var(--space-2); }
+.vp-os[data-ui="still-air"] .mx-compose__tpl-row .mx-compose__opt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-os[data-ui="still-air"] .mx-compose__tpl-del { flex: none; padding: var(--space-1) var(--space-2); border: 0; background: none; font: var(--type-small); color: var(--text-3); cursor: pointer; }
+.vp-os[data-ui="still-air"] .mx-compose__tpl-del:hover { color: var(--danger); }
+.vp-os[data-ui="still-air"] .mx-compose__tpl-empty { padding: var(--space-2); font: var(--type-small); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .mx-compose__tpl-save { display: grid; gap: var(--space-2); margin-top: var(--space-2); padding: var(--space-2); border-top: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .mx-compose__tpl-save .btn { justify-self: start; }
+.vp-os[data-ui="still-air"] .mx-compose__tpl-note { margin: 0; padding: 0 var(--space-2); font: var(--type-small); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .mx-compose__tpl-note:empty { display: none; }
 .vp-os[data-ui="still-air"] .mx-compose__opt[data-c-later-preset] { justify-content: space-between; }
 .vp-os[data-ui="still-air"] .mx-compose__at { color: var(--text-3); white-space: nowrap; }
 .vp-os[data-ui="still-air"] .mx-compose__opt.mx-compose__when { flex-direction: column; align-items: stretch; gap: var(--space-2); cursor: default; }

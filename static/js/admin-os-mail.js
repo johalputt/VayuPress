@@ -1111,6 +1111,100 @@
       });
     }
 
+    // ── Templates ──────────────────────────────────────────────────────────
+    // Read as the menu opens, so one saved in another window is there.
+    // Choosing one puts its text where the cursor is and its subject into an
+    // empty Subject; saving keeps this message's subject and text under a
+    // name, replacing a template of that name, which is how one is edited.
+    var tpl = compose.querySelector('[data-c-tpl]');
+    if (tpl) {
+      var tplUser = compose.getAttribute('data-c-user') || '';
+      var tplList = tpl.querySelector('[data-c-tpl-list]');
+      var tplNote = tpl.querySelector('[data-c-tpl-note]');
+      var tplName = tpl.querySelector('[data-c-tpl-name]');
+      var tplItems = [];
+      var paintTpl = function (ans, said) {
+        tplItems = ans.templates || [];
+        tplList.textContent = '';
+        if (!tplItems.length) {
+          var none = document.createElement('li');
+          none.className = 'mx-compose__tpl-empty';
+          none.textContent = 'None yet. Write a message, name it below and save it.';
+          tplList.appendChild(none);
+        }
+        tplItems.forEach(function (t) {
+          var li = document.createElement('li');
+          li.className = 'mx-compose__tpl-row';
+          var use = document.createElement('button');
+          use.type = 'button';
+          use.className = 'mx-compose__opt';
+          // A menu item: the console's popovers close behind one
+          // (vayuos.js), and a click during the close reopens the menu.
+          use.setAttribute('role', 'menuitem');
+          use.setAttribute('data-c-tpl-use', t.id);
+          use.textContent = t.name;
+          var del = document.createElement('button');
+          del.type = 'button';
+          del.className = 'mx-compose__tpl-del';
+          del.setAttribute('data-c-tpl-del', t.id);
+          del.setAttribute('aria-label', 'Delete the template ' + t.name);
+          del.textContent = 'Delete';
+          li.appendChild(use);
+          li.appendChild(del);
+          tplList.appendChild(li);
+        });
+        tplNote.textContent = ans.error ? 'Not done: ' + ans.error + '.' : (said || '');
+        return !ans.error;
+      };
+      var tplAsk = function (req, said) {
+        return req.then(function (r) { return r.json(); })
+          .then(function (ans) { return paintTpl(ans, said); })
+          .catch(function () { tplNote.textContent = 'Templates could not be reached.'; return false; });
+      };
+      var tplPost = function (form, said) {
+        form.user = tplUser;
+        return tplAsk(fetch('/os/vayumail/templates/action', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrfToken(), 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(form) }), said);
+      };
+      // Enter in the name saves the template: left to the form, it would send
+      // the message.
+      tplName.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        tpl.querySelector('[data-c-tpl-save]').click();
+      });
+      tpl.addEventListener('toggle', function () {
+        if (!tpl.open) return;
+        tplNote.textContent = '';
+        tplAsk(fetch('/os/vayumail/templates?user=' + encodeURIComponent(tplUser), { credentials: 'same-origin' }));
+      });
+      tpl.addEventListener('click', function (e) {
+        var use = e.target.closest('[data-c-tpl-use]');
+        var del = e.target.closest('[data-c-tpl-del]');
+        if (use) {
+          var t = tplItems.filter(function (x) { return String(x.id) === use.getAttribute('data-c-tpl-use'); })[0];
+          if (!t) return;
+          if (subjEl && !subjEl.value.trim() && t.subject) {
+            subjEl.value = t.subject;
+            subjEl.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          if (bodyEl) {
+            bodyEl.setRangeText(t.body, bodyEl.selectionStart, bodyEl.selectionEnd, 'end');
+            bodyEl.dispatchEvent(new Event('input', { bubbles: true }));
+            bodyEl.focus();
+          }
+        } else if (del) {
+          var name = del.parentNode.querySelector('[data-c-tpl-use]').textContent;
+          vpConfirm({ title: 'Delete a template', message: 'Delete the template “' + name + '”? Messages written from it are not changed.', confirm: 'Delete' }, function () {
+            tplPost({ action: 'delete', id: del.getAttribute('data-c-tpl-del') }, 'Deleted “' + name + '”.');
+          });
+        } else if (e.target.closest('[data-c-tpl-save]')) {
+          var named = tplName.value.trim();
+          tplPost({ action: 'save', name: named, subject: subjEl ? subjEl.value : '', body: bodyEl ? bodyEl.value : '' }, 'Saved as “' + named + '”.')
+            .then(function (ok) { if (ok) tplName.value = ''; });
+        }
+      });
+    }
+
     compose.addEventListener('submit', function (e) {
       e.preventDefault();
       if (sending || holdSnapshot) return; // a send is already in flight/held

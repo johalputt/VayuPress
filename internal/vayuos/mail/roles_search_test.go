@@ -143,7 +143,7 @@ func TestMaildirSearch(t *testing.T) {
 	mk("Archive", "Old note", "self@x.test", "keyword-zeta lives only in this body")
 
 	// Header (subject) match across folders.
-	res, err := md.Search("x.test", "bob", "invoice", 100)
+	res, err := md.Search("x.test", "bob", ParseSearchQuery("invoice"), 100)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -151,22 +151,22 @@ func TestMaildirSearch(t *testing.T) {
 		t.Fatalf("want 2 'invoice' hits (Inbox+Sent), got %d: %+v", len(res), res)
 	}
 	// Body-only match.
-	res, _ = md.Search("x.test", "bob", "keyword-zeta", 100)
+	res, _ = md.Search("x.test", "bob", ParseSearchQuery("keyword-zeta"), 100)
 	if len(res) != 1 || res[0].Folder != "Archive" {
 		t.Fatalf("body search failed: %+v", res)
 	}
 	// From match.
-	res, _ = md.Search("x.test", "bob", "billing@acme", 100)
+	res, _ = md.Search("x.test", "bob", ParseSearchQuery("billing@acme"), 100)
 	if len(res) != 1 {
 		t.Fatalf("from search failed: %+v", res)
 	}
 	// Limit is honoured.
-	res, _ = md.Search("x.test", "bob", "x.test", 1)
+	res, _ = md.Search("x.test", "bob", ParseSearchQuery("x.test"), 1)
 	if len(res) != 1 {
 		t.Fatalf("limit not honoured, got %d", len(res))
 	}
 	// Empty query returns nothing.
-	if res, _ := md.Search("x.test", "bob", "   ", 100); len(res) != 0 {
+	if res, _ := md.Search("x.test", "bob", ParseSearchQuery("   "), 100); len(res) != 0 {
 		t.Fatalf("empty query should return no results")
 	}
 	_ = strings.TrimSpace("")

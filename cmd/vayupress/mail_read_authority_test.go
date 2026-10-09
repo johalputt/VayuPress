@@ -27,7 +27,7 @@ func TestAnUnsetReaderCannotRead(t *testing.T) {
 	if _, err := e.ReadFolderMessage(rd, "Inbox", "1"); err != vmail.ErrNoReadAuthority {
 		t.Errorf("ReadFolderMessage with a zero Reader returned %v, want ErrNoReadAuthority", err)
 	}
-	if _, err := e.Search(rd, "q", 10); err != vmail.ErrNoReadAuthority {
+	if _, err := e.Search(rd, vmail.SearchQuery{Words: []string{"q"}}, 10); err != vmail.ErrNoReadAuthority {
 		t.Errorf("Search with a zero Reader returned %v, want ErrNoReadAuthority", err)
 	}
 	if err := e.MoveMessage(rd, "1", "Inbox", "Trash"); err != vmail.ErrNoReadAuthority {

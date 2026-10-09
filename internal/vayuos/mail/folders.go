@@ -311,47 +311,80 @@ type SearchResult struct {
 	Folder string `json:"folder"`
 }
 
-// Search scans an account's folders for messages whose From/To/Subject (and, as
-// a fallback, body) contain q (case-insensitive). It is bounded by maxScan
-// files so it stays cheap on a low-resource VPS — no external index, fully
-// local. Header matches avoid re-reading the message; only non-header matches
-// touch the body.
-func (m *Maildir) Search(domain, username, q string, limit int) ([]SearchResult, error) {
-	q = strings.ToLower(strings.TrimSpace(q))
-	if q == "" {
+// searchMaxScan bounds how many messages one search weighs against its words,
+// which may mean reading each from disk; a test lowers it.
+var searchMaxScan = 5000
+
+// Search scans an account's folders, in listing order, for the
+// messages q matches. Every term but the words is judged from the folder
+// listing; each word is looked for in From, To and Subject, then, only if
+// one is not found there, in the whole message. It is bounded
+// (searchMaxScan) so it stays cheap on a low-resource VPS: no external
+// index, fully local. Only messages the other terms let through count
+// against that bound, so a narrow query reaches further back.
+func (m *Maildir) Search(domain, username string, q SearchQuery, limit int) ([]SearchResult, error) {
+	if q.Empty() {
 		return nil, nil
 	}
 	if limit <= 0 || limit > 200 {
 		limit = 100
 	}
-	const maxScan = 5000
+	words := make([]string, len(q.Words))
+	for i, w := range q.Words {
+		words[i] = strings.ToLower(w)
+	}
 	scanned := 0
 	out := []SearchResult{}
 	for _, folder := range m.Folders(domain, username) {
+		if q.Folder != "" && !strings.EqualFold(folder, q.Folder) {
+			continue
+		}
 		msgs, err := m.ListFolder(domain, username, folder)
 		if err != nil {
 			continue
 		}
 		for _, sm := range msgs {
-			if scanned >= maxScan {
+			if !q.headersMatch(sm) {
+				continue
+			}
+			if scanned >= searchMaxScan {
 				return out, nil
 			}
 			scanned++
-			matched := strings.Contains(strings.ToLower(sm.From+" "+sm.To+" "+sm.Subject), q)
-			if !matched {
-				if raw, rerr := m.ReadRawFolder(domain, username, folder, sm.ID); rerr == nil {
-					matched = strings.Contains(strings.ToLower(string(raw)), q)
-				}
+			if !m.wordsMatch(domain, username, folder, sm, words) {
+				continue
 			}
-			if matched {
-				out = append(out, SearchResult{StoredMessage: sm, Folder: folder})
-				if len(out) >= limit {
-					return out, nil
-				}
+			out = append(out, SearchResult{StoredMessage: sm, Folder: folder})
+			if len(out) >= limit {
+				return out, nil
 			}
 		}
 	}
 	return out, nil
+}
+
+// wordsMatch reports whether every word is in the message's headers or, read
+// only when needed, the message itself.
+func (m *Maildir) wordsMatch(domain, username, folder string, sm StoredMessage, words []string) bool {
+	head := strings.ToLower(sm.From + " " + sm.To + " " + sm.Subject)
+	var whole string
+	read := false
+	for _, w := range words {
+		if strings.Contains(head, w) {
+			continue
+		}
+		if !read {
+			raw, err := m.ReadRawFolder(domain, username, folder, sm.ID)
+			if err != nil {
+				return false
+			}
+			whole, read = strings.ToLower(string(raw)), true
+		}
+		if !strings.Contains(whole, w) {
+			return false
+		}
+	}
+	return true
 }
 
 // MoveBetween moves a message from one folder to another (e.g. Inbox→Junk).

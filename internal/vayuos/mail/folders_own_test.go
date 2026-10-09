@@ -156,7 +156,7 @@ func TestOwnFoldersAreCountedAndSearched(t *testing.T) {
 	if grew := md.AccountSize("example.com", "bob") - before; grew < 1000 {
 		t.Fatalf("a message in Work added %d bytes to the mailbox's size", grew)
 	}
-	if hits, _ := md.Search("example.com", "bob", "needle", 10); len(hits) != 1 || hits[0].Folder != "Work" {
+	if hits, _ := md.Search("example.com", "bob", ParseSearchQuery("needle"), 10); len(hits) != 1 || hits[0].Folder != "Work" {
 		t.Fatalf("search for a message in Work: %+v", hits)
 	}
 }

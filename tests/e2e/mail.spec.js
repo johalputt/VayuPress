@@ -392,6 +392,39 @@ test("a message sent later waits under Scheduled, and Cancel returns it to Draft
   await expect.poll(() => fragment("Drafts"), { timeout: 10000 }).toContain(subject);
 });
 
+// A template is saved from what is being written, under a name; Enter in the
+// name saves it and does not send the message (left to the form it would).
+// The next message takes its subject and text, and Delete asks first.
+// Priya's mailbox, so no other spec sees the template.
+test("a template is saved from compose and put into the next message", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/os/vayumail/compose?user=priya");
+  const c = page.locator(".mx-compose--page");
+  const name = "Thanks " + Date.now();
+  const to = c.locator('[data-c-chips="to"] input');
+  await to.fill("ankush@mail.test");
+  await to.press("Enter");
+  await c.locator("[data-c-subject]").fill("Thank you");
+  await c.locator("[data-c-body]").fill("Thanks for this, it helps.");
+  await c.locator("[data-c-tpl] summary").click();
+  await c.locator("[data-c-tpl-name]").fill(name);
+  await c.locator("[data-c-tpl-name]").press("Enter");
+  await expect(c.locator("[data-c-tpl-note]")).toHaveText("Saved as “" + name + "”.");
+  await expect(c.locator("[data-c-undobar]"), "Enter in the template's name sent the message").toBeHidden();
+
+  await page.goto("/os/vayumail/compose?user=priya");
+  await c.locator("[data-c-tpl] summary").click();
+  await c.locator("[data-c-tpl-use]", { hasText: name }).click();
+  await expect(c.locator("[data-c-subject]")).toHaveValue("Thank you");
+  await expect(c.locator("[data-c-body]")).toHaveValue("Thanks for this, it helps.");
+
+  await c.locator("[data-c-tpl] summary").click();
+  const row = c.locator(".mx-compose__tpl-row", { hasText: name });
+  await row.locator("[data-c-tpl-del]").click();
+  await page.locator(".vp-confirm button", { hasText: "Delete" }).click();
+  await expect(row).toHaveCount(0);
+});
+
 // A folder of your own: made from the sidebar, it opens; renamed and deleted
 // from its header's menu, and deleting it opens Inbox. Priya's mailbox, so
 // no other spec's sidebar shows it.

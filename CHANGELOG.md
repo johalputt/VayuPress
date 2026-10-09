@@ -57,6 +57,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   Whether a file opens is decided by its bytes, not by its name or by the
   type the message gives it, so an HTML file sent as a picture still
   downloads.
+- **Search terms, and templates.** Mail's search reads `from:`, `to:`,
+  `subject:`, `in:` (a folder), `after:` and `before:` (a day), and
+  `has:attachment` and `is:unread`, alone or beside words, with "quoted
+  phrases"; every word must be found, in the headers or the message. The
+  terms narrow the search as it scans, so a narrow search reaches further
+  back, and a term typed in the field wins over the filter beside it. A term
+  that cannot be read is looked for as typed. Compose has Templates: save
+  what you are writing under a name, put a template into the next message
+  (its text where the cursor is, its subject into an empty Subject), and
+  delete one. Saving under a name in use replaces it, which is how one is
+  edited; a mailbox keeps up to 50, deleted with the mailbox.
 - **Your own folders in Mail.** New folder in the mailbox's sidebar makes
   one; its header's menu renames or deletes it, and deleting a folder moves
   its mail to Trash rather than deleting any of it. Your folders are in every

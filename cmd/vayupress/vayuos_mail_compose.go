@@ -217,7 +217,7 @@ func (a *App) composeSheet(r *http.Request, page bool) (sheet, refusal string) {
 	if page {
 		kind, h = ` data-page-kind="app"`, "h1"
 	}
-	b.WriteString(`<form class="` + cls + `" data-mail-compose` + kind + ` aria-labelledby="mx-compose-title">`)
+	b.WriteString(`<form class="` + cls + `" data-mail-compose` + kind + ` data-c-user="` + esc(mailUserParam(r)) + `" aria-labelledby="mx-compose-title">`)
 	b.WriteString(`<div class="mx-compose__head"><` + h + ` class="mx-compose__title" id="mx-compose-title" data-c-title>` + esc(title) + `</` + h + `>`)
 	if page {
 		b.WriteString(`<a class="mx-compose__tool" href="` + esc(back) + `" aria-label="Close">` + saIcon("x") + `</a>`)
@@ -298,6 +298,13 @@ func (a *App) composeSheet(r *http.Request, page bool) (sheet, refusal string) {
 	b.WriteString(`<button type="button" class="mx-compose__tool" data-c-attach-btn aria-label="Attach files" title="Up to ` + strconv.Itoa(composeMaxAttachMB()) + ` MB in all">` + saIcon("clip") + `</button>`)
 	b.WriteString(`<input type="file" data-c-files multiple hidden>`)
 	b.WriteString(`<button type="button" class="mx-compose__tool" data-c-format aria-label="Format" aria-pressed="false">` + saIcon("type") + `</button>`)
+	// Templates: the mailbox's saved wording, read as the menu opens
+	// (vayuos_mail_templates.go).
+	b.WriteString(`<details class="sa-pop mx-compose__tpl" data-c-tpl><summary class="mx-compose__tool" aria-label="Templates" title="Templates">` + saIcon("doc") + `</summary><div class="sa-pop__panel">` +
+		`<ul class="mx-compose__tpls" data-c-tpl-list aria-label="Templates"><li class="mx-compose__tpl-empty">Reading your templates…</li></ul>` +
+		`<div class="mx-compose__tpl-save"><input class="mx-compose__input" type="text" data-c-tpl-name placeholder="A name for this message" aria-label="Template name" maxlength="60">` +
+		`<button type="button" class="btn btn--sm" data-c-tpl-save>Save as a template</button></div>` +
+		`<p class="mx-compose__tpl-note" data-c-tpl-note aria-live="polite"></p></div></details>`)
 	b.WriteString(`<details class="sa-pop mx-compose__more"><summary class="mx-compose__tool" aria-label="More options">` + saIcon("more") + `</summary><div class="sa-pop__panel">` +
 		`<button type="button" class="mx-compose__opt" data-c-toggle-reply>Set a Reply-To address</button>` +
 		`<label class="mx-compose__opt"><input type="checkbox" data-c-sig-toggle checked> Append the signature</label>` +

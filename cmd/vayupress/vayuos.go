@@ -2179,7 +2179,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int) (st
 	b.WriteString(`<form class="mx-search" role="search" method="get" action="/os/vayumail/search" data-mx-search hx-get="/os/vayumail/search/fragment" hx-trigger="input changed delay:250ms from:find input[name=q], search from:find input[name=q], change from:find .mx-scope, submit" hx-target="#vm-search-results" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin">` +
 		`<input type="hidden" name="user" value="` + esc(user) + `"><input type="hidden" name="folder" value="` + esc(folder) + `"><input type="hidden" name="in" value="list">` +
 		`<span class="mx-search__field">` + saIcon("search") +
-		`<input class="mx-search__input" type="search" name="q" placeholder="Search" aria-label="Search mail" autocomplete="off"><kbd class="mx-search__key" aria-hidden="true">/</kbd></span>` +
+		`<input class="mx-search__input" type="search" name="q" placeholder="Search" aria-label="Search mail" title="Search words, or terms: from:, to:, subject:, in:, after:, before:, has:attachment, is:unread" autocomplete="off"><kbd class="mx-search__key" aria-hidden="true">/</kbd></span>` +
 		`<div class="mx-scope" role="radiogroup" aria-label="Search in">`)
 	for i, sc := range [][2]string{{"folder", "This folder"}, {"all", "All mail"}, {"from", "From"}, {"attach", "Has attachments"}} {
 		checked := ""
@@ -2620,7 +2620,7 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`<form class="vm-search-form" hx-get="/os/vayumail/search/fragment" hx-target="#vm-search-results" hx-swap="innerHTML" hx-indicator="#vm-search-spin" hx-trigger="submit, input changed delay:600ms, change delay:150ms">
   <input type="hidden" name="user" value="` + html.EscapeString(user) + `">
   <div class="vm-search-row">
-    <input class="input" type="search" name="q" value="` + html.EscapeString(sf.q) + `" placeholder="Search mail (from, subject, body)…" aria-label="Search mail" autofocus>
+    <input class="input" type="search" name="q" value="` + html.EscapeString(sf.q) + `" placeholder="Search mail, or from:, subject:, has:attachment…" aria-label="Search mail" autofocus>
     <button class="btn btn--primary" type="submit">Search</button>
   </div>
   <div class="vm-search-filters">
@@ -2642,7 +2642,7 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 // searchFilters holds the query and the refinement filters for a mail search.
 type searchFilters struct {
 	q, folder, from, after, before string
-	unreadOnly, attach             bool
+	unreadOnly, attach, fromScope  bool
 	// inList is the search in Mail's list (Mail plan §8, item 8): its
 	// results are the list's own rows, not the search page's table.
 	inList bool
@@ -2665,11 +2665,38 @@ func parseSearchFilters(r *http.Request) searchFilters {
 	case "all":
 		f.folder = ""
 	case "from":
-		f.folder, f.from = "", f.q
+		f.folder, f.fromScope = "", true
 	case "attach":
 		f.folder, f.attach = "", true
 	}
 	return f
+}
+
+// query is the search as the engine runs it: the terms typed in the field
+// (vmail.ParseSearchQuery), and the form's filters for what they leave
+// unsaid. A typed term wins over the same filter, since it is the narrower
+// and the later thing asked for: in:sent searches Sent from the list whose
+// scope bar says This folder.
+func (sf searchFilters) query() vmail.SearchQuery {
+	q := vmail.ParseSearchQuery(sf.q)
+	if sf.fromScope && q.From == "" {
+		q.From, q.Words = strings.Join(q.Words, " "), nil
+	}
+	if q.Folder == "" {
+		q.Folder = sf.folder
+	}
+	if q.From == "" {
+		q.From = sf.from
+	}
+	if t, ok := parseDay(sf.after); ok && q.After.IsZero() {
+		q.After = t
+	}
+	if t, ok := parseDay(sf.before); ok && q.Before.IsZero() {
+		q.Before = t.AddDate(0, 0, 1) // the form's Before includes its day
+	}
+	q.Unread = q.Unread || sf.unreadOnly
+	q.Attachment = q.Attachment || sf.attach
+	return q
 }
 
 // vayuSearchResults runs the full-text search and applies the refinement
@@ -2681,52 +2708,29 @@ func (a *App) vayuSearchResults(rd vmail.Reader, sf searchFilters) string {
 	if sf.q == "" && sf.inList {
 		return "" // the list itself is what an empty search shows
 	}
-	if sf.q == "" {
-		b.WriteString(`<div class="empty-state">Type a search above to find mail across every folder — refine with the folder, sender, date and unread filters.</div>`)
+	q := sf.query()
+	if q.Empty() {
+		b.WriteString(`<div class="empty-state">Type a search above to find mail across every folder, with terms such as ` + mailSearchTermsHint + ` if you like, or use the filters.</div>`)
 		return b.String()
 	}
 	// A one-character query makes the engine scan its whole bounded window for
 	// almost nothing, and the debounced input fires on the way to a real term.
 	// Two characters is the point where a search is worth its cost.
-	if len([]rune(strings.TrimSpace(sf.q))) < 2 {
+	if sf.q != "" && len([]rune(strings.TrimSpace(sf.q))) < 2 {
 		b.WriteString(`<div class="empty-state">Keep typing — search starts at two characters.</div>`)
 		return b.String()
 	}
-	results, _ := a.vayuMail.Search(rd, sf.q, 200)
-	capped := len(results) >= 200
-	afterT, hasAfter := parseDay(sf.after)
-	beforeT, hasBefore := parseDay(sf.before)
-	fromLower := strings.ToLower(sf.from)
-	var matched []vmail.SearchResult
-	for _, m := range results {
-		if sf.folder != "" && !strings.EqualFold(m.Folder, sf.folder) {
-			continue
-		}
-		if fromLower != "" && !strings.Contains(strings.ToLower(m.From), fromLower) {
-			continue
-		}
-		if sf.unreadOnly && m.Seen {
-			continue
-		}
-		if sf.attach && !m.Attachment {
-			continue
-		}
-		if hasAfter && m.Date.Before(afterT) {
-			continue
-		}
-		if hasBefore && !m.Date.Before(beforeT.AddDate(0, 0, 1)) {
-			continue
-		}
-		matched = append(matched, m)
-	}
+	matched, _ := a.vayuMail.Search(rd, q, 200)
+	capped := len(matched) >= 200
+	words := strings.Join(q.Words, " ")
 	if sf.inList {
 		return a.mailSearchRows(user, sf, matched, capped)
 	}
 	b.WriteString(`<div class="vm-search-count text-sm muted">` + itoaSafe(len(matched)) + ` result` + plural(len(matched)) + ` for “` + html.EscapeString(sf.q) + `”`)
 	if capped {
-		// The engine scans a bounded window and the refinement filters run after
-		// it, so the count here is a floor, not a total. Saying nothing would read
-		// as "that is all there is".
+		// The engine stops at 200 matches (or its bounded scan), so the count
+		// here is a floor, not a total. Saying nothing would read as "that is
+		// all there is".
 		b.WriteString(` · the scan hit its limit — add a filter or a longer term to see the rest`)
 	}
 	b.WriteString(`</div>`)
@@ -2741,7 +2745,7 @@ func (a *App) vayuSearchResults(rd vmail.Reader, sf searchFilters) string {
 			subj = "(no subject)"
 		}
 		link := "/os/vayumail/message?user=" + qparam(user) + "&folder=" + qparam(m.Folder) + "&id=" + qparam(m.ID)
-		b.WriteString(`<tr><td><span class="badge">` + html.EscapeString(m.Folder) + `</span></td><td><div class="vm-from">` + mailAvatarImg(m.From, avSet) + `<span class="vm-name">` + highlightMatch(mailDisplay(m.From), sf.q) + `</span></div></td><td class="vm-subj"><a href="` + link + `">` + highlightMatch(subj, sf.q) + `</a></td><td class="muted text-sm vm-date">` + mailRelTime(m.Date) + `</td></tr>`)
+		b.WriteString(`<tr><td><span class="badge">` + html.EscapeString(m.Folder) + `</span></td><td><div class="vm-from">` + mailAvatarImg(m.From, avSet) + `<span class="vm-name">` + highlightMatch(mailDisplay(m.From), words) + `</span></div></td><td class="vm-subj"><a href="` + link + `">` + highlightMatch(subj, words) + `</a></td><td class="muted text-sm vm-date">` + mailRelTime(m.Date) + `</td></tr>`)
 	}
 	b.WriteString(`</tbody></table></div>`)
 	return b.String()
@@ -2757,7 +2761,7 @@ func (a *App) mailSearchRows(user string, sf searchFilters, matched []vmail.Sear
 	}
 	b.WriteString(`</p>`)
 	if len(matched) == 0 {
-		b.WriteString(`<p class="mx-empty">Nothing matches. Try another word, or all mail.</p>`)
+		b.WriteString(`<p class="mx-empty">Nothing matches. Try another word, all mail, or a term such as ` + mailSearchTermsHint + `.</p>`)
 		return b.String()
 	}
 	b.WriteString(`<ol class="mx-list">`)
@@ -2792,6 +2796,10 @@ func (a *App) handleVayuOSSearchFragment(w http.ResponseWriter, r *http.Request)
 	}
 	writeOSFragment(w, a.vayuSearchResults(rd, parseSearchFilters(r)))
 }
+
+// mailSearchTermsHint names the search terms where a search found nothing or
+// has not begun, the two moments a person looks for another way to ask.
+const mailSearchTermsHint = `<code>from:</code>, <code>subject:</code>, <code>has:attachment</code> or <code>after:2026-09-01</code>`
 
 // parseDay parses a YYYY-MM-DD date-input value (UTC midnight). ok is false when
 // the value is empty or malformed.

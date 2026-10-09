@@ -238,9 +238,9 @@ func (e *Engine) ReadFolderMessageStored(rd Reader, folder, id string) ([]byte, 
 	return e.maildir.ReadRawFolder(dom, local, folder, id)
 }
 
-// Search runs a bounded, fully-local full-text search across an account's
-// folders (no external index).
-func (e *Engine) Search(rd Reader, q string, limit int) ([]SearchResult, error) {
+// Search runs a bounded, fully-local search of an account's folders (no
+// external index); ParseSearchQuery reads q from what a person types.
+func (e *Engine) Search(rd Reader, q SearchQuery, limit int) ([]SearchResult, error) {
 	if err := e.readAuthorised(rd); err != nil {
 		return nil, err
 	}
