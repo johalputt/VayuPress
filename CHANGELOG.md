@@ -128,6 +128,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   change could move it. They stay listed as the boundary; the count is now
   what is open on this machine.
 
+### Security
+
+- **Onion private keys are sealed in the database.** A Tor onion's private
+  key is its address's identity, and it was stored in the clear, so any copy
+  of the database carried it. It is now sealed under the key the install
+  keeps outside the database, as TOTP secrets are, and a key stored before
+  is sealed the first time it is read. A copy of the database alone no longer
+  carries an onion's identity; a VayuKeep backup still restores it, with the
+  key file, under the backup's passphrase. A key that cannot be opened
+  (a database restored without its key file) is not overwritten: it serves
+  again once the key file returns.
+
 ## [3.17.98] — 2026-10-03
 
 Backups now says what a backup holds, and its test restore checks the mail,

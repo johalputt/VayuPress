@@ -743,7 +743,7 @@ func (a *App) bootVayuOS() {
 			}
 			return 0
 		},
-		Store: &torStore{settings: a.siteSettings},
+		Store: &torStore{settings: a.siteSettings, codec: a.secrets},
 		Domains: func(ctx context.Context) ([]string, error) {
 			// Per-domain onions belong to the VayuTor one-click toggle only. When
 			// only the Anonymous Tor Space is on, the engine still connects to tor
