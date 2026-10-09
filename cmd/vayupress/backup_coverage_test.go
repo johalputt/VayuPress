@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/users"
@@ -264,12 +265,17 @@ func TestTheInstallSaysWhenABackupLeavesMediaOut(t *testing.T) {
 	config.Cfg.MediaDir = filepath.Join(t.TempDir(), "media")
 	put(t, filepath.Join(config.Cfg.MediaDir, "a.jpg"), "x")
 	target := filepath.Join(t.TempDir(), "replica")
-	gen := filepath.Join(target, "vk-20261003-114512.vpbk")
+	// Dated from the clock: pinned to the day it was written, the backup
+	// and its test restore grew stale six days later and the page said so
+	// instead of Partial, failing the test for a reason it does not test.
+	made := time.Now().UTC().Add(-time.Hour)
+	name := "vk-" + made.Format("20060102-150405") + ".vpbk"
+	gen := filepath.Join(target, name)
 	put(t, gen, "sealed")
 	fi, _ := os.Stat(gen)
 	put(t, filepath.Join(target, vayukeep.DrillRecordName), fmt.Sprintf(
-		`{"at":"2026-10-03T11:50:00Z","ok":true,"rows":3,"generation":"vk-20261003-114512.vpbk","proven":{"name":"vk-20261003-114512.vpbk","bytes":%d,"modified":%d}}`,
-		fi.Size(), fi.ModTime().UnixNano()))
+		`{"at":%q,"ok":true,"rows":3,"generation":%q,"proven":{"name":%q,"bytes":%d,"modified":%d}}`,
+		made.Add(5*time.Minute).Format(time.RFC3339), name, name, fi.Size(), fi.ModTime().UnixNano()))
 	e, err := vayukeep.New(vayukeep.Config{Enabled: true, DataDir: data, DBPath: config.Cfg.DBPath, TargetDir: target,
 		Passphrase: "a test passphrase", Snapshot: func(context.Context, string, string) error { return nil }})
 	if err != nil {
