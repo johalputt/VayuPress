@@ -66,7 +66,7 @@ func ParseVCards(data []byte) ([]VCard, error) {
 				family, given = strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
 			}
 		case "EMAIL":
-			if e := strings.TrimSpace(strings.TrimPrefix(vcardUnescape(value), "mailto:")); e != "" {
+			if e := vcardAddress(vcardUnescape(value)); e != "" {
 				cur.Emails = append(cur.Emails, e)
 			}
 		case "CATEGORIES":
@@ -81,6 +81,12 @@ func ParseVCards(data []byte) ([]VCard, error) {
 		return nil, errors.New("there is no vCard in that file")
 	}
 	return cards, nil
+}
+
+// vcardAddress is the address an EMAIL value holds, which some apps write
+// as a mailto: link.
+func vcardAddress(v string) string {
+	return strings.TrimSpace(strings.TrimPrefix(v, "mailto:"))
 }
 
 // unfoldVCard splits data into its logical lines: a line that begins with a
@@ -261,7 +267,7 @@ func (s *AccountStore) ImportContacts(ctx context.Context, owner string, cards [
 		}
 		size[g] = n
 	}
-	if err := rows.Close(); err != nil {
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return res, err
 	}
 	leftOut := map[string]bool{}
@@ -281,6 +287,9 @@ func (s *AccountStore) ImportContacts(ctx context.Context, owner string, cards [
 			}
 			if _, err := tx.ExecContext(ctx, `INSERT INTO vayumail_contacts(owner,email,name) VALUES(?,?,?)
 				ON CONFLICT(owner,email) DO UPDATE SET name=CASE WHEN excluded.name<>'' THEN excluded.name ELSE vayumail_contacts.name END`, owner, e, name); err != nil {
+				return res, err
+			}
+			if err := cardsRenamed(ctx, tx, owner, e, name); err != nil {
 				return res, err
 			}
 			res.Saved++

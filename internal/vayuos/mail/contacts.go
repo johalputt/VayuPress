@@ -45,11 +45,21 @@ func (s *AccountStore) AddContact(ctx context.Context, owner, email, name string
 	if owner == email {
 		return nil
 	}
-	_, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO vayumail_contacts(owner,email,name) VALUES(?,?,?)
 		 ON CONFLICT(owner,email) DO UPDATE SET name=excluded.name`,
-		owner, email, name)
-	return err
+		owner, email, name); err != nil {
+		return err
+	}
+	if err := cardsRenamed(ctx, tx, owner, email, name); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // ListContacts returns all contacts owned by the given mailbox, ordered by a
@@ -85,7 +95,8 @@ func (s *AccountStore) DeleteContact(ctx context.Context, owner, email string) e
 	if s.db == nil {
 		return nil
 	}
-	// A group's members are contacts, so a contact removed leaves its groups.
+	// A group's members are contacts, so a contact removed leaves its groups;
+	// and the card an app keeps for it loses the address (dav.go).
 	owner, email = normEmail(owner), normEmail(email)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -96,6 +107,9 @@ func (s *AccountStore) DeleteContact(ctx context.Context, owner, email string) e
 		if _, err := tx.ExecContext(ctx, q, owner, email); err != nil {
 			return err
 		}
+	}
+	if err := cardsDropped(ctx, tx, owner, email); err != nil {
+		return err
 	}
 	return tx.Commit()
 }

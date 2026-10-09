@@ -37,6 +37,12 @@ import (
 // advertised URL is https there and never a downgraded link. Host comes from the
 // request so it is correct for whichever domain the operator is administering.
 func publicMCPEndpoint(r *http.Request) string {
+	return publicOrigin(r) + "/mcp"
+}
+
+// publicOrigin is scheme and host as the browser reached this site, resolved
+// as publicMCPEndpoint describes.
+func publicOrigin(r *http.Request) string {
 	scheme := "https"
 	if fp := r.Header.Get("X-Forwarded-Proto"); fp != "" {
 		if i := strings.IndexByte(fp, ','); i >= 0 { // first hop wins
@@ -51,7 +57,7 @@ func publicMCPEndpoint(r *http.Request) string {
 	if host == "" {
 		host = "your-domain.com"
 	}
-	return scheme + "://" + host + "/mcp"
+	return scheme + "://" + host
 }
 
 // ── Dedicated connector host ─────────────────────────────────────────────────

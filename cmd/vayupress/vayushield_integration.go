@@ -79,6 +79,8 @@ var shieldBypassPrefixes = []string{
 	"/os", "/api", "/admin", "/debug", "/health", "/metrics", "/static",
 	"/__vayushield", "/__vayuanalytics", "/.well-known", "/mcp", "/oauth",
 	"/manifest.json", "/sw.js",
+	// Contacts and calendar apps sync over /dav and cannot solve a challenge.
+	"/dav",
 }
 
 // containsPrefix reports whether list holds want exactly. Used by the install-health

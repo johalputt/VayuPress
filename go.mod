@@ -14,7 +14,10 @@ require (
 	filippo.io/edwards25519 v1.2.0
 	github.com/ProtonMail/go-crypto v1.5.2
 	github.com/alecthomas/chroma/v2 v2.27.0
+	github.com/emersion/go-ical v0.0.0-20240127095438-fc1c9d8fb2b6
 	github.com/emersion/go-msgauth v0.7.0
+	github.com/emersion/go-vcard v0.0.0-20230815062825-8fda7d206ec9
+	github.com/emersion/go-webdav v0.7.0
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/graphql-go/graphql v0.8.1
 	github.com/mattn/go-sqlite3 v1.14.52
@@ -94,6 +97,7 @@ require (
 	github.com/sigstore/timestamp-authority/v2 v2.1.3 // indirect
 	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
+	github.com/teambition/rrule-go v1.8.2 // indirect
 	github.com/theupdateframework/go-tuf v0.7.0 // indirect
 	github.com/theupdateframework/go-tuf/v2 v2.4.2 // indirect
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399 // indirect

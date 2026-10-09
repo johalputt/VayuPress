@@ -244,6 +244,31 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 		PRIMARY KEY(owner, name, email));`); err != nil {
 		return s, err
 	}
+	// Cards and events as phones and desktop apps keep them in step (dav.go),
+	// and which card holds which of the contacts' addresses. A UID names one
+	// entry of a kind, as CardDAV and CalDAV require.
+	for _, q := range []string{
+		`CREATE TABLE IF NOT EXISTS vayumail_dav(
+		mailbox TEXT NOT NULL,
+		kind TEXT NOT NULL,
+		name TEXT NOT NULL,
+		uid TEXT NOT NULL,
+		etag TEXT NOT NULL,
+		data BLOB NOT NULL,
+		modified DATETIME NOT NULL,
+		PRIMARY KEY(mailbox, kind, name),
+		UNIQUE(mailbox, kind, uid));`,
+		`CREATE TABLE IF NOT EXISTS vayumail_dav_emails(
+		mailbox TEXT NOT NULL,
+		name TEXT NOT NULL,
+		email TEXT NOT NULL,
+		PRIMARY KEY(mailbox, name, email));`,
+		`CREATE INDEX IF NOT EXISTS vayumail_dav_emails_email ON vayumail_dav_emails(mailbox, email);`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			return s, err
+		}
+	}
 	// Alias addresses: extra receive-only addresses that deliver into an existing
 	// mailbox (single-level: an alias always points at a real account, never at
 	// another alias — enforced at creation).
@@ -468,6 +493,7 @@ func (s *AccountStore) SetActive(ctx context.Context, email string, active bool)
 //	saved_searches     the holder's kept searches
 //	bounces            what the holder's sent mail did not reach
 //	labels             the names on the holder's messages
+//	dav, dav_emails    the cards and events the holder's apps keep in step
 //
 // vayumail_aliases is deliberately absent. An alias is operator configuration,
 // visible and editable in the console, and silently deleting it on account
@@ -489,6 +515,8 @@ var perAddressTables = [][2]string{
 	{"vayumail_saved_searches", "mailbox"},
 	{"vayumail_bounces", "mailbox"},
 	{"vayumail_labels", "mailbox"},
+	{"vayumail_dav", "mailbox"},
+	{"vayumail_dav_emails", "mailbox"},
 }
 
 // Delete removes an account and the per-address state that outlived it.

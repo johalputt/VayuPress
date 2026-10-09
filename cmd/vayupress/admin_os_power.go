@@ -43,6 +43,8 @@ import (
 // working. Mirrors (a subset of) the shield's bypass list.
 var maintenanceExemptPrefixes = []string{
 	"/os", "/__vayushield", "/__vayuanalytics", "/.well-known", "/mcp", "/oauth", "/health",
+	// A phone's contacts and calendar keep syncing while the site is down.
+	"/dav",
 	// The typefaces the console stylesheet names, so the maintenance page and
 	// the sign-in page set in Inter rather than falling back. Font files only.
 	"/static/fonts",

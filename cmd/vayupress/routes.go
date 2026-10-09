@@ -344,6 +344,13 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// /.well-known/, so it does not collide with the /{file} catch-all below.
 	r.With(auth.PublicDiscoveryRateLimit).Get("/.well-known/vayumail/autoconfig.json", a.handleVayuMailAutoconfigJSON)
 
+	// Contacts and calendar sync (CardDAV, CalDAV) for a mailbox's apps. Every
+	// method, since the protocols are PROPFIND, REPORT, PUT and DELETE; the
+	// two /.well-known addresses lead an app from the server's name to /dav.
+	r.Handle("/dav/*", http.HandlerFunc(a.handleMailDAV))
+	r.Handle("/.well-known/carddav", http.HandlerFunc(a.handleMailDAV))
+	r.Handle("/.well-known/caldav", http.HandlerFunc(a.handleMailDAV))
+
 	// IndexNow key verification file. Search engines fetch
 	// /.well-known/<key>.txt and expect the body to equal <key>. We serve it
 	// dynamically from the active IndexNow key (managed in the VayuOS API Keys
