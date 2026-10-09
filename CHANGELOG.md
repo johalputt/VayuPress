@@ -153,6 +153,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **golang.org/x/net 0.60.0.** Its HTTP/2 frame reader let a peer's
+  trailer fields escape the header list size limit, so a client could make
+  the server hold more header data than it allows. The dependency scan on
+  main went red on the advisory; the update closes it.
 - **Onion private keys are sealed in the database.** A Tor onion's private
   key is its address's identity, and it was stored in the clear, so any copy
   of the database carried it. It is now sealed under the key the install
