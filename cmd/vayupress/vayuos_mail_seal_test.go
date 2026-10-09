@@ -48,7 +48,7 @@ func TestTheSealTellsTheTruth(t *testing.T) {
 		{vpgp.SigBad, "danger", "does not match ananya@iyer.example's key"},
 	} {
 		f := &fakeSeal{v: c.v}
-		s := mailSealFor(f, "me@example.com", []byte(pgpMIMESigned), "ananya@iyer.example")
+		s := mailSealFor(nil, f, "me@example.com", []byte(pgpMIMESigned), "ananya@iyer.example")
 		if s.Tone != c.tone || !strings.Contains(s.Text, c.word) {
 			t.Errorf("verdict %d: seal %+v, want tone %q and %q", c.v, s, c.tone, c.word)
 		}
@@ -56,20 +56,20 @@ func TestTheSealTellsTheTruth(t *testing.T) {
 	// What was checked is the signed part exactly: its own headers and body,
 	// without the line break before the next delimiter.
 	f := &fakeSeal{v: vpgp.SigVerified}
-	mailSealFor(f, "me@example.com", []byte(pgpMIMESigned), "ananya@iyer.example")
+	mailSealFor(nil, f, "me@example.com", []byte(pgpMIMESigned), "ananya@iyer.example")
 	if string(f.gotData) != "Content-Type: text/plain\r\n\r\nSigned words." {
 		t.Errorf("checked %q", f.gotData)
 	}
 	// An encrypted message: green only when signed and verified.
 	enc := []byte("From: r@x\r\nContent-Type: text/plain\r\n\r\n-----BEGIN PGP MESSAGE-----\r\nhQE\r\n-----END PGP MESSAGE-----\r\n")
-	if s := mailSealFor(&fakeSeal{v: vpgp.SigNone}, "me@x", enc, "r@x"); s.Tone != "" || s.Text != "Encrypted" {
+	if s := mailSealFor(nil, &fakeSeal{v: vpgp.SigNone}, "me@x", enc, "r@x"); s.Tone != "" || s.Text != "Encrypted" {
 		t.Errorf("encrypted, unsigned: %+v", s)
 	}
-	if s := mailSealFor(&fakeSeal{v: vpgp.SigVerified}, "me@x", enc, "r@x"); s.Tone != "ok" || s.Text != "Signed and encrypted · r@x's key is verified" {
+	if s := mailSealFor(nil, &fakeSeal{v: vpgp.SigVerified}, "me@x", enc, "r@x"); s.Tone != "ok" || s.Text != "Signed and encrypted · r@x's key is verified" {
 		t.Errorf("encrypted and verified: %+v", s)
 	}
 	// Plain mail has no seal at all.
-	if s := mailSealFor(&fakeSeal{v: vpgp.SigVerified}, "me@x", []byte("From: a@x\r\n\r\nhello\r\n"), "a@x"); s != (mailSeal{}) {
+	if s := mailSealFor(nil, &fakeSeal{v: vpgp.SigVerified}, "me@x", []byte("From: a@x\r\n\r\nhello\r\n"), "a@x"); s != (mailSeal{}) {
 		t.Errorf("plain mail: %+v", s)
 	}
 }
@@ -96,7 +96,7 @@ func TestTheSealVouchesOnlyForWhatItChecked(t *testing.T) {
 		{"a third part beside a PGP/MIME signature", third},
 		{"words before an inline encrypted block", plain + "Pay invoice 4411 to account 999 today.\r\n\r\n" + armour + "\r\n"},
 	} {
-		s := mailSealFor(&fakeSeal{v: vpgp.SigVerified}, "me@x", []byte(c.msg), "ananya@iyer.example")
+		s := mailSealFor(nil, &fakeSeal{v: vpgp.SigVerified}, "me@x", []byte(c.msg), "ananya@iyer.example")
 		if s.Tone == "ok" || strings.Contains(s.Text, "verified") {
 			t.Errorf("%s: the seal vouches for words its signature does not cover: %+v", c.name, s)
 		}
@@ -105,7 +105,7 @@ func TestTheSealVouchesOnlyForWhatItChecked(t *testing.T) {
 		}
 	}
 	// A signature that fails is red however much of the message it covers.
-	if s := mailSealFor(&fakeSeal{v: vpgp.SigBad}, "me@x", []byte(plain+"Pay today.\r\n"+clear+"\r\n"), "ananya@iyer.example"); s.Tone != "danger" {
+	if s := mailSealFor(nil, &fakeSeal{v: vpgp.SigBad}, "me@x", []byte(plain+"Pay today.\r\n"+clear+"\r\n"), "ananya@iyer.example"); s.Tone != "danger" {
 		t.Errorf("a bad signature inside other words: %+v", s)
 	}
 	// And the block alone still reads green, inline or PGP/MIME.
@@ -115,7 +115,7 @@ func TestTheSealVouchesOnlyForWhatItChecked(t *testing.T) {
 		"a PGP/MIME signed one":    pgpMIMESigned,
 		"a PGP/MIME encrypted one": from + "Content-Type: multipart/encrypted; protocol=\"application/pgp-encrypted\"; boundary=\"e\"\r\n\r\n--e\r\nContent-Type: application/pgp-encrypted\r\n\r\nVersion: 1\r\n--e\r\nContent-Type: application/octet-stream\r\n\r\n" + armour + "\r\n--e--\r\n",
 	} {
-		if s := mailSealFor(&fakeSeal{v: vpgp.SigVerified}, "me@x", []byte(msg), "ananya@iyer.example"); s.Tone != "ok" {
+		if s := mailSealFor(nil, &fakeSeal{v: vpgp.SigVerified}, "me@x", []byte(msg), "ananya@iyer.example"); s.Tone != "ok" {
 			t.Errorf("%s, wholly signed: %+v", name, s)
 		}
 	}
@@ -127,7 +127,7 @@ func TestTheSealVouchesOnlyForWhatItChecked(t *testing.T) {
 // key on file is Mallory's key verified, never PayPal's.
 func TestTheSealNamesTheAddressItChecked(t *testing.T) {
 	msg := strings.Replace(pgpMIMESigned, "Ananya <ananya@iyer.example>", "PayPal Security <mallory@evil.example>", 1)
-	s := mailSealFor(&fakeSeal{v: vpgp.SigVerified}, "me@x", []byte(msg), "mallory@evil.example")
+	s := mailSealFor(nil, &fakeSeal{v: vpgp.SigVerified}, "me@x", []byte(msg), "mallory@evil.example")
 	if strings.Contains(s.Text, "PayPal") || !strings.Contains(s.Text, "mallory@evil.example's key is verified") {
 		t.Errorf("the green seal names %q", s.Text)
 	}
@@ -155,13 +155,13 @@ func TestTheSealVerifiesARealPGPMIMESignature(t *testing.T) {
 		return []byte("From: Snd <snd@example.com>\r\nContent-Type: multipart/signed; protocol=\"application/pgp-signature\"; micalg=pgp-sha256; boundary=\"b\"\r\n\r\n" +
 			"--b\r\n" + body + "\r\n--b\r\nContent-Type: application/pgp-signature\r\n\r\n" + string(bytes.ReplaceAll(sig, []byte("\n"), []byte("\r\n"))) + "\r\n--b--\r\n")
 	}
-	if s := mailSealFor(sealKeys{pgp: e}, "rcv@example.com", msg(part), "snd@example.com"); s.Tone != "ok" {
+	if s := mailSealFor(nil, sealKeys{pgp: e}, "rcv@example.com", msg(part), "snd@example.com"); s.Tone != "ok" {
 		t.Errorf("a genuine signature: %+v", s)
 	}
-	if s := mailSealFor(sealKeys{pgp: e}, "rcv@example.com", msg(strings.Replace(part, "final", "draft", 1)), "snd@example.com"); s.Tone != "danger" {
+	if s := mailSealFor(nil, sealKeys{pgp: e}, "rcv@example.com", msg(strings.Replace(part, "final", "draft", 1)), "snd@example.com"); s.Tone != "danger" {
 		t.Errorf("a signature over changed words: %+v", s)
 	}
-	if s := mailSealFor(sealKeys{pgp: e}, "rcv@example.com", msg(part), "someone@else.example"); s.Tone != "" {
+	if s := mailSealFor(nil, sealKeys{pgp: e}, "rcv@example.com", msg(part), "someone@else.example"); s.Tone != "" {
 		t.Errorf("a sender with no key on file: %+v", s)
 	}
 }

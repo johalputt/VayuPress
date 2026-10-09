@@ -636,6 +636,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/accounts/settings", a.handleVayuOSMailboxSettings)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/avatar", a.handleVayuOSAvatarUpload)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/avatar/remove", a.handleVayuOSAvatarRemove)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/smime", a.handleVayuOSSMIMEUpload)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/smime/remove", a.handleVayuOSSMIMERemove)
 		// Prebuilt cartoon avatars: pick one instead of uploading (POST sets it),
 		// with a GET preview endpoint that renders each option for this address.
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/avatar/cartoon", a.handleVayuOSAvatarCartoon)

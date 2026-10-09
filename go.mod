@@ -14,6 +14,7 @@ require (
 	filippo.io/edwards25519 v1.2.0
 	github.com/ProtonMail/go-crypto v1.5.2
 	github.com/alecthomas/chroma/v2 v2.27.0
+	github.com/digitorus/pkcs7 v0.0.0-20230818184609-3a137a874352
 	github.com/emersion/go-ical v0.0.0-20240127095438-fc1c9d8fb2b6
 	github.com/emersion/go-msgauth v0.7.0
 	github.com/emersion/go-vcard v0.0.0-20230815062825-8fda7d206ec9
@@ -30,6 +31,7 @@ require (
 	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/lyrebird v0.0.0-20260921142919-75ef9b2c1f18
 	golang.org/x/crypto v0.57.0
 	rsc.io/qr v0.2.0
+	software.sslmate.com/src/go-pkcs12 v0.7.3
 )
 
 require (
@@ -41,7 +43,6 @@ require (
 	github.com/cloudflare/circl v1.6.5 // indirect
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467 // indirect
 	github.com/dchest/siphash v1.2.3 // indirect
-	github.com/digitorus/pkcs7 v0.0.0-20230818184609-3a137a874352 // indirect
 	github.com/digitorus/timestamp v0.0.0-20231217203849-220c5c2851b7 // indirect
 	github.com/dlclark/regexp2/v2 v2.5.1 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect

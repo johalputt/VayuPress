@@ -4,11 +4,14 @@ package main
 
 import (
 	"bytes"
+	"crypto/x509"
+	"encoding/base64"
 	"io"
 	"mime"
 	"mime/multipart"
 	netmail "net/mail"
 	"strings"
+	"time"
 
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
@@ -62,7 +65,11 @@ type mailSeal struct{ Text, Tone string }
 // otherwise wrap their own words round it and send the whole in its sender's
 // name, under a green seal. A signature that fails is red however much of the
 // message it covers.
-func mailSealFor(c sealChecker, account string, stored []byte, fromAddr string) mailSeal {
+//
+// An S/MIME signature (RFC 8551) is judged by vmail.CheckSMIME against the
+// certificate authorities in roots; nil, as the reader gives, is the
+// system's own, which x509 reads when no pool is named.
+func mailSealFor(roots *x509.CertPool, c sealChecker, account string, stored []byte, fromAddr string) mailSeal {
 	if armored, ok := armoredMessage(stored); ok {
 		if c == nil {
 			return mailSeal{Text: "Encrypted"}
@@ -88,12 +95,16 @@ func mailSealFor(c sealChecker, account string, stored []byte, fromAddr string) 
 		return mailSeal{Text: "Encrypted"}
 	}
 	v, whole := vpgp.SigNone, false
-	if data, sig, onlyTwo, ok := signedParts(stored); ok {
+	data, sig, sigType, onlyTwo, ok := signedParts(stored)
+	switch {
+	case ok && (sigType == "application/pkcs7-signature" || sigType == "application/x-pkcs7-signature"):
+		return smimeSeal(vmail.CheckSMIME(data, sig, fromAddr, roots, time.Now()), fromAddr, onlyTwo)
+	case ok && strings.Contains(string(sig), "PGP SIGNATURE"):
 		v, whole = vpgp.SigUnknownKey, onlyTwo
 		if c != nil {
 			v = c.CheckDetached(data, sig, fromAddr)
 		}
-	} else if bytes.Contains(stored, []byte("-----BEGIN PGP SIGNED MESSAGE-----")) {
+	case bytes.Contains(stored, []byte("-----BEGIN PGP SIGNED MESSAGE-----")):
 		v = vpgp.SigUnknownKey
 		whole = showsOnlyBlock(stored, "-----BEGIN PGP SIGNED MESSAGE-----", "-----END PGP SIGNATURE-----")
 		if c != nil {
@@ -150,52 +161,78 @@ func clearSignedBlock(stored []byte) []byte {
 	return block
 }
 
-// signedParts is a PGP/MIME signed message (RFC 3156) taken apart: the signed
-// entity exactly as it was signed (its own headers and body, CRLF line ends,
-// without the line break before the next delimiter), and the signature.
-// onlyTwo is false when parts follow the signature, which it does not cover
-// and the reader would show.
-func signedParts(stored []byte) (data, sig []byte, onlyTwo, ok bool) {
+// signedParts is a multipart/signed message (RFC 1847: PGP/MIME's RFC 3156
+// and S/MIME's RFC 8551 alike) taken apart: the signed entity exactly as it
+// was signed (its own headers and body, CRLF line ends, without the line
+// break before the next delimiter), the signature with its transfer encoding
+// undone, and the signature part's media type. onlyTwo is false when parts
+// follow the signature, which it does not cover and the reader would show.
+func signedParts(stored []byte) (data, sig []byte, sigType string, onlyTwo, ok bool) {
 	msg, err := netmail.ReadMessage(bytes.NewReader(stored))
 	if err != nil {
-		return nil, nil, false, false
+		return nil, nil, "", false, false
 	}
 	mt, params, err := mime.ParseMediaType(msg.Header.Get("Content-Type"))
 	if err != nil || mt != "multipart/signed" || params["boundary"] == "" {
-		return nil, nil, false, false
+		return nil, nil, "", false, false
 	}
 	body, err := io.ReadAll(msg.Body)
 	if err != nil {
-		return nil, nil, false, false
+		return nil, nil, "", false, false
 	}
 	crlf := bytes.ReplaceAll(bytes.ReplaceAll(body, []byte("\r\n"), []byte("\n")), []byte("\n"), []byte("\r\n"))
 	delim := []byte("--" + params["boundary"])
 	start := bytes.Index(crlf, delim)
 	if start < 0 {
-		return nil, nil, false, false
+		return nil, nil, "", false, false
 	}
 	rest := crlf[start+len(delim):]
 	nl := bytes.Index(rest, []byte("\r\n"))
 	if nl < 0 {
-		return nil, nil, false, false
+		return nil, nil, "", false, false
 	}
 	rest = rest[nl+2:]
 	stop := bytes.Index(rest, append([]byte("\r\n"), delim...))
 	if stop < 0 {
-		return nil, nil, false, false
+		return nil, nil, "", false, false
 	}
 	data = rest[:stop]
 	mr := multipart.NewReader(bytes.NewReader(crlf), params["boundary"])
 	if _, err := mr.NextPart(); err != nil {
-		return nil, nil, false, false
+		return nil, nil, "", false, false
 	}
 	p, err := mr.NextPart()
 	if err != nil {
-		return nil, nil, false, false
+		return nil, nil, "", false, false
 	}
-	if sig, err = io.ReadAll(p); err != nil || !strings.Contains(string(sig), "PGP SIGNATURE") {
-		return nil, nil, false, false
+	sigType, _, _ = mime.ParseMediaType(p.Header.Get("Content-Type"))
+	var r io.Reader = p
+	if strings.EqualFold(strings.TrimSpace(p.Header.Get("Content-Transfer-Encoding")), "base64") {
+		r = base64.NewDecoder(base64.StdEncoding, p)
+	}
+	if sig, err = io.ReadAll(io.LimitReader(r, 1<<20)); err != nil || len(sig) == 0 {
+		return nil, nil, "", false, false
 	}
 	_, err = mr.NextPart()
-	return data, sig, err == io.EOF, true
+	return data, sig, strings.ToLower(sigType), err == io.EOF, true
+}
+
+// smimeSeal is the seal for an S/MIME signature. Green only for a signature
+// that holds, by a certificate for the sender's own address that an
+// authority this server trusts issued and that is valid now, over all the
+// reader shows; red for one that does not hold or is another address's.
+func smimeSeal(v vmail.SMIMEVerdict, fromAddr string, whole bool) mailSeal {
+	switch {
+	case v.Status == vmail.SMIMEBad:
+		return mailSeal{Text: "The S/MIME signature does not hold for this message", Tone: "danger"}
+	case v.Status == vmail.SMIMEOtherAddress:
+		return mailSeal{Text: "Signed with S/MIME by " + v.Signer + ", not by " + fromAddr, Tone: "danger"}
+	case !whole:
+		return mailSeal{Text: "Part of this message is signed; the rest is not"}
+	case v.Status == vmail.SMIMEVerified:
+		return mailSeal{Text: "Signed with S/MIME · " + fromAddr + "'s certificate from " + v.Issuer + " is valid", Tone: "ok"}
+	case v.Status == vmail.SMIMEExpired:
+		return mailSeal{Text: "Signed with S/MIME · " + fromAddr + "'s certificate has expired"}
+	}
+	return mailSeal{Text: "Signed with S/MIME · " + fromAddr + "'s certificate is from " + v.Issuer + ", which this server does not trust"}
 }

@@ -115,6 +115,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   the search `label:name` across all mail. Labels are the console's: mail
   apps over IMAP see folders only. A message with no Message-ID cannot be
   labelled, and a mailbox keeps at most 100 labels.
+- **Contacts and calendar on phones and desktop apps.** A mailbox's
+  contacts and a calendar sync over CardDAV and CalDAV: add an account with
+  the site's address, the mailbox address and an app password, and Apple
+  devices and DAVx5 find the rest (Connect gives the addresses). The address
+  book is Mail's own contacts, kept in step both ways: a phone's new card
+  saves its addresses as contacts, the console renaming or deleting a contact
+  changes the phone's card, and what a phone keeps that Mail has no field for
+  (numbers, photos, alarms) comes back to it unchanged. Groups stay in Mail.
+  Sign-in is the mail apps' own, with the same throttle and device approval,
+  and a mailbox keeps at most 10,000 cards, 10,000 events and 100 MB.
+- **S/MIME signatures.** A mailbox can hold an S/MIME certificate, uploaded
+  as the .p12 or .pfx its authority issues, on its settings page; Sign in
+  compose then signs with it. Its key is sealed under the install's key and
+  is refused where there is none to seal it with. The reader checks the
+  S/MIME signatures on mail that comes in: green only for the sender's own
+  certificate, valid now, from an authority the server trusts, over all the
+  message shows; red for a signature that does not hold or names another
+  address. Encryption stays OpenPGP's.
 - **Your own folders in Mail.** New folder in the mailbox's sidebar makes
   one; its header's menu renames or deletes it, and deleting a folder moves
   its mail to Trash rather than deleting any of it. Your folders are in every

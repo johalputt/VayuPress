@@ -49,6 +49,7 @@ func (a *App) mailboxSettingsSections(ctx context.Context, email string) (string
 	b.WriteString(a.vayuCardRecovery(ctx, ac.Email))
 	b.WriteString(a.vayuCardHandover(ctx, ac))
 	b.WriteString(a.vayuCardPGP(ac))
+	b.WriteString(a.vayuCardSMIME(ctx, ac))
 	b.WriteString(a.vayuCardFilters(ctx, ac))
 	b.WriteString(a.mailboxAvatarSettings(ac))
 

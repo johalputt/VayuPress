@@ -105,7 +105,7 @@ func TestASignedMessageCarriesAGoodSeal(t *testing.T) {
 		}
 	}
 	checker := sealKeys{pgp: a.vayuPGP}
-	if s := mailSealFor(checker, "dana@example.com", raw, "dana@example.com"); s.Tone != "ok" {
+	if s := mailSealFor(nil, checker, "dana@example.com", raw, "dana@example.com"); s.Tone != "ok" {
 		t.Fatalf("the seal on dana's own signed message: %+v", s)
 	}
 	pm := vmail.ParseMessage(raw)
@@ -113,7 +113,7 @@ func TestASignedMessageCarriesAGoodSeal(t *testing.T) {
 		t.Fatalf("the signed text reads back as %q", pm.Text)
 	}
 	tampered := bytes.Replace(raw, []byte("final"), []byte("draft"), 1)
-	if s := mailSealFor(checker, "dana@example.com", tampered, "dana@example.com"); s.Tone != "danger" {
+	if s := mailSealFor(nil, checker, "dana@example.com", tampered, "dana@example.com"); s.Tone != "danger" {
 		t.Fatalf("a changed signed message: %+v", s)
 	}
 }
@@ -138,7 +138,7 @@ func TestAnEncryptedMessageIsSignedInside(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw := sentCopy(t, a, "dana@example.com")
-	if s := mailSealFor(sealKeys{pgp: a.vayuPGP}, "dana@example.com", raw, "dana@example.com"); s.Tone != "ok" || !strings.Contains(s.Text, "Signed and encrypted") {
+	if s := mailSealFor(nil, sealKeys{pgp: a.vayuPGP}, "dana@example.com", raw, "dana@example.com"); s.Tone != "ok" || !strings.Contains(s.Text, "Signed and encrypted") {
 		t.Fatalf("the encrypted, signed message: %+v", s)
 	}
 }

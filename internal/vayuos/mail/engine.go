@@ -470,8 +470,10 @@ type ComposeMessage struct {
 	Encrypt bool
 	// Sign has the message signed with the sender's OpenPGP key: inside the
 	// encryption when the message is encrypted, otherwise as an RFC 3156
-	// multipart/signed. A sender with no key cannot send signed
-	// (ErrNoSigningKey): a message asked to be signed is never sent unsigned.
+	// multipart/signed, or, for a sender who keeps an S/MIME certificate
+	// (smime.go), as an RFC 8551 multipart/signed with it. A sender with no
+	// key cannot send signed (ErrNoSigningKey): a message asked to be signed
+	// is never sent unsigned.
 	Sign bool
 }
 
@@ -609,6 +611,21 @@ func (e *Engine) ComposeRich(ctx context.Context, m ComposeMessage) (int64, erro
 	}
 	switch {
 	case encrypted:
+	case m.Sign && e.accounts != nil && e.accounts.keepsSMIME(ctx, from):
+		// RFC 8551 multipart/signed, the same entity signed with the
+		// sender's certificate: a detached PKCS#7 signature, base64.
+		signed := []byte(entHead + "\r\n\r\n" + string(entBody))
+		sig, err := e.accounts.signSMIME(ctx, from, signed)
+		if err != nil {
+			return 0, err
+		}
+		boundary := mimeBoundary()
+		headers = append(headers, HeaderField{Key: "Content-Type", Value: `multipart/signed; protocol="application/pkcs7-signature"; micalg=sha-256; boundary="` + boundary + `"`})
+		bodyBuf.WriteString("--" + boundary + "\r\n")
+		bodyBuf.Write(signed)
+		bodyBuf.WriteString("\r\n")
+		writeAttachmentPart(&bodyBuf, boundary, Attachment{Filename: "smime.p7s", ContentType: "application/pkcs7-signature", Data: sig})
+		bodyBuf.WriteString("--" + boundary + "--\r\n")
 	case m.Sign:
 		// RFC 3156 multipart/signed: the content entity, headers and all,
 		// is the signed part, exactly the bytes between its delimiter line

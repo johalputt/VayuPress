@@ -264,6 +264,12 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 		email TEXT NOT NULL,
 		PRIMARY KEY(mailbox, name, email));`,
 		`CREATE INDEX IF NOT EXISTS vayumail_dav_emails_email ON vayumail_dav_emails(mailbox, email);`,
+		// A mailbox's S/MIME certificate and chain, and its key sealed
+		// (smime.go).
+		`CREATE TABLE IF NOT EXISTS vayumail_smime(
+		mailbox TEXT PRIMARY KEY,
+		certs BLOB NOT NULL,
+		key TEXT NOT NULL);`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			return s, err
@@ -494,6 +500,7 @@ func (s *AccountStore) SetActive(ctx context.Context, email string, active bool)
 //	bounces            what the holder's sent mail did not reach
 //	labels             the names on the holder's messages
 //	dav, dav_emails    the cards and events the holder's apps keep in step
+//	smime              the holder's S/MIME certificate and its sealed key
 //
 // vayumail_aliases is deliberately absent. An alias is operator configuration,
 // visible and editable in the console, and silently deleting it on account
@@ -517,6 +524,7 @@ var perAddressTables = [][2]string{
 	{"vayumail_labels", "mailbox"},
 	{"vayumail_dav", "mailbox"},
 	{"vayumail_dav_emails", "mailbox"},
+	{"vayumail_smime", "mailbox"},
 }
 
 // Delete removes an account and the per-address state that outlived it.
