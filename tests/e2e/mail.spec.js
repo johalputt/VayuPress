@@ -686,7 +686,27 @@ test("a search is saved to the sidebar, and runs from there", async ({ page }) =
   await expect(page.locator(".mx-search__input")).toHaveValue("bucket");
   await expect(page.locator('.mx-scope input[value="all"]')).toBeChecked();
   await expect(results.locator(".mx-row", { hasText: "Keys for the backup bucket" })).toHaveCount(1);
-  await results.locator(".mx-results__save", { hasText: "Saved · Forget" }).click();
+  // CI's runner has twice found this button present but never clickable,
+  // where no local run has; if it happens, say what the page held.
+  const forget = results.locator(".mx-results__save", { hasText: "Saved · Forget" });
+  try {
+    await expect(forget).toBeVisible();
+    await forget.click({ timeout: 10000 });
+  } catch (e) {
+    const state = await page.evaluate(() => {
+      const b = document.querySelector("#vm-search-results .mx-results__save");
+      const box = (el) => { const r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round).join(","); };
+      const hidden = [];
+      for (let n = b; n && n !== document.body; n = n.parentElement) {
+        const cs = getComputedStyle(n);
+        if (cs.display === "none" || cs.visibility !== "visible" || cs.opacity !== "1" || cs.animationName !== "none") hidden.push((n.id || n.className) + " " + cs.display + "/" + cs.visibility + "/" + cs.opacity + "/" + cs.animationName);
+      }
+      const r = b && b.getBoundingClientRect();
+      const top = r && document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      return { box: b && box(b), ancestors: hidden, list: document.getElementById("vm-inbox-list").className, screen: document.body.getAttribute("data-mx-screen"), screens: document.body.hasAttribute("data-mx-screens"), focus: document.activeElement && document.activeElement.className, top: top && (top.id || top.className), viewport: innerWidth + "x" + innerHeight };
+    });
+    throw new Error(e.message + "\npage state: " + JSON.stringify(state));
+  }
   await expect(page.locator("#vm-searches a")).toHaveCount(0);
 });
 
