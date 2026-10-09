@@ -401,7 +401,9 @@ jobs:
           echo "✅ gofmt clean"
       - name: staticcheck
         run: |
-          go install honnef.co/go/tools/cmd/staticcheck@latest
+          # Built against the newest x/tools: the release's own cannot read
+          # the pinned toolchain's export data (scripts/build-analyser.sh).
+          scripts/build-analyser.sh honnef.co/go/tools/cmd/staticcheck
           "$(go env GOPATH)/bin/staticcheck" ./...
       - name: golangci-lint (zero errors — Prompt 10 gate)
         run: |
@@ -411,7 +413,8 @@ jobs:
           "$(go env GOPATH)/bin/golangci-lint" run ./...
       - name: gosec (fail on HIGH severity + HIGH confidence — Prompt 9/10 gate)
         run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          # Built as staticcheck is above (scripts/build-analyser.sh).
+          scripts/build-analyser.sh github.com/securego/gosec/v2/cmd/gosec
           # Excluded rule classes are documented in the audit remediation:
           #  - G104 covered by errcheck (golangci-lint)
           #  - G115 conversions are provably bounded
