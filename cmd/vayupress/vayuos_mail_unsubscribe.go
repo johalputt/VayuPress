@@ -6,7 +6,6 @@ package main
 // list (internal/vayuos/mail/unsubscribe.go says when it is sent from here).
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/url"
 	"strings"
@@ -58,7 +57,6 @@ func (a *App) handleVayuOSUnsubscribe(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		said = "Not unsubscribed: " + err.Error() + "."
 	}
-	detail, _ := json.Marshal(map[string]any{"vm-said": map[string]any{"text": said, "warn": warn}})
-	w.Header().Set("HX-Trigger", string(detail))
+	setMailSaid(w, said, warn)
 	w.WriteHeader(http.StatusNoContent)
 }

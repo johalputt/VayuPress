@@ -318,6 +318,23 @@ test("the compose line says whether the message goes encrypted", async ({ page }
 
 // Escape minimises the sheet to a bar at the reader's foot and the list is
 // in reach; the bar opens it again; closing keeps what was written in Drafts.
+// On a phone, compose's More options opens wholly inside the sheet, which
+// clips it: its right edge is the panel's own, not the sheet's edge cutting
+// through it.
+test("on a phone, compose's More options is not cut off by the sheet", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/os/vayumail/compose?user=ankush");
+  await page.locator('.mx-compose__more > summary').click();
+  const panel = page.locator(".mx-compose__more .sa-pop__panel");
+  await expect(panel).toBeVisible();
+  await page.waitForTimeout(400);
+  const edge = await panel.evaluate((p) => {
+    const r = p.getBoundingClientRect(), y = r.top + r.height / 2;
+    return { left: p.contains(document.elementFromPoint(r.left + 2, y)), right: p.contains(document.elementFromPoint(r.right - 2, y)) };
+  });
+  expect(edge, "the panel is cut off at an edge").toEqual({ left: true, right: true });
+});
+
 test("the compose sheet minimises, and closing keeps a draft", async ({ page }) => {
   await openInbox(page);
   await page.locator("body").click({ position: { x: 5, y: 5 } });
@@ -629,6 +646,28 @@ test("search rises into the header and gives the list back", async ({ page }) =>
   expect(await list.evaluate((e) => e.scrollTop), "the list did not come back where it was").toBe(600);
 });
 
+// A search is saved from its results to the sidebar's Searches, and runs
+// from there across all mail as if typed; Forget takes it off again.
+test("a search is saved to the sidebar, and runs from there", async ({ page }) => {
+  await openInbox(page);
+  await page.locator(".mx-search__input").focus();
+  await page.keyboard.type("bucket");
+  await page.locator(".mx-scope__opt", { hasText: "All mail" }).click();
+  const results = page.locator("#vm-search-results");
+  await expect(results.locator(".mx-row", { hasText: "Keys for the backup bucket" })).toHaveCount(1);
+  await results.locator(".mx-results__save", { hasText: "Save this search" }).click();
+  await expect(results.locator(".mx-results__save")).toHaveText("Saved · Forget");
+  const saved = page.locator("#vm-searches a", { hasText: "bucket" });
+  await expect(saved).toBeVisible();
+  await saved.click();
+  await expect(page).toHaveURL(/[?&]search=bucket/);
+  await expect(page.locator(".mx-search__input")).toHaveValue("bucket");
+  await expect(page.locator('.mx-scope input[value="all"]')).toBeChecked();
+  await expect(results.locator(".mx-row", { hasText: "Keys for the backup bucket" })).toHaveCount(1);
+  await results.locator(".mx-results__save", { hasText: "Saved · Forget" }).click();
+  await expect(page.locator("#vm-searches a")).toHaveCount(0);
+});
+
 // An attachment's download fills a ring on its tile and settles to a tick,
 // and arrives under its own name; a file added to compose slides into the
 // attachment row (Mail plan §8, item 7).
@@ -818,6 +857,15 @@ test("on a phone, Mail is screens pushed and popped", async ({ page }) => {
   await expect(body).toHaveAttribute("data-mx-screen", "boxes");
   await expect(page.locator(".mx-boxes__title")).toHaveText("Folders");
   await expect(page.locator("#vm-folders a", { hasText: "Sent" })).toBeVisible();
+  // Contacts opens into the reading pane, so on a phone it is pushed as a
+  // screen, with its own way back.
+  await page.locator("button.sa-appside__item", { hasText: "Contacts" }).click();
+  await expect(body).toHaveAttribute("data-mx-screen", "message");
+  await expect(page.locator(".vm-contacts-title", { hasText: "Contacts" })).toBeVisible();
+  await page.locator(".vm-contacts .mx-back").click();
+  await expect(body).toHaveAttribute("data-mx-screen", "list");
+  await page.locator(".mx-back--boxes").click();
+  await expect(body).toHaveAttribute("data-mx-screen", "boxes");
   // The folder swaps its list in over htmx. Network idle comes before the
   // swap settles, and a scroll set in between is lost under the new rows.
   const settled = page.evaluate(() => new Promise((done) => {

@@ -77,6 +77,9 @@ func (a *App) contactsPanel(r *http.Request, owner, userKey, errMsg, typedEmail,
 
 	var b strings.Builder
 	b.WriteString(`<div id="vm-contacts-panel" class="vm-contacts">`)
+	// Where Mail is screens (a phone), Contacts is pushed over the list as a
+	// message is, and comes back the same way.
+	b.WriteString(`<button type="button" class="mx-back" data-mx-go="list">` + saIcon("chev-l") + `Back</button>`)
 	b.WriteString(`<div class="vm-contacts-head"><h2 class="vm-contacts-title">Contacts</h2>` +
 		`<span class="muted text-sm">` + itoaSafe(len(contacts)) + ` saved · ` + html.EscapeString(owner) + `</span></div>`)
 	b.WriteString(`<p class="muted text-sm vm-contacts-sub">Private to this mailbox. These power the recipient suggestions when you compose from here.</p>`)

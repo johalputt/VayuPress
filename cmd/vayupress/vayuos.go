@@ -21,6 +21,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1832,7 +1833,7 @@ func mailFolderNav(n mailNav) string {
 		}
 	}
 	if isScheduledFolder(n.Active) {
-		sb.WriteString(`</div>`)
+		sb.WriteString(mailSearchesGroup(n.User, n.Searches, false) + `</div>`)
 		return sb.String()
 	}
 	// Views filter the open folder; choosing the view in force again shows
@@ -1845,6 +1846,7 @@ func mailFolderNav(n mailNav) string {
 		}
 		item(q, v.Label, v.Icon, cur, n.ViewCounts[v.Key])
 	}
+	sb.WriteString(mailSearchesGroup(n.User, n.Searches, false))
 	sb.WriteString(`</div>`)
 	return sb.String()
 }
@@ -1864,7 +1866,8 @@ type mailNav struct {
 
 // mailNavFor is the sidebar for the mailbox rd reads, with active open.
 func (a *App) mailNavFor(rd vmail.Reader, active, view string, viewCounts map[string]int, oob bool) string {
-	return mailFolderNav(mailNav{User: rd.Key(), Active: active, View: view, Own: a.ownFolders(rd),
+	searches, _ := a.vayuMail.SavedSearches(rd)
+	return mailFolderNav(mailNav{User: rd.Key(), Active: active, View: view, Own: a.ownFolders(rd), Searches: searches,
 		Writable: !a.vayuMail.ReaderReadOnly(rd), Counts: a.folderUnread(rd), ViewCounts: viewCounts, OOB: oob})
 }
 
@@ -2652,6 +2655,8 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 type searchFilters struct {
 	q, folder, from, after, before string
 	unreadOnly, attach, fromScope  bool
+	// scope is the list's scope bar as sent (folder, all, from, attach).
+	scope string
 	// inList is the search in Mail's list (Mail plan §8, item 8): its
 	// results are the list's own rows, not the search page's table.
 	inList bool
@@ -2667,6 +2672,7 @@ func parseSearchFilters(r *http.Request) searchFilters {
 		before:     strings.TrimSpace(q.Get("before")),
 		unreadOnly: q.Get("unread") == "1",
 		inList:     q.Get("in") == "list",
+		scope:      q.Get("scope"),
 	}
 	// The list's scope bar: this folder (the folder sent), all mail, the
 	// sender, or what has an attachment, the last two across all mail.
@@ -2708,6 +2714,17 @@ func (sf searchFilters) query() vmail.SearchQuery {
 	return q
 }
 
+// savedQuery is the list search as a saved search keeps it: the query run,
+// scope bar and all, written as terms (vmail.SearchQuery.String), so it runs
+// the same from the sidebar across all mail. Empty for no search, and for
+// the search page, which has no Save.
+func (sf searchFilters) savedQuery() string {
+	if !sf.inList || strings.TrimSpace(sf.q) == "" {
+		return ""
+	}
+	return sf.query().String()
+}
+
 // vayuSearchResults runs the full-text search and applies the refinement
 // filters, returning the results table (or an empty/prompt state) as an HTMX
 // fragment. Matches in From/Subject are highlighted.
@@ -2733,7 +2750,7 @@ func (a *App) vayuSearchResults(rd vmail.Reader, sf searchFilters) string {
 	capped := len(matched) >= 200
 	words := strings.Join(q.Words, " ")
 	if sf.inList {
-		return a.mailSearchRows(user, sf, matched, capped)
+		return a.mailSearchRows(rd, sf, matched, capped)
 	}
 	b.WriteString(`<div class="vm-search-count text-sm muted">` + itoaSafe(len(matched)) + ` result` + plural(len(matched)) + ` for “` + html.EscapeString(sf.q) + `”`)
 	if capped {
@@ -2762,11 +2779,22 @@ func (a *App) vayuSearchResults(rd vmail.Reader, sf searchFilters) string {
 
 // mailSearchRows is a search's results as Mail's list shows them: the list's
 // own rows, grouped by the folder each was found in, under how many there are.
-func (a *App) mailSearchRows(user string, sf searchFilters, matched []vmail.SearchResult, capped bool) string {
+func (a *App) mailSearchRows(rd vmail.Reader, sf searchFilters, matched []vmail.SearchResult, capped bool) string {
+	user := rd.Key()
 	var b strings.Builder
 	b.WriteString(`<p class="mx-results__count">` + itoaSafe(len(matched)) + ` result` + plural(len(matched)) + ` for “` + esc(sf.q) + `”`)
 	if capped {
 		b.WriteString(`, from the newest 200 matches`)
+	}
+	// Save this search, or, when it is one saved, Forget it.
+	if saved := sf.savedQuery(); saved != "" && !a.vayuMail.ReaderReadOnly(rd) {
+		kept, _ := a.vayuMail.SavedSearches(rd)
+		action, label := "save", "Save this search"
+		if slices.Contains(kept, saved) {
+			action, label = "forget", "Saved · Forget"
+		}
+		b.WriteString(` <button type="button" class="mx-results__save" hx-post="/os/vayumail/searches/action" hx-target="#vm-search-results" hx-swap="innerHTML"` +
+			hxVals("user", user, "q", sf.q, "scope", sf.scope, "folder", sf.folder, "in", "list", "action", action) + `>` + label + `</button>`)
 	}
 	b.WriteString(`</p>`)
 	if len(matched) == 0 {

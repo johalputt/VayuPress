@@ -6,7 +6,6 @@ package main
 // list, with Unblock, at the foot of the mailbox's Contacts.
 
 import (
-	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -56,8 +55,7 @@ func (a *App) handleVayuOSBlockedAction(w http.ResponseWriter, r *http.Request) 
 		if err := a.vayuMail.BlockSender(rd, sender); err != nil {
 			said, warn = "Not blocked: "+err.Error()+".", true
 		}
-		detail, _ := json.Marshal(map[string]any{"vm-said": map[string]any{"text": said, "warn": warn}})
-		w.Header().Set("HX-Trigger", string(detail))
+		setMailSaid(w, said, warn)
 		w.WriteHeader(http.StatusNoContent)
 	case "unblock":
 		errMsg := ""

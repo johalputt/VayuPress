@@ -454,6 +454,7 @@ func (s *AccountStore) SetActive(ctx context.Context, email string, active bool)
 //	                   address did not choose
 //	templates          the holder's saved wording
 //	contact_keys       the outside keys the holder chose to trust
+//	saved_searches     the holder's kept searches
 //
 // vayumail_aliases is deliberately absent. An alias is operator configuration,
 // visible and editable in the console, and silently deleting it on account
@@ -471,6 +472,7 @@ var perAddressTables = [][2]string{
 	{"vayumail_blocked", "mailbox"},
 	{"vayumail_templates", "mailbox"},
 	{"vayumail_contact_keys", "mailbox"},
+	{"vayumail_saved_searches", "mailbox"},
 }
 
 // Delete removes an account and the per-address state that outlived it.

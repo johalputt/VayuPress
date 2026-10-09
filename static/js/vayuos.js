@@ -32,13 +32,22 @@
   // of a phone's screen puts part of it off the screen (Talk's key panel
   // opened from a control left of centre lost its left third). It is moved
   // sideways by what it overhangs, through the translate property, so the
-  // entrance's transform still plays.
+  // entrance's transform still plays. What it must stay inside is the screen
+  // and every box around it that clips: a panel cut off by its container is
+  // as lost as one off the screen (compose's More options, on a phone, ran
+  // past the sheet's edge while still on the screen).
   function keepOnScreen(panel) {
     var gutter = 8;
     panel.style.translate = '';
     var r = panel.getBoundingClientRect();
-    var room = document.documentElement.clientWidth;
-    var dx = r.left < gutter ? gutter - r.left : (r.right > room - gutter ? room - gutter - r.right : 0);
+    var lo = 0, hi = document.documentElement.clientWidth;
+    for (var el = panel.parentElement; el && el !== document.body; el = el.parentElement) {
+      if (getComputedStyle(el).overflowX === 'visible') continue;
+      var c = el.getBoundingClientRect();
+      lo = Math.max(lo, c.left);
+      hi = Math.min(hi, c.right);
+    }
+    var dx = r.left < lo + gutter ? lo + gutter - r.left : (r.right > hi - gutter ? hi - gutter - r.right : 0);
     if (dx) panel.style.translate = Math.round(dx) + 'px 0';
   }
   function openFrom(panel, trigger, point) {

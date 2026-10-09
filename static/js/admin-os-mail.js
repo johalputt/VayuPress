@@ -162,6 +162,22 @@
     if (l) { l.classList.toggle('has-results', !!e.target.firstChild); l.scrollTop = 0; }
   });
 
+  // A saved search in the sidebar opens Mail with ?search=, and runs here as
+  // if typed into the list's search with All mail chosen. On load, not
+  // before: HTMX takes over the form only once the page is parsed, and a
+  // submit before that would leave for the search page.
+  window.addEventListener('load', function () {
+    var q = new URLSearchParams(location.search).get('search');
+    var form = q && document.querySelector('[data-mx-search]');
+    var input = form && form.querySelector('input[name="q"]');
+    var all = form && form.querySelector('input[name="scope"][value="all"]');
+    if (!input || !all) return;
+    all.checked = true;
+    input.value = q;
+    input.focus();
+    form.requestSubmit();
+  });
+
   // An attachment's download fills a ring on its tile, then settles to a tick
   // (Mail plan §8, item 7). It is fetched to know how far it has come, then
   // saved under its own name; anything that goes wrong falls back to the plain
@@ -289,7 +305,9 @@
     }, true);
     document.body.addEventListener('htmx:afterSwap', function (e) {
       if (!e.target || e.target.id !== 'vm-readpane' || !screensOn()) return;
-      if (e.target.querySelector('.vm-reader')) {
+      // Contacts, opened from the sidebar into the reading pane, is a screen
+      // as a message is: unpushed, a phone would show nothing.
+      if (e.target.querySelector('.vm-reader, .vm-contacts')) {
         if (at() !== 'message') { move('message', 'push'); history.pushState({ mx: 'message' }, ''); pushed = true; }
       } else {
         toList(); // an action took the message out of view

@@ -68,6 +68,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   (its text where the cursor is, its subject into an empty Subject), and
   delete one. Saving under a name in use replaces it, which is how one is
   edited; a mailbox keeps up to 50, deleted with the mailbox.
+- **Saved searches.** A search in Mail's list can be saved from its results,
+  and is then under Searches in the mailbox's sidebar, where one click runs
+  it again across all mail. It is kept with its scope written in as terms
+  (This folder becomes `in:`, From becomes `from:`), so it finds the same
+  mail from anywhere, and the same search typed two ways is kept once. Saved
+  · Forget takes it off. A mailbox keeps up to 30, deleted with the mailbox;
+  a read-only mailbox saves none.
 - **Sign your mail, and other people's keys.** A mailbox with an OpenPGP key
   can sign what it sends: compose's More options has Sign with my key, ticked
   by the sender's own default, which the box beside it sets. A signed message
@@ -112,8 +119,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   read as a list of accounts, and Sent and every other folder went unfound
   behind it. The control and its screen are now called Folders.
 - **On a phone, a menu could open partly off the screen.** Talk's key panel
-  lost its left third. Every console menu and panel is now moved in by what
-  it overhangs as it opens.
+  lost its left third, and compose's More options was cut off by the edge of
+  the compose sheet. Every console menu and panel is now moved in, as it
+  opens, by what it overhangs of the screen or of any box that clips it.
+- **On a phone, Contacts in Mail's sidebar showed nothing.** It opened into
+  the reading pane, which a phone keeps out of sight until a message is
+  pushed. Contacts is now pushed as a message is, with Back to the list.
 - **A studio client's Mail had no sidebar.** Their Mail app has no sections,
   so the console drew none, and Sent, Drafts and the views could be reached
   only by a link. An open mailbox now shows its folders for whoever holds it.

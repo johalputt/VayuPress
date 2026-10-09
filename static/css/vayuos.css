@@ -5894,6 +5894,8 @@
 .vp-os[data-ui="still-air"] .mx-results { animation: mx-fade-in var(--duration-standard) var(--ease-enter); }
 .vp-os[data-ui="still-air"] .has-results :is(.mx-list:not(.mx-results .mx-list), .mx-older, .mx-banner) { display: none; }
 .vp-os[data-ui="still-air"] .mx-results__count { margin: 0; padding: var(--space-2) var(--space-3) var(--space-3); font: var(--type-small); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .mx-results__save { margin-left: var(--space-2); padding: 0; border: 0; background: none; font: inherit; color: var(--accent); cursor: pointer; }
+.vp-os[data-ui="still-air"] .mx-results__save:hover { text-decoration: underline; }
 /* A result's heading sticks under the raised search: the header's 56px, the
    field and scope bar (84px), less the 48px it rises. Any lower and it sits
    over the first result before the list has scrolled at all. */
@@ -6961,7 +6963,7 @@
 @keyframes mx-push-under { to { transform: translateX(-33%); opacity: 0.7; } }
 @keyframes mx-pop-out { to { transform: translateX(100%); } }
 @keyframes mx-pop-under { from { transform: translateX(-33%); opacity: 0.7; } to { transform: none; opacity: 1; } }
-.vp-os[data-ui="still-air"][data-mx-screens] .mx-rtools .mx-back { display: inline-flex; }
+.vp-os[data-ui="still-air"][data-mx-screens] :is(.mx-rtools, .vm-contacts) .mx-back { display: inline-flex; }
 .vp-os[data-ui="still-air"][data-mx-screens]:not([data-mx-screen="message"]):not([data-mx-from="message"]) .vm-split > .vm-readpane { display: none; }
 .vp-os[data-ui="still-air"][data-mx-screens]:is([data-mx-screen="message"], [data-mx-from="message"]) .vm-split > .vm-readpane {
   display: block; position: absolute; inset: 0; z-index: 2; background: var(--surface-1);

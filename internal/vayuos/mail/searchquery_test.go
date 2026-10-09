@@ -39,6 +39,34 @@ func TestSearchTermsAreRead(t *testing.T) {
 	}
 }
 
+// A query is written back in one fixed form, which reads as the same query.
+// The wanted strings are stated, not produced by the parser, so a change to
+// either side is seen.
+func TestASearchIsWrittenBackAsItReads(t *testing.T) {
+	for want, q := range map[string]SearchQuery{
+		`invoice "next week" "label:work"`: {Words: []string{"invoice", "next week", "label:work"}},
+		"\"a\tb\"":                         {Words: []string{"a\tb"}},
+		`from:"Priya Shah"`:                {From: "Priya Shah"},
+		`to:dana@example.com`:              {To: "dana@example.com"},
+		`subject:"re: plan"`:               {Subject: "re: plan"},
+		`in:Sent`:                          {Folder: "Sent"},
+		`after:2026-09-01`:                 {After: day("2026-09-01")},
+		`before:2026-09-30`:                {Before: day("2026-09-30")},
+		`has:attachment`:                   {Attachment: true},
+		`is:unread`:                        {Unread: true},
+		`x from:p to:d subject:s in:Work after:2026-09-01 before:2026-09-30 has:attachment is:unread`: {
+			Words: []string{"x"}, From: "p", To: "d", Subject: "s", Folder: "Work",
+			After: day("2026-09-01"), Before: day("2026-09-30"), Attachment: true, Unread: true},
+	} {
+		if got := q.String(); got != want {
+			t.Errorf("%+v written as %q, want %q", q, got, want)
+		}
+		if back := ParseSearchQuery(want); !reflect.DeepEqual(back, q) {
+			t.Errorf("%q reads back as %+v, want %+v", want, back, q)
+		}
+	}
+}
+
 // searchBox holds one message per rule, each the only one a term picks out.
 func searchBox(t *testing.T) *Maildir {
 	t.Helper()

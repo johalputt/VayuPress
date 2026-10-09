@@ -93,6 +93,40 @@ func ParseSearchQuery(s string) SearchQuery {
 	return q
 }
 
+// String writes q back as search terms, in a fixed order and quoted where a
+// value needs it, so ParseSearchQuery(q.String()) is q. It is the one form a
+// saved search is kept and compared in, however it was first typed.
+func (q SearchQuery) String() string {
+	var parts []string
+	quote := func(v string) string {
+		if strings.ContainsAny(v, " \t\n:") {
+			return `"` + v + `"`
+		}
+		return v
+	}
+	for _, w := range q.Words {
+		parts = append(parts, quote(w))
+	}
+	for _, t := range [][2]string{{"from", q.From}, {"to", q.To}, {"subject", q.Subject}, {"in", q.Folder}} {
+		if t[1] != "" {
+			parts = append(parts, t[0]+":"+quote(t[1]))
+		}
+	}
+	if !q.After.IsZero() {
+		parts = append(parts, "after:"+q.After.Format("2006-01-02"))
+	}
+	if !q.Before.IsZero() {
+		parts = append(parts, "before:"+q.Before.Format("2006-01-02"))
+	}
+	if q.Attachment {
+		parts = append(parts, "has:attachment")
+	}
+	if q.Unread {
+		parts = append(parts, "is:unread")
+	}
+	return strings.Join(parts, " ")
+}
+
 var searchTermNames = map[string]bool{"from": true, "to": true, "subject": true, "in": true, "after": true, "before": true, "has": true, "is": true}
 
 // searchTokens splits s on spaces outside double quotes, so `subject:"two

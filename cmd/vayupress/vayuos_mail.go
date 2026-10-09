@@ -2458,3 +2458,10 @@ func (a *App) handleVayuOSDeviceAction(w http.ResponseWriter, r *http.Request) {
 	}
 	writeOSHTML(w, r, card)
 }
+
+// setMailSaid has Mail say text in its toast (admin-os-mail.js listens for
+// vm-said), as a warning when warn, beside whatever the response swaps.
+func setMailSaid(w http.ResponseWriter, text string, warn bool) {
+	detail, _ := json.Marshal(map[string]any{"vm-said": map[string]any{"text": text, "warn": warn}})
+	w.Header().Set("HX-Trigger", string(detail))
+}
