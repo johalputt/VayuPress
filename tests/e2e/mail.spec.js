@@ -423,11 +423,21 @@ test("a template is saved from compose and put into the next message", async ({ 
   await to.press("Enter");
   await c.locator("[data-c-subject]").fill("Thank you");
   await c.locator("[data-c-body]").fill("Thanks for this, it helps.");
+  // The list read as the menu opens answers after the save, as it did on
+  // CI's runner, where it took the save's note away.
+  await page.route("**/os/vayumail/templates?*", async (route) => {
+    await new Promise((r) => setTimeout(r, 1500));
+    await route.continue();
+  });
   await c.locator("[data-c-tpl] summary").click();
   await c.locator("[data-c-tpl-name]").fill(name);
   await c.locator("[data-c-tpl-name]").press("Enter");
   await expect(c.locator("[data-c-tpl-note]")).toHaveText("Saved as “" + name + "”.");
   await expect(c.locator("[data-c-undobar]"), "Enter in the template's name sent the message").toBeHidden();
+  await page.waitForTimeout(2000);
+  await expect(c.locator("[data-c-tpl-note]"), "the late list took the save's note").toHaveText("Saved as “" + name + "”.");
+  await expect(c.locator("[data-c-tpl-use]", { hasText: name }), "the late list took the new template").toHaveCount(1);
+  await page.unroute("**/os/vayumail/templates?*");
 
   await page.goto("/os/vayumail/compose?user=priya");
   await c.locator("[data-c-tpl] summary").click();

@@ -103,11 +103,11 @@ func TestNotJunkForWhatIsPicked(t *testing.T) {
 		}
 		ids = append(ids, id)
 	}
-	list, _ := a.vayuInboxBody(rd, "Junk", "", 0)
+	list, _ := a.vayuInboxBody(rd, "Junk", "", 0, "")
 	if !strings.Contains(list, `{"action":"notjunk"}`) {
 		t.Error("selection in Junk does not offer Not junk")
 	}
-	if inbox, _ := a.vayuInboxBody(rd, "Inbox", "", 0); strings.Contains(inbox, `"notjunk"`) {
+	if inbox, _ := a.vayuInboxBody(rd, "Inbox", "", 0, ""); strings.Contains(inbox, `"notjunk"`) {
 		t.Error("selection outside Junk offers Not junk")
 	}
 	form := url.Values{"user": {"dana"}, "folder": {"Junk"}, "action": {"notjunk"}, "id": ids}

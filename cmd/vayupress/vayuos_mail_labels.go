@@ -5,7 +5,7 @@ package main
 // vayuos_mail_labels.go — labels in Mail (internal/vayuos/mail/labels.go):
 // the reader's Label menu and the message's labels under its subject, the
 // labels on each list row, and the sidebar's Labels, each of which runs the
-// search label:<name> across all mail (admin-os-mail.js reads ?search=).
+// search label:<name> across all mail (the Mail page runs ?search= as it is drawn).
 
 import (
 	"bytes"

@@ -55,8 +55,15 @@ func TestALabelFromTheReader(t *testing.T) {
 		!strings.Contains(body, `<div id="vm-labels" hx-swap-oob="true"><div class="sa-appside__group">Labels</div><a class="sa-appside__item" href="`+href+`">`) {
 		t.Fatalf("label on: %q\n%s", rec.Header().Get("HX-Trigger"), body)
 	}
-	if list, _ := a.vayuInboxBody(rd, "Inbox", "", 50); !strings.Contains(list, `<span class="mx-labels"><span class="mx-label">To do</span></span>`) {
+	if list, _ := a.vayuInboxBody(rd, "Inbox", "", 50, ""); !strings.Contains(list, `<span class="mx-labels"><span class="mx-label">To do</span></span>`) {
 		t.Fatalf("the list row has no label:\n%s", list)
+	}
+	// The label's link is drawn with its search run: the field holds it, All
+	// mail is chosen, and the message is among the results.
+	if list, _ := a.vayuInboxBody(rd, "Inbox", "", 50, `label:"To do"`); !strings.Contains(list, `name="q" value="label:&#34;To do&#34;"`) ||
+		!strings.Contains(list, `value="all" checked`) || strings.Contains(list, `value="folder" checked`) ||
+		!strings.Contains(list, `aria-live="polite"><p class="mx-results__count">1 result for`) {
+		t.Fatalf("the label's search is not run with the page:\n%s", list)
 	}
 	if nav := a.mailNavFor(rd, "Inbox", "", nil, false); !strings.Contains(nav, `<div id="vm-labels"><div class="sa-appside__group">Labels</div>`) {
 		t.Fatalf("the sidebar has no labels:\n%s", nav)

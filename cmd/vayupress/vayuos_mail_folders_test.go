@@ -36,7 +36,7 @@ func TestAFolderOfYourOwnIsOfferedEverywhereMailMoves(t *testing.T) {
 	if nav := a.mailNavFor(rd, "Inbox", "", nil, false); !strings.Contains(nav, "folder=Projects") || !strings.Contains(nav, ">Projects<") {
 		t.Fatalf("the sidebar does not list Projects:\n%s", nav)
 	}
-	inbox, _ := a.vayuInboxBody(rd, "Inbox", "", 0)
+	inbox, _ := a.vayuInboxBody(rd, "Inbox", "", 0, "")
 	if !strings.Contains(inbox, `{"action":"move","to":"Projects"}`) {
 		t.Fatal("the selection's Move menu does not offer Projects")
 	}
@@ -44,7 +44,7 @@ func TestAFolderOfYourOwnIsOfferedEverywhereMailMoves(t *testing.T) {
 		t.Fatalf("moving out of Projects offers %v", got)
 	}
 	// Its own header carries Rename and Delete; a standard folder's does not.
-	if body, _ := a.vayuInboxBody(rd, "Projects", "", 0); !strings.Contains(body, `aria-label="Folder options"`) {
+	if body, _ := a.vayuInboxBody(rd, "Projects", "", 0, ""); !strings.Contains(body, `aria-label="Folder options"`) {
 		t.Fatal("Projects has no folder menu")
 	}
 	if strings.Contains(inbox, `aria-label="Folder options"`) {

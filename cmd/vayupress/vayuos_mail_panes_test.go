@@ -92,7 +92,7 @@ func TestTheMailSidebarIsTheOpenMailbox(t *testing.T) {
 func TestAListRefreshBringsTheFoldersWithIt(t *testing.T) {
 	a, holder, id := reviewerApp(t, vmail.RoleMailbox) // dana, one unread message
 	rd := vmail.ReadAsOwner("dana")
-	if body, _ := a.vayuInboxBody(rd, "Inbox", "", 0); strings.Contains(body, "vm-folders") {
+	if body, _ := a.vayuInboxBody(rd, "Inbox", "", 0, ""); strings.Contains(body, "vm-folders") {
 		t.Error("the list body carries the folders itself; the full page would hold them twice")
 	}
 	swap := a.vayuInboxSwap(rd, "Inbox", "", 0)

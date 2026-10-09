@@ -12,7 +12,7 @@ import (
 )
 
 // mailSearchesGroup is the sidebar's saved searches. Each opens Mail with
-// the search run across all mail (admin-os-mail.js reads ?search=). It is
+// the search run across all mail (the Mail page runs ?search= as it is drawn). It is
 // its own element so saving or forgetting swaps it alone, out of band: the
 // sidebar around it keeps the folder and view it shows, which the request
 // that saves does not know.

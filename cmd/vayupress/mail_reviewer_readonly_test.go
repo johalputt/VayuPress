@@ -66,7 +66,7 @@ func TestAReviewerIsNotOfferedWhatWouldBeRefused(t *testing.T) {
 		rd := a.mailReader(withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/inbox", nil), holder), "")
 
 		// The list's toolbar and bulk bar.
-		inbox, _ := a.vayuInboxBody(rd, "Inbox", "", 0)
+		inbox, _ := a.vayuInboxBody(rd, "Inbox", "", 0, "")
 		for _, control := range []string{`/os/vayumail/compose?user=`, `{"action":"delete"}`, `{"action":"move",`} {
 			if strings.Contains(inbox, control) == readOnly {
 				t.Errorf("inbox as %s: offers %s = %v", role, control, !readOnly)

@@ -66,14 +66,14 @@ func TestEmptyIsOfferedInTrashAndJunk(t *testing.T) {
 	if err := a.vayuMail.MoveMessage(rd, inbox[0].ID, "Inbox", "Trash"); err != nil {
 		t.Fatal(err)
 	}
-	trash, _ := a.vayuInboxBody(rd, "Trash", "", 0)
+	trash, _ := a.vayuInboxBody(rd, "Trash", "", 0, "")
 	if !strings.Contains(trash, ">Empty Trash<") || !strings.Contains(trash, "Delete the 1 message in Trash for good?") {
 		t.Fatal("Trash offers no Empty, or does not say how many go")
 	}
 	if _, err := a.vayuMail.DeliverInbound("y@example.net", "dana@example.com", []byte("From: y@example.net\r\nSubject: stays\r\n\r\nb\r\n")); err != nil {
 		t.Fatal(err)
 	}
-	if body, _ := a.vayuInboxBody(rd, "Inbox", "", 0); strings.Contains(body, ">Empty ") {
+	if body, _ := a.vayuInboxBody(rd, "Inbox", "", 0, ""); strings.Contains(body, ">Empty ") {
 		t.Fatal("Inbox offers Empty")
 	}
 	req := withUser(httptest.NewRequest(http.MethodPost, "/os/vayumail/inbox/action", strings.NewReader(url.Values{"action": {"empty"}, "folder": {"Trash"}}.Encode())), danaHolder())

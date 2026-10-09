@@ -121,7 +121,7 @@ func TestScheduledListIsTheMailboxsOwn(t *testing.T) {
 	holdFor(t, a, "dana@example.com", "Dana's own")
 	holdFor(t, a, "erin@example.com", "Erin's")
 
-	body, _ := a.vayuInboxBody(rd, "Scheduled", "", 0)
+	body, _ := a.vayuInboxBody(rd, "Scheduled", "", 0, "")
 	if !strings.Contains(body, "Dana&#39;s own") || strings.Contains(body, "Erin") {
 		t.Fatalf("dana's Scheduled list:\n%s", body)
 	}
