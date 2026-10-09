@@ -4,6 +4,7 @@ package mail
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"strings"
@@ -21,10 +22,13 @@ func (stubBridge) GetUserByEmail(string) (*MailUser, error)          { return ni
 func (stubBridge) IsLocalRecipient(string) bool                      { return false }
 func (stubBridge) SendTransactional(*TransactionalMessage) error     { return nil }
 func (stubBridge) EncryptForRecipient([]byte, string) ([]byte, bool) { return nil, false }
-func (stubBridge) EncryptForRecipients([]byte, []string) ([]byte, []string, bool) {
+func (stubBridge) EncryptForRecipients([]byte, []string, map[string]string, string) ([]byte, []string, bool) {
 	return nil, nil, false
 }
-func (stubBridge) SignAs([]byte, string) ([]byte, bool) { return nil, false }
+func (stubBridge) SignDetached([]byte, string) ([]byte, bool) { return nil, false }
+func (stubBridge) DescribePublicKey([]byte) (string, []string, error) {
+	return "", nil, errors.New("no keys here")
+}
 
 func TestIMAPLoginSelectFetch(t *testing.T) {
 	t.Parallel()

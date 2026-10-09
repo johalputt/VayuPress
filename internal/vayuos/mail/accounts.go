@@ -180,6 +180,9 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 		// Per-account plain-text mail signature, appended on send. Empty for
 		// existing accounts, so the migration changes no behaviour.
 		`ALTER TABLE vayumail_accounts ADD COLUMN signature TEXT NOT NULL DEFAULT ''`,
+		// Whether compose signs this account's messages (OpenPGP) unless the
+		// message says otherwise.
+		`ALTER TABLE vayumail_accounts ADD COLUMN sign_by_default INTEGER NOT NULL DEFAULT 0`,
 		// Per-account auto-forward target: inbound mail is filed locally AND a
 		// copy is relayed to this address. Empty (the default) means off.
 		`ALTER TABLE vayumail_accounts ADD COLUMN forward_to TEXT NOT NULL DEFAULT ''`,
@@ -290,6 +293,36 @@ func (s *AccountStore) SetSignature(ctx context.Context, email, sig string) erro
 		return errors.New("no such account")
 	}
 	return nil
+}
+
+// SetSignByDefault sets whether compose signs the account's messages unless
+// the message says otherwise.
+func (s *AccountStore) SetSignByDefault(ctx context.Context, email string, on bool) error {
+	if s.db == nil {
+		return errors.New("vayumail: no storage")
+	}
+	v := 0
+	if on {
+		v = 1
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE vayumail_accounts SET sign_by_default=? WHERE email=?`, v, normEmail(email))
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errors.New("no such account")
+	}
+	return nil
+}
+
+// SignsByDefault reports whether compose signs the account's messages.
+func (s *AccountStore) SignsByDefault(ctx context.Context, email string) bool {
+	if s.db == nil {
+		return false
+	}
+	var v int
+	_ = s.db.QueryRowContext(ctx, `SELECT sign_by_default FROM vayumail_accounts WHERE email=?`, normEmail(email)).Scan(&v)
+	return v == 1
 }
 
 // SignatureFor returns an account's stored mail signature (empty when unset).
@@ -420,6 +453,7 @@ func (s *AccountStore) SetActive(ctx context.Context, email string, active bool)
 //	blocked            senders the mailbox refuses, which a new holder of the
 //	                   address did not choose
 //	templates          the holder's saved wording
+//	contact_keys       the outside keys the holder chose to trust
 //
 // vayumail_aliases is deliberately absent. An alias is operator configuration,
 // visible and editable in the console, and silently deleting it on account
@@ -436,6 +470,7 @@ var perAddressTables = [][2]string{
 	{"vayumail_scheduled", "owner"},
 	{"vayumail_blocked", "mailbox"},
 	{"vayumail_templates", "mailbox"},
+	{"vayumail_contact_keys", "mailbox"},
 }
 
 // Delete removes an account and the per-address state that outlived it.

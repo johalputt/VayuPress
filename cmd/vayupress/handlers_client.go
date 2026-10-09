@@ -97,6 +97,7 @@ var clientSurface = []clientSurfaceEntry{
 	{Prefix: "/os/vayumail/blocked", Audience: audienceClient},
 	{Prefix: "/os/vayumail/picture", Audience: audienceClient},
 	{Prefix: "/os/vayumail/templates", Audience: audienceClient},
+	{Prefix: "/os/vayumail/keys", Audience: audienceClient},
 	{Prefix: "/os/vayumail/unsubscribe", Audience: audienceClient},
 	{Prefix: "/os/vayumail/search", Audience: audienceClient},
 	{Prefix: "/os/vayumail/attachment", Audience: audienceClient},

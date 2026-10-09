@@ -1980,6 +1980,13 @@
 
 .vp-os .vm-contacts-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); flex-wrap: wrap; }
 .vp-os .vm-blocked-head { margin-top: var(--sp-4); }
+.vp-os .vm-keys-head { margin-top: var(--sp-4); }
+.vp-os .vm-key-fp { display: block; font: var(--type-mono); color: var(--text-3); white-space: normal; overflow-wrap: anywhere; }
+.vp-os .vm-keys-said { margin: 0 0 var(--sp-2); font-size: 13px; color: var(--text-2); }
+.vp-os .vm-keys-add { margin-top: var(--sp-2); }
+.vp-os .vm-keys-add form { display: grid; gap: var(--sp-2); margin-top: var(--sp-2); }
+.vp-os .vm-keys-add form .btn { justify-self: start; }
+.vp-os .vm-keys-label { font-size: 13px; color: var(--text-2); }
 
 .vp-os .vm-contacts-title { margin: 0; font-size: 15px; }
 

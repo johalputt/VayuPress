@@ -27,6 +27,26 @@ type sealChecker interface {
 	CheckClearSigned(text []byte, senderEmail string) vpgp.SigVerdict
 }
 
+// sealKeys is VayuPGP's checks with the reading mailbox's keys for people
+// outside the install bound in, so a sender whose key the holder added is
+// checked against it.
+type sealKeys struct {
+	pgp   *vpgp.Engine
+	known vpgp.KnownKeys
+}
+
+func (s sealKeys) DecryptAndCheck(ciphertext []byte, recipientEmail, senderEmail string) ([]byte, vpgp.SigVerdict, error) {
+	return s.pgp.DecryptAndCheck(ciphertext, recipientEmail, senderEmail, s.known)
+}
+
+func (s sealKeys) CheckDetached(data, sig []byte, senderEmail string) vpgp.SigVerdict {
+	return s.pgp.CheckDetached(data, sig, senderEmail, s.known)
+}
+
+func (s sealKeys) CheckClearSigned(text []byte, senderEmail string) vpgp.SigVerdict {
+	return s.pgp.CheckClearSigned(text, senderEmail, s.known)
+}
+
 // mailSeal is the pill: its words, and a tone of "ok" (only a verified
 // signature), "danger" (a signature that does not hold) or "" (neutral).
 type mailSeal struct{ Text, Tone string }

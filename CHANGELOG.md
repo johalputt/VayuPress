@@ -68,6 +68,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   (its text where the cursor is, its subject into an empty Subject), and
   delete one. Saving under a name in use replaces it, which is how one is
   edited; a mailbox keeps up to 50, deleted with the mailbox.
+- **Sign your mail, and other people's keys.** A mailbox with an OpenPGP key
+  can sign what it sends: compose's More options has Sign with my key, ticked
+  by the sender's own default, which the box beside it sets. A signed message
+  goes as RFC 3156 multipart/signed, its text quoted-printable so no relay
+  can alter it on the way, and an encrypted one is signed inside the
+  encryption. A message asked to be signed is never sent unsigned: a sender
+  with no key is told so, and nothing goes. Contacts has Keys, where a
+  correspondent's public key is pasted and kept, with its fingerprint to
+  compare with the one they read out; mail to them can then be encrypted,
+  and their signatures checked, in this mailbox. A key is the mailbox's own,
+  never the server's, and never stands in for the key of an address this
+  server serves.
 - **Your own folders in Mail.** New folder in the mailbox's sidebar makes
   one; its header's menu renames or deletes it, and deleting a folder moves
   its mail to Trash rather than deleting any of it. Your folders are in every

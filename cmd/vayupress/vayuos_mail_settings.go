@@ -85,7 +85,7 @@ func (a *App) mailboxAvatarSettings(ac vmail.Account) string {
 	for n := 0; n < avatarpkg.CartoonCount; n++ {
 		ns := itoaSafe(n)
 		b.WriteString(`<button type="button" class="vm-cartoon" title="Use this cartoon" ` +
-			`hx-post="/os/vayumail/accounts/avatar/cartoon" ` + hxVals("email", ac.Email, "n", ns) +
+			`hx-post="/os/vayumail/accounts/avatar/cartoon"` + hxVals("email", ac.Email, "n", ns) +
 			` hx-target="#vm-mbox-settings" hx-swap="innerHTML">` +
 			`<img class="vm-cartoon__img" src="/os/vayumail/accounts/avatar/cartoon?email=` + qEmail + `&amp;n=` + ns +
 			`" alt="Cartoon ` + ns + `" width="40" height="40" loading="lazy"></button>`)

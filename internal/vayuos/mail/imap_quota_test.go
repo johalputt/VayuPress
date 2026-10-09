@@ -5,6 +5,7 @@ package mail
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -50,10 +51,13 @@ func (quotaBridge) GetUserByEmail(string) (*MailUser, error)          { return n
 func (quotaBridge) IsLocalRecipient(string) bool                      { return false }
 func (quotaBridge) SendTransactional(*TransactionalMessage) error     { return nil }
 func (quotaBridge) EncryptForRecipient([]byte, string) ([]byte, bool) { return nil, false }
-func (quotaBridge) EncryptForRecipients([]byte, []string) ([]byte, []string, bool) {
+func (quotaBridge) EncryptForRecipients([]byte, []string, map[string]string, string) ([]byte, []string, bool) {
 	return nil, nil, false
 }
-func (quotaBridge) SignAs([]byte, string) ([]byte, bool) { return nil, false }
+func (quotaBridge) SignDetached([]byte, string) ([]byte, bool) { return nil, false }
+func (quotaBridge) DescribePublicKey([]byte) (string, []string, error) {
+	return "", nil, errors.New("no keys here")
+}
 
 // imapConverse runs one IMAP session and returns everything the server said.
 func imapConverse(t *testing.T, addr string, lines ...string) string {

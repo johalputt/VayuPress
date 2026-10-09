@@ -62,6 +62,12 @@ func (a *App) vayuContactsPanel(r *http.Request, owner, userKey string) string {
 // It takes the request, not only its context, so the blocked list at its foot
 // is read with the request's own authority (mailReader).
 func (a *App) vayuContactsPanelWith(r *http.Request, owner, userKey, errMsg, typedEmail, typedName string) string {
+	return a.contactsPanel(r, owner, userKey, errMsg, typedEmail, typedName, "")
+}
+
+// contactsPanel is the panel, with keysSaid, what a change to the mailbox's
+// keys did, said beside them.
+func (a *App) contactsPanel(r *http.Request, owner, userKey, errMsg, typedEmail, typedName, keysSaid string) string {
 	ctx := r.Context()
 	// Direct html.EscapeString calls, not a local alias: typedEmail and
 	// typedName come straight from the form, and CodeQL credits the escaper
@@ -106,7 +112,9 @@ func (a *App) vayuContactsPanelWith(r *http.Request, owner, userKey, errMsg, typ
 		}
 		b.WriteString(`</ul>`)
 	}
-	b.WriteString(a.blockedSection(a.mailReader(r, userKey), userKey))
+	rd := a.mailReader(r, userKey)
+	b.WriteString(a.keysSection(rd, userKey, keysSaid))
+	b.WriteString(a.blockedSection(rd, userKey))
 	b.WriteString(`</div>`)
 	return b.String()
 }

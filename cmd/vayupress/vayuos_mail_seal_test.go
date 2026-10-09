@@ -155,13 +155,13 @@ func TestTheSealVerifiesARealPGPMIMESignature(t *testing.T) {
 		return []byte("From: Snd <snd@example.com>\r\nContent-Type: multipart/signed; protocol=\"application/pgp-signature\"; micalg=pgp-sha256; boundary=\"b\"\r\n\r\n" +
 			"--b\r\n" + body + "\r\n--b\r\nContent-Type: application/pgp-signature\r\n\r\n" + string(bytes.ReplaceAll(sig, []byte("\n"), []byte("\r\n"))) + "\r\n--b--\r\n")
 	}
-	if s := mailSealFor(e, "rcv@example.com", msg(part), "snd@example.com"); s.Tone != "ok" {
+	if s := mailSealFor(sealKeys{pgp: e}, "rcv@example.com", msg(part), "snd@example.com"); s.Tone != "ok" {
 		t.Errorf("a genuine signature: %+v", s)
 	}
-	if s := mailSealFor(e, "rcv@example.com", msg(strings.Replace(part, "final", "draft", 1)), "snd@example.com"); s.Tone != "danger" {
+	if s := mailSealFor(sealKeys{pgp: e}, "rcv@example.com", msg(strings.Replace(part, "final", "draft", 1)), "snd@example.com"); s.Tone != "danger" {
 		t.Errorf("a signature over changed words: %+v", s)
 	}
-	if s := mailSealFor(e, "rcv@example.com", msg(part), "someone@else.example"); s.Tone != "" {
+	if s := mailSealFor(sealKeys{pgp: e}, "rcv@example.com", msg(part), "someone@else.example"); s.Tone != "" {
 		t.Errorf("a sender with no key on file: %+v", s)
 	}
 }

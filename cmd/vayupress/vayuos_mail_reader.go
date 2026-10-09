@@ -315,7 +315,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 	if stored, err := a.vayuMail.ReadFolderMessageStored(rd, folder, id); err == nil {
 		var checker sealChecker
 		if a.vayuPGP != nil {
-			checker = a.vayuPGP
+			checker = sealKeys{pgp: a.vayuPGP, known: a.vayuMail.KnownKeys(rd)}
 		}
 		if s := mailSealFor(checker, mbox, stored, fromAddr); s.Text != "" {
 			icon := "lock"

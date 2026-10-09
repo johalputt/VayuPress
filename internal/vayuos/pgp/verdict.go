@@ -24,17 +24,14 @@ const (
 )
 
 // senderOnFile is the claimed sender's public key as this install already
-// holds it. It never fetches: recipientEntity falls back to WKD, and a key
-// fetched because a message was opened tells the sender's domain it was read.
-func (e *Engine) senderOnFile(email string) *openpgp.Entity {
+// holds it, or as the reading mailbox does (known). It never fetches:
+// recipientEntity falls back to WKD, and a key fetched because a message was
+// opened tells the sender's domain it was read.
+func (e *Engine) senderOnFile(email string, known KnownKeys) *openpgp.Entity {
 	if email == "" {
 		return nil
 	}
-	pk, err := e.GetPublicKey(email)
-	if err != nil {
-		return nil
-	}
-	ent, err := entityFromArmor(pk.Armor)
+	ent, err := e.keyFor(email, known, false)
 	if err != nil {
 		return nil
 	}
@@ -64,7 +61,7 @@ func judge(signed bool, sender, signer *openpgp.Entity, sigErr error) SigVerdict
 // DecryptAndVerifyForEmail it says whether the message was signed at all, so
 // "not signed" and "signed by a key we cannot check" read differently, and it
 // never fetches a key.
-func (e *Engine) DecryptAndCheck(ciphertext []byte, recipientEmail, senderEmail string) ([]byte, SigVerdict, error) {
+func (e *Engine) DecryptAndCheck(ciphertext []byte, recipientEmail, senderEmail string, known KnownKeys) ([]byte, SigVerdict, error) {
 	if e.ks == nil {
 		return nil, SigNone, errors.New("vayupgp: engine not started")
 	}
@@ -76,7 +73,7 @@ func (e *Engine) DecryptAndCheck(ciphertext []byte, recipientEmail, senderEmail 
 	if err != nil {
 		return nil, SigNone, err
 	}
-	sender := e.senderOnFile(senderEmail)
+	sender := e.senderOnFile(senderEmail, known)
 	if sender != nil {
 		ring = append(ring, sender)
 	}
@@ -102,8 +99,8 @@ func (e *Engine) DecryptAndCheck(ciphertext []byte, recipientEmail, senderEmail 
 
 // CheckDetached judges an armored detached signature over data (a PGP/MIME
 // signed part, RFC 3156) against senderEmail's key on file.
-func (e *Engine) CheckDetached(data, sig []byte, senderEmail string) SigVerdict {
-	sender := e.senderOnFile(senderEmail)
+func (e *Engine) CheckDetached(data, sig []byte, senderEmail string, known KnownKeys) SigVerdict {
+	sender := e.senderOnFile(senderEmail, known)
 	if sender == nil {
 		return SigUnknownKey
 	}
@@ -113,12 +110,12 @@ func (e *Engine) CheckDetached(data, sig []byte, senderEmail string) SigVerdict 
 
 // CheckClearSigned judges an inline clear-signed message against senderEmail's
 // key on file. A text with no clear-signed block is SigNone.
-func (e *Engine) CheckClearSigned(text []byte, senderEmail string) SigVerdict {
+func (e *Engine) CheckClearSigned(text []byte, senderEmail string, known KnownKeys) SigVerdict {
 	b, _ := clearsign.Decode(text)
 	if b == nil {
 		return SigNone
 	}
-	sender := e.senderOnFile(senderEmail)
+	sender := e.senderOnFile(senderEmail, known)
 	if sender == nil {
 		return SigUnknownKey
 	}
@@ -132,7 +129,7 @@ func (e *Engine) CheckClearSigned(text []byte, senderEmail string) SigVerdict {
 // what it says beside Send is what the send will do. A WKD lookup here, as a
 // recipient is added, is what every WKD client does at compose time; it is
 // the sender's own act, unlike a fetch on opening a received message.
-func (e *Engine) CanEncryptTo(email string) bool {
-	_, err := e.recipientEntity(email)
+func (e *Engine) CanEncryptTo(email string, known KnownKeys) bool {
+	_, err := e.keyFor(email, known, true)
 	return err == nil
 }

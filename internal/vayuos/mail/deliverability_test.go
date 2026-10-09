@@ -26,8 +26,8 @@ func TestMultipartSignedMessageIsWellFormed(t *testing.T) {
 
 	boundary := mimeBoundary()
 	var body bytes.Buffer
-	writeMIMEPart(&body, boundary, "text/plain; charset=utf-8", "Hello in plain text")
-	writeMIMEPart(&body, boundary, "text/html; charset=utf-8", "<p>Hello in <b>HTML</b></p>")
+	writeMIMEPart(&body, boundary, "text/plain; charset=utf-8", "Hello in plain text", false)
+	writeMIMEPart(&body, boundary, "text/html; charset=utf-8", "<p>Hello in <b>HTML</b></p>", false)
 	body.WriteString("--" + boundary + "--\r\n")
 
 	raw := "From: Alice <alice@example.com>\r\n" +

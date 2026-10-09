@@ -77,6 +77,16 @@ type Bridge interface {
 	// attachments and multiple recipients). It returns the ciphertext, the
 	// addresses whose keys were not found, and ok=false when nothing could be
 	// encrypted.
-	EncryptForRecipients(plaintext []byte, recipientEmails []string) ([]byte, []string, bool)
-	SignAs(plaintext []byte, senderUserID string) ([]byte, bool)
+	//
+	// known are the sending mailbox's keys for people outside the install
+	// (contactkeys.go), and a signer that is set (a local address) signs the
+	// message inside the encryption.
+	EncryptForRecipients(plaintext []byte, recipientEmails []string, known map[string]string, signer string) ([]byte, []string, bool)
+	// SignDetached is an armored detached signature over data by the local
+	// address signer, for RFC 3156 multipart/signed; ok=false when it has no
+	// key to sign with.
+	SignDetached(data []byte, signer string) ([]byte, bool)
+	// DescribePublicKey reads one armored public key: its fingerprint and the
+	// addresses it names, or why it cannot be taken.
+	DescribePublicKey(armored []byte) (fingerprint string, emails []string, err error)
 }

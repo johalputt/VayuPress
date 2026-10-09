@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/render"
+	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 )
 
 // The compose sheet (Mail plan §5, render 03). One form, served two ways: in
@@ -50,15 +51,20 @@ func (a *App) handleVayuOSComposeSheet(w http.ResponseWriter, r *http.Request) {
 // handleVayuOSComposeRecipient tells the sheet about one recipient: whether a
 // message to them can be encrypted, and the initials and tone of their avatar.
 // The key is resolved exactly as the send resolves it (vpgp CanEncryptTo: the
-// key on file, else the recipient's own WKD, never in a Tor Space), so the lock
-// on a chip and the line beside Send say what the send will do.
+// key on file, else one the sending mailbox holds for them, else the
+// recipient's own WKD, never in a Tor Space), so the lock on a chip and the
+// line beside Send say what the send will do.
 func (a *App) handleVayuOSComposeRecipient(w http.ResponseWriter, r *http.Request) {
 	addr := strings.TrimSpace(r.URL.Query().Get("addr"))
 	_, email := mailParseFrom(addr)
 	if email == "" {
 		email = addr
 	}
-	key := a.vayuPGP != nil && strings.Contains(email, "@") && a.vayuPGP.CanEncryptTo(email)
+	var known vpgp.KnownKeys
+	if a.mailRunning() {
+		known = a.vayuMail.KnownKeys(a.mailReader(r, mailUserParam(r)))
+	}
+	key := a.vayuPGP != nil && strings.Contains(email, "@") && a.vayuPGP.CanEncryptTo(email, known)
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{
 		"key":      key,
 		"initials": mailInitials(addr),
@@ -87,7 +93,9 @@ func (a *App) composeSheet(r *http.Request, page bool) (sheet, refusal string) {
 	}
 	// Each From option carries its account's signature (data-sig) so the composer
 	// can preview/append it and swap it live when the sender changes, and shows
-	// the account's name before the whole address.
+	// the account's name before the whole address. It also says whether the
+	// account has an OpenPGP key to sign with (data-can-sign) and whether it
+	// signs unless told otherwise (data-sign).
 	optSig := func(email, name, sig string) string {
 		sel := ""
 		if viewing != "" && strings.EqualFold(email, viewing) {
@@ -97,7 +105,16 @@ func (a *App) composeSheet(r *http.Request, page bool) (sheet, refusal string) {
 		if name != "" {
 			label = name + " " + email
 		}
-		return `<option value="` + esc(email) + `" data-sig="` + esc(sig) + `"` + sel + `>` + esc(label) + `</option>`
+		signing := ""
+		if a.vayuPGP != nil {
+			if _, err := a.vayuPGP.GetPublicKey(email); err == nil {
+				signing = ` data-can-sign="1"`
+				if acctStore != nil && acctStore.SignsByDefault(r.Context(), email) {
+					signing += ` data-sign="1"`
+				}
+			}
+		}
+		return `<option value="` + esc(email) + `" data-sig="` + esc(sig) + `"` + signing + sel + `>` + esc(label) + `</option>`
 	}
 	fromOpts := ""
 	if a.isAdminRequest(r) {
@@ -309,6 +326,8 @@ func (a *App) composeSheet(r *http.Request, page bool) (sheet, refusal string) {
 		`<button type="button" class="mx-compose__opt" data-c-toggle-reply>Set a Reply-To address</button>` +
 		`<label class="mx-compose__opt"><input type="checkbox" data-c-sig-toggle checked> Append the signature</label>` +
 		`<label class="mx-compose__opt"><input type="checkbox" data-c-rich> Also send an HTML version</label>` +
+		`<label class="mx-compose__opt" data-c-sign-opt><input type="checkbox" data-c-sign> Sign with my key</label>` +
+		`<label class="mx-compose__opt" data-c-sign-opt><input type="checkbox" data-c-sign-default> Sign every message from this address</label>` +
 		`<details class="mx-compose__sigedit"><summary class="mx-compose__opt">Edit the signature</summary>` +
 		`<textarea class="mx-compose__input" rows="4" data-c-sig-text aria-label="Signature"></textarea>` +
 		`<div class="mx-compose__sigbar"><button class="btn btn--sm" type="button" data-c-sig-save>Save signature</button><span data-c-sig-status></span></div></details>` +

@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"mime/quotedprintable"
 	"net"
 	"net/http"
 	"strings"
@@ -460,7 +461,16 @@ type ComposeMessage struct {
 	// recipient that cannot decrypt — e.g. a plain Gmail address — would arrive as
 	// an unreadable ciphertext block and score as spam).
 	Encrypt bool
+	// Sign has the message signed with the sender's OpenPGP key: inside the
+	// encryption when the message is encrypted, otherwise as an RFC 3156
+	// multipart/signed. A sender with no key cannot send signed
+	// (ErrNoSigningKey): a message asked to be signed is never sent unsigned.
+	Sign bool
 }
+
+// ErrNoSigningKey refuses a message asked to be signed whose sender has no
+// key to sign with.
+var ErrNoSigningKey = errors.New("this mailbox has no key to sign with")
 
 // ComposeRich sends a message with optional Cc/Bcc/Reply-To and file
 // attachments, then files a copy in the sender's Sent folder. Bcc recipients
@@ -490,6 +500,10 @@ func (e *Engine) ComposeRich(ctx context.Context, m ComposeMessage) (int64, erro
 	var entHead string
 	var entBody []byte
 	withHTML := strings.TrimSpace(m.HTML) != ""
+	// A signed part must reach its reader byte for byte, and a relay may
+	// recode 8-bit text on its way: signed text goes quoted-printable, which
+	// no relay rewrites (RFC 3156 section 3).
+	qp := m.Sign
 	switch {
 	case len(m.Attachments) > 0:
 		boundary := mimeBoundary()
@@ -500,9 +514,9 @@ func (e *Engine) ComposeRich(ctx context.Context, m ComposeMessage) (int64, erro
 			// attachments would tell the client they are two separate documents, and
 			// it would show both.
 			b.WriteString("--" + boundary + "\r\n")
-			b.Write(alternativeEntity(m.Body, m.HTML))
+			b.Write(alternativeEntity(m.Body, m.HTML, qp))
 		} else {
-			writeMIMEPart(&b, boundary, "text/plain; charset=utf-8", m.Body)
+			writeMIMEPart(&b, boundary, "text/plain; charset=utf-8", m.Body, qp)
 		}
 		for _, at := range m.Attachments {
 			writeAttachmentPart(&b, boundary, at)
@@ -511,16 +525,26 @@ func (e *Engine) ComposeRich(ctx context.Context, m ComposeMessage) (int64, erro
 		entHead = `Content-Type: multipart/mixed; boundary="` + boundary + `"`
 		entBody = b.Bytes()
 	case withHTML:
-		alt := alternativeEntity(m.Body, m.HTML)
+		alt := alternativeEntity(m.Body, m.HTML, qp)
 		// Split the entity's own header block off: at top level it continues the
 		// message headers rather than being written as a nested part.
 		if i := bytes.Index(alt, []byte("\r\n\r\n")); i > 0 {
 			entHead = string(alt[:i])
 			entBody = alt[i+4:]
 		}
+	case qp:
+		entHead = "Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: quoted-printable"
+		entBody = []byte(quotedPrintable(normalizeCRLF(m.Body)))
 	default:
 		entHead = "Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit"
 		entBody = []byte(normalizeCRLF(m.Body))
+	}
+	// The sender's own address, to sign as, and the keys their mailbox holds
+	// for people outside the install.
+	from := envelopeAddress(m.From)
+	signer := ""
+	if m.Sign {
+		signer = from
 	}
 
 	headers := []HeaderField{
@@ -554,7 +578,7 @@ func (e *Engine) ComposeRich(ctx context.Context, m ComposeMessage) (int64, erro
 		inner.WriteString("\r\n\r\n")
 		inner.Write(entBody)
 		recips := append(append([]string{}, all...), m.From)
-		if ct, missing, ok := e.bridge.EncryptForRecipients(inner.Bytes(), recips); ok && !anyRecipientMissing(all, missing) {
+		if ct, missing, ok := e.bridge.EncryptForRecipients(inner.Bytes(), recips, e.knownKeysOf(from), signer); ok && !anyRecipientMissing(all, missing) {
 			boundary := mimeBoundary()
 			headers = append(headers,
 				HeaderField{Key: "Content-Type", Value: `multipart/encrypted; protocol="application/pgp-encrypted"; boundary="` + boundary + `"`},
@@ -576,7 +600,34 @@ func (e *Engine) ComposeRich(ctx context.Context, m ComposeMessage) (int64, erro
 			encrypted = true
 		}
 	}
-	if !encrypted {
+	switch {
+	case encrypted:
+	case m.Sign:
+		// RFC 3156 multipart/signed: the content entity, headers and all,
+		// is the signed part, exactly the bytes between its delimiter line
+		// and the CRLF that opens the next.
+		signed := []byte(entHead + "\r\n\r\n" + string(entBody))
+		sig, ok := []byte(nil), false
+		if e.bridge != nil {
+			sig, ok = e.bridge.SignDetached(signed, signer)
+		}
+		if !ok {
+			return 0, ErrNoSigningKey
+		}
+		boundary := mimeBoundary()
+		headers = append(headers, HeaderField{Key: "Content-Type", Value: `multipart/signed; micalg=pgp-sha256; protocol="application/pgp-signature"; boundary="` + boundary + `"`})
+		bodyBuf.WriteString("--" + boundary + "\r\n")
+		bodyBuf.Write(signed)
+		bodyBuf.WriteString("\r\n--" + boundary + "\r\n")
+		bodyBuf.WriteString("Content-Type: application/pgp-signature; name=\"signature.asc\"\r\n")
+		bodyBuf.WriteString("Content-Description: OpenPGP digital signature\r\n")
+		bodyBuf.WriteString("Content-Disposition: attachment; filename=\"signature.asc\"\r\n\r\n")
+		bodyBuf.WriteString(normalizeCRLF(string(sig)))
+		if !bytes.HasSuffix(sig, []byte("\n")) {
+			bodyBuf.WriteString("\r\n")
+		}
+		bodyBuf.WriteString("--" + boundary + "--\r\n")
+	default:
 		// Plaintext: the content entity's own headers continue the top-level block.
 		for _, ln := range strings.Split(entHead, "\r\n") {
 			if i := strings.Index(ln, ": "); i > 0 {
@@ -1248,8 +1299,8 @@ func (e *Engine) sendMail(ctx context.Context, from string, to []string, subject
 		// shape every mainstream MUA sends and that spam filters expect.
 		boundary := mimeBoundary()
 		headers = append(headers, HeaderField{Key: "Content-Type", Value: `multipart/alternative; boundary="` + boundary + `"`})
-		writeMIMEPart(&bodyBuf, boundary, "text/plain; charset=utf-8", text)
-		writeMIMEPart(&bodyBuf, boundary, "text/html; charset=utf-8", html)
+		writeMIMEPart(&bodyBuf, boundary, "text/plain; charset=utf-8", text, false)
+		writeMIMEPart(&bodyBuf, boundary, "text/html; charset=utf-8", html, false)
 		bodyBuf.WriteString("--" + boundary + "--\r\n")
 	case html != "":
 		headers = append(headers,
@@ -1471,22 +1522,37 @@ func normalizeCRLF(s string) string {
 // and promoted to the top level when there are not. A nested multipart declares no
 // Content-Transfer-Encoding: RFC 2045 §6.4 restricts multipart to 7bit/8bit/binary,
 // and the parts carry their own.
-func alternativeEntity(text, html string) []byte {
+func alternativeEntity(text, html string, qp bool) []byte {
 	boundary := mimeBoundary()
 	var b bytes.Buffer
 	b.WriteString(`Content-Type: multipart/alternative; boundary="` + boundary + `"` + "\r\n\r\n")
-	writeMIMEPart(&b, boundary, "text/plain; charset=utf-8", text)
-	writeMIMEPart(&b, boundary, "text/html; charset=utf-8", html)
+	writeMIMEPart(&b, boundary, "text/plain; charset=utf-8", text, qp)
+	writeMIMEPart(&b, boundary, "text/html; charset=utf-8", html, qp)
 	b.WriteString("--" + boundary + "--\r\n")
 	return b.Bytes()
 }
 
-// writeMIMEPart appends one multipart/alternative body part (CRLF-terminated).
-func writeMIMEPart(buf *bytes.Buffer, boundary, contentType, content string) {
+// quotedPrintable encodes CRLF text as quoted-printable, its line breaks kept.
+func quotedPrintable(s string) string {
+	var b bytes.Buffer
+	w := quotedprintable.NewWriter(&b)
+	_, _ = w.Write([]byte(s))
+	_ = w.Close()
+	return b.String()
+}
+
+// writeMIMEPart appends one multipart/alternative body part (CRLF-terminated),
+// quoted-printable when qp is set (a part to be signed).
+func writeMIMEPart(buf *bytes.Buffer, boundary, contentType, content string, qp bool) {
 	buf.WriteString("--" + boundary + "\r\n")
 	buf.WriteString("Content-Type: " + contentType + "\r\n")
-	buf.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
 	body := normalizeCRLF(content)
+	if qp {
+		buf.WriteString("Content-Transfer-Encoding: quoted-printable\r\n\r\n")
+		body = quotedPrintable(body)
+	} else {
+		buf.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
+	}
 	buf.WriteString(body)
 	if !strings.HasSuffix(body, "\r\n") {
 		buf.WriteString("\r\n")

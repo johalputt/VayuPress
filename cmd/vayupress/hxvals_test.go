@@ -11,11 +11,11 @@ func TestHxValsSafeValuesUnchanged(t *testing.T) {
 	// Literal/sanitized values must emit the plain JSON form (byte-identical to
 	// the pre-hardening output the HTMX tests assert).
 	got := hxVals("status", "approved")
-	if got != `hx-vals='{"status":"approved"}'` {
+	if got != ` hx-vals='{"status":"approved"}'` {
 		t.Fatalf("safe hxVals = %q", got)
 	}
 	got = hxVals("user", "alice.bob", "folder", "Inbox", "id", "42")
-	if got != `hx-vals='{"user":"alice.bob","folder":"Inbox","id":"42"}'` {
+	if got != ` hx-vals='{"user":"alice.bob","folder":"Inbox","id":"42"}'` {
 		t.Fatalf("safe multi hxVals = %q", got)
 	}
 }

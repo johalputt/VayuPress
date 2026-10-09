@@ -73,7 +73,7 @@ func TestTheSealJudgesAnEncryptedMessage(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		body, got, err := e.DecryptAndCheck(ct, "rcv@example.com", c.claims)
+		body, got, err := e.DecryptAndCheck(ct, "rcv@example.com", c.claims, nil)
 		if err != nil || !bytes.Equal(body, msg) {
 			t.Fatalf("%s: body %q, err %v", c.name, body, err)
 		}
@@ -96,7 +96,7 @@ func TestTheSealIsNotFooledByAKeyItHolds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, got, _ := e.DecryptAndCheck(ct, "rcv@example.com", "snd@example.com"); got != SigBad {
+	if _, got, _ := e.DecryptAndCheck(ct, "rcv@example.com", "snd@example.com", nil); got != SigBad {
 		t.Errorf("signed with the recipient's own key, claiming the sender: %d", got)
 	}
 
@@ -111,7 +111,7 @@ func TestTheSealIsNotFooledByAKeyItHolds(t *testing.T) {
 	_ = w.Close()
 	_ = aw.Close()
 	time.Sleep(2 * time.Second)
-	if _, got, err := e.DecryptAndCheck(b.Bytes(), "rcv@example.com", "snd@example.com"); err != nil || got != SigBad {
+	if _, got, err := e.DecryptAndCheck(b.Bytes(), "rcv@example.com", "snd@example.com", nil); err != nil || got != SigBad {
 		t.Errorf("the sender's signature, expired: %d (%v)", got, err)
 	}
 }
@@ -126,16 +126,16 @@ func TestTheSealJudgesADetachedSignature(t *testing.T) {
 		}
 		return b.Bytes()
 	}
-	if got := e.CheckDetached(data, sign(snd), "snd@example.com"); got != SigVerified {
+	if got := e.CheckDetached(data, sign(snd), "snd@example.com", nil); got != SigVerified {
 		t.Errorf("the sender's own signature: %d", got)
 	}
-	if got := e.CheckDetached(append([]byte("X"), data...), sign(snd), "snd@example.com"); got != SigBad {
+	if got := e.CheckDetached(append([]byte("X"), data...), sign(snd), "snd@example.com", nil); got != SigBad {
 		t.Errorf("a signature over altered content: %d", got)
 	}
-	if got := e.CheckDetached(data, sign(stranger), "stranger@elsewhere.test"); got != SigUnknownKey {
+	if got := e.CheckDetached(data, sign(stranger), "stranger@elsewhere.test", nil); got != SigUnknownKey {
 		t.Errorf("a sender with no key on file: %d", got)
 	}
-	if got := e.CheckDetached(data, sign(other), "snd@example.com"); got != SigBad {
+	if got := e.CheckDetached(data, sign(other), "snd@example.com", nil); got != SigBad {
 		t.Errorf("another mailbox's signature claiming the sender: %d", got)
 	}
 }
@@ -153,16 +153,16 @@ func TestTheSealJudgesAClearSignedMessage(t *testing.T) {
 		return b.Bytes()
 	}
 	signed := clear(snd, "Clear-signed words.\n")
-	if got := e.CheckClearSigned(signed, "snd@example.com"); got != SigVerified {
+	if got := e.CheckClearSigned(signed, "snd@example.com", nil); got != SigVerified {
 		t.Errorf("the sender's clear signature: %d", got)
 	}
-	if got := e.CheckClearSigned(bytes.Replace(signed, []byte("Clear-signed words."), []byte("Altered words here."), 1), "snd@example.com"); got != SigBad {
+	if got := e.CheckClearSigned(bytes.Replace(signed, []byte("Clear-signed words."), []byte("Altered words here."), 1), "snd@example.com", nil); got != SigBad {
 		t.Errorf("altered clear-signed text: %d", got)
 	}
-	if got := e.CheckClearSigned(clear(stranger, "Hi\n"), "stranger@elsewhere.test"); got != SigUnknownKey {
+	if got := e.CheckClearSigned(clear(stranger, "Hi\n"), "stranger@elsewhere.test", nil); got != SigUnknownKey {
 		t.Errorf("a sender with no key on file: %d", got)
 	}
-	if got := e.CheckClearSigned([]byte("Just words.\n"), "snd@example.com"); got != SigNone {
+	if got := e.CheckClearSigned([]byte("Just words.\n"), "snd@example.com", nil); got != SigNone {
 		t.Errorf("unsigned text: %d", got)
 	}
 }
@@ -198,7 +198,7 @@ func TestCanEncryptToResolvesAsTheSendDoes(t *testing.T) {
 		{"other@elsewhere.test", false},   // WKD answers with a key that is not theirs
 		{"nobody@localhost", false},       // nothing on file, and no WKD to ask
 	} {
-		got := e.CanEncryptTo(c.addr)
+		got := e.CanEncryptTo(c.addr, nil)
 		_, err := e.Encrypt([]byte("x"), c.addr)
 		if got != c.want || got != (err == nil) {
 			t.Errorf("%s: CanEncryptTo %v, Encrypt err %v; want %v from both", c.addr, got, err, c.want)

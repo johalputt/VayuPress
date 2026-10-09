@@ -45,7 +45,7 @@ func parseEntity(t *testing.T, head string, body []byte) (*mime.WordDecoder, str
 // what makes HTML win where it is supported and text the fallback everywhere else.
 // Reversed, every HTML-capable client would show the plain text.
 func TestAlternativeEntityPutsTextFirst(t *testing.T) {
-	ent := alternativeEntity("plain words", "<p>rich words</p>")
+	ent := alternativeEntity("plain words", "<p>rich words</p>", false)
 	i := strings.Index(string(ent), "\r\n\r\n")
 	if i < 0 {
 		t.Fatal("entity has no header/body separator")
@@ -69,7 +69,7 @@ func TestAlternativeEntityPutsTextFirst(t *testing.T) {
 // TestAlternativeEntityIsWellFormed guards the details that make a client accept
 // it: a charset on each part, and a closing boundary.
 func TestAlternativeEntityIsWellFormed(t *testing.T) {
-	ent := string(alternativeEntity("hello", "<p>hello</p>"))
+	ent := string(alternativeEntity("hello", "<p>hello</p>", false))
 	if strings.Count(ent, "charset=utf-8") != 2 {
 		t.Error("both parts must declare charset=utf-8")
 	}

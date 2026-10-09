@@ -327,8 +327,27 @@ func entityFromArmor(armored string) (*openpgp.Entity, error) {
 // recipientEntity resolves a recipient email to a public entity, trying the
 // local key store first and then WKD when AutoEncrypt discovery is desired.
 func (e *Engine) recipientEntity(email string) (*openpgp.Entity, error) {
+	return e.keyFor(email, nil, true)
+}
+
+// KnownKeys are the public keys one mailbox holds for people outside this
+// install, armored, by lowercased address. They are a mailbox's own: were
+// they the install's, one holder could plant a key under someone else's
+// address and read what every other mailbox sent them.
+type KnownKeys map[string]string
+
+// keyFor finds email's key: this install's own first, so a mailbox cannot
+// stand a key of its own in for an address the install serves; then the
+// mailbox's known keys; then, when fetch is set, the address's WKD.
+func (e *Engine) keyFor(email string, known KnownKeys, fetch bool) (*openpgp.Entity, error) {
 	if pk, err := e.GetPublicKey(email); err == nil {
 		return entityFromArmor(pk.Armor)
+	}
+	if armored, ok := known[strings.ToLower(strings.TrimSpace(email))]; ok {
+		return entityFromArmor(armored)
+	}
+	if !fetch {
+		return nil, ErrNotFound
 	}
 	pk, err := e.LookupExternalKey(email)
 	if err != nil {
@@ -352,7 +371,11 @@ func (e *Engine) Encrypt(plaintext []byte, recipientEmail string) ([]byte, error
 // the lowercased list of addresses whose public keys could NOT be found, so a
 // caller can decide whether to fall back to plaintext rather than send a message
 // some recipient can't read. It errors only when NO recipient could be resolved.
-func (e *Engine) EncryptToRecipients(plaintext []byte, recipientEmails []string) ([]byte, []string, error) {
+//
+// known adds the sending mailbox's keys for people outside the install, and a
+// signer that is set (a local address) signs the message inside the
+// encryption.
+func (e *Engine) EncryptToRecipients(plaintext []byte, recipientEmails []string, known KnownKeys, signer string) ([]byte, []string, error) {
 	var entities []*openpgp.Entity
 	var missing []string
 	seen := make(map[string]bool, len(recipientEmails))
@@ -362,7 +385,7 @@ func (e *Engine) EncryptToRecipients(plaintext []byte, recipientEmails []string)
 			continue
 		}
 		seen[em] = true
-		ent, err := e.recipientEntity(em)
+		ent, err := e.keyFor(em, known, true)
 		if err != nil || ent == nil {
 			missing = append(missing, em)
 			continue
@@ -372,11 +395,75 @@ func (e *Engine) EncryptToRecipients(plaintext []byte, recipientEmails []string)
 	if len(entities) == 0 {
 		return nil, missing, ErrNotFound
 	}
-	ct, err := encryptTo(plaintext, entities, nil)
+	var signWith *openpgp.Entity
+	if signer != "" {
+		var err error
+		if signWith, err = e.signerFor(signer); err != nil {
+			return nil, missing, err
+		}
+	}
+	ct, err := encryptTo(plaintext, entities, signWith)
 	if err != nil {
 		return nil, missing, err
 	}
 	return ct, missing, nil
+}
+
+// signerFor is the private key of the local mailbox email, to sign with.
+func (e *Engine) signerFor(email string) (*openpgp.Entity, error) {
+	if e.ks == nil {
+		return nil, errors.New("vayupgp: engine not started")
+	}
+	userID, ok := e.ks.userIDForEmail(email)
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return e.entity(userID)
+}
+
+// SignDetachedFromEmail is an armored detached signature over data by the
+// local mailbox email: the second part of an RFC 3156 multipart/signed.
+func (e *Engine) SignDetachedFromEmail(data []byte, email string) ([]byte, error) {
+	if e.ks == nil {
+		return nil, errors.New("vayupgp: engine not started")
+	}
+	userID, ok := e.ks.userIDForEmail(email)
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return e.Sign(data, userID)
+}
+
+// DescribePublicKey reads one armored public key, as a person pastes it, and
+// gives its fingerprint and the addresses its user IDs name. A private key,
+// more than one key, or a key that names no address is refused: what is
+// added is a correspondent's public key, to be compared by its fingerprint.
+func DescribePublicKey(armored []byte) (fingerprint string, emails []string, err error) {
+	// The reader stops at the first armored block, so a second key pasted
+	// after it would pass unseen as the first one.
+	if bytes.Count(armored, []byte("-----BEGIN PGP")) > 1 {
+		return "", nil, errors.New("paste one key at a time")
+	}
+	list, err := openpgp.ReadArmoredKeyRing(bytes.NewReader(armored))
+	switch {
+	case err != nil:
+		return "", nil, errors.New("this is not an OpenPGP public key")
+	case len(list) != 1:
+		return "", nil, errors.New("paste one key at a time")
+	case list[0].PrivateKey != nil:
+		return "", nil, errors.New("this is a private key; paste the public key, and keep this one to yourself")
+	}
+	seen := map[string]bool{}
+	for _, id := range list[0].Identities {
+		if a := strings.ToLower(strings.TrimSpace(id.UserId.Email)); a != "" && !seen[a] {
+			seen[a] = true
+			emails = append(emails, a)
+		}
+	}
+	if len(emails) == 0 {
+		return "", nil, errors.New("this key names no address")
+	}
+	return fingerprintOf(list[0]), emails, nil
 }
 
 // EncryptAndSign produces an armored PGP message encrypted to recipientEmail and

@@ -5,6 +5,7 @@ package mail
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,10 +26,13 @@ func (b loopbackBridge) SendTransactional(*TransactionalMessage) error { return 
 func (b loopbackBridge) EncryptForRecipient([]byte, string) ([]byte, bool) {
 	return nil, false
 }
-func (b loopbackBridge) EncryptForRecipients(_ []byte, emails []string) ([]byte, []string, bool) {
+func (b loopbackBridge) EncryptForRecipients(_ []byte, emails []string, _ map[string]string, _ string) ([]byte, []string, bool) {
 	return nil, emails, false
 }
-func (b loopbackBridge) SignAs([]byte, string) ([]byte, bool) { return nil, false }
+func (b loopbackBridge) SignDetached([]byte, string) ([]byte, bool) { return nil, false }
+func (b loopbackBridge) DescribePublicKey([]byte) (string, []string, error) {
+	return "", nil, errors.New("no keys here")
+}
 
 func newLoopbackEngine(t *testing.T, bridge Bridge) *Engine {
 	t.Helper()
@@ -191,7 +195,7 @@ type encryptingBridge struct{ loopbackBridge }
 func (encryptingBridge) EncryptForRecipient([]byte, string) ([]byte, bool) {
 	return []byte("-----BEGIN PGP MESSAGE-----\nCIPHERTEXT\n-----END PGP MESSAGE-----"), true
 }
-func (encryptingBridge) EncryptForRecipients([]byte, []string) ([]byte, []string, bool) {
+func (encryptingBridge) EncryptForRecipients([]byte, []string, map[string]string, string) ([]byte, []string, bool) {
 	return []byte("-----BEGIN PGP MESSAGE-----\nCIPHERTEXT\n-----END PGP MESSAGE-----\n"), nil, true
 }
 

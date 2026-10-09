@@ -113,7 +113,7 @@ func TestPGPMIMERoundTripWithAttachment(t *testing.T) {
 		"Content-Disposition: attachment; filename=\"pic.png\"\r\n\r\nQUJD\r\n" +
 		"--ib--\r\n"
 
-	armored, missing, err := a.vayuPGP.EncryptToRecipients([]byte(inner), []string{rcpt})
+	armored, missing, err := a.vayuPGP.EncryptToRecipients([]byte(inner), []string{rcpt}, nil, "")
 	if err != nil {
 		t.Fatalf("encrypt: %v", err)
 	}

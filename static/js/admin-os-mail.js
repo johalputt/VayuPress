@@ -780,7 +780,7 @@
       if (got && got !== 'asking') return got;
       if (!got) {
         recipients[k] = 'asking';
-        fetch('/os/vayumail/compose/recipient?addr=' + encodeURIComponent(addr), { credentials: 'same-origin' })
+        fetch('/os/vayumail/compose/recipient?addr=' + encodeURIComponent(addr) + '&user=' + encodeURIComponent(compose.getAttribute('data-c-user') || ''), { credentials: 'same-origin' })
           .then(function (r) { return r.ok ? r.json() : { key: false, initials: '', tone: 0 }; })
           .catch(function () { return { key: false, initials: '', tone: 0 }; })
           .then(function (j) { recipients[k] = j; if (again) again(); paintEnc(); });
@@ -848,6 +848,40 @@
     function pgpEncrypt() { return !!(encToggle && encToggle.checked); }
     var richToggle = compose.querySelector('[data-c-rich]');
     function richHTML() { return !!(richToggle && richToggle.checked); }
+    // Signing (OpenPGP): offered only for a sender with a key to sign with
+    // (data-can-sign on its From option), ticked by that sender's default
+    // (data-sign); the second box changes the default itself.
+    var signBox = compose.querySelector('[data-c-sign]');
+    var signDefault = compose.querySelector('[data-c-sign-default]');
+    function fromOpt() { return fromSel && fromSel.selectedIndex >= 0 ? fromSel.options[fromSel.selectedIndex] : null; }
+    function paintSign() {
+      var opt = fromOpt();
+      var can = !!(opt && opt.getAttribute('data-can-sign'));
+      var dflt = !!(opt && opt.getAttribute('data-sign'));
+      compose.querySelectorAll('[data-c-sign-opt]').forEach(function (l) { l.hidden = !can; });
+      if (signBox) signBox.checked = can && dflt;
+      if (signDefault) signDefault.checked = dflt;
+    }
+    function pgpSign() { return !!(signBox && signBox.checked && !signBox.closest('[hidden]')); }
+    if (fromSel) fromSel.addEventListener('change', paintSign);
+    paintSign();
+    if (signDefault) {
+      signDefault.addEventListener('change', function () {
+        var opt = fromOpt();
+        if (!opt) return;
+        var on = signDefault.checked;
+        postJSON('/os/vayumail/accounts/update', { email: opt.value, sign_by_default: on }).then(function (res) {
+          if (!res.ok) {
+            signDefault.checked = !on;
+            if (cStatus) cStatus.textContent = 'Not changed: ' + errText(res);
+            return;
+          }
+          if (on) opt.setAttribute('data-sign', '1'); else opt.removeAttribute('data-sign');
+          if (signBox) signBox.checked = on;
+          if (cStatus) cStatus.textContent = on ? 'Messages from ' + opt.value + ' are signed unless you untick it.' : 'Messages from ' + opt.value + ' are no longer signed unless you tick it.';
+        });
+      });
+    }
     if (encLine && encToggle) encLine.addEventListener('click', function () { encToggle.checked = !encToggle.checked; paintEnc(); });
     if (fromSel) fromSel.addEventListener('change', paintSig);
     if (sigSave) {
@@ -1028,6 +1062,7 @@
         fd.append('appendSig', snap.appendSig ? '1' : '0');
         fd.append('encrypt', snap.encrypt ? '1' : '0');
         fd.append('richHTML', snap.richHTML ? '1' : '0');
+        fd.append('sign', snap.sign ? '1' : '0');
         if (snap.sendAt) fd.append('sendAt', snap.sendAt);
         opts.body = fd;
       } else {
@@ -1036,6 +1071,7 @@
         payload.appendSig = snap.appendSig;
         payload.encrypt = snap.encrypt;
         payload.richHTML = snap.richHTML;
+        payload.sign = snap.sign;
         if (snap.sendAt) payload.sendAt = snap.sendAt;
         opts.headers['Content-Type'] = 'application/json';
         opts.body = JSON.stringify(payload);
@@ -1079,7 +1115,7 @@
       var f = composeFields();
       if (!f.to && !f.cc && !f.bcc) { if (cStatus) cStatus.textContent = 'Add at least one recipient.'; return; }
       if (later) later.open = false;
-      holdSnapshot = { fields: f, files: composeFiles.slice(), appendSig: sigAppend(), encrypt: pgpEncrypt(), richHTML: richHTML(), from: f.from, draftId: draftId, sendAt: d.toISOString() };
+      holdSnapshot = { fields: f, files: composeFiles.slice(), appendSig: sigAppend(), encrypt: pgpEncrypt(), richHTML: richHTML(), sign: pgpSign(), from: f.from, draftId: draftId, sendAt: d.toISOString() };
       stopAutosave();
       if (sendBtn) sendBtn.disabled = true;
       performSend(false);
@@ -1211,7 +1247,7 @@
       var f = composeFields();
       if (!f.to && !f.cc && !f.bcc) { if (cStatus) cStatus.textContent = 'Add at least one recipient.'; return; }
       // Snapshot at click time so edits during the hold don't leak into the send.
-      holdSnapshot = { fields: f, files: composeFiles.slice(), appendSig: sigAppend(), encrypt: pgpEncrypt(), richHTML: richHTML(), from: f.from, draftId: draftId };
+      holdSnapshot = { fields: f, files: composeFiles.slice(), appendSig: sigAppend(), encrypt: pgpEncrypt(), richHTML: richHTML(), sign: pgpSign(), from: f.from, draftId: draftId };
       stopAutosave();
       if (sendBtn) sendBtn.disabled = true;
       if (cStatus) cStatus.textContent = '';

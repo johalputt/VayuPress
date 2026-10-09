@@ -399,6 +399,8 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		From, To, CC, BCC, ReplyTo, Subject, Body string
 		AppendSig                                 *bool `json:"appendSig"`
 		Encrypt                                   *bool `json:"encrypt"`
+		// Sign has the message signed with the sender's OpenPGP key.
+		Sign *bool `json:"sign"`
 		// RichHTML opts into a multipart/alternative with an HTML rendering of the
 		// same body. Off by default: a young sending IP scores worse with HTML than
 		// with plain text, so this must be a deliberate choice, not a default.
@@ -416,6 +418,7 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 	appendSig := true // default: append the sender's signature when one is set
 	encrypt := false  // default OFF: plain messages are delivered as readable text
 	richHTML := false // default OFF: see RichHTML above — deliverability, not preference
+	sign := false     // the composer sends the sender's default (SignsByDefault)
 
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
 		// Cap the whole request at the attachment budget + 1 MB of text/fields.
@@ -442,6 +445,7 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		if r.FormValue("encrypt") == "1" {
 			encrypt = true
 		}
+		sign = r.FormValue("sign") == "1"
 		var total int64
 		if r.MultipartForm != nil {
 			for _, fhs := range r.MultipartForm.File["attachments"] {
@@ -481,6 +485,9 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		}
 		if in.RichHTML != nil {
 			richHTML = *in.RichHTML
+		}
+		if in.Sign != nil {
+			sign = *in.Sign
 		}
 	}
 
@@ -588,6 +595,7 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		Attachments:  attachments,
 		SenderUserID: senderUserID,
 		Encrypt:      encrypt,
+		Sign:         sign,
 	}
 	if !sendAt.IsZero() {
 		id, err := a.vayuMail.Schedule(r.Context(), from, msg, in.Body, sendAt)
@@ -599,6 +607,10 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, err := a.vayuMail.ComposeRich(r.Context(), msg)
+	if errors.Is(err, vmail.ErrNoSigningKey) {
+		writeAPIError(w, r, 400, "no-signing-key", "Not sent: this mailbox has no key to sign with. Send it unsigned, or ask an administrator for a key.", "")
+		return
+	}
 	if err != nil {
 		writeAPIError(w, r, 500, "send-failed", mailSendErrText(err), "")
 		return
@@ -1795,6 +1807,9 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 		Role      string   `json:"role"`
 		QuotaMB   *float64 `json:"quota_mb"`  // mailbox storage limit in MB; 0 = unlimited
 		Signature *string  `json:"signature"` // plain-text mail signature (nil = leave unchanged)
+		// SignByDefault: compose signs this account's messages (OpenPGP)
+		// unless the message says otherwise; nil = leave unchanged.
+		SignByDefault *bool `json:"sign_by_default"`
 		// Retention window in days (ADR-0130): read mail auto-deletes this many
 		// days after being read; 0 turns retention off; nil = leave unchanged.
 		RetentionDays *int `json:"retention_days"`
@@ -1808,10 +1823,11 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	// Account management is admin-only, with ONE exception: a mailbox holder may
-	// set their OWN signature (and nothing else) so signatures are self-service.
+	// set their OWN signature and whether it signs by default (and nothing
+	// else), so the way they write is theirs to choose.
 	if !a.isAdminRequest(r) {
 		_, own := a.ownMailbox(r)
-		onlySignature := in.Signature != nil && in.Pass == "" && in.Active == nil &&
+		onlySignature := (in.Signature != nil || in.SignByDefault != nil) && in.Pass == "" && in.Active == nil &&
 			strings.TrimSpace(in.Role) == "" && in.QuotaMB == nil && in.RetentionDays == nil
 		if own == "" || !strings.EqualFold(own, in.Email) || !onlySignature {
 			writeAPIError(w, r, http.StatusForbidden, "forbidden", "you can only edit your own signature", "")
@@ -1842,6 +1858,12 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 	}
 	if in.Signature != nil {
 		if err := a.vayuMail.Accounts().SetSignature(r.Context(), in.Email, *in.Signature); err != nil {
+			writeAPIError(w, r, 400, "update-failed", err.Error(), "")
+			return
+		}
+	}
+	if in.SignByDefault != nil {
+		if err := a.vayuMail.Accounts().SetSignByDefault(r.Context(), in.Email, *in.SignByDefault); err != nil {
 			writeAPIError(w, r, 400, "update-failed", err.Error(), "")
 			return
 		}

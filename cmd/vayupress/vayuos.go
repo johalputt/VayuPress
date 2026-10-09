@@ -315,26 +315,30 @@ func (b *vayuMailBridge) EncryptForRecipient(plaintext []byte, recipientEmail st
 	return ct, true
 }
 
-func (b *vayuMailBridge) EncryptForRecipients(plaintext []byte, recipientEmails []string) ([]byte, []string, bool) {
+func (b *vayuMailBridge) EncryptForRecipients(plaintext []byte, recipientEmails []string, known map[string]string, signer string) ([]byte, []string, bool) {
 	if b.app.vayuPGP == nil {
 		return nil, recipientEmails, false
 	}
-	ct, missing, err := b.app.vayuPGP.EncryptToRecipients(plaintext, recipientEmails)
+	ct, missing, err := b.app.vayuPGP.EncryptToRecipients(plaintext, recipientEmails, known, signer)
 	if err != nil || len(ct) == 0 {
 		return nil, missing, false
 	}
 	return ct, missing, true
 }
 
-func (b *vayuMailBridge) SignAs(plaintext []byte, senderUserID string) ([]byte, bool) {
-	if b.app.vayuPGP == nil || senderUserID == "" {
+func (b *vayuMailBridge) SignDetached(data []byte, signer string) ([]byte, bool) {
+	if b.app.vayuPGP == nil || signer == "" {
 		return nil, false
 	}
-	sig, err := b.app.vayuPGP.Sign(plaintext, senderUserID)
+	sig, err := b.app.vayuPGP.SignDetachedFromEmail(data, signer)
 	if err != nil {
 		return nil, false
 	}
 	return sig, true
+}
+
+func (b *vayuMailBridge) DescribePublicKey(armored []byte) (string, []string, error) {
+	return vpgp.DescribePublicKey(armored)
 }
 
 var _ vmail.Bridge = (*vayuMailBridge)(nil)
@@ -1711,7 +1715,10 @@ func jsonStringEscape(s string) string {
 	return b.String()
 }
 
-// hxVals builds an hx-vals='{...}' attribute from alternating key/value pairs.
+// hxVals builds an hx-vals='{...}' attribute from alternating key/value pairs,
+// with the space before it, so it can follow another attribute's closing
+// quote directly (without one, Empty, Unblock and Unsubscribe were each a
+// parse error that browsers happened to forgive).
 // Each key and value is JSON-string-escaped and then passed through
 // html.EscapeString — a sanitiser static analysis recognises — so the tainted
 // value path is provably clean (closing go/reflected-xss) while a browser
@@ -1722,7 +1729,7 @@ func jsonStringEscape(s string) string {
 func hxVals(pairs ...string) string {
 	esc := func(s string) string { return html.EscapeString(jsonStringEscape(s)) }
 	var sb strings.Builder
-	sb.WriteString(`hx-vals='{`)
+	sb.WriteString(` hx-vals='{`)
 	for i := 0; i+1 < len(pairs); i += 2 {
 		if i > 0 {
 			sb.WriteString(",")
@@ -1846,8 +1853,10 @@ func mailFolderNav(n mailNav) string {
 type mailNav struct {
 	User, Active, View string
 	// Own are the mailbox's own folders; Writable offers New folder.
-	Own                []string
-	Writable           bool
+	Own      []string
+	Writable bool
+	// Searches are the mailbox's saved searches.
+	Searches           []string
 	Counts, ViewCounts map[string]int
 	// OOB sends it out of band beside a list swap.
 	OOB bool
