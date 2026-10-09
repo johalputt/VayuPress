@@ -55,7 +55,7 @@ func (a *App) vayuScheduledBody(ctx context.Context, rd vmail.Reader, note strin
 	list, err := a.vayuMail.ScheduledFor(ctx, a.scheduledOwner(rd))
 	var b strings.Builder
 	b.WriteString(`<h1 class="vp-sr-only">` + esc(a.scheduledOwner(rd)) + ` · Scheduled</h1>`)
-	b.WriteString(`<header class="mx-head"><div class="mx-head__main"><button type="button" class="mx-back mx-back--boxes" data-mx-go="boxes">` + saIcon("chev-l") + `Mailboxes</button><h2 class="mx-head__title">Scheduled</h2>`)
+	b.WriteString(`<header class="mx-head"><div class="mx-head__main"><button type="button" class="mx-back mx-back--boxes" data-mx-go="boxes">` + saIcon("chev-l") + `Folders</button><h2 class="mx-head__title">Scheduled</h2>`)
 	if len(list) > 0 {
 		b.WriteString(`<span class="mx-head__note">` + itoaSafe(len(list)) + ` waiting to send</span>`)
 	}

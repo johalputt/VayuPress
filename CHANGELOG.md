@@ -79,6 +79,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Code scanning's three High findings on Mail.** An own folder's path is
+  now checked to lie inside its account's directory where the path is built
+  (`ownFolderDir`), rather than resting on the folder-name rule alone; and an
+  administrator's Bring mail in names the server in the mailbox's access
+  record from the form itself, so the record, hashed into the ledger's chain,
+  never shares a value with the password given for the import.
+- **On a phone, Mail's folders were behind a control named Mailboxes.** It
+  read as a list of accounts, and Sent and every other folder went unfound
+  behind it. The control and its screen are now called Folders.
+- **On a phone, a menu could open partly off the screen.** Talk's key panel
+  lost its left third. Every console menu and panel is now moved in by what
+  it overhangs as it opens.
 - **A studio client's Mail had no sidebar.** Their Mail app has no sections,
   so the console drew none, and Sent, Drafts and the views could be reached
   only by a link. An open mailbox now shows its folders for whoever holds it.

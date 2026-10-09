@@ -778,9 +778,13 @@ test("on a phone, Mail is screens pushed and popped", async ({ page }) => {
   await page.waitForTimeout(2600);
   await expect(newest, "the newest message was marked read without being shown").toHaveClass(/is-unread/);
 
+  // The way to every folder says so: named Mailboxes, it read as a list of
+  // accounts, and on a phone Sent went unfound behind it.
+  await expect(page.locator(".mx-back--boxes")).toHaveText("Folders");
   await page.locator(".mx-back--boxes").click();
   await expect(body).toHaveAttribute("data-mx-screen", "boxes");
-  await expect(page.locator(".mx-boxes__title")).toBeVisible();
+  await expect(page.locator(".mx-boxes__title")).toHaveText("Folders");
+  await expect(page.locator("#vm-folders a", { hasText: "Sent" })).toBeVisible();
   // The folder swaps its list in over htmx. Network idle comes before the
   // swap settles, and a scroll set in between is lost under the new rows.
   const settled = page.evaluate(() => new Promise((done) => {
