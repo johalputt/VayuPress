@@ -8,6 +8,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.17.99] — 2026-10-09
+
+Mail is complete against its audit. Contacts come in groups and travel as
+vCards; a domain can have a catch-all address; mail that did not arrive is
+read back onto the message in Sent; messages carry labels. A mailbox's
+contacts and a calendar sync to phones and desktop apps over CardDAV and
+CalDAV, and a mailbox can sign with an S/MIME certificate while the reader
+checks the S/MIME signatures it is sent. Built with Go 1.27.2.
+
 ### Added
 
 - **Send later in Mail.** The compose foot has Send later beside Send:
