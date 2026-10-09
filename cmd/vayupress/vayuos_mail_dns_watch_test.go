@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/johalputt/vayupress/internal/users"
 	"github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
@@ -43,6 +44,20 @@ func TestAnUnfinishedMailDomainIsRaisedFromTheStoredVerdict(t *testing.T) {
 	}
 	if !strings.Contains(tabs(), `aria-label="needs attention"`) {
 		t.Error("a failing check must mark the DNS tab")
+	}
+	// Mail's count in the rail is unread mail: a domain to finish is in the
+	// bell and on the DNS tab, and counted on Mail it read as a message
+	// waiting where there was none.
+	if strings.Contains(tabs(), `<span class="sa-rail__label">Mail</span><span class="sa-count">`) {
+		t.Error("Mail's rail count counts the unfinished domain as a message")
+	}
+	if _, err := a.vayuMail.DeliverInbound("x@example.net", "dana@example.com", []byte("From: x@example.net\r\nTo: dana@example.com\r\nSubject: Hi\r\n\r\nbody\r\n")); err != nil {
+		t.Fatal(err)
+	}
+	// Signed in as an administrator, so the bell counts every mailbox.
+	admin := context.WithValue(ctx, ctxUserKey, &users.User{ID: "admin1", Email: "boss@example.com", Role: users.RoleAdmin})
+	if rail := stillAirShellHead("n", "Mail", "vayuos", a.getOSSettings(admin)); !strings.Contains(rail, `<span class="sa-rail__label">Mail</span><span class="sa-count">1</span>`) {
+		t.Error("a message waiting is not counted on Mail")
 	}
 	if strings.Contains(bell(accessAuthor), "Mail domain") {
 		t.Error("an author was pointed at the administrator-only DNS tab")

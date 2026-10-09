@@ -17,6 +17,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - **Saving a template keeps its "Saved" note and its new row.** The list
   read as the Templates menu opens could answer after a save made straight
   after, and painted then it took both away again.
+- **Mail's count in the rail is unread mail, and nothing else.** It added
+  every Mail notice in the bell, so a mail domain with DNS to finish, a
+  locked-out recovery request or a device waiting for approval each showed
+  as a message in a mailbox that had none. Those stay in the bell, in their
+  own words; the count on Mail is what is waiting to be read.
 
 ### Security
 

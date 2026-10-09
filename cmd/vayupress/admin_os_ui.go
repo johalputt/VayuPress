@@ -1475,8 +1475,8 @@ type osSettings struct {
 	// Mode and ModeSince drive the Still Air status area and state strip.
 	Mode      mode.Mode
 	ModeSince time.Time
-	// UnreadMail is the mail count already gathered for the bell; the Still Air
-	// rail shows it on Mail rather than counting again.
+	// UnreadMail is the unread mail already counted for the bell (its Unread
+	// notice); the Still Air rail shows it on Mail rather than counting again.
 	UnreadMail int
 	// MailDNSAttention marks the Mail app's DNS section (the stored verdict,
 	// never a live lookup).
@@ -1575,6 +1575,11 @@ type osNotification struct {
 	// ready, a mail domain half set up, backups unproven): its detail is a whole
 	// statement and reads without a count in front of it.
 	State bool
+	// Unread marks the tally of mail waiting to be read, the one count Mail
+	// carries in the rail. The other Mail notices (a domain to finish, a
+	// recovery request, a device to approve) are not messages, and counted
+	// there they showed a message waiting in an empty mailbox.
+	Unread bool
 }
 
 // getOSSettings loads settings needed for layout rendering.
@@ -1626,7 +1631,7 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 	s.RecentCleared = notifClearedAt(ctx, s.UserID)
 	s.NotifDismissed = notifDismissed(ctx, s.UserID, time.Now())
 	for _, n := range s.Notifications {
-		if n.Kind == "mail" {
+		if n.Unread {
 			s.UnreadMail += n.Count
 		}
 	}
@@ -1699,6 +1704,20 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 	for _, n := range a.cspReportOnlyNotices(ctx) {
 		state(n.Href, n.Title, n.Detail, n.Kind, n.Severity)
 	}
+	// New mail waiting in the viewer's mailboxes — the count that also raises the
+	// live desktop notification (admin-os.js). Cheap readdir-only counts, so
+	// ahead of the database's sources: it needs none.
+	if unseen, href := a.mailUnseenForViewer(ctx, s); unseen > 0 {
+		noun := "unread in your mailbox"
+		if href == "/os/vayumail/inbox" {
+			noun = "unread across your mailboxes"
+		}
+		n := len(out)
+		add(href, "New mail", noun, "mail", unseen)
+		if len(out) > n {
+			out[n].Unread = true
+		}
+	}
 	if dbpkg.DB == nil {
 		return out
 	}
@@ -1709,15 +1728,6 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 	pendingComments := 0
 	_ = rdb.QueryRowContext(ctx, `SELECT COUNT(1) FROM comments WHERE status='pending'`).Scan(&pendingComments)
 	add("/os/comments", "Comments to review", "awaiting moderation", "comment", pendingComments)
-	// New mail waiting in the viewer's mailboxes — the count that also raises the
-	// live desktop notification (admin-os.js). Cheap readdir-only counts.
-	if unseen, href := a.mailUnseenForViewer(ctx, s); unseen > 0 {
-		noun := "unread in your mailbox"
-		if href == "/os/vayumail/inbox" {
-			noun = "unread across your mailboxes"
-		}
-		add(href, "New mail", noun, "mail", unseen)
-	}
 	// Mail devices waiting for approval to sync a mailbox (VayuMail direct-connect).
 	if a.vayuMail != nil {
 		pendingDevices := 0
