@@ -646,6 +646,28 @@ test("search rises into the header and gives the list back", async ({ page }) =>
   expect(await list.evaluate((e) => e.scrollTop), "the list did not come back where it was").toBe(600);
 });
 
+// The list's own refresh (the poller, fired when a message is read or moved)
+// waits while a search is on screen, so the results stay under the reader,
+// and runs once the search is let go of.
+test("the list does not redraw under a search", async ({ page }) => {
+  await openInbox(page);
+  await page.locator(".mx-search__input").focus();
+  await page.keyboard.type("bucket");
+  await page.locator(".mx-scope__opt", { hasText: "All mail" }).click();
+  const results = page.locator("#vm-search-results");
+  await expect(results.locator(".mx-row", { hasText: "Keys for the backup bucket" })).toHaveCount(1);
+  const polls = [];
+  page.on("request", (r) => { if (r.url().includes("/os/vayumail/inbox/fragment")) polls.push(r.url()); });
+  await page.evaluate(() => document.body.dispatchEvent(new CustomEvent("vm-mail-changed")));
+  await page.waitForTimeout(800);
+  expect(polls, "the list was redrawn under the search").toHaveLength(0);
+  await expect(results.locator(".mx-row", { hasText: "Keys for the backup bucket" })).toBeVisible();
+  await expect(page.locator(".mx-search__input")).toHaveValue("bucket");
+  const redraw = page.waitForRequest((r) => r.url().includes("/os/vayumail/inbox/fragment"));
+  await page.locator(".mx-search__input").press("Escape");
+  await redraw;
+});
+
 // A search is saved from its results to the sidebar's Searches, and runs
 // from there across all mail as if typed; Forget takes it off again.
 test("a search is saved to the sidebar, and runs from there", async ({ page }) => {

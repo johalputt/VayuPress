@@ -139,7 +139,25 @@
     if (res) res.textContent = '';
     l.classList.remove('is-searching', 'has-results');
     l.scrollTop = searchScroll;
+    if (refreshHeld) {
+      refreshHeld = false;
+      document.body.dispatchEvent(new CustomEvent('vm-mail-changed'));
+    }
   }
+  // The list's poller (every 90 seconds, and whenever a message is read or
+  // moved: one opened is read two seconds later) redraws the whole list, the
+  // search and its results with it. While a search is on screen the redraw
+  // waits, and runs when the search is let go of, so results are never taken
+  // from under the person reading them.
+  var refreshHeld = false;
+  document.body.addEventListener('htmx:beforeRequest', function (e) {
+    var l = searchList();
+    var elt = e.detail && e.detail.elt;
+    if (!l || !l.classList.contains('is-searching') || !elt || !elt.classList || !elt.classList.contains('vm-poller') ||
+      !e.detail.target || e.detail.target !== l) return;
+    e.preventDefault();
+    refreshHeld = true;
+  });
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape' || !e.target || !e.target.closest || !e.target.closest('[data-mx-search]')) return;
     e.preventDefault();

@@ -1,5 +1,7 @@
 # Compiled binaries (anchored to repo root so cmd/vayupress/ source is NOT ignored)
 /vayupress
+# The mail e2e fixture, when built rather than run.
+/mail-fixture
 # `go build` run inside the package directory writes its binary there.
 /cmd/vayupress/vayupress
 vayupress.exe

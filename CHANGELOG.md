@@ -109,6 +109,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **A search's results no longer vanish while they are read.** Mail's list
+  redraws itself every 90 seconds and whenever a message is read or moved,
+  and a message opened is read two seconds later; each redraw replaced the
+  search and its results with the plain list. While a search is on screen
+  the redraw now waits, and runs as soon as the search is let go of.
 - **Code scanning's three High findings on Mail.** An own folder's path is
   now checked to lie inside its account's directory where the path is built
   (`ownFolderDir`), rather than resting on the folder-name rule alone; and an
@@ -165,6 +170,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   trailer fields escape the header list size limit, so a client could make
   the server hold more header data than it allows. The dependency scan on
   main went red on the advisory; the update closes it.
+- **Go 1.27.2.** The release is built with Go 1.27.2, which closes thirteen
+  advisories in Go's own library found in 1.27.1, among them the same HTTP/2
+  trailer limit in the copy built into `net/http` (GO-2026-6603) and two in
+  `html/template`'s escaping (GO-2026-6599, GO-2026-6600).
 - **Onion private keys are sealed in the database.** A Tor onion's private
   key is its address's identity, and it was stored in the clear, so any copy
   of the database carried it. It is now sealed under the key the install
