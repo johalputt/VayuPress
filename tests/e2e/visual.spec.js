@@ -1,5 +1,6 @@
-// Still Air as designed: twelve console surfaces in both schemes, compared with
-// baselines committed beside this file.
+// Still Air as designed: twelve console surfaces in both schemes, and the
+// public site in Halcyon (the theme a new install starts on, so the install
+// this runs on), compared with baselines committed beside this file.
 //
 // The baselines are rendered by CI's own Chromium, by the e2e workflow run with
 // "update_baselines". One made on any other browser build differs on
@@ -35,6 +36,8 @@ function masks(page) {
     page.locator('section[aria-labelledby="sa-install"]'),
     page.getByText(/\b\d+ (second|minute|hour|day)s? ago\b/),
     page.getByText(/Now: \d{4}-\d{2}-\d{2} \d{2}:\d{2}/),
+    // Halcyon's reading clock ("4 minutes left") follows the scroll.
+    page.locator("[data-h-left]"),
   ];
 }
 
@@ -48,6 +51,12 @@ const desktop = [
   { name: "settings", path: "/os/settings" },
   { name: "system-state", path: "/os/modes" },
   { name: "outside-services", path: "/os/website/services" },
+  // The public site, in Halcyon, with the one post the boot publishes.
+  { name: "site-home", path: "/" },
+  { name: "site-post", path: "/hello-vayupress" },
+  { name: "site-topic", path: "/tags/welcome" },
+  { name: "site-search", path: "/search?q=VayuPress" },
+  { name: "site-signin", path: "/members" },
   {
     name: "command-bar", path: "/os/posts",
     open: async (page) => {
@@ -92,6 +101,10 @@ for (const scheme of ["light", "dark"]) {
     test("home looks as designed", async ({ page }) => {
       await settle(page, "/os/");
       await expect(page).toHaveScreenshot(`phone-home-${scheme}.png`, { ...shot, mask: masks(page) });
+    });
+    test("site-post-phone looks as designed", async ({ page }) => {
+      await settle(page, "/hello-vayupress");
+      await expect(page).toHaveScreenshot(`phone-site-post-${scheme}.png`, { ...shot, mask: masks(page) });
     });
   });
 }
