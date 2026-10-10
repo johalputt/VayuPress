@@ -31,6 +31,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	htmpl "html/template"
@@ -4004,7 +4005,9 @@ func (a *App) postsWithLostText(ctx context.Context, prune bool) int {
 					clean = append(clean, slug)
 				}
 			}
-			_ = rows.Close()
+			if errors.Join(rows.Err(), rows.Close()) != nil {
+				clean = nil // a partial read prunes nothing
+			}
 		}
 		for _, slug := range clean {
 			_, _ = dbpkg.WDB.ExecContext(ctx, `DELETE FROM text_repair_lost WHERE slug=?`, slug)

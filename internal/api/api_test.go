@@ -228,14 +228,14 @@ func TestArticleService_GarbledTextIsRestoredOnWrite(t *testing.T) {
 		}
 		return title, content
 	}
-	if _, err := svc.Create(bg, "Itâ€™s fine", "garbled-create", "<p>a â€” b</p>", []string{"go"}); err != nil {
+	if _, err := svc.Create(bg, "It\u00e2\u20ac\u2122s fine", "garbled-create", "<p>a \u00e2\u20ac\u201d b</p>", []string{"go"}); err != nil {
 		t.Fatal(err)
 	}
 	if title, content := queued(); title != "It’s fine" || content != "<p>a — b</p>" {
 		t.Errorf("create queued %q, %q", title, content)
 	}
 	dbpkg.DB.Exec(`INSERT INTO articles(id,title,slug,content,tags,created_at,updated_at) VALUES('g','T','garbled-update','c','',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`)
-	title, body := "naÃ¯ve", "<p>cafÃ©</p>"
+	title, body := "na\u00c3\u00afve", "<p>caf\u00c3\u00a9</p>"
 	if _, err := svc.Update(bg, "garbled-update", &title, &body, nil); err != nil {
 		t.Fatal(err)
 	}

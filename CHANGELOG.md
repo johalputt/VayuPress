@@ -36,7 +36,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   `noindex,follow`: the long one-post tags repeated a post already indexed and
   drew crawlers; their links still count, and nothing bookmarked breaks.
 - **Garbled characters are restored.** Text that arrives as UTF-8 read as
-  Latin-1 or Windows-1252 and sent on, once or several times ("â€”" for "—")
+  Latin-1 or Windows-1252 and sent on, once or several times (a dash shown as three stray characters)
   is restored as it is written, through the API, the connector and the
   editor alike. The posts already stored are restored once, in the background
   and paced, each through the write queue so its text before is kept in its

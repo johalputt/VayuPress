@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package textfix undoes text that was UTF-8, read as Latin-1 or Windows-1252
-// and stored again, once or several times over: "—" becomes "â€”", then
-// "Ã¢â‚¬â€", and so on. Posts on johal.in arrived this way from the tool
-// that wrote them; VayuPress itself converts no charset on any write path.
+// and stored again, once or several times over: "—" becomes three characters
+// (U+00E2 U+20AC U+201D), those become six, and so on. Posts on johal.in
+// arrived this way from the tool that wrote them; VayuPress itself converts no
+// charset on any write path. scripts/check-encoding.py is the same rule for
+// the source tree.
 //
 // A run is restored only when undoing the layers ends in clean text. A run
 // that still reads as garbled after every layer that can be undone has lost

@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -30,10 +31,10 @@ func seedPost(t *testing.T, id, slug, title, content string) {
 // cannot, leaves clean posts alone, and once at the end never runs again.
 func TestTheStoredTextIsRepairedOnce(t *testing.T) {
 	a := textRepairApp(t)
-	seedPost(t, "a1", "restorable", "Itâ€™s here", "<p>a â€” b</p>")
+	seedPost(t, "a1", "restorable", "It\u00e2\u20ac\u2122s here", "<p>a \u00e2\u20ac\u201d b</p>")
 	seedPost(t, "a2", "clean", "Plain", "<p>café — fine</p>")
 	seedPost(t, "a3", "lost", "Lost", "<p>metabolism ÃÃÃÃÃÂ¢ triggers</p>")
-	seedPost(t, "a4", "both", "Both", "<p>a â€” b, then ÃÃÂ¢</p>")
+	seedPost(t, "a4", "both", "Both", "<p>a \u00e2\u20ac\u201d b, then ÃÃÂ¢</p>")
 	if err := a.repairStoredText(context.Background(), nil, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +48,9 @@ func TestTheStoredTextIsRepairedOnce(t *testing.T) {
 		_ = rows.Scan(&slug, &title, &content)
 		queued[slug] = [2]string{title, content}
 	}
-	_ = rows.Close()
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		t.Fatal(err)
+	}
 	if got := queued["restorable"]; got != [2]string{"It’s here", "<p>a — b</p>"} {
 		t.Errorf("a restorable post is not queued restored: %q", got)
 	}
@@ -61,13 +64,17 @@ func TestTheStoredTextIsRepairedOnce(t *testing.T) {
 		t.Error("a post with nothing restorable was rewritten")
 	}
 	var lost []string
-	rows, _ = dbpkg.DB.Query(`SELECT slug FROM text_repair_lost ORDER BY slug`)
+	if rows, err = dbpkg.DB.Query(`SELECT slug FROM text_repair_lost ORDER BY slug`); err != nil {
+		t.Fatal(err)
+	}
 	for rows.Next() {
 		var s string
 		_ = rows.Scan(&s)
 		lost = append(lost, s)
 	}
-	_ = rows.Close()
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		t.Fatal(err)
+	}
 	if len(lost) != 2 || lost[0] != "both" || lost[1] != "lost" {
 		t.Errorf("listed as unrestorable: %v", lost)
 	}
@@ -77,7 +84,7 @@ func TestTheStoredTextIsRepairedOnce(t *testing.T) {
 	if scanned != 4 || restored != 2 || done == nil {
 		t.Errorf("record: scanned %d restored %d done %v", scanned, restored, done)
 	}
-	seedPost(t, "a5", "later", "Later", "<p>x â€” y</p>")
+	seedPost(t, "a5", "later", "Later", "<p>x \u00e2\u20ac\u201d y</p>")
 	if err := a.repairStoredText(context.Background(), nil, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -91,8 +98,8 @@ func TestTheStoredTextIsRepairedOnce(t *testing.T) {
 // The pass resumes where it stopped rather than starting over.
 func TestTheRepairPassResumes(t *testing.T) {
 	a := textRepairApp(t)
-	seedPost(t, "b1", "first", "T", "<p>a â€” b</p>")
-	seedPost(t, "b2", "second", "T", "<p>c â€” d</p>")
+	seedPost(t, "b1", "first", "T", "<p>a \u00e2\u20ac\u201d b</p>")
+	seedPost(t, "b2", "second", "T", "<p>c \u00e2\u20ac\u201d d</p>")
 	if _, err := dbpkg.DB.Exec(`INSERT INTO text_repair(id, cursor) VALUES(1, 'b1')`); err != nil {
 		t.Fatal(err)
 	}

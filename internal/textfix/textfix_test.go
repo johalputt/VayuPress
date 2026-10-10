@@ -52,8 +52,8 @@ func TestLayersAreUndone(t *testing.T) {
 // johal.in lost the bytes after the first of its character.
 func TestALostCharacterIsLeftAndCounted(t *testing.T) {
 	for _, in := range []string{
-		"metabolism ÃÃÃÃÃÂ¢ triggers",                               // as the page shows it
-		"metabolism Ã\u0083Ã\u0083Ã\u0083Ã\u0083Ã\u0083Â¢ triggers", // with the C1 controls kept
+		"metabolism ÃÃÃÃÃÂ¢ triggers",                                         // as the page shows it
+		"metabolism Ã\u0083Ã\u0083Ã\u0083Ã\u0083Ã\u0083\u00c2\u00a2 triggers", // with the C1 controls kept
 	} {
 		got, res := Repair(in)
 		if got != in || res.Lost != 1 || res.Restored != 0 {
@@ -68,7 +68,7 @@ func TestALostCharacterIsLeftAndCounted(t *testing.T) {
 func TestCleanTextAndCodeAreLeft(t *testing.T) {
 	for _, in := range []string{
 		"São Paulo, Zürich, déjà vu — £5 · ©2026 Ã", // a lone Ã, as in a heading's initial
-		"<pre>mojibake: Ã©</pre> and <code>â€”</code>",
+		"<pre>mojibake: \u00c3\u00a9</pre> and <code>\u00e2\u20ac\u201d</code>",
 		"plain ascii only",
 		"il a dit «un café»", // é before » looks like a layer and is not one
 	} {
@@ -76,8 +76,8 @@ func TestCleanTextAndCodeAreLeft(t *testing.T) {
 			t.Errorf("%q changed: %q %+v", in, got, res)
 		}
 	}
-	got, _ := Repair("<code>Ã©</code> then Ã©")
-	if got != "<code>Ã©</code> then é" {
+	got, _ := Repair("<code>\u00c3\u00a9</code> then \u00c3\u00a9")
+	if got != "<code>\u00c3\u00a9</code> then é" {
 		t.Errorf("only the text outside code is repaired: %q", got)
 	}
 }
