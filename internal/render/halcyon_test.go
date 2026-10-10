@@ -455,3 +455,29 @@ func TestAThinHalcyonTopicIsNotIndexed(t *testing.T) {
 		}
 	}
 }
+
+// Halcyon's topic page keeps a broad topic out of search as the shared one
+// does, however many posts it lists.
+func TestABroadHalcyonTopicIsNotIndexed(t *testing.T) {
+	withHalcyon(t, nil)
+	page, err := RenderTopicPage(TopicInput{Domain: "example.com", Version: "1.0.0", Tag: "tutorial", Total: 40, Broad: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page, `<meta name="robots" content="noindex,follow">`) {
+		t.Error("a broad Halcyon topic with 40 posts is offered to search")
+	}
+}
+
+// A Halcyon post links each tag to the tag's one page, its key.
+func TestHalcyonLinksATagByItsKey(t *testing.T) {
+	withHalcyon(t, nil)
+	art := db.Article{ID: "1", Title: "T", Slug: "t", Content: "<p>x</p>", Tags: []string{"Machine Learning"}, CreatedAt: fixedTime, UpdatedAt: fixedTime}
+	out, err := RenderArticleWithMeta(art, ArticleLayoutDefault, nil, ArticleMetaOverrides{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `href="/tags/machine-learning"`) || strings.Contains(out, `/tags/Machine%20Learning`) {
+		t.Error("Halcyon links the tag Machine Learning elsewhere than /tags/machine-learning")
+	}
+}
