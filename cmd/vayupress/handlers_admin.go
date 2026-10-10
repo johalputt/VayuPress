@@ -46,6 +46,7 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/severity"
+	"github.com/johalputt/vayupress/internal/tagrules"
 	"github.com/johalputt/vayupress/internal/ui"
 )
 
@@ -1905,12 +1906,14 @@ func (a *App) relatedArticles(ctx context.Context, currentSlug string, tags []st
 	seenSlug := map[string]struct{}{currentSlug: {}}
 	var out []render.RelatedArticle
 
-	// 1. Prefer posts that share a tag with the current one.
+	// 1. Prefer posts that share a tag with the current one. A broad tag (on
+	//    more than half the posts) is passed over: through it, "related" meant
+	//    the newest posts whatever they were about.
 	norms := make([]string, 0, len(tags))
 	seenTag := make(map[string]struct{}, len(tags))
 	for _, t := range tags {
-		n := strings.ToLower(strings.TrimSpace(t))
-		if n == "" {
+		n := tagrules.Key(t)
+		if n == "" || broadTag(n) {
 			continue
 		}
 		if _, dup := seenTag[n]; dup {

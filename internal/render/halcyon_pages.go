@@ -57,7 +57,7 @@ var halcyonFuncs = template.FuncMap{
 	"humanDate": func(t time.Time) string { return config.FormatSite(t, "2 January 2006") },
 	"shortDate": func(t time.Time) string { return config.FormatSite(t, "2006-01-02") },
 	"isoDate":   func(t time.Time) string { return config.InSite(t).Format(time.RFC3339) },
-	"tagURL":    func(s string) string { return "/tags/" + url.PathEscape(s) },
+	"tagURL":    func(s string) string { return "/tags/" + tagURL(s) },
 	"topicName": func(s string) string { return strings.ReplaceAll(s, "-", " ") },
 	"caps":      func(on bool, s string) template.HTML { return capsText(on)(s) },
 	"reason":    sharesReason,
@@ -408,6 +408,7 @@ type TopicInput struct {
 	Tag             string
 	Articles        []HomeArticle
 	Total           int
+	Broad           bool      // on so large a part of the site it is kept out of search (tag rules)
 	Topics          []TagInfo // the largest topics, for the topic row
 	TopicTotal      int
 }
@@ -416,7 +417,7 @@ type TopicInput struct {
 func RenderTopicPage(in TopicInput) (string, error) {
 	cfg, ok := Halcyon()
 	if !ok {
-		return RenderTagPage(in.Domain, in.Version, in.Tag, in.Articles, in.Total)
+		return RenderTagPage(in.Domain, in.Version, in.Tag, in.Articles, in.Total, in.Broad)
 	}
 	return renderHalcyonTopic(in, cfg)
 }
@@ -427,7 +428,7 @@ func renderHalcyonTopic(in TopicInput, cfg theme.HalcyonConfig) (string, error) 
 	c.PageTitle = strings.ReplaceAll(in.Tag, "-", " ") + " — " + c.SiteName
 	c.Description = groupThousands(in.Total) + " " + pluralWord(in.Total, "article", "articles") + " filed under “" + in.Tag + "” on " + c.SiteName + "."
 	c.Canonical = seo.Origin(in.Domain) + "/tags/" + url.PathEscape(in.Tag)
-	if in.Total < thinTagPosts {
+	if in.Total < thinTagPosts || in.Broad {
 		c.Robots = "noindex,follow"
 	}
 	c.Scripts = halcyonScripts(false)

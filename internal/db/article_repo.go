@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+
+	"github.com/johalputt/vayupress/internal/tagrules"
 )
 
 // ErrNotFound is returned by the repository when a requested article does not exist.
@@ -239,7 +241,7 @@ func (r *sqliteArticleRepo) ListScoped(ctx context.Context, scope string, page, 
 		// from the index before any article is read: joined to articles first,
 		// a large tag cost one random seek per tagged post, and "python" on
 		// johal.in ran 6.1 s, past the connector relay's limit.
-		norm := strings.ToLower(strings.TrimSpace(tag))
+		norm := tagrules.Key(tag)
 		where := `tag_norm=? AND live=1`
 		cargs := []any{norm}
 		if scoped {
@@ -285,20 +287,24 @@ func (r *sqliteArticleRepo) ListScoped(ctx context.Context, scope string, page, 
 }
 
 func (r *sqliteArticleRepo) TagCounts(ctx context.Context) (map[string]int, error) {
-	rows, err := r.reader().QueryContext(ctx, `SELECT tag, COUNT(1) FROM article_tags GROUP BY tag`)
+	// Published posts only, read from idx_article_tags_live alone. Keyed by
+	// tag key, which is also each tag's name in a list: links written before
+	// the tag rules carry the old lower-cased tag_norm ("machine learning")
+	// until the stored-tags pass rewrites them, and are counted with their key.
+	rows, err := r.reader().QueryContext(ctx, `SELECT tag_norm, COUNT(1) FROM article_tags WHERE live=1 GROUP BY tag_norm`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	out := make(map[string]int)
 	for rows.Next() {
-		var tag string
+		var norm string
 		var n int
-		if err := rows.Scan(&tag, &n); err != nil {
+		if err := rows.Scan(&norm, &n); err != nil {
 			continue
 		}
-		if tag != "" {
-			out[tag] += n
+		if key := tagrules.Key(norm); key != "" {
+			out[key] += n
 		}
 	}
 	if err := rows.Err(); err != nil {

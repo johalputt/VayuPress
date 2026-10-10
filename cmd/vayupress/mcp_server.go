@@ -31,6 +31,7 @@ import (
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/tagrules"
 )
 
 // mcpPublicSettingKeys is the allowlist of presentational, non-sensitive site
@@ -125,7 +126,7 @@ func (a *App) buildMCPServer() *mcp.Server {
 			"title":   strProp("Post title (1–500 chars)."),
 			"slug":    strProp("URL slug (lowercase, hyphenated). Omit to auto-derive from the title."),
 			"content": strProp("Post body as HTML."),
-			"tags":    arrProp("Optional tags (max 20)."),
+			"tags":    arrProp(mcpTagsHelp),
 		}),
 		Visible: a.mcpVisible(apikeys.SectionPosts, apikeys.ActionWrite),
 		Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
@@ -285,7 +286,7 @@ func (a *App) buildMCPServer() *mcp.Server {
 			"title":   strProp("Page title (1–500 chars)."),
 			"slug":    strProp("URL slug (lowercase, hyphenated). Omit to auto-derive from the title."),
 			"content": strProp("Page body as HTML."),
-			"tags":    arrProp("Optional tags (max 20)."),
+			"tags":    arrProp(mcpTagsHelp),
 		}),
 		Visible: a.mcpVisible(apikeys.SectionPosts, apikeys.ActionWrite),
 		Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
@@ -940,3 +941,7 @@ func jsonStr(v any) string {
 }
 
 func errBadArgs(err error) error { return fmt.Errorf("invalid arguments: %w", err) }
+
+// mcpTagsHelp tells the client what the tag rules (internal/tagrules) do with
+// the tags it sends, so it sends specific ones rather than learning by loss.
+var mcpTagsHelp = fmt.Sprintf("Optional tags: specific topics, a few to a post. Past %d the rarest on the site are kept; stop-words and repeated spellings are dropped.", tagrules.MaxPerPost)

@@ -5,10 +5,8 @@ package api
 import "testing"
 
 func BenchmarkValidateArticleInput(b *testing.B) {
-	tags := []string{"go", "web", "performance"}
-	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = ValidateArticleInput("Benchmark Title", "bench-slug", "<p>content</p>", tags)
+		_ = ValidateArticleInput("Benchmark Title", "bench-slug", "<p>content</p>")
 	}
 }
 

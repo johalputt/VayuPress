@@ -1088,6 +1088,7 @@ func main() {
 		StorageCheckFn: func() (int64, int64) {
 			return dbpkg.StorageUsedBytes(), dbpkg.StorageQuotaBytes()
 		},
+		TagFrequency: tagFrequency,
 	}
 	// The topic counts Halcyon's front page shows, counted once now rather than
 	// by the first visitor (needs the article service just wired).
@@ -1209,7 +1210,8 @@ func main() {
 	dbpkg.StartStuckJobReaper(queue.DoneCh)
 	dbpkg.StartJobRetentionSweeper(queue.DoneCh)
 	dbpkg.StartArticleTagsBackfill(queue.DoneCh)
-	a.startTextRepair(queue.DoneCh)
+	a.startStoredPasses(queue.DoneCh)
+	startTagShares(queue.DoneCh)
 	dbpkg.StartIndexSelfCheck(queue.DoneCh)
 	a.startMetricsSnapshotCollector()
 	a.startDashboardWarmer(queue.DoneCh)

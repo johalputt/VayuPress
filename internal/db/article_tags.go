@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/tagrules"
 )
 
 // article_tags.go maintains the normalised article_tags join table (migration
@@ -18,28 +19,14 @@ import (
 // transactionally with each article write, and a one-time batched backfill
 // populates it for catalogues that predate the table (or were bulk-imported).
 
-// normaliseTags trims each tag, drops blanks, and de-duplicates case-insensitively
-// while preserving the first-seen display casing. The returned slice is the exact
-// set of rows that should exist in article_tags for the article.
+// normaliseTags is the set of rows that should exist in article_tags for the
+// article: its tags under the tag rules, each key once, at most
+// tagrules.MaxPerPost. The services clean tags before they get here; this holds
+// the links to the rules on the paths that do not (the backfill of posts stored
+// before the table, the text-repair pass's re-queued posts), and keeps the same
+// tags a post's page shows (render.RenderArticleWithMetaSettings).
 func normaliseTags(tags []string) []string {
-	if len(tags) == 0 {
-		return nil
-	}
-	seen := make(map[string]struct{}, len(tags))
-	out := make([]string, 0, len(tags))
-	for _, t := range tags {
-		t = strings.TrimSpace(t)
-		if t == "" {
-			continue
-		}
-		key := strings.ToLower(t)
-		if _, dup := seen[key]; dup {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, t)
-	}
-	return out
+	return tagrules.Clean(tags, nil)
 }
 
 // replaceArticleTagsTx rewrites the article_tags rows for articleID inside tx:
@@ -56,7 +43,7 @@ func replaceArticleTagsTx(tx *sql.Tx, articleID string, createdAt time.Time, tag
 		return fmt.Errorf("article_tags delete: %w", err)
 	}
 	for _, t := range normaliseTags(tags) {
-		if _, err := tx.Exec(`INSERT INTO article_tags(article_id, tag, tag_norm, created_at) VALUES(?,?,?,?)`, articleID, t, strings.ToLower(t), createdAt); err != nil {
+		if _, err := tx.Exec(`INSERT INTO article_tags(article_id, tag, tag_norm, created_at) VALUES(?,?,?,?)`, articleID, t, tagrules.Key(t), createdAt); err != nil {
 			return fmt.Errorf("article_tags insert: %w", err)
 		}
 	}
@@ -198,7 +185,7 @@ func backfillArticleTags(doneCh <-chan struct{}) error {
 func insertBackfillRow(tx *sql.Tx, articleID string, createdAt time.Time, tagsCSV string) (int64, error) {
 	var n int64
 	for _, t := range normaliseTags(strings.Split(tagsCSV, ",")) {
-		if _, err := tx.Exec(`INSERT INTO article_tags(article_id, tag, tag_norm, created_at) VALUES(?,?,?,?)`, articleID, t, strings.ToLower(t), createdAt); err != nil {
+		if _, err := tx.Exec(`INSERT INTO article_tags(article_id, tag, tag_norm, created_at) VALUES(?,?,?,?)`, articleID, t, tagrules.Key(t), createdAt); err != nil {
 			return n, err
 		}
 		n++

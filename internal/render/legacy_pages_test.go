@@ -52,7 +52,7 @@ func legacyPages(t *testing.T) map[string]string {
 	if out["tags"], e = RenderTagIndex("example.com", "v1", []TagInfo{{Name: "devops", Count: 3}}, 3); e != nil {
 		t.Fatal(e)
 	}
-	if out["tag"], e = RenderTagPage("example.com", "v1", "devops", cards, 2); e != nil {
+	if out["tag"], e = RenderTagPage("example.com", "v1", "devops", cards, 2, false); e != nil {
 		t.Fatal(e)
 	}
 	return out

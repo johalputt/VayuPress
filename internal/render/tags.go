@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/tagrules"
 )
 
 // TagInfo is a single tag entry rendered on the public tag index page.
@@ -24,7 +26,7 @@ var tagFuncs = template.FuncMap{
 	"pwaJS":     PWARegisterJSLink,
 	"humanDate": func(t time.Time) string { return t.Format("2 January 2006") },
 	"shortDate": func(t time.Time) string { return t.UTC().Format("2006-01-02") },
-	"tagURL":    func(s string) string { return url.PathEscape(s) },
+	"tagURL":    tagURL,
 	"plural": func(n int, one, many string) string {
 		if n == 1 {
 			return one
@@ -69,8 +71,9 @@ type tagPage struct {
 	Tag                 string
 	Articles            []HomeArticle
 	TotalCount          int
-	// Thin is a page of fewer than thinTagPosts posts, kept out of search.
-	Thin bool
+	// NoIndex keeps the page out of search: fewer than thinTagPosts posts,
+	// or a broad tag.
+	NoIndex bool
 }
 
 var tagIndexTmpl = template.Must(template.New("tagindex").Funcs(tagFuncs).Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
@@ -115,7 +118,7 @@ var tagIndexTmpl = template.Must(template.New("tagindex").Funcs(tagFuncs).Parse(
 var tagPageTmpl = template.Must(template.New("tagpage").Funcs(tagFuncs).Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>#{{.Tag}} — {{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}</title>
-{{if .Thin}}<meta name="robots" content="noindex,follow">
+{{if .NoIndex}}<meta name="robots" content="noindex,follow">
 {{end}}<meta name="description" content="{{.TotalCount}} {{plural .TotalCount "post" "posts"}} tagged “{{.Tag}}” on {{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}.">
 <meta name="generator" content="VayuPress {{.Version}}">
 <link rel="canonical" href="https://{{.Domain}}/tags/{{tagURL .Tag}}">
@@ -186,6 +189,15 @@ func RenderTagIndex(domain, version string, tags []TagInfo, totalPosts int) (str
 	return buf.String(), err
 }
 
+// tagURL is a tag's page address: its key (tag rules), so every spelling of a
+// tag links to its one page.
+func tagURL(tag string) string {
+	if k := tagrules.Key(tag); k != "" {
+		return url.PathEscape(k)
+	}
+	return url.PathEscape(tag)
+}
+
 // thinTagPosts is the fewest published posts a tag page needs to be offered to
 // search engines. johal.in's tags include sentence-length one-post tags whose
 // pages repeat a post that is indexed already and were among the week's most
@@ -194,10 +206,12 @@ func RenderTagIndex(domain, version string, tags []TagInfo, totalPosts int) (str
 const thinTagPosts = 3
 
 // RenderTagPage renders a single tag's listing page from the published articles
-// carrying that tag. totalCount is the number of matching posts.
-func RenderTagPage(domain, version, tag string, articles []HomeArticle, totalCount int) (string, error) {
+// carrying that tag. totalCount is the number of matching posts; broad is a tag
+// on so large a part of the site that its page lists the site, not a topic,
+// and is kept out of search like a thin one.
+func RenderTagPage(domain, version, tag string, articles []HomeArticle, totalCount int, broad bool) (string, error) {
 	if cfg, ok := Halcyon(); ok {
-		return renderHalcyonTopic(TopicInput{Domain: domain, Version: version, Tag: tag, Articles: articles, Total: totalCount}, cfg)
+		return renderHalcyonTopic(TopicInput{Domain: domain, Version: version, Tag: tag, Articles: articles, Total: totalCount, Broad: broad}, cfg)
 	}
 	var buf strings.Builder
 	s := getActiveSettings()
@@ -218,7 +232,7 @@ func RenderTagPage(domain, version, tag string, articles []HomeArticle, totalCou
 		Tag:                 tag,
 		Articles:            articles,
 		TotalCount:          totalCount,
-		Thin:                totalCount < thinTagPosts,
+		NoIndex:             totalCount < thinTagPosts || broad,
 	})
 	return buf.String(), err
 }

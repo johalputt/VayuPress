@@ -15,12 +15,12 @@ package main
 import (
 	"context"
 	"net/http"
-	"strings"
 	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/tagrules"
 )
 
 // halcyonScope is the topic memo key and count for the request's domain,
@@ -89,7 +89,7 @@ func (a *App) halcyonDesks(ctx context.Context, topics []render.TagInfo, total i
 		if render.Ubiquitous(t.Count, total) {
 			continue
 		}
-		posts := a.halcyonTopicPosts(ctx, strings.ToLower(strings.TrimSpace(t.Name)), 3, scope, scoped)
+		posts := a.halcyonTopicPosts(ctx, tagrules.Key(t.Name), 3, scope, scoped)
 		if len(posts) == 0 {
 			continue
 		}
@@ -152,7 +152,7 @@ func (a *App) halcyonRelated(r *http.Request, slug string, tags []string) []rend
 	topics, total := a.halcyonTopics(key, count)
 	counts := make(map[string]int, len(topics))
 	for _, t := range topics {
-		counts[strings.ToLower(strings.TrimSpace(t.Name))] = t.Count
+		counts[tagrules.Key(t.Name)] = t.Count
 	}
 	ubiquitous := func(tag string) bool { return render.Ubiquitous(counts[tag], total) }
 	// relatedArticles reads four times its limit from each tag: six gives

@@ -34,6 +34,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/seo"
+	"github.com/johalputt/vayupress/internal/tagrules"
 	"github.com/microcosm-cc/bluemonday"
 )
 
@@ -1763,6 +1764,7 @@ func ChromaCSS() string {
 }
 
 var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
+	"tagURL":   tagURL,
 	"blogBase": BlogBase,
 	"portalJS": PortalJSLink,
 	"pwaHead":  PWAHeadTags,
@@ -1855,7 +1857,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 {{if not .IsPage}}<div class="vayu-article-meta">
   <time itemprop="datePublished" datetime="{{.CreatedAt | shortDate}}">{{.CreatedAt | humanDate}}</time>
   <span>· {{.Content | readTime}} min read</span>
-  {{if .Tags}}<span aria-label="Tags">{{range .Tags}}<a class="vayu-tag" href="/tags/{{.}}" rel="tag">#{{.}}</a> {{end}}</span>{{end}}
+  {{if .Tags}}<span aria-label="Tags">{{range .Tags}}<a class="vayu-tag" href="/tags/{{tagURL .}}" rel="tag">#{{.}}</a> {{end}}</span>{{end}}
 </div>{{end}}
 </header>
 <div class="content" itemprop="articleBody">{{.Content | safeHTML}}</div>
@@ -2399,6 +2401,10 @@ func RenderArticleWithMetaSettings(s SiteSettings, a db.Article, layout ArticleL
 		a.Content = contactFormRe.ReplaceAllString(a.Content, "")
 	}
 	a.Content = renderContentHTML(a.Content)
+	// Every write stores tags under the tag rules; a post stored before them
+	// (until the stored-tags pass reaches it) or by a tool writing the database
+	// directly shows them so too, and never links to a tag that has no page.
+	a.Tags = tagrules.Clean(a.Tags, nil)
 	start := time.Now()
 	data := buildArticlePage(s, a, layout, related, ov, hasContactForm)
 	var out string
@@ -2727,7 +2733,8 @@ func CachePurge(slug string, tags []string, generateSitemap, generateRSS, genera
 	}
 	os.Remove(filepath.Join(config.Cfg.CacheDir, "home", "index.html"))
 	for _, t := range tags {
-		if t != "" && !unsafePathComponent(t) {
+		// A tag page is cached under its key, the only address it answers at.
+		if t = tagrules.Key(t); t != "" && !unsafePathComponent(t) {
 			tagFile := filepath.Join(config.Cfg.CacheDir, "tags", t+".html")
 			if fi, err := os.Stat(tagFile); err == nil {
 				db.UpdateStorageDelta(-fi.Size())

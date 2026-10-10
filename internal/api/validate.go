@@ -14,8 +14,10 @@ var slugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,198}[a-z0-9]$|^[a-z0-9]$`
 
 // ValidateArticleInput returns an error if the supplied article fields fail
 // business constraints. Centralises validation that was previously duplicated
-// across handleCreateArticle and handleBulkCreateArticles.
-func ValidateArticleInput(title, slug, content string, tags []string) error {
+// across handleCreateArticle and handleBulkCreateArticles. Tags are not among
+// them: a post is never refused for its tags, which are cleaned to the tag
+// rules instead (tagrules.Clean, in ArticleService.prepare).
+func ValidateArticleInput(title, slug, content string) error {
 	if title == "" || len(title) > 500 {
 		return fmt.Errorf("title required (1–500 chars): %w", ErrValidation)
 	}
@@ -24,14 +26,6 @@ func ValidateArticleInput(title, slug, content string, tags []string) error {
 	}
 	if content == "" || len(content) > 5_000_000 {
 		return fmt.Errorf("content required (1 byte – 5 MB): %w", ErrValidation)
-	}
-	if len(tags) > 20 {
-		return fmt.Errorf("max 20 tags: %w", ErrValidation)
-	}
-	for _, t := range tags {
-		if len(t) > 100 {
-			return fmt.Errorf("tag too long: %q: %w", t, ErrValidation)
-		}
 	}
 	return nil
 }

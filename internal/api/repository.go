@@ -38,8 +38,8 @@ type ArticleRepository interface {
 	SetDomain(ctx context.Context, slug, domainID string) error
 	// CountsByDomain returns the article count per owning domain id.
 	CountsByDomain(ctx context.Context) (map[string]int, error)
-	// TagCounts returns each distinct tag mapped to the number of articles using
-	// it, resolved from the indexed article_tags join table so it never has to
-	// scan or load the whole articles table.
+	// TagCounts returns each tag's key mapped to the number of published posts
+	// carrying it, resolved from the indexed article_tags join table so it never
+	// has to scan or load the whole articles table.
 	TagCounts(ctx context.Context) (map[string]int, error)
 }

@@ -5,10 +5,13 @@ package db
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
+
+	"github.com/johalputt/vayupress/internal/tagrules"
 )
 
 // articleTagsTestDB returns a single-connection in-memory DB with the articles
@@ -29,7 +32,7 @@ func articleTagsTestDB(t *testing.T) *sql.DB {
 
 	stmts := []string{
 		`CREATE TABLE articles(id TEXT PRIMARY KEY,title TEXT NOT NULL,slug TEXT UNIQUE NOT NULL,content TEXT NOT NULL,tags TEXT DEFAULT '',created_at DATETIME NOT NULL,updated_at DATETIME NOT NULL,status TEXT NOT NULL DEFAULT 'published')`,
-		`CREATE TABLE article_tags(article_id TEXT NOT NULL, tag TEXT NOT NULL, tag_norm TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+		`CREATE TABLE article_tags(article_id TEXT NOT NULL, tag TEXT NOT NULL, tag_norm TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, live INTEGER NOT NULL DEFAULT 1, domain_id TEXT NOT NULL DEFAULT '')`,
 		`CREATE INDEX idx_article_tags_norm_created ON article_tags(tag_norm, created_at DESC, article_id)`,
 		`CREATE INDEX idx_article_tags_article ON article_tags(article_id)`,
 		`CREATE INDEX idx_article_tags_tag ON article_tags(tag)`,
@@ -186,5 +189,56 @@ func TestTagCountsIndexed(t *testing.T) {
 	}
 	if counts["web"] != 1 {
 		t.Errorf("web count = %d, want 1", counts["web"])
+	}
+}
+
+// A post's links are its tags under the tag rules on every path, the backfill
+// included: stored under their key, never a stop-word, at most MaxPerPost.
+func TestLinksAreUnderTheTagRules(t *testing.T) {
+	d := articleTagsTestDB(t)
+	now := time.Now().UTC()
+	tags := "Machine Learning,with,machine_learning"
+	for i := 0; i < tagrules.MaxPerPost+4; i++ {
+		tags += fmt.Sprintf(",topic%d", i)
+	}
+	insertArticleRow(t, d, "b1", "post-b", tags, now)
+	if err := backfillArticleTags(make(chan struct{})); err != nil {
+		t.Fatal(err)
+	}
+	if got := tagRowCount(t, d, "b1"); got != tagrules.MaxPerPost {
+		t.Errorf("backfill wrote %d links, want %d", got, tagrules.MaxPerPost)
+	}
+	var norm string
+	if err := d.QueryRow(`SELECT group_concat(tag_norm, '|') FROM (SELECT tag_norm FROM article_tags WHERE article_id='b1' ORDER BY rowid LIMIT 2)`).Scan(&norm); err != nil {
+		t.Fatal(err)
+	}
+	if norm != "machine-learning|topic0" {
+		t.Errorf("first links = %q, want machine-learning|topic0 (keyed, stop-word and spelling repeat dropped)", norm)
+	}
+}
+
+// The tag counts are of published posts, one per tag key, whatever spelling
+// or old tag_norm a link was written with.
+func TestTagCountsArePublishedPostsByKey(t *testing.T) {
+	d := articleTagsTestDB(t)
+	now := time.Now().UTC()
+	for _, r := range []struct {
+		id, tag, norm string
+		live          int
+	}{
+		{"k1", "Machine Learning", "machine learning", 1}, // before the tag rules
+		{"k2", "machine-learning", "machine-learning", 1},
+		{"k3", "machine-learning", "machine-learning", 0}, // a draft
+	} {
+		if _, err := d.Exec(`INSERT INTO article_tags(article_id, tag, tag_norm, created_at, live) VALUES(?,?,?,?,?)`, r.id, r.tag, r.norm, now, r.live); err != nil {
+			t.Fatal(err)
+		}
+	}
+	counts, err := NewArticleRepo(d).TagCounts(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(counts) != 1 || counts["machine-learning"] != 2 {
+		t.Errorf("counts = %v, want machine-learning: 2", counts)
 	}
 }

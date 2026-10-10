@@ -9,6 +9,7 @@ import (
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/queue"
+	"github.com/johalputt/vayupress/internal/tagrules"
 	"github.com/johalputt/vayupress/internal/textfix"
 	"github.com/johalputt/vayupress/internal/trace"
 )
@@ -20,6 +21,10 @@ type ArticleService struct {
 	Repo           ArticleRepository
 	Queue          queue.Writer
 	StorageCheckFn func() (used, quota int64) // nil = skip quota check
+	// TagFrequency gives how many published posts carry a tag key, so a post
+	// sent more tags than tagrules.MaxPerPost keeps the rarest; nil keeps the
+	// first.
+	TagFrequency func(key string) int
 }
 
 // CreateResult is returned after a successful create operation.
@@ -101,8 +106,8 @@ func (s *ArticleService) create(ctx context.Context, title, slug, content string
 	if isPage {
 		span.SetAttribute("kind", "page")
 	}
-	title, content = repairText(title), repairText(content)
-	if err := ValidateArticleInput(title, slug, content, tags); err != nil {
+	title, content, tags = s.prepare(title, content, tags)
+	if err := ValidateArticleInput(title, slug, content); err != nil {
 		span.SetError(err)
 		return CreateResult{}, err
 	}
@@ -167,7 +172,8 @@ func (s *ArticleService) BulkCreate(ctx context.Context, items []BulkCreateItem)
 		if in.Slug == "" {
 			in.Slug = Slugify(in.Title)
 		}
-		if err := ValidateArticleInput(in.Title, in.Slug, in.Content, in.Tags); err != nil {
+		in.Title, in.Content, in.Tags = s.prepare(in.Title, in.Content, in.Tags)
+		if err := ValidateArticleInput(in.Title, in.Slug, in.Content); err != nil {
 			res.Skipped++
 			res.SkipReasons = append(res.SkipReasons, in.Slug+": "+err.Error())
 			continue
@@ -222,22 +228,26 @@ func (s *ArticleService) Update(ctx context.Context, slug string, title, content
 		return art, mapRepoErr(err)
 	}
 	if title != nil {
-		art.Title = repairText(*title)
+		art.Title = *title
 	}
 	if content != nil {
-		art.Content = repairText(*content)
+		art.Content = *content
 	}
 	if tags != nil {
 		art.Tags = tags
 	}
+	// The merged post is prepared whole: a post stored before the tag rules
+	// keeps its old tags until any edit, which then brings them under the
+	// rules rather than refusing the edit for them.
+	art.Title, art.Content, art.Tags = s.prepare(art.Title, art.Content, art.Tags)
 	art.UpdatedAt = time.Now().UTC()
 	// Enforce the same field limits as Create on the merged result (title ≤500,
-	// content ≤5 MB, ≤20 tags each ≤100 chars). Without this an update could store
+	// content ≤5 MB). Without this an update could store
 	// an oversized row that Create would reject — a hole reachable from both the
 	// REST PUT and the MCP update_post tool. (Storage-quota is intentionally not
 	// re-checked here: an update overwrites in place and must stay allowed even at
 	// quota so an operator can shrink a post.)
-	if err := ValidateArticleInput(art.Title, art.Slug, art.Content, art.Tags); err != nil {
+	if err := ValidateArticleInput(art.Title, art.Slug, art.Content); err != nil {
 		span.SetError(err)
 		return art, err
 	}
@@ -379,6 +389,13 @@ func mapRepoErr(err error) error {
 		return ErrNotFound
 	}
 	return err
+}
+
+// prepare is what every create, bulk create and update stores: the title and
+// body with garbled text restored, and the tags under the tag rules
+// (internal/tagrules), the rarest kept by TagFrequency when it is set.
+func (s *ArticleService) prepare(title, content string, tags []string) (string, string, []string) {
+	return repairText(title), repairText(content), tagrules.Clean(tags, s.TagFrequency)
 }
 
 // repairText restores text that arrives garbled (UTF-8 read as Latin-1 or

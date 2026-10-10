@@ -31,13 +31,27 @@ const (
 	textRepairBacklog = 100 // pending writes above which the pass waits
 )
 
-// startTextRepair runs the pass in the background, after boot has settled.
-func (a *App) startTextRepair(done <-chan struct{}) {
+// startStoredPasses runs the passes over the posts already stored in the
+// background, after boot has settled: the tags first (tag_cleanup.go), then
+// this one. Not the other way round, and not side by side: this pass re-queues
+// each post it restores with the tags it read, and would write a post's old
+// tags back over a cleaning done between its read and its write.
+func (a *App) startStoredPasses(done <-chan struct{}) {
 	go func() {
 		select {
 		case <-done:
 			return
 		case <-time.After(30 * time.Second):
+		}
+		// A failed tag pass is no longer running, so this one cannot race it;
+		// the tag pass resumes where it stopped on the next boot.
+		if err := a.cleanStoredTags(context.Background(), done, textRepairPause); err != nil {
+			logging.LogError("tagcleanup", "pass stopped", err.Error())
+		}
+		select {
+		case <-done:
+			return
+		default:
 		}
 		if err := a.repairStoredText(context.Background(), done, textRepairPause); err != nil {
 			logging.LogError("textrepair", "pass stopped", err.Error())

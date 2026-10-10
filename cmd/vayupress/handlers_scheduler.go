@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/api"
+	"github.com/johalputt/vayupress/internal/tagrules"
 )
 
 // =============================================================================
@@ -58,7 +59,9 @@ func (a *App) handleScheduleCreate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if verr := api.ValidateArticleInput(strings.TrimSpace(body.Title), slug, body.Content, body.Tags); verr != nil {
+	// Staged as they will be published: under the tag rules, never refused.
+	body.Tags = tagrules.Clean(body.Tags, tagFrequency)
+	if verr := api.ValidateArticleInput(strings.TrimSpace(body.Title), slug, body.Content); verr != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-input", verr.Error(), "")
 		return
 	}

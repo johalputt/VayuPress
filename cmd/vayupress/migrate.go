@@ -34,6 +34,8 @@ import (
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/markdown"
+	"github.com/johalputt/vayupress/internal/tagrules"
+	"github.com/johalputt/vayupress/internal/textfix"
 )
 
 // runMigrate is the entry point for `vayupress migrate <subcommand> [flags]`.
@@ -205,18 +207,18 @@ func runMigrateMarkdown(args []string) error {
 		}
 
 		dateStr := doc.date.UTC().Format(time.RFC3339)
-		tagsJSON := `["` + strings.Join(doc.tags, `","`) + `"]`
-		if len(doc.tags) == 0 {
-			tagsJSON = "[]"
-		}
+		// Comma-separated under the tag rules, as every write stores tags; as
+		// JSON they read back as `["news"` and `"go"]`.
+		tags := strings.Join(tagrules.Clean(doc.tags, nil), ",")
 
 		// Sanitise HTML before persisting (mirrors article write-queue).
-		sanitised := bluemonday.UGCPolicy().Sanitize(doc.html)
+		sanitised, _ := textfix.Repair(bluemonday.UGCPolicy().Sanitize(doc.html))
+		title, _ := textfix.Repair(doc.title)
 
 		res, err := db.Exec(
 			`INSERT OR IGNORE INTO articles(id,title,slug,content,tags,created_at,updated_at)
 			 VALUES(?,?,?,?,?,?,?)`,
-			id, doc.title, doc.slug, sanitised, tagsJSON, dateStr, dateStr,
+			id, title, doc.slug, sanitised, tags, dateStr, dateStr,
 		)
 		if err != nil {
 			fmt.Printf("%s → ERROR: %v\n", prefix, err)

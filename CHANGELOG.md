@@ -72,6 +72,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - **Tag pages with fewer than three posts are kept out of search.** They carry
   `noindex,follow`: the long one-post tags repeated a post already indexed and
   drew crawlers; their links still count, and nothing bookmarked breaks.
+- **Tags are topics, a few to a post.** On johal.in each post arrived with 13
+  to 25 tags: its title's words ("with", "which") and one boilerplate set put
+  on every post, so a tag page listed the whole site and related posts were
+  simply the newest. Now:
+  - A tag has one key and one page. "Machine Learning", "machine_learning" and
+    "machine-learning" are one tag at `/tags/machine-learning`; the other
+    spellings redirect there permanently. `+`, `#` and `.` are kept, so C++, C#
+    and .NET stay distinct.
+  - A stop-word, or a "tag" longer than 40 characters, is not a tag.
+  - A post keeps at most ten tags: when sent more, the rarest on the site. A
+    post is never refused for its tags, so the limit of 20 that refused a
+    post is gone, from the API, the connector and scheduled posts alike.
+  - A tag on more than half of the published posts stays on its posts, but
+    its page is kept out of search, in every theme, and related posts are no
+    longer chosen through it. It is the rule Halcyon's front-page desks
+    already used, now one rule for both.
+  - The topic index (`/tags`) and the tag counts of the API and the connector
+    list each tag once, by its key, and count published posts only. They
+    counted drafts, and listed "Python" and "python" as two topics.
+  - The posts already stored are brought under these rules once, in the
+    background and paced, before the text repair above. Each changed post's
+    tags as they were are kept in `tag_originals` (migration 109), and its
+    date is unchanged. Until the pass reaches a post, its page already shows
+    its tags under the rules.
+- **Content bundles and Markdown imports keep their tags.** Both stored tags as
+  a JSON list in a column every other path reads as comma-separated, so an
+  imported post's tags read as `["news"` and `"go"]`; a bundle export carried
+  no tags at all, and a bundle import left an updated post linked to its old
+  tags. Imports now store tags, and restore garbled text, as every write does.
 - **Garbled characters are restored.** Text that arrives as UTF-8 read as
   Latin-1 or Windows-1252 and sent on, once or several times (a dash shown as three stray characters)
   is restored as it is written, through the API, the connector and the

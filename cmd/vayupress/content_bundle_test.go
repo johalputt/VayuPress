@@ -16,7 +16,9 @@ import (
 )
 
 // newBundleTestDB creates an in-memory DB with the content columns the bundle
-// export/import touches (slug UNIQUE, matching the real articles table).
+// export/import touches (slug UNIQUE and DATETIME stamps, matching the real
+// articles table) and the shipped tag-link migrations, so an import's links
+// are written through the real triggers.
 func newBundleTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite3", ":memory:")
@@ -29,9 +31,12 @@ func newBundleTestDB(t *testing.T) *sql.DB {
 		id TEXT PRIMARY KEY, title TEXT, slug TEXT UNIQUE, content TEXT,
 		tags TEXT, excerpt TEXT, feature_image TEXT, featured INTEGER DEFAULT 0,
 		is_page INTEGER DEFAULT 0, author_id TEXT DEFAULT '',
-		created_at TEXT, updated_at TEXT)`); err != nil {
+		status TEXT DEFAULT 'published', domain_id TEXT DEFAULT '',
+		created_at DATETIME, updated_at DATETIME)`); err != nil {
 		t.Fatalf("schema: %v", err)
 	}
+	applyMigration(t, db, "048-article-tags")
+	applyMigration(t, db, "106-article-tags-live")
 	return db
 }
 
@@ -58,8 +63,8 @@ func countArticles(t *testing.T, db *sql.DB) int {
 // separate install B — the core sync/migrate path.
 func TestBundleRoundTrip(t *testing.T) {
 	a := newBundleTestDB(t)
-	seedArticle(t, a, "1", "Hello", "hello", "<p>hi</p>", `["news","go"]`, 0)
-	seedArticle(t, a, "2", "About", "about", "<p>about us</p>", `[]`, 1)
+	seedArticle(t, a, "1", "Hello", "hello", "<p>hi</p>", "news,Go", 0)
+	seedArticle(t, a, "2", "About", "about", "<p>about us</p>", "", 1)
 
 	b, err := exportBundle(a, true)
 	if err != nil {
@@ -73,7 +78,7 @@ func TestBundleRoundTrip(t *testing.T) {
 	}
 	// Content-only: the bundle JSON must NOT carry author identity.
 	for _, p := range b.Posts {
-		if p.Slug == "hello" && (len(p.Tags) != 2) {
+		if p.Slug == "hello" && strings.Join(p.Tags, ",") != "news,Go" {
 			t.Errorf("tags not preserved: %+v", p)
 		}
 	}
@@ -97,19 +102,30 @@ func TestBundleRoundTrip(t *testing.T) {
 	if author != "" {
 		t.Errorf("author_id must NOT cross in a content bundle, got %q", author)
 	}
+	// The tags arrive as every write stores them, and their pages list the post.
+	var tags, links string
+	if err := dst.QueryRow(`SELECT tags, (SELECT group_concat(tag_norm) FROM (SELECT tag_norm FROM article_tags t WHERE t.article_id=a.id ORDER BY tag_norm)) FROM articles a WHERE slug='hello'`).Scan(&tags, &links); err != nil {
+		t.Fatal(err)
+	}
+	if tags != "news,Go" || links != "go,news" {
+		t.Errorf("imported tags=%q links=%q, want news,Go and go,news", tags, links)
+	}
 }
 
 // TestBundleMergeAndAddOnly covers upsert vs skip-existing semantics.
 func TestBundleMergeAndAddOnly(t *testing.T) {
 	src := newBundleTestDB(t)
-	seedArticle(t, src, "1", "New Title", "post", "<p>new body</p>", `[]`, 0)
+	seedArticle(t, src, "1", "New Title", "post", "<p>new body</p>", "rust", 0)
 	b, err := exportBundle(src, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	dst := newBundleTestDB(t)
-	seedArticle(t, dst, "9", "Old Title", "post", "<p>old body</p>", `[]`, 0)
+	seedArticle(t, dst, "9", "Old Title", "post", "<p>old body</p>", "", 0)
+	if _, err := dst.Exec(`INSERT INTO article_tags(article_id, tag, tag_norm, created_at) VALUES('9','perl','perl','2026-01-02T03:04:05Z')`); err != nil {
+		t.Fatal(err)
+	}
 
 	// add-only: existing slug is left untouched.
 	ins, upd, skip, err := importBundle(dst, b, "add-only", false, io.Discard)
@@ -140,12 +156,18 @@ func TestBundleMergeAndAddOnly(t *testing.T) {
 	if countArticles(t, dst) != 1 {
 		t.Errorf("merge must not duplicate the slug, got %d rows", countArticles(t, dst))
 	}
+	// An updated post's links are its new tags, not its old ones.
+	var links string
+	dst.QueryRow(`SELECT group_concat(tag_norm) FROM article_tags WHERE article_id='9'`).Scan(&links)
+	if links != "rust" {
+		t.Errorf("merged post's tag links = %q, want rust", links)
+	}
 }
 
 // TestBundleChecksumTamper: a modified bundle is rejected before any write.
 func TestBundleChecksumTamper(t *testing.T) {
 	src := newBundleTestDB(t)
-	seedArticle(t, src, "1", "T", "t", "<p>x</p>", `[]`, 0)
+	seedArticle(t, src, "1", "T", "t", "<p>x</p>", "", 0)
 	b, err := exportBundle(src, true)
 	if err != nil {
 		t.Fatal(err)

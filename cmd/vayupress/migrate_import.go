@@ -17,6 +17,8 @@ import (
 	"github.com/microcosm-cc/bluemonday"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/tagrules"
+	"github.com/johalputt/vayupress/internal/textfix"
 )
 
 // importedPost is the normalised shape both importers produce before insertion.
@@ -61,14 +63,16 @@ func insertImported(posts []importedPost, dryRun, skipDrafts bool) error {
 			return err
 		}
 		dateStr := p.Created.UTC().Format(time.RFC3339)
-		tagsJSON := "[]"
-		if len(p.Tags) > 0 {
-			tagsJSON = `["` + strings.Join(p.Tags, `","`) + `"]`
-		}
-		sanitised := bluemonday.UGCPolicy().Sanitize(p.HTML)
+		// The same rules as every other write: tags under the tag rules, kept
+		// comma-separated as the column is everywhere else (this stored a JSON
+		// array, which every reader split into tags such as `["go"`), and
+		// garbled text restored.
+		tags := strings.Join(tagrules.Clean(p.Tags, nil), ",")
+		title, _ := textfix.Repair(p.Title)
+		sanitised, _ := textfix.Repair(bluemonday.UGCPolicy().Sanitize(p.HTML))
 		res, err := db.Exec(
 			`INSERT OR IGNORE INTO articles(id,title,slug,content,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`,
-			id, p.Title, p.Slug, sanitised, tagsJSON, dateStr, dateStr)
+			id, title, p.Slug, sanitised, tags, dateStr, dateStr)
 		if err != nil {
 			fmt.Printf("%s %q → ERROR: %v\n", prefix, p.Title, err)
 			continue

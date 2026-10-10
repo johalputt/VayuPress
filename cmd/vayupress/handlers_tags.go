@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -21,6 +22,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/tagrules"
 )
 
 // handleTagIndex renders the public topic index (/tags): every distinct tag with
@@ -166,23 +168,27 @@ func (a *App) tagIndexGlobal(ctx context.Context) ([]render.TagInfo, int, error)
 func (a *App) tagIndexScoped(ctx context.Context, scope string) ([]render.TagInfo, int) {
 	infos := make([]render.TagInfo, 0, 32)
 	rows, err := dbpkg.Reader().QueryContext(ctx,
-		`SELECT tag, COUNT(1) FROM article_tags WHERE domain_id=? AND live=1 GROUP BY tag`,
+		`SELECT tag_norm, COUNT(1) FROM article_tags WHERE domain_id=? AND live=1 GROUP BY tag_norm`,
 		scope,
 	)
 	if err == nil {
 		defer rows.Close()
+		// By key, as the whole install's index is (ArticleRepo.TagCounts).
+		counts := map[string]int{}
 		for rows.Next() {
-			var name string
+			var norm string
 			var n int
-			if err := rows.Scan(&name, &n); err != nil {
+			if err := rows.Scan(&norm, &n); err != nil {
 				continue
 			}
-			if strings.TrimSpace(name) == "" {
-				continue
+			if key := tagrules.Key(norm); key != "" {
+				counts[key] += n
 			}
-			infos = append(infos, render.TagInfo{Name: name, Count: n})
 		}
 		_ = rows.Err()
+		for name, n := range counts {
+			infos = append(infos, render.TagInfo{Name: name, Count: n})
+		}
 	}
 
 	var totalPosts int
@@ -205,8 +211,26 @@ const tagCountSQL = `SELECT COUNT(1) FROM article_tags t WHERE t.tag_norm=? AND 
 // with no published posts is treated as not-found so empty pages are never indexed.
 func (a *App) handleTagPage(w http.ResponseWriter, r *http.Request) {
 	tag := strings.TrimSpace(chi.URLParam(r, "tag"))
+	// chi hands over the path as sent when it holds an escape Go would not
+	// write ("c%2B%2B"); the key is of the tag, not of its escaping.
+	if r.URL.RawPath != "" {
+		if u, err := url.PathUnescape(tag); err == nil {
+			tag = u
+		}
+	}
 	if tag == "" || len(tag) > 100 {
 		a.handleNotFound(w, r)
+		return
+	}
+	// One page per tag (tag rules): "Machine_Learning" is machine-learning,
+	// and its other spellings send their visitors and their links there.
+	key := tagrules.Key(tag)
+	if key == "" {
+		a.handleNotFound(w, r)
+		return
+	}
+	if key != tag {
+		http.Redirect(w, r, "/tags/"+url.PathEscape(key), http.StatusMovedPermanently)
 		return
 	}
 
@@ -245,7 +269,7 @@ func (a *App) handleTagPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	in := render.TopicInput{Domain: config.Cfg.Domain, Version: Version, Tag: tag, Articles: articles, Total: total}
+	in := render.TopicInput{Domain: config.Cfg.Domain, Version: Version, Tag: tag, Articles: articles, Total: total, Broad: broadTag(key)}
 	if _, on := render.Halcyon(); on {
 		key, _, _, count := a.halcyonScope(r)
 		in.Topics, in.TopicTotal = a.halcyonTopics(key, count)
@@ -273,7 +297,7 @@ func (a *App) articlesByTag(ctx context.Context, tag string, max int, scope stri
 	if dbpkg.DB == nil {
 		return nil, 0
 	}
-	norm := strings.ToLower(strings.TrimSpace(tag))
+	norm := tagrules.Key(tag)
 	if norm == "" {
 		return nil, 0
 	}

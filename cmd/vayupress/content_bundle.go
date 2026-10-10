@@ -30,7 +30,10 @@ import (
 
 	"github.com/microcosm-cc/bluemonday"
 
+	"github.com/johalputt/vayupress/internal/api"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/tagrules"
+	"github.com/johalputt/vayupress/internal/textfix"
 )
 
 // bundleFormat is the on-disk format tag; import refuses anything else.
@@ -106,8 +109,9 @@ func exportBundle(db *sql.DB, includePages bool) (contentBundle, error) {
 			&p.FeatureImage, &featured, &isPage, &createdS, &updatedS); err != nil {
 			return contentBundle{}, fmt.Errorf("scan: %w", err)
 		}
-		p.Tags = []string{}
-		_ = json.Unmarshal([]byte(tagsJSON), &p.Tags)
+		// The column is comma-separated (every write path stores it so); read as
+		// JSON it parsed as nothing, and every post left without its tags.
+		p.Tags = api.SplitTags(tagsJSON)
 		if p.Tags == nil {
 			p.Tags = []string{}
 		}
@@ -192,23 +196,26 @@ func importBundle(db *sql.DB, b contentBundle, mode string, dryRun bool, out io.
 			continue
 		}
 
-		sanitised := bluemonday.UGCPolicy().Sanitize(p.Content)
-		tagsJSON := "[]"
-		if len(p.Tags) > 0 {
-			if tb, mErr := json.Marshal(p.Tags); mErr == nil {
-				tagsJSON = string(tb)
-			}
-		}
+		// The same rules as every other write (tags under the tag rules and
+		// comma-separated, garbled text restored); stored as JSON, the tags
+		// read back as `["news"` and `"go"]`.
+		tags := tagrules.Clean(p.Tags, nil)
+		tagsCSV := strings.Join(tags, ",")
+		title, _ := textfix.Repair(p.Title)
+		sanitised, _ := textfix.Repair(bluemonday.UGCPolicy().Sanitize(p.Content))
 		created := parseImportTime(p.CreatedAt, "").UTC().Format(time.RFC3339)
 		updated := parseImportTime(p.UpdatedAt, p.CreatedAt).UTC().Format(time.RFC3339)
 
 		if exists {
 			if _, uErr := db.Exec(`UPDATE articles SET title=?, content=?, tags=?, excerpt=?,
 			        feature_image=?, featured=?, is_page=?, updated_at=? WHERE slug=?`,
-				p.Title, sanitised, tagsJSON, p.Excerpt, p.FeatureImage,
+				title, sanitised, tagsCSV, p.Excerpt, p.FeatureImage,
 				boolToInt(p.Featured), boolToInt(p.IsPage), updated, slug); uErr != nil {
 				fmt.Fprintf(out, "%s %q → ERROR: %v\n", prefix, p.Title, uErr)
 				continue
+			}
+			if sErr := syncBundleTags(db, slug, tags); sErr != nil {
+				return ins, upd, skip, sErr
 			}
 			upd++
 			fmt.Fprintf(out, "%s %q ✓ updated\n", prefix, p.Title)
@@ -222,15 +229,33 @@ func importBundle(db *sql.DB, b contentBundle, mode string, dryRun bool, out io.
 		if _, iErr := db.Exec(`INSERT INTO articles(id,title,slug,content,tags,excerpt,
 		        feature_image,featured,is_page,created_at,updated_at)
 		        VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-			id, p.Title, slug, sanitised, tagsJSON, p.Excerpt, p.FeatureImage,
+			id, title, slug, sanitised, tagsCSV, p.Excerpt, p.FeatureImage,
 			boolToInt(p.Featured), boolToInt(p.IsPage), created, updated); iErr != nil {
 			fmt.Fprintf(out, "%s %q → ERROR: %v\n", prefix, p.Title, iErr)
 			continue
+		}
+		if sErr := syncBundleTags(db, slug, tags); sErr != nil {
+			return ins, upd, skip, sErr
 		}
 		ins++
 		fmt.Fprintf(out, "%s %q ✓ new\n", prefix, p.Title)
 	}
 	return ins, upd, skip, nil
+}
+
+// syncBundleTags writes a post's tag links as the write queue does. The
+// boot-time backfill only fills posts with none, so an updated post kept the
+// links of its old tags.
+func syncBundleTags(db *sql.DB, slug string, tags []string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	if err := dbpkg.SyncArticleTagsBySlugTx(tx, slug, tags); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 func pageLabel(isPage bool) string {

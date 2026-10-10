@@ -4,8 +4,12 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
@@ -29,30 +33,20 @@ func makeService() *ArticleService {
 // ── Validation ────────────────────────────────────────────────────────────────
 
 func TestValidateArticleInput_Valid(t *testing.T) {
-	if err := ValidateArticleInput("Title", "my-slug", "<p>content</p>", nil); err != nil {
+	if err := ValidateArticleInput("Title", "my-slug", "<p>content</p>"); err != nil {
 		t.Fatalf("want nil, got %v", err)
 	}
 }
 
 func TestValidateArticleInput_EmptyTitle(t *testing.T) {
-	if err := ValidateArticleInput("", "slug", "content", nil); err == nil {
+	if err := ValidateArticleInput("", "slug", "content"); err == nil {
 		t.Fatal("want error for empty title")
 	}
 }
 
 func TestValidateArticleInput_InvalidSlug(t *testing.T) {
-	if err := ValidateArticleInput("Title", "BAD SLUG!", "content", nil); err == nil {
+	if err := ValidateArticleInput("Title", "BAD SLUG!", "content"); err == nil {
 		t.Fatal("want error for invalid slug")
-	}
-}
-
-func TestValidateArticleInput_TooManyTags(t *testing.T) {
-	tags := make([]string, 21)
-	for i := range tags {
-		tags[i] = "t"
-	}
-	if err := ValidateArticleInput("Title", "slug", "content", tags); err == nil {
-		t.Fatal("want error for >20 tags")
 	}
 }
 
@@ -118,7 +112,7 @@ func TestSlugify(t *testing.T) {
 
 func TestValidateArticleInput_ErrorClassification(t *testing.T) {
 	// Invalid slug must surface as ErrInvalidSlug (→ HTTP 400), not a bare error.
-	err := ValidateArticleInput("Title", "BAD SLUG", "<p>x</p>", nil)
+	err := ValidateArticleInput("Title", "BAD SLUG", "<p>x</p>")
 	if !errors.Is(err, ErrInvalidSlug) {
 		t.Errorf("invalid slug: want ErrInvalidSlug, got %v", err)
 	}
@@ -133,7 +127,7 @@ func TestValidateArticleInput_ErrorClassification(t *testing.T) {
 		{"empty title", "", "ok", "<p>x</p>"},
 		{"empty content", "Title", "ok", ""},
 	} {
-		err := ValidateArticleInput(tc.title, tc.slug, tc.content, nil)
+		err := ValidateArticleInput(tc.title, tc.slug, tc.content)
 		if !errors.Is(err, ErrValidation) {
 			t.Errorf("%s: want ErrValidation, got %v", tc.name, err)
 		}
@@ -241,5 +235,66 @@ func TestArticleService_GarbledTextIsRestoredOnWrite(t *testing.T) {
 	}
 	if title, content := queued(); title != "naïve" || content != "<p>café</p>" {
 		t.Errorf("update queued %q, %q", title, content)
+	}
+}
+
+// A post is never refused for its tags. Sent more than the rules keep, it keeps
+// the rarest across the site, in the order sent; on create and on an update of
+// a post stored before the rules alike.
+func TestArticleService_TagsAreCleanedNeverRefused(t *testing.T) {
+	svc := makeService()
+	svc.TagFrequency = func(key string) int {
+		if key == "tutorial" || key == "developer" {
+			return 1000
+		}
+		return 1
+	}
+	sent := []string{"Machine Learning", "with", "tutorial", "developer"}
+	for i := 0; i < 22; i++ {
+		sent = append(sent, fmt.Sprintf("topic%02d", i))
+	}
+	want := "Machine Learning,topic00,topic01,topic02,topic03,topic04,topic05,topic06,topic07,topic08"
+	queuedTags := func() string {
+		t.Helper()
+		var tags string
+		if err := dbpkg.DB.QueryRow(`SELECT (SELECT group_concat(value) FROM json_each(article_json->'$.tags')) FROM write_jobs ORDER BY id DESC LIMIT 1`).Scan(&tags); err != nil {
+			t.Fatal(err)
+		}
+		return tags
+	}
+	if _, err := svc.Create(bg, "Tagged", "tags-create", "<p>x</p>", sent); err != nil {
+		t.Fatalf("a post with %d tags was refused: %v", len(sent), err)
+	}
+	if got := queuedTags(); got != want {
+		t.Errorf("create queued tags %q, want %q", got, want)
+	}
+	dbpkg.DB.Exec(`INSERT INTO articles(id,title,slug,content,tags,created_at,updated_at) VALUES('old','T','tags-update','c',?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`, strings.Join(sent, ","))
+	title := "Edited"
+	if _, err := svc.Update(bg, "tags-update", &title, nil, nil); err != nil {
+		t.Fatalf("editing a post stored with %d tags was refused: %v", len(sent), err)
+	}
+	if got := queuedTags(); got != want {
+		t.Errorf("update queued tags %q, want %q", got, want)
+	}
+}
+
+// The posts list filtered by a tag finds it however the tag is spelled.
+func TestArticleService_ListByTagFindsItUnderItsKey(t *testing.T) {
+	svc := makeService()
+	at := time.Now()
+	dbpkg.DB.Exec(`INSERT INTO articles(id,title,slug,content,tags,status,created_at,updated_at) VALUES('ml','T','list-by-key','c','Machine Learning','published',?,?)`, at, at)
+	if err := dbpkg.RunInTx(bg, dbpkg.DB, func(tx *sql.Tx) error {
+		return dbpkg.SyncArticleTagsByIDTx(tx, "ml", at, []string{"Machine Learning"})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, spelled := range []string{"Machine Learning", "machine_learning", "machine-learning"} {
+		res, err := svc.List(bg, 1, 10, spelled)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Total != 1 {
+			t.Errorf("List by %q found %d posts, want 1", spelled, res.Total)
+		}
 	}
 }

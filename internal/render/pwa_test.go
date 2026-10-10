@@ -31,7 +31,7 @@ func TestEveryPublicPageCarriesTheInstallTags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderTagIndex: %v", err)
 	}
-	tagPage, err := RenderTagPage("example.com", "1.0.0", "go", nil, 0)
+	tagPage, err := RenderTagPage("example.com", "1.0.0", "go", nil, 0, false)
 	if err != nil {
 		t.Fatalf("RenderTagPage: %v", err)
 	}
