@@ -9,6 +9,7 @@ import (
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/queue"
+	"github.com/johalputt/vayupress/internal/textfix"
 	"github.com/johalputt/vayupress/internal/trace"
 )
 
@@ -100,6 +101,7 @@ func (s *ArticleService) create(ctx context.Context, title, slug, content string
 	if isPage {
 		span.SetAttribute("kind", "page")
 	}
+	title, content = repairText(title), repairText(content)
 	if err := ValidateArticleInput(title, slug, content, tags); err != nil {
 		span.SetError(err)
 		return CreateResult{}, err
@@ -220,10 +222,10 @@ func (s *ArticleService) Update(ctx context.Context, slug string, title, content
 		return art, mapRepoErr(err)
 	}
 	if title != nil {
-		art.Title = *title
+		art.Title = repairText(*title)
 	}
 	if content != nil {
-		art.Content = *content
+		art.Content = repairText(*content)
 	}
 	if tags != nil {
 		art.Tags = tags
@@ -377,4 +379,14 @@ func mapRepoErr(err error) error {
 		return ErrNotFound
 	}
 	return err
+}
+
+// repairText restores text that arrives garbled (UTF-8 read as Latin-1 or
+// Windows-1252 and sent on, once or more): posts on johal.in were written that
+// way by the tool that sent them. Every create and update passes through here,
+// so the API, the connector and the editor all store the text as it was meant;
+// a run whose bytes were lost on the way is left as sent (internal/textfix).
+func repairText(s string) string {
+	out, _ := textfix.Repair(s)
+	return out
 }

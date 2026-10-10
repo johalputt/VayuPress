@@ -216,3 +216,30 @@ func TestArticleService_ListTags(t *testing.T) {
 	}
 	_ = tags
 }
+
+// Text that arrives garbled is stored as it was meant, through create and
+// update alike: the title and the body both.
+func TestArticleService_GarbledTextIsRestoredOnWrite(t *testing.T) {
+	svc := makeService()
+	queued := func() (title, content string) {
+		t.Helper()
+		if err := dbpkg.DB.QueryRow(`SELECT article_json->>'$.title', article_json->>'$.content' FROM write_jobs ORDER BY id DESC LIMIT 1`).Scan(&title, &content); err != nil {
+			t.Fatal(err)
+		}
+		return title, content
+	}
+	if _, err := svc.Create(bg, "Itâ€™s fine", "garbled-create", "<p>a â€” b</p>", []string{"go"}); err != nil {
+		t.Fatal(err)
+	}
+	if title, content := queued(); title != "It’s fine" || content != "<p>a — b</p>" {
+		t.Errorf("create queued %q, %q", title, content)
+	}
+	dbpkg.DB.Exec(`INSERT INTO articles(id,title,slug,content,tags,created_at,updated_at) VALUES('g','T','garbled-update','c','',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`)
+	title, body := "naÃ¯ve", "<p>cafÃ©</p>"
+	if _, err := svc.Update(bg, "garbled-update", &title, &body, nil); err != nil {
+		t.Fatal(err)
+	}
+	if title, content := queued(); title != "naïve" || content != "<p>café</p>" {
+		t.Errorf("update queued %q, %q", title, content)
+	}
+}

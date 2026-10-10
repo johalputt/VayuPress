@@ -58,6 +58,7 @@ import (
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/textfix"
 	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/users"
 )
@@ -2618,7 +2619,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 		q = q[:120]
 	}
 	status := qv.Get("status")
-	if status != "published" && status != "draft" {
+	if status != "published" && status != "draft" && status != "garbled" {
 		status = "all"
 	}
 	period := qv.Get("period")
@@ -2668,6 +2669,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	// error.
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
+	lost := a.postsWithLostText(ctx, status == "garbled")
 	loadErr := false
 
 	allCount, published, drafts := 0, 0, 0
@@ -2702,6 +2704,8 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 		total = published
 	case "draft":
 		total = drafts
+	case "garbled":
+		total = lost
 	}
 
 	// ── Pagination maths (100 per page; page clamped to a valid range) ────────
@@ -2728,6 +2732,8 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 		listWhere = append(listWhere, "status='published'")
 	case "draft":
 		listWhere = append(listWhere, "status='draft'")
+	case "garbled":
+		listWhere = append(listWhere, "slug IN (SELECT slug FROM text_repair_lost)")
 	}
 	listClause := ""
 	if len(listWhere) > 0 {
@@ -2764,7 +2770,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 		body = a.osPostsList(ctx, osPostsView{
 			posts: posts, status: status, q: q, from: from, to: to, period: period,
 			page: page, totalPages: totalPages, total: total, offset: offset,
-			all: allCount, published: published, drafts: drafts, loadErr: loadErr,
+			all: allCount, published: published, drafts: drafts, lost: lost, loadErr: loadErr,
 		}, nonce)
 	}
 	writeOSHTML(w, r, adminOSLayout(nonce, "Posts", "posts", cfg, htmpl.HTML(body)))
@@ -2776,6 +2782,7 @@ type osPostsView struct {
 	status, q, from, to, period     string
 	page, totalPages, total, offset int
 	all, published, drafts          int
+	lost                            int // posts with characters that could not be restored
 	loadErr                         bool
 }
 
@@ -2862,9 +2869,18 @@ func (a *App) osPostsList(ctx context.Context, v osPostsView, nonce string) stri
 			keep = append(keep, kv)
 		}
 	}
+	var sub ui.HTML
+	switch {
+	case v.status == "garbled":
+		sub = ui.HTML(`<p class="muted text-sm">Characters in these posts were lost before they reached VayuPress, so they could not be restored. Fix each in the editor; a post leaves this list once it is clean.</p>`)
+	case v.lost > 0:
+		sub = ui.HTML(`<p class="muted text-sm">` + itoaSafe(v.lost) + ` ` + map[bool]string{true: "post has", false: "posts have"}[v.lost == 1] +
+			` characters that could not be restored. <a href="` + osPostsHref("garbled", "", "", "", "", 1) + `">Show them</a></p>`)
+	}
 	return string(ui.List(ui.ListPage{
 		Title: "Posts",
 		Count: count,
+		Sub:   sub,
 		Views: ui.Segments("Show",
 			ui.Segment{Label: "All", Href: osPostsHref("all", v.q, v.from, v.to, v.period, 1), Count: v.all, On: v.status == "all"},
 			ui.Segment{Label: "Published", Href: osPostsHref("published", v.q, v.from, v.to, v.period, 1), Count: v.published, On: v.status == "published"},
@@ -3963,4 +3979,38 @@ func (a *App) handleOSFeedRegenerate(w http.ResponseWriter, r *http.Request) {
 	go generateRSS()
 	go generateSitemap()
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "regenerating", "note": "feed.xml and sitemap.xml are being rebuilt in the background"})
+}
+
+// postsWithLostText counts the posts the text repair found characters in that
+// could not be restored (text_repair.go). Listing them (prune) first drops
+// each that is clean now, fixed by hand since: a list that outlives its
+// cause is one nobody trusts. Bounded: the list names posts, not the site.
+func (a *App) postsWithLostText(ctx context.Context, prune bool) int {
+	if dbpkg.DB == nil {
+		return 0
+	}
+	if prune {
+		var clean []string
+		if rows, err := dbpkg.Reader().QueryContext(ctx, `SELECT l.slug, COALESCE(a.title,''), COALESCE(a.content,''), a.id IS NULL FROM text_repair_lost l LEFT JOIN articles a ON a.slug=l.slug LIMIT 500`); err == nil {
+			for rows.Next() {
+				var slug, title, content string
+				var gone bool
+				if rows.Scan(&slug, &title, &content, &gone) != nil {
+					continue
+				}
+				_, t := textfix.Repair(title)
+				_, c := textfix.Repair(content)
+				if gone || t.Lost+c.Lost == 0 {
+					clean = append(clean, slug)
+				}
+			}
+			_ = rows.Close()
+		}
+		for _, slug := range clean {
+			_, _ = dbpkg.WDB.ExecContext(ctx, `DELETE FROM text_repair_lost WHERE slug=?`, slug)
+		}
+	}
+	var n int
+	_ = dbpkg.Reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM text_repair_lost l JOIN articles a ON a.slug=l.slug WHERE a.is_page=0`).Scan(&n)
+	return n
 }

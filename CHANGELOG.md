@@ -22,6 +22,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   locked-out recovery request or a device waiting for approval each showed
   as a message in a mailbox that had none. Those stay in the bell, in their
   own words; the count on Mail is what is waiting to be read.
+- **A large tag answers at once.** Counting a tag's posts read each tagged
+  post's row in turn, so a tag with a hundred thousand posts took seconds on a
+  cold database, and the connector's `list_posts` for "python" on johal.in
+  timed out its relay (502). Each tag link now carries whether its post is
+  published and which site it belongs to (migration 106), so a count is one
+  index range: on a 234k-post copy the same count fell from 8.7 s to under
+  60 ms. Deleting a post from the console or the API left its tag links behind;
+  they are removed now on every path, and those already left are removed once.
+  The first start after the update builds one index over the tag links and is
+  slower for it, about ten seconds per two million links.
+- **Tag pages with fewer than three posts are kept out of search.** They carry
+  `noindex,follow`: the long one-post tags repeated a post already indexed and
+  drew crawlers; their links still count, and nothing bookmarked breaks.
+- **Garbled characters are restored.** Text that arrives as UTF-8 read as
+  Latin-1 or Windows-1252 and sent on, once or several times ("â€”" for "—")
+  is restored as it is written, through the API, the connector and the
+  editor alike. The posts already stored are restored once, in the background
+  and paced, each through the write queue so its text before is kept in its
+  history. A run whose bytes were lost before it reached VayuPress cannot be
+  known and is left as it is; the Posts page names those posts until each is
+  fixed by hand. Text inside code blocks is never changed.
 
 ### Security
 

@@ -1206,6 +1206,7 @@ func main() {
 	dbpkg.StartStuckJobReaper(queue.DoneCh)
 	dbpkg.StartJobRetentionSweeper(queue.DoneCh)
 	dbpkg.StartArticleTagsBackfill(queue.DoneCh)
+	a.startTextRepair(queue.DoneCh)
 	dbpkg.StartIndexSelfCheck(queue.DoneCh)
 	a.startMetricsSnapshotCollector()
 	a.startDashboardWarmer(queue.DoneCh)
