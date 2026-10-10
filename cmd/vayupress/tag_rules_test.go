@@ -160,6 +160,7 @@ func TestATagHasOneAddress(t *testing.T) {
 		{"/tags/Machine%20Learning", "Machine Learning", "/tags/machine-learning"},
 		{"/tags/C++", "C++", "/tags/c++"},
 		{"/tags/C%2B%2B", "C%2B%2B", "/tags/c++"},
+		{"/tags/Python?sort=read&q=async", "Python", "/tags/python?sort=read&q=async"},
 	} {
 		rec := httptest.NewRecorder()
 		a.handleTagPage(rec, routeRequest(c.path, "tag", c.param))

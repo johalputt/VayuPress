@@ -230,7 +230,12 @@ func (a *App) handleTagPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if key != tag {
-		http.Redirect(w, r, "/tags/"+url.PathEscape(key), http.StatusMovedPermanently)
+		// The query goes along: a topic's order or search lives there.
+		to := "/tags/" + url.PathEscape(key)
+		if r.URL.RawQuery != "" {
+			to += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, to, http.StatusMovedPermanently)
 		return
 	}
 
