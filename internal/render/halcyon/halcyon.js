@@ -197,6 +197,22 @@
   w.addEventListener('resize', tick, { passive: true });
   frame();
 
+  // ── Images that do not arrive ──────────────────────────────────────────
+  // A post's image that fails to load is left out rather than shown as a
+  // hole, with its figure when it is the figure's only image (a caption about
+  // nothing reads as an error). A later failure is caught by its event; one
+  // that failed before this script ran, by decode(), which rejects only for an
+  // image that did not load (a size of 0 would also catch an SVG drawn
+  // without one).
+  function drop(img) {
+    var f = img.closest('figure');
+    (f && f.querySelectorAll('img').length === 1 ? f : img).hidden = true;
+  }
+  $$('.h-body img, .h-cover img').forEach(function (img) {
+    img.addEventListener('error', function () { drop(img); });
+    if (img.complete && img.decode) img.decode().catch(function () { drop(img); });
+  });
+
   // ── The selection toolbar ──────────────────────────────────────────────
   if (body && r.hasAttribute('data-selection')) {
     var sel = null;

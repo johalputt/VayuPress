@@ -7,6 +7,8 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/base64"
+	"image"
+	pngenc "image/png"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -597,5 +599,34 @@ func TestTheCacheFingerprintFollowsHalcyonOnlyWhileItIsActive(t *testing.T) {
 	halcyonPages["article"] = prev
 	if still != other {
 		t.Error("a change to Halcyon re-renders a site on another theme")
+	}
+}
+
+// A library image is given its real size so the text below it does not jump
+// as it loads; an image from elsewhere, one with a size, and a name reaching
+// outside the library are left as written.
+func TestALibraryImageCarriesItsSize(t *testing.T) {
+	dir := t.TempDir()
+	prev := config.Cfg.MediaDir
+	config.Cfg.MediaDir = dir
+	t.Cleanup(func() { config.Cfg.MediaDir = prev })
+	var png bytes.Buffer
+	img := image.NewRGBA(image.Rect(0, 0, 640, 360))
+	if err := pngenc.Encode(&png, img); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a1.png"), png.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ in, want string }{
+		{`<img src="/media/a1.png" alt="">`, `<img src="/media/a1.png" alt="" width="640" height="360">`},
+		{`<img src="/media/a1.png" width="10">`, `<img src="/media/a1.png" width="10">`},
+		{`<img src="https://example.com/a1.png">`, `<img src="https://example.com/a1.png">`},
+		{`<img src="/media/../media/a1.png">`, `<img src="/media/../media/a1.png">`},
+		{`<img src="/media/missing.png">`, `<img src="/media/missing.png">`},
+	} {
+		if got := string(halcyonTreat(`<p>x</p>`+c.in, false).Body); !strings.Contains(got, c.want) {
+			t.Errorf("%s\n got %s\nwant %s", c.in, got, c.want)
+		}
 	}
 }

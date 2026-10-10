@@ -4,12 +4,21 @@ package render
 
 import (
 	"html/template"
+	"image"
+	_ "image/gif"  // decoders for mediaDims: the formats the library stores
+	_ "image/jpeg" // (imageproc)
+	_ "image/png"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
+
+	"github.com/johalputt/vayupress/internal/config"
 )
 
 // halcyon_content.go — the presentation Halcyon gives a post's body when the
@@ -132,6 +141,17 @@ func halcyonTreat(sanitised string, smallCaps bool) halcyonBody {
 					tok.Attr = append(tok.Attr, html.Attribute{Key: "data-label", Val: heads[col]})
 				}
 				col++
+			case atom.Img:
+				// A library image without its size reserves none, and the text
+				// below it jumps as it arrives. Its real size is read from the
+				// file; an image from elsewhere stays as written.
+				if attr(tok, "width") == "" && attr(tok, "height") == "" {
+					if wd, ht, ok := mediaDims(attr(tok, "src")); ok {
+						tok.Attr = append(tok.Attr,
+							html.Attribute{Key: "width", Val: strconv.Itoa(wd)},
+							html.Attribute{Key: "height", Val: strconv.Itoa(ht)})
+					}
+				}
 			case atom.H2:
 				if !inTable && !inH2 {
 					inH2, h2Open = true, tok
@@ -305,3 +325,44 @@ func uniqueID(base string, used map[string]bool) string {
 	used[id] = true
 	return id
 }
+
+// mediaDims is the pixel size of an image in the media library, named by its
+// /media/ path. A library file is named for its content, so a size read once
+// holds for good; the memo is emptied past mediaDimsCap rather than evicted,
+// which bounds it without bookkeeping. Anything that is not a plain library
+// file name, or not a decodable image, has no size.
+func mediaDims(src string) (w, h int, ok bool) {
+	name, found := strings.CutPrefix(src, "/media/")
+	if !found || name == "" || unsafePathComponent(name) || strings.ContainsAny(name, "?#") {
+		return 0, 0, false
+	}
+	mediaDimsMemo.Lock()
+	d, held := mediaDimsMemo.m[name]
+	mediaDimsMemo.Unlock()
+	if held {
+		return d[0], d[1], d[0] > 0
+	}
+	f, err := os.Open(filepath.Join(config.Cfg.MediaDir, name)) //nosec G304 -- name is one path component (unsafePathComponent), joined under MediaDir
+	if err != nil {
+		return 0, 0, false
+	}
+	cfg, _, err := image.DecodeConfig(f)
+	_ = f.Close()
+	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 {
+		cfg.Width, cfg.Height = 0, 0
+	}
+	mediaDimsMemo.Lock()
+	if len(mediaDimsMemo.m) >= mediaDimsCap {
+		mediaDimsMemo.m = map[string][2]int{}
+	}
+	mediaDimsMemo.m[name] = [2]int{cfg.Width, cfg.Height}
+	mediaDimsMemo.Unlock()
+	return cfg.Width, cfg.Height, cfg.Width > 0
+}
+
+const mediaDimsCap = 4096
+
+var mediaDimsMemo = struct {
+	sync.Mutex
+	m map[string][2]int
+}{m: map[string][2]int{}}
