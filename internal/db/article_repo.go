@@ -234,21 +234,22 @@ func (r *sqliteArticleRepo) ListScoped(ctx context.Context, scope string, page, 
 	var err error
 	scoped := scope != ScopeAll
 	if tag != "" {
-		// Resolve membership through the indexed article_tags join table rather
-		// than a `tags LIKE '%..%'` scan, so tag-filtered listings stay fast at
-		// scale. CROSS JOIN pins the tag table as the driver — an always-indexed
-		// lookup, never a full articles scan even when the tag is very common.
+		// Membership, publication and domain are all on the tag row (migrations
+		// 048 and 106), so the count is an index range and the page is chosen
+		// from the index before any article is read: joined to articles first,
+		// a large tag cost one random seek per tagged post, and "python" on
+		// johal.in ran 6.1 s, past the connector relay's limit.
 		norm := strings.ToLower(strings.TrimSpace(tag))
-		where := `t.tag_norm=? AND COALESCE(a.status,'published')='published'`
+		where := `tag_norm=? AND live=1`
 		cargs := []any{norm}
 		if scoped {
-			where += ` AND a.domain_id=?`
+			where += ` AND domain_id=?`
 			cargs = append(cargs, scope)
 		}
-		r.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM article_tags t CROSS JOIN articles a ON a.id=t.article_id WHERE `+where, cargs...).Scan(&total)
+		r.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM article_tags WHERE `+where, cargs...).Scan(&total)
 		qargs := append(append([]any{}, cargs...), limit, (page-1)*limit)
 		rows, err = r.reader().QueryContext(ctx,
-			`SELECT a.id,a.title,a.slug,a.content,a.tags,a.created_at,a.updated_at,COALESCE(a.status,'published'),a.domain_id FROM article_tags t CROSS JOIN articles a ON a.id=t.article_id WHERE `+where+` ORDER BY t.created_at DESC LIMIT ? OFFSET ?`,
+			`SELECT a.id,a.title,a.slug,a.content,a.tags,a.created_at,a.updated_at,COALESCE(a.status,'published'),a.domain_id FROM (SELECT article_id, created_at FROM article_tags WHERE `+where+` ORDER BY created_at DESC LIMIT ? OFFSET ?) t CROSS JOIN articles a ON a.id=t.article_id ORDER BY t.created_at DESC`,
 			qargs...,
 		)
 	} else {

@@ -23,9 +23,9 @@ func TestRelatedArticlesAreReadByPrimaryKey(t *testing.T) {
 	}
 }
 
-// A tag page's count never reads an article row: status is stored after
-// content, and the row read walked every tagged post's body (49.5 ms for one
-// tag on 234k posts). Global and per-domain, since both are served.
+// A tag page's count is a range of one index: no article is read, not even
+// from an index, since a seek per tagged post is what cost seconds for a large
+// tag on a cold database. Global and per-domain, since both are served.
 func TestATagCountReadsOnlyTheIndex(t *testing.T) {
 	openMigratedDB(t)
 	for _, q := range []struct {
@@ -34,11 +34,11 @@ func TestATagCountReadsOnlyTheIndex(t *testing.T) {
 		args []any
 	}{
 		{"global", tagCountSQL, []any{"go"}},
-		{"one domain", tagCountSQL + ` AND a.domain_id=?`, []any{"go", "d1"}},
+		{"one domain", tagCountSQL + ` AND t.domain_id=?`, []any{"go", "d1"}},
 	} {
 		got := queryPlan(t, q.sql, q.args...)
-		if !strings.Contains(got, "SEARCH a USING COVERING INDEX idx_articles_id_status") {
-			t.Errorf("%s: the tag count reads article rows: %s", q.name, got)
+		if !strings.Contains(got, "USING COVERING INDEX idx_article_tags_") || strings.Contains(got, "articles") || strings.Contains(got, "SCAN") {
+			t.Errorf("%s: the tag count is not a range of one tag index: %s", q.name, got)
 		}
 	}
 }

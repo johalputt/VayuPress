@@ -166,7 +166,7 @@ func (a *App) tagIndexGlobal(ctx context.Context) ([]render.TagInfo, int, error)
 func (a *App) tagIndexScoped(ctx context.Context, scope string) ([]render.TagInfo, int) {
 	infos := make([]render.TagInfo, 0, 32)
 	rows, err := dbpkg.Reader().QueryContext(ctx,
-		`SELECT t.tag, COUNT(1) FROM article_tags t CROSS JOIN articles a ON a.id=t.article_id WHERE a.status='published' AND a.domain_id=? GROUP BY t.tag`,
+		`SELECT tag, COUNT(1) FROM article_tags WHERE domain_id=? AND live=1 GROUP BY tag`,
 		scope,
 	)
 	if err == nil {
@@ -192,10 +192,11 @@ func (a *App) tagIndexScoped(ctx context.Context, scope string) ([]render.TagInf
 	return infos, totalPosts
 }
 
-// tagCountSQL counts a tag's published posts. It must be answered from
-// idx_articles_id_status (migration 100): status is stored after content, so
-// reading it from the row walks the post's body, once per tagged post.
-const tagCountSQL = `SELECT COUNT(1) FROM article_tags t CROSS JOIN articles a ON a.id=t.article_id WHERE t.tag_norm=? AND a.status='published'`
+// tagCountSQL counts a tag's published posts as an index range of
+// idx_article_tags_live (migration 106). Joined to articles to read each post's
+// status, it cost one random seek per tagged post: seconds for a large tag on a
+// cold database.
+const tagCountSQL = `SELECT COUNT(1) FROM article_tags t WHERE t.tag_norm=? AND t.live=1`
 
 // handleTagPage renders a single tag's listing page (/tags/{tag}). It serves a
 // cached copy when present and regenerates on miss, mirroring handleHome. The
@@ -276,7 +277,7 @@ func (a *App) articlesByTag(ctx context.Context, tag string, max int, scope stri
 	domClause := ""
 	var domArg []any
 	if scoped {
-		domClause = " AND a.domain_id=?"
+		domClause = " AND t.domain_id=?"
 		domArg = []any{scope}
 	}
 

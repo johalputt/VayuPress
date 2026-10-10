@@ -69,6 +69,8 @@ type tagPage struct {
 	Tag                 string
 	Articles            []HomeArticle
 	TotalCount          int
+	// Thin is a page of fewer than thinTagPosts posts, kept out of search.
+	Thin bool
 }
 
 var tagIndexTmpl = template.Must(template.New("tagindex").Funcs(tagFuncs).Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
@@ -113,7 +115,8 @@ var tagIndexTmpl = template.Must(template.New("tagindex").Funcs(tagFuncs).Parse(
 var tagPageTmpl = template.Must(template.New("tagpage").Funcs(tagFuncs).Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>#{{.Tag}} — {{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}</title>
-<meta name="description" content="{{.TotalCount}} {{plural .TotalCount "post" "posts"}} tagged “{{.Tag}}” on {{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}.">
+{{if .Thin}}<meta name="robots" content="noindex,follow">
+{{end}}<meta name="description" content="{{.TotalCount}} {{plural .TotalCount "post" "posts"}} tagged “{{.Tag}}” on {{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}.">
 <meta name="generator" content="VayuPress {{.Version}}">
 <link rel="canonical" href="https://{{.Domain}}/tags/{{tagURL .Tag}}">
 <meta property="og:type" content="website"><meta property="og:title" content="#{{.Tag}} — {{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}">
@@ -180,6 +183,13 @@ func RenderTagIndex(domain, version string, tags []TagInfo, totalPosts int) (str
 	return buf.String(), err
 }
 
+// thinTagPosts is the fewest published posts a tag page needs to be offered to
+// search engines. johal.in's tags include sentence-length one-post tags whose
+// pages repeat a post that is indexed already and were among the week's most
+// visited pages, by crawlers; under this they are noindex,follow, so their
+// links still count and nothing a visitor has bookmarked breaks.
+const thinTagPosts = 3
+
 // RenderTagPage renders a single tag's listing page from the published articles
 // carrying that tag. totalCount is the number of matching posts.
 func RenderTagPage(domain, version, tag string, articles []HomeArticle, totalCount int) (string, error) {
@@ -202,6 +212,7 @@ func RenderTagPage(domain, version, tag string, articles []HomeArticle, totalCou
 		Tag:                 tag,
 		Articles:            articles,
 		TotalCount:          totalCount,
+		Thin:                totalCount < thinTagPosts,
 	})
 	return buf.String(), err
 }

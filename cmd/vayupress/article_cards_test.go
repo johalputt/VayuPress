@@ -40,8 +40,8 @@ func planOf(t *testing.T, q string, args ...any) string {
 func TestListingsChooseTheirPostsFromAnIndexAlone(t *testing.T) {
 	openMigratedDB(t)
 	for _, c := range []struct{ name, sql, index string }{
-		{"tag page", tagPageIDsSQL + ` ORDER BY t.created_at DESC LIMIT ?`, "idx_articles_id_status"},
-		{"tag page, one site", tagPageIDsSQL + ` AND a.domain_id=? ORDER BY t.created_at DESC LIMIT ?`, "idx_articles_id_status"},
+		{"tag page", tagPageIDsSQL + ` ORDER BY t.created_at DESC LIMIT ?`, "idx_article_tags_live"},
+		{"tag page, one site", tagPageIDsSQL + ` AND t.domain_id=? ORDER BY t.created_at DESC LIMIT ?`, "idx_article_tags_live"},
 		{"home feed", homeFeedIDsSQL + ` ORDER BY created_at DESC LIMIT ? OFFSET ?`, "idx_articles_feed"},
 		{"home feed, one site", homeFeedIDsSQL + ` AND domain_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?`, "idx_articles_feed_domain"},
 	} {
@@ -58,6 +58,9 @@ func TestListingsChooseTheirPostsFromAnIndexAlone(t *testing.T) {
 		p := planOf(t, c.sql, args...)
 		if !strings.Contains(p, "USING COVERING INDEX "+c.index+" ") && !strings.HasSuffix(p, "USING COVERING INDEX "+c.index) {
 			t.Errorf("%s: plan %q reads post rows, and every one of them walks its body", c.name, p)
+		}
+		if strings.HasPrefix(c.name, "tag") && strings.Contains(p, "articles") {
+			t.Errorf("%s: plan %q reads articles to choose a tag's posts", c.name, p)
 		}
 		if strings.Contains(p, "TEMP B-TREE") {
 			t.Errorf("%s: plan %q sorts in a temporary tree instead of reading the index in order", c.name, p)

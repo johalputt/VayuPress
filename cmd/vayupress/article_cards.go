@@ -22,9 +22,9 @@ import (
 	"github.com/johalputt/vayupress/internal/seo"
 )
 
-// tagPageIDsSQL chooses a tag page's posts. The join is answered from
-// idx_articles_id_status, so no article row is read.
-const tagPageIDsSQL = `SELECT t.article_id FROM article_tags t CROSS JOIN articles a ON a.id=t.article_id WHERE t.tag_norm=? AND a.status='published'`
+// tagPageIDsSQL chooses a tag page's posts from idx_article_tags_live alone, in
+// their order, for the whole install or (domain_id) one hosted site.
+const tagPageIDsSQL = `SELECT t.article_id FROM article_tags t WHERE t.tag_norm=? AND t.live=1`
 
 // homeFeedIDsSQL chooses a home feed page's posts from idx_articles_feed (or
 // idx_articles_feed_domain for a hosted site), which carry the id.
