@@ -329,7 +329,13 @@ test.describe("Halcyon", () => {
     await expect(note, "gone once the approved list carries it").toHaveCount(0);
     expect(await page.evaluate((k) => localStorage.getItem(k), `vp-pending:${slug}`)).toBeNull();
 
+    // Another member signed in on the same browser is not shown it.
     approved = false;
+    await page.evaluate(([k, v]) => localStorage.setItem(k, v), [`vp-pending:${slug}`, JSON.stringify([{ ...mine, owner: "0" }])]);
+    await page.reload();
+    await expect(page.locator(".vayu-comment-compose textarea")).toBeVisible();
+    await expect(note, "never shown to another member").toHaveCount(0);
+
     await page.evaluate(([k, v]) => localStorage.setItem(k, v), [`vp-pending:${slug}`, JSON.stringify([mine])]);
     signedIn = false;
     await page.reload();

@@ -746,14 +746,17 @@ func VideoFacadeJSLink() template.HTML {
 // Where the theme asks for it (data-own-pending, Halcyon), a member's own
 // comment waiting for moderation stays on the page for them: the comment the
 // POST returned is kept in that browser and drawn, marked, until the approved
-// list carries it. The API is unchanged and nobody else is shown it. The copy
-// goes when it is approved, after 30 days, or when no member is signed in on
-// that browser.
+// list carries it. The API is unchanged and nobody else is shown it: each
+// copy names its member by a fingerprint of their address (FNV-1a, not the
+// address; crypto.subtle is absent on a plain-HTTP .onion), and is drawn only
+// for that member. The copy goes when it is approved, after 30 days, or when
+// no member is signed in on that browser.
 const CommentsJS = `(function(){
   var root=document.getElementById('vayu-comments');if(!root)return;
   var slug=root.getAttribute('data-slug');if(!slug)return;
   var me=null,own=root.hasAttribute('data-own-pending'),PK='vp-pending:'+slug,PDAYS=30;
   function pending(){try{var a=JSON.parse(localStorage.getItem(PK)||'[]');return Array.isArray(a)?a:[];}catch(e){return [];}}
+  function owner(){var s=String((me&&me.email)||''),h=0x811c9dc5;for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,0x01000193)>>>0;}return h.toString(16);}
   function keepPending(a){try{if(a.length)localStorage.setItem(PK,JSON.stringify(a));else localStorage.removeItem(PK);}catch(e){}}
   var listEl=document.createElement('div');listEl.className='vayu-comment-list';
   function esc(t){return t==null?'':String(t);}
@@ -868,7 +871,7 @@ const CommentsJS = `(function(){
           if(res.d&&res.d.status==='approved'){label(status,'Posted','✓',true);load();}
           else{label(status,'Thanks! Awaiting moderation.','✨',true);
             if(own&&res.d&&res.d.id){var p=pending().filter(function(x){return x.id!==res.d.id;});
-              p.push({id:res.d.id,parent_id:res.d.parent_id||'',author:res.d.author,body:res.d.body,created_at:res.d.created_at,avatar:res.d.avatar||''});
+              p.push({id:res.d.id,parent_id:res.d.parent_id||'',author:res.d.author,body:res.d.body,created_at:res.d.created_at,avatar:res.d.avatar||'',owner:owner()});
               keepPending(p.slice(-5));load();}}
           if(onPosted)onPosted();}
         else if(res.status===401){me=null;status.textContent='Please sign in as a member to comment.';if(typeof window.vpPortalOpen==='function'){window.vpPortalOpen('signin');}}
@@ -935,9 +938,9 @@ const CommentsJS = `(function(){
   function render(items){
     clear(listEl);
     if(own&&me){var seen={};(items||[]).forEach(function(c){seen[c.id]=1;});
-      var mine=pending().filter(function(x){return !seen[x.id]&&Date.now()-new Date(x.created_at).getTime()<PDAYS*864e5;});
-      keepPending(mine);
-      items=(items||[]).concat(mine.map(function(x){x.pending=true;return x;}));}
+      var who=owner(),kept=pending().filter(function(x){return !seen[x.id]&&Date.now()-new Date(x.created_at).getTime()<PDAYS*864e5;});
+      keepPending(kept);
+      items=(items||[]).concat(kept.filter(function(x){return x.owner===who;}).map(function(x){x.pending=true;return x;}));}
     if(!items||!items.length){var p=document.createElement('p');p.className='vayu-comment-empty';label(p,'No comments yet. Be the first.','💬',true);listEl.appendChild(p);return;}
     var kids={};items.forEach(function(c){if(c.parent_id){(kids[c.parent_id]=kids[c.parent_id]||[]).push(c);}});
     items.forEach(function(c){
