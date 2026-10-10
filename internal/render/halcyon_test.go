@@ -481,3 +481,15 @@ func TestHalcyonLinksATagByItsKey(t *testing.T) {
 		t.Error("Halcyon links the tag Machine Learning elsewhere than /tags/machine-learning")
 	}
 }
+
+// The shared tag page's entry point carries the broad flag into Halcyon too.
+func TestABroadTagPageIsNotIndexedInHalcyon(t *testing.T) {
+	withHalcyon(t, nil)
+	page, err := RenderTagPage("example.com", "1.0.0", "tutorial", nil, 40, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page, `<meta name="robots" content="noindex,follow">`) {
+		t.Error("a broad tag page in Halcyon with 40 posts is offered to search")
+	}
+}

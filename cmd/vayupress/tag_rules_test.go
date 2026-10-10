@@ -279,3 +279,30 @@ func TestATagIsCountedUnderItsKey(t *testing.T) {
 		t.Errorf("machine-learning counted on %d posts, want 2", n)
 	}
 }
+
+// The tag page of a broad tag is served kept out of search: the handler hands
+// the rule's verdict to the page.
+func TestABroadTagPageIsServedNoindex(t *testing.T) {
+	setupRelatedTestDB(t)
+	render.Init(t.TempDir())
+	forgetTagShares(t)
+	repo := dbpkg.NewArticleRepo(dbpkg.DB)
+	ctx := context.Background()
+	at := time.Now()
+	for i := 0; i < 5; i++ {
+		slug := fmt.Sprintf("tut-%d", i)
+		if err := repo.Create(ctx, dbpkg.Article{ID: slug, Title: slug, Slug: slug, Content: "<p>x</p>", Tags: []string{"tutorial"}, Status: "published", CreatedAt: at, UpdatedAt: at}); err != nil {
+			t.Fatal(err)
+		}
+		if err := dbpkg.RunInTx(ctx, dbpkg.DB, func(tx *sql.Tx) error { return dbpkg.SyncArticleTagsByIDTx(tx, slug, at, []string{"tutorial"}) }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a := &App{siteSettings: settings.New(dbpkg.DB), articles: &api.ArticleService{Repo: repo}}
+	tagShares.Store(&tagShareCounts{posts: map[string]int{"tutorial": 90}, total: 100})
+	rec := httptest.NewRecorder()
+	a.handleTagPage(rec, routeRequest("/tags/tutorial", "tag", "tutorial"))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `<meta name="robots" content="noindex,follow">`) {
+		t.Errorf("/tags/tutorial on 90%% of the posts: %d, noindex %v", rec.Code, strings.Contains(rec.Body.String(), "noindex"))
+	}
+}
