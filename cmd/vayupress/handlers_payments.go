@@ -38,6 +38,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/members"
 	"github.com/johalputt/vayupress/internal/payments"
+	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/secrets"
 	"github.com/johalputt/vayupress/internal/settings"
 )
@@ -1039,7 +1040,7 @@ func (a *App) checkoutInstructionsPage(ctx context.Context, o *payments.Order, t
 	}); err != nil {
 		return ""
 	}
-	return buf.String()
+	return render.HalcyonMemberPage(buf.String(), render.MemberTask)
 }
 
 // checkoutShell wraps body in a minimal public HTML document that reuses the
@@ -1051,15 +1052,15 @@ func checkoutShell(title, body string) string {
 	// the title carries a reflected value (order reference, tier name, …).
 	safeTitle := html.EscapeString(title)
 	brand := html.EscapeString(config.Cfg.Domain)
-	return `<!DOCTYPE html><html lang="en"><head>
+	return render.HalcyonMemberPage(`<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>` + safeTitle + ` · ` + brand + `</title>
+<title>`+safeTitle+` · `+brand+`</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="stylesheet" href="/theme.css">
-<link rel="stylesheet" href="/static/css/signup.css?v=` + assetVer("css/signup.css") + `">
+<link rel="stylesheet" href="/static/css/signup.css?v=`+assetVer("css/signup.css")+`">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
-<body class="su-body">` + body + `
-</body></html>`
+<body class="su-body">`+body+`
+</body></html>`, render.MemberTask)
 }

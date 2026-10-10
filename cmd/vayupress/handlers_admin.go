@@ -773,6 +773,7 @@ func (a *App) injectArticleAds(ctx context.Context, nonce, htmlOut string) (stri
 		above = renderPlacement(ads.PlacementAbovePost)
 		below = renderPlacement(ads.PlacementBelowPost)
 		footer = renderPlacement(ads.PlacementFooter)
+		htmlOut = fillSidebarAds(htmlOut, renderPlacement)
 	}
 
 	// Affiliate disclosure renders above the article body, before any above-post
@@ -800,6 +801,26 @@ func (a *App) injectArticleAds(ctx context.Context, nonce, htmlOut string) (stri
 		htmlOut = strings.Replace(htmlOut, `</head>`, loader+`</head>`, 1)
 	}
 	return htmlOut, usesAdSense
+}
+
+// sidebarAdAnchor is where a page that has a side column takes the sidebar
+// placement. Only Halcyon's templates carry it (the river's side column, the
+// article rail); a page without it is returned unchanged and its sidebar slots
+// stay unrendered, as before.
+const sidebarAdAnchor = `<div class="h-rail-ads" data-ads="sidebar"></div>`
+
+// fillSidebarAds renders the sidebar placement into the page's anchor. The
+// placement is rendered only when the page has somewhere to put it, so a page
+// without a side column never loads an AdSense unit it cannot show.
+func fillSidebarAds(htmlOut string, render func(placement string) string) string {
+	if !strings.Contains(htmlOut, sidebarAdAnchor) {
+		return htmlOut
+	}
+	slots := render(ads.PlacementSidebar)
+	if slots == "" {
+		return htmlOut
+	}
+	return strings.Replace(htmlOut, sidebarAdAnchor, `<div class="h-rail-ads" data-ads="sidebar">`+slots+`</div>`, 1)
 }
 
 // injectHomeAds weaves the activation-gated header + footer ad slots into the
@@ -834,6 +855,7 @@ func (a *App) injectHomeAds(ctx context.Context, nonce, htmlOut string) (string,
 	}
 	header := renderPlacement(ads.PlacementHeader)
 	footer := renderPlacement(ads.PlacementFooter)
+	htmlOut = fillSidebarAds(htmlOut, renderPlacement)
 
 	if header != "" {
 		htmlOut = strings.Replace(htmlOut, `<main id="main-content">`, `<main id="main-content">`+header, 1)
@@ -924,25 +946,25 @@ func (a *App) renderPaywall(r *http.Request, art dbpkg.Article, level string) st
 		}
 	}
 
-	return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">` +
-		`<meta name="viewport" content="width=device-width, initial-scale=1">` +
-		`<title>` + esc(art.Title) + `</title>` +
-		`<link rel="stylesheet" href="/theme.css"><link rel="stylesheet" href="/static/css/article.css?v=` + assetVer("css/article.css") + `">` +
-		`<link rel="stylesheet" href="/static/css/signup.css?v=` + assetVer("css/signup.css") + `">` +
-		`<meta name="robots" content="noindex"></head><body><main class="pw-shell">` +
-		`<h1>` + esc(art.Title) + `</h1>` +
-		`<p class="pw-excerpt">` + esc(excerpt) + `</p>` +
-		`<div class="pw-gate">` +
-		`<p class="pw-title">` + esc(cta) + `</p>` +
-		priceBlock + perks +
-		`<p><a class="pw-join" href="` + joinHref + `">` + esc(joinLabel) + ` →</a></p>` +
-		buyBlock +
-		`<form class="pw-form" method="POST" action="/members/login">` +
-		`<input type="email" name="email" required placeholder="you@example.com">` +
-		`<button type="submit">Email me a sign-in link</button>` +
-		`</form>` +
-		`<p class="pw-hint">Already a member? Enter your email above to sign in.</p>` +
-		`</div></main></body></html>`
+	return render.HalcyonMemberPage(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">`+
+		`<meta name="viewport" content="width=device-width, initial-scale=1">`+
+		`<title>`+esc(art.Title)+`</title>`+
+		`<link rel="stylesheet" href="/theme.css"><link rel="stylesheet" href="/static/css/article.css?v=`+assetVer("css/article.css")+`">`+
+		`<link rel="stylesheet" href="/static/css/signup.css?v=`+assetVer("css/signup.css")+`">`+
+		`<meta name="robots" content="noindex"></head><body><main class="pw-shell">`+
+		`<h1>`+esc(art.Title)+`</h1>`+
+		`<p class="pw-excerpt">`+esc(excerpt)+`</p>`+
+		`<div class="pw-gate">`+
+		`<p class="pw-title">`+esc(cta)+`</p>`+
+		priceBlock+perks+
+		`<p><a class="pw-join" href="`+joinHref+`">`+esc(joinLabel)+` →</a></p>`+
+		buyBlock+
+		`<form class="pw-form" method="POST" action="/members/login">`+
+		`<input type="email" name="email" required placeholder="you@example.com">`+
+		`<button type="submit">Email me a sign-in link</button>`+
+		`</form>`+
+		`<p class="pw-hint">Already a member? Enter your email above to sign in.</p>`+
+		`</div></main></body></html>`, render.MemberTask)
 }
 
 func (a *App) handleSmokeTest(w http.ResponseWriter, r *http.Request) {

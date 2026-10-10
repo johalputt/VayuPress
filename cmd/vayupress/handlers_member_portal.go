@@ -134,7 +134,7 @@ if(vb){
 })();
 </script>
 </body></html>`
-	_, _ = w.Write([]byte(page))
+	_, _ = w.Write([]byte(render.HalcyonMemberPage(page, render.MemberTask)))
 }
 
 // =============================================================================
@@ -395,7 +395,7 @@ func (a *App) handleMemberAccount(w http.ResponseWriter, r *http.Request) {
   ` + accordions + `
 </main>` + scriptTag + `
 </body></html>`
-	_, _ = w.Write([]byte(page))
+	_, _ = w.Write([]byte(render.HalcyonMemberPage(page, render.MemberSite)))
 }
 
 // memberDetailsCard is the "Your details" form: display name plus the two
@@ -777,7 +777,7 @@ for(var k=0;k<btns.length;k++){
 })();
 </script>
 </body></html>`
-	_, _ = w.Write([]byte(page))
+	_, _ = w.Write([]byte(render.HalcyonMemberPage(page, render.MemberSite)))
 }
 
 // effectiveMonthlyCents is what a tier costs per month however it is billed, so

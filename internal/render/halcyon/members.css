@@ -1,0 +1,164 @@
+/* Halcyon — the member pages: sign-in, sign-up, the account, plans and
+   pricing, the paywall, checkout and the author's page.
+
+   They keep their markup and signup.css, which lays every component out
+   (the 2FA grid, receipts, the plan comparison, the account accordions);
+   this sheet, loaded after it and after halcyon.css, gives them Halcyon's
+   voice. signup.css was drawn for a dark page and carries its own colours, so
+   every colour, gradient and glow it sets is restated here from Halcyon's
+   tokens, and both schemes read. Every other theme keeps signup.css alone,
+   exactly as it is. */
+
+.h body.su-body { display: flex; flex-direction: column; background: var(--h-canvas); color: var(--h-t1); font: 400 15px/1.5 var(--h-sans); }
+.h .su-body {
+  --su-bg: var(--h-canvas); --su-surface: var(--h-surface); --su-surface-2: var(--h-surface);
+  --su-border: var(--h-line-2); --su-text: var(--h-t1); --su-muted: var(--h-t3);
+  --su-accent: var(--h-accent); --su-accent-2: var(--h-accent);
+  --su-ok: var(--h-accent); --su-err: var(--h-error);
+  --su-font: var(--h-sans);
+}
+
+/* The focused header: the name and one way back, nothing else. */
+.h .h-focus { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; max-width: 1200px; height: 68px; margin: 0 auto; padding: 0 var(--h-gutter); }
+.h .h-back { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font: 400 14px/1 var(--h-sans); color: var(--h-t2); }
+.h .h-back:hover { color: var(--h-t1); }
+
+/* Task pages: one column, the heading in the reading serif. */
+.h .su-shell, .h .pw-shell { flex: 1 0 auto; justify-content: center; max-width: 460px; padding: 32px var(--h-gutter) 72px; gap: 24px; margin: 0 auto; }
+.h .su-card, .h .su-compare-card { padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.h .su-brand { display: none; }
+.h .su-title, .h .ma-title, .h .pr-head h1, .h .pw-title { font: 400 44px/1.08 var(--h-serif); letter-spacing: -0.02em; color: var(--h-t1); }
+.h .su-sub, .h .ma-subtitle, .h .pr-head p { margin-top: 12px; font: 400 19px/1.55 var(--h-serif); color: var(--h-t2); }
+.h .su-label, .h .ma-field label, .h .ma-field > span { font: 500 12px/1 var(--h-sans); color: var(--h-t3); margin-bottom: 8px; }
+.h .su-form { gap: 12px; margin-top: 28px; }
+
+/* Fields: 44 px, fully rounded, the label above; focus is a ring. */
+.h .su-input, .h .ma-input, .h .ma-field input[type=text], .h .pw-form input {
+  height: 44px; padding: 0 20px; border: 0; border-radius: 22px; background: var(--h-surface);
+  box-shadow: inset 0 0 0 1px var(--h-line-2); color: var(--h-t1); font: 400 15px/1 var(--h-sans);
+}
+.h .su-input:focus, .h .ma-input:focus, .h .ma-field input[type=text]:focus, .h .pw-form input:focus {
+  outline: none; border: 0; box-shadow: inset 0 0 0 1.5px var(--h-accent), 0 0 0 4px var(--h-mark);
+}
+.h .su-input[aria-invalid="true"], .h .su-input:user-invalid { box-shadow: inset 0 0 0 1.5px var(--h-error-line); }
+.h .ma-claim-row .ma-input { border-radius: 22px 0 0 22px; }
+.h .ma-claim-at { border: 0; border-radius: 0 22px 22px 0; background: var(--h-sunken); color: var(--h-t3); }
+
+/* One primary action (ink), one secondary (outline), text actions. Busy is the
+   button saying what it is doing, which the pages already write. */
+.h .su-btn, .h .ma-cta-primary, .h .pr-cta--primary, .h .pw-join, .h .ma-plan-badge--paid, .h .ma-col-tag--paid {
+  background: var(--h-ink); color: var(--h-on-ink); border: 0; filter: none;
+}
+.h .su-btn, .h .ma-cta-primary, .h .ma-cta-danger, .h .pr-cta, .h .pw-join, .h .pw-form button, .h .ma-signout, .h .su-btn--ghost {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px;
+  border-radius: 22px; font: 500 14px/1 var(--h-sans); box-shadow: none; transform: none; text-decoration: none;
+}
+.h .su-btn:hover, .h .ma-cta-primary:hover, .h .pr-cta--primary:hover, .h .pw-join:hover { filter: none; opacity: 0.88; }
+.h .su-btn:disabled { opacity: 0.7; filter: none; cursor: progress; }
+.h .su-btn--ghost, .h .pr-cta, .h .ma-signout, .h .pw-form button { background: transparent; color: var(--h-t1); border: 0; box-shadow: inset 0 0 0 1px var(--h-line-2); }
+.h .pr-cta.pr-cta--primary { background: var(--h-ink); color: var(--h-on-ink); box-shadow: none; }
+.h .pr-cta.pr-cta--primary:hover { background: var(--h-ink); opacity: 0.88; }
+.h .su-btn--ghost:hover, .h .pr-cta:hover, .h .ma-signout:hover, .h .pw-form button:hover { background: var(--h-hover); }
+.h .ma-cta-danger { background: transparent; color: var(--h-error); box-shadow: inset 0 0 0 1px var(--h-error-line); border: 0; }
+.h .ma-cta-danger:hover { background: var(--h-hover); }
+.h .su-link, .h .au-foot a { color: var(--h-accent); font-weight: 500; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.18em; }
+
+/* Notices: words under the form, the state marked by a hairline, not a wash. */
+.h .su-notice { margin: 20px 0 0; padding: 16px 18px; border: 0; border-radius: 14px; background: var(--h-surface); box-shadow: inset 0 0 0 1px var(--h-line); color: var(--h-t1); font: 400 16px/1.5 var(--h-serif); }
+.h .su-notice--ok { box-shadow: inset 3px 0 0 var(--h-accent), inset 0 0 0 1px var(--h-line); }
+.h .su-notice--err { color: var(--h-error); box-shadow: inset 3px 0 0 var(--h-error-line), inset 0 0 0 1px var(--h-line); }
+
+/* Lists: an en dash, never a tick or a glowing dot. */
+.h .su-perks { margin-top: 28px; padding-top: 0; border: 0; gap: 12px; }
+.h .su-perks li { display: grid; grid-template-columns: 22px 1fr; font: 400 16px/1.45 var(--h-serif); color: var(--h-t2); }
+.h .su-perks li::before { content: "–"; color: var(--h-t4); }
+.h .su-perk-dot { display: none; }
+.h .pr-benefits li::before, .h .ma-benefits li::before, .h .pw-perks li::before { content: "–"; color: var(--h-t4); font-weight: 400; }
+.h .pr-benefits li, .h .ma-benefits li, .h .pw-perks li { font: 400 16px/1.45 var(--h-serif); color: var(--h-t2); }
+.h .su-foot { margin-top: 24px; font: 400 15px/1.6 var(--h-serif); color: var(--h-t2); }
+/* In the narrow sign-up column the comparison reads down, not across. */
+.h .su-compare-card .ma-compare { grid-template-columns: minmax(0, 1fr); }
+.h .su-legal { text-align: center; font: 400 12px/1.5 var(--h-sans); color: var(--h-t3); opacity: 1; }
+.h .su-or { font: italic 400 15px/1 var(--h-serif); color: var(--h-t3); }
+.h .su-or::before, .h .su-or::after { background: var(--h-line); }
+.h .su-alt { border: 0; border-radius: 14px; background: none; box-shadow: inset 0 0 0 1px var(--h-line-2); padding: 0 18px; }
+.h .su-alt summary { min-height: 52px; display: flex; align-items: center; font: 400 15px/1.3 var(--h-sans); }
+.h .su-compare-h { font: italic 400 22px/1.2 var(--h-serif); color: var(--h-t2); }
+
+/* Cards become sections divided by hairlines; nothing glows. */
+.h .ma-shell { flex: 1 0 auto; max-width: 720px; padding: 56px var(--h-gutter) 96px; }
+.h .ma-head { margin-bottom: 32px; }
+.h .ma-card, .h .ma-card--plan, .h .ma-card--claim, .h .ma-card--perk, .h .pr-card, .h .pw-gate, .h .au-card {
+  background: none; border: 0; border-top: 1px solid var(--h-line-2); border-radius: 0; box-shadow: none; padding: 24px 0;
+}
+.h .ma-card h2, .h .ma-plan-h { font: 500 22px/1.3 var(--h-serif); color: var(--h-t1); }
+.h .ma-subhead { font: 500 12px/1.2 var(--h-sans); text-transform: none; letter-spacing: 0.01em; color: var(--h-t3); }
+.h .ma-row { border-color: var(--h-line); padding: 14px 0; font: 400 16px/1.4 var(--h-serif); }
+.h .ma-row span:first-child { font: 400 13px/1.4 var(--h-sans); color: var(--h-t3); }
+.h .ma-plan-col, .h .ma-plan-col--paid, .h .ma-plan-col--current { background: none; border: 0; border-radius: 0; box-shadow: inset 0 1px 0 var(--h-line-2); padding: 16px 0; }
+.h .ma-plan-col--current .ma-plan-col-h::after { content: "Your plan"; font: italic 400 14px/1 var(--h-serif); color: var(--h-accent); }
+.h .ma-plan-col-h { font: 500 18px/1.3 var(--h-serif); }
+.h .ma-col-tag, .h .ma-plan-badge, .h .ma-badge { border: 0; border-radius: 12px; background: var(--h-sunken); color: var(--h-t2); font: 500 12px/1 var(--h-sans); text-transform: none; letter-spacing: 0; padding: 6px 10px; }
+.h .ma-badge--ok { color: var(--h-accent); }
+.h .ma-badge--warn { color: var(--h-error); }
+.h .ma-plan-price { color: var(--h-t3); }
+.h .ma-hint, .h .ma-claim-terms, .h .ma-2fa-manual { font: 400 14px/1.5 var(--h-sans); color: var(--h-t3); }
+.h .ma-mailid, .h .ma-2fa-key { background: var(--h-sunken); border: 0; color: var(--h-t1); font-family: var(--h-mono); }
+.h .ma-2fa-enroll, .h .ma-upgrade { border-color: var(--h-line); }
+.h .ma-acc, .h .ma-acc[open] { background: none; border: 0; border-top: 1px solid var(--h-line); border-radius: 0; box-shadow: none; }
+.h .ma-acc__sum { min-height: 64px; }
+.h .ma-acc__title { font: 500 18px/1.3 var(--h-serif); }
+.h .ma-acc__sub { font: 400 13px/1.4 var(--h-sans); color: var(--h-t3); }
+.h .ma-acc__ic { background: var(--h-sunken); color: var(--h-t2); box-shadow: none; }
+.h .ma-bill-row { border-color: var(--h-line); }
+.h .ma-bill-row dt { color: var(--h-t3); font: 400 13px/1.4 var(--h-sans); }
+.h .ma-bill-row dd { font: 400 16px/1.4 var(--h-serif); }
+.h .ma-rcpt { border-color: var(--h-line); background: none; }
+
+/* Plans and pricing. */
+.h .pr-shell { flex: 1 0 auto; max-width: 1040px; padding: 56px var(--h-gutter) 96px; }
+.h .pr-head { text-align: left; margin-bottom: 32px; }
+.h .pr-grid { gap: 0 40px; }
+.h .pr-card--featured, .h .pr-card--current { border-top: 2px solid var(--h-accent); box-shadow: none; }
+.h .pr-card:hover { transform: none; box-shadow: none; }
+.h .pr-name { font: 500 24px/1.2 var(--h-serif); }
+.h .pr-desc, .h .pr-per, .h .pr-yearly, .h .pr-foot, .h .pr-empty, .h .pw-hint, .h .pw-price span { font-family: var(--h-sans); color: var(--h-t3); }
+.h .pr-amount { font: 400 44px/1 var(--h-serif); letter-spacing: -0.02em; }
+.h .pr-here { color: var(--h-accent); font: italic 400 14px/1 var(--h-serif); background: none; }
+.h .pr-toggle { background: var(--h-sunken); border: 0; border-radius: 22px; padding: 3px; margin-left: 0; }
+.h .pr-toggle-btn { min-height: 36px; border-radius: 18px; color: var(--h-t3); background: none; border: 0; font: 500 13px/1 var(--h-sans); }
+.h .pr-toggle-btn[aria-pressed="true"], .h .pr-toggle-btn.is-on { background: var(--h-raised); color: var(--h-t1); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
+
+/* The paywall: the excerpt reads as the start of the post, then the offer. */
+.h .pw-shell { max-width: var(--h-measure); justify-content: flex-start; }
+.h .pw-shell > h1 { font: 500 46px/1.12 var(--h-serif); letter-spacing: -0.018em; text-wrap: balance; overflow-wrap: anywhere; }
+.h .pw-excerpt { opacity: 1; font: 400 var(--h-rs)/1.7 var(--h-face); color: var(--h-read); -webkit-mask-image: linear-gradient(#000 40%, transparent); mask-image: linear-gradient(#000 40%, transparent); }
+.h .pw-gate { text-align: left; }
+.h .pw-title { font-size: 32px; }
+.h .pw-perks { margin-left: 0; }
+.h .pw-form { justify-content: flex-start; }
+
+/* The author's page. */
+.h .au-wrap { flex: 1 0 auto; max-width: 760px; padding: 56px var(--h-gutter) 96px; }
+.h .au-hero { border-color: var(--h-line-2); }
+.h .au-avatar, .h .au-avatar--placeholder { border: 0; background: var(--h-sunken); color: var(--h-t2); font: 500 28px/1 var(--h-serif); }
+.h .au-page .au-name { font: 400 44px/1.1 var(--h-serif); letter-spacing: -0.018em; }
+.h .au-role, .h .au-posts-label { font: 400 16px/1.2 var(--h-serif); font-variant-caps: all-small-caps; letter-spacing: 0.08em; text-transform: none; color: var(--h-t3); }
+.h .au-page .au-bio { font: italic 400 19px/1.5 var(--h-serif); color: var(--h-t2); }
+.h .au-social { border: 0; box-shadow: inset 0 0 0 1px var(--h-line-2); min-height: 36px; display: inline-flex; align-items: center; color: var(--h-t2); }
+.h .au-post { border-color: var(--h-line); padding: 18px 0; }
+.h .au-post:hover { padding-left: 0; }
+.h .au-post-date { font: 400 13px/1.4 var(--h-sans); color: var(--h-t3); }
+.h .au-post-title { font: 400 21px/1.3 var(--h-serif); color: var(--h-t1); }
+.h .au-post-excerpt { font: 400 16px/1.55 var(--h-serif); color: var(--h-t2); }
+.h .vayu-theme-toggle.au-theme-toggle { display: none; }
+
+.h .co-instructions, .h .co-reference code { background: var(--h-sunken); border-color: var(--h-line-2); font-family: var(--h-mono); color: var(--h-t1); }
+
+@media (max-width: 600px) {
+  .h .h-focus { height: 58px; }
+  .h .su-title, .h .ma-title, .h .pr-head h1, .h .au-page .au-name { font-size: 36px; }
+  .h .su-shell { justify-content: flex-start; }
+}
+.h .pr-save { background: none; color: var(--h-accent); text-transform: none; letter-spacing: 0; font: italic 400 14px/1 var(--h-serif); padding: 0 0 0 4px; }
+.h .au-page .au-foot { display: none; }

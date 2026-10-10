@@ -112,5 +112,5 @@ if(f){f.addEventListener('submit',function(){var b=f.querySelector('.su-btn');if
 
 	// The global middleware already sets a strict CSP carrying this request's
 	// nonce, so the inline bootstrap script above is permitted.
-	_, _ = w.Write([]byte(page))
+	_, _ = w.Write([]byte(render.HalcyonMemberPage(page, render.MemberTask)))
 }

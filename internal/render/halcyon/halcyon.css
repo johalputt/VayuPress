@@ -473,17 +473,19 @@
 .h .vayu-search-all .vayu-search-result-title { font: italic 400 17px/1.35 var(--h-serif); color: var(--h-accent); }
 
 /* ── Advertising: labelled, held to the column, space kept ────────────── */
-.h .vp-ads { display: grid; gap: 16px; justify-items: center; max-width: var(--h-measure); margin: 40px auto; padding: 12px 0 16px; border-top: 1px solid var(--h-line); border-bottom: 1px solid var(--h-line); }
+.h .vp-ads { display: grid; gap: 16px; justify-items: center; width: calc(100% - 2 * var(--h-gutter)); max-width: var(--h-measure); margin: 40px auto; padding: 12px 0 16px; border-top: 1px solid var(--h-line); border-bottom: 1px solid var(--h-line); }
 .h .vp-ads::before { content: "Advertisement"; justify-self: start; font: 400 14px/1 var(--h-serif); font-variant-caps: all-small-caps; letter-spacing: 0.08em; color: var(--h-t3); }
 .h main > .vp-ads:first-child { margin-top: 24px; }
-.h .h-body > .vp-ads { margin: 0 0 40px; }
+.h .h-body > .vp-ads { width: 100%; margin: 0 0 40px; }
+.h .h-wrap .vp-ads { width: 100%; }
 .h .vp-ad-slot { width: 100%; max-width: 100%; overflow: hidden; display: grid; justify-items: center; }
 .h .vp-ad__link { display: block; max-width: 100%; }
 .h .vp-ad__img { display: block; max-width: 100%; height: auto; border-radius: 6px; }
 .h .vp-ad__html { width: 100%; max-width: 100%; overflow-wrap: anywhere; font: 400 16px/1.55 var(--h-serif); color: var(--h-t2); }
+.h .vp-ad__html a { color: var(--h-accent); text-decoration: underline; text-underline-offset: 0.18em; }
 .h .vp-ad__html img { height: auto; }
 .h .vp-ad__adsense { width: 100%; min-height: 250px; }
-.h .h-rail-ads .vp-ads { max-width: 100%; margin: 0; }
+.h .h-rail-ads .vp-ads { width: 100%; max-width: 100%; margin: 0; }
 .h .h-rail-ads .vp-ad__adsense { min-height: 250px; }
 .h .vp-affiliate-disclosure { max-width: var(--h-measure); margin: 0 0 32px; padding: 14px 18px; border-radius: 12px; background: var(--h-surface); box-shadow: inset 0 0 0 1px var(--h-line); font: italic 400 15px/1.5 var(--h-serif); color: var(--h-t2); }
 
@@ -498,7 +500,11 @@
   .h .h-post > *, .h .h-post--margin > * { grid-column: 1 !important; grid-row: auto !important; width: 100%; max-width: var(--h-measure); justify-self: center; }
   .h .h-post > .h-cover { max-width: 1040px; }
   .h .h-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 32px; }
-  .h .h-post > .h-rail { display: none; }
+  /* Below the rail's width the outline goes (the dock carries it) and the
+     rail's advertising follows the post rather than being hidden: an ad unit
+     that is served and never shown breaks the ad networks' rules. */
+  .h .h-post > .h-rail { order: 5; position: static; padding-top: 0; }
+  .h .h-post > .h-rail .h-outline { display: none; }
   .h .h-foot-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .h .h-month { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .h .h-month h2 { position: static; }
