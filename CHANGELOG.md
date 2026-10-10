@@ -11,10 +11,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ### Fixed
 
 - **A saved search or a label opens with its results already there.** Mail
-  opened from the sidebar's Searches or Labels used to run the search after
-  the page arrived, and on a slow machine that request could overlap the
-  page's own transition and leave the results half drawn and unclickable.
-  The page now runs the search as it is drawn.
+  opened from the sidebar's Searches or Labels used to show the inbox, then
+  run the search from the page and swap the results in. The page now runs
+  the search as it is drawn, with no second request.
 - **Saving a template keeps its "Saved" note and its new row.** The list
   read as the Templates menu opens could answer after a save made straight
   after, and painted then it took both away again.

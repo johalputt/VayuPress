@@ -21,6 +21,19 @@ module.exports = defineConfig({
     trace: "on-first-retry",
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    {
+      name: "chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        // The console crossfades a same-origin navigation (@view-transition,
+        // ADR-0136). Driven by Playwright 1.61, Chromium 149 never paints the
+        // page that navigation opens: no animation frame runs, so every click
+        // there waits for "stable" until the test times out. Without
+        // automation the same Chrome paints it at once, so the crossfade stays
+        // in the product and only the test browser goes without it. Links that
+        // swap in place (HTMX) keep their transitions here.
+        launchOptions: { args: ["--disable-features=ViewTransitionOnNavigation"] },
+      },
+    },
   ],
 });

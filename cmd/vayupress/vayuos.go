@@ -1995,10 +1995,9 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	view := mailViewParam(r)
 	pageLimit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
 	// A saved search or a label in the sidebar opens Mail with ?search=, run
-	// across all mail and drawn with the page. Run instead by the script on
-	// load, its request and swap overlapped the page's own arrival
-	// (@view-transition): on CI's runner the page then stopped painting
-	// with the results half faded in, and nothing on it could be clicked.
+	// across all mail and drawn with the page: run by the script after load,
+	// it cost a second request and showed the inbox before the results
+	// replaced it.
 	search := strings.TrimSpace(r.URL.Query().Get("search"))
 	list, facts := a.vayuInboxBody(rd, folder, view, pageLimit, search)
 	side := a.mailSide(r, rd, folder, view, facts.Counts)
