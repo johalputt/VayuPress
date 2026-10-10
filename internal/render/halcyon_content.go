@@ -101,6 +101,13 @@ func halcyonTreat(sanitised string, smallCaps bool) halcyonBody {
 			break
 		}
 		tok := z.Token()
+		// The page's title is its one <h1>. A post's own <h1> (imported posts
+		// often open with one, a near copy of the title) is set as a section
+		// heading, so the page keeps one top-level heading and the outline
+		// lists it.
+		if tok.DataAtom == atom.H1 && (tt == html.StartTagToken || tt == html.EndTagToken) {
+			tok.DataAtom, tok.Data = atom.H2, "h2"
+		}
 		switch tt {
 		case html.StartTagToken, html.SelfClosingTagToken:
 			if tt == html.StartTagToken && capsSkip[tok.DataAtom] {

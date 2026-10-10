@@ -1,0 +1,50 @@
+<blockquote><p>Service workers promise web apps that keep working when networks don&rsquo;t &mdash; and deliver, provided you navigate the sharp edges: caching strategies that must match content type, update flows that respect users without trapping them on stale versions, storage quotas that evict data when least convenient, and failure modes that only appear offline where debugging is hardest. The gap between a demo service worker and a production one is mostly these disciplines. This guide covers the architecture patterns (precache plus runtime cache), strategy selection per resource class, versioned update choreography, quota management, and the testing loop that makes offline behavior verifiable instead of aspirational.</p></blockquote>
+
+<h2 id="architecture">The two-cache architecture</h2>
+
+<table class="vp-table">
+<thead><tr><th>Cache tier</th><th>Contents</th><th>Managed how</th><th>Failure mode if neglected</th></tr></thead>
+<tbody>
+<tr><td>Precache</td><td>App shell: HTML, core CSS/JS, icons</td><td>Build-time manifest, versioned</td><td>Stale shells serving forever</td></tr>
+<tr><td>Runtime cache</td><td>Content fetched as users browse</td><td>Strategy per request class</td><td>Unbounded growth ÃÃÃÂ¢ eviction chaos</td></tr>
+</tbody>
+</table>
+
+<pre><code>// install: precache the versioned app shell
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open('shell-v42')
+      .then(cache => cache.addAll(['/offline.html', '/app.css', '/app.v42.js']))
+      .then(() => self.skipWaiting())   // opt into immediate activation
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(
+        keys.filter(k => k.startsWith('shell-') && k !== 'shell-v42')
+            .map(k => caches.delete(k))          // old versions die here
+      )
+    ).then(() => self.clients.claim())
+  );
+});</code></pre>
+
+<p>The separation matters because the tiers have different correctness requirements: the shell must be exactly consistent with its version (a mismatched JS/CSS pair is the classic broken-hybrid bug), while cached content tolerates staleness gracefully. Version-named caches plus activate-time cleanup give atomicity &mdash; old generations vanish whole or not at all, never half-updated.</p>
+
+<h2 id="strategies">Strategy selection per request class</h2>
+
+<ul>
+<li><strong>App shell:</strong> served from precache instantly; updates arrive via the version flow below.</li>
+<li><strong>Content GETs:</strong> stale-while-revalidate &mdash; cached copy answers immediately, network refresh updates in background. Fast AND eventually fresh.</li>
+<li><strong>Critical-freshness data:</strong> network-first with cache fallback for offline reads &mdash; stale beats blank when the network is gone.</li>
+<li><strong>Mutations and auth:</strong> never cached, ever. POST/PUT/PATCH pass straight through; tokens stay out of CacheStorage entirely.</li>
+<li><strong>Navigation requests:</strong> network-first with an offline fallback page &mdash; the graceful-degradation floor every PWA deserves.</li>
+</ul>
+
+<h2 id="related">Related reading</h2>
+<ul>
+<li><a href="https://johal.in/http-caching-headers-definitive-guide">HTTP Caching Headers Guide</a> &mdash; the layer beneath service workers.</li>
+<li><a href="https://johal.in/idempotency-keys-payments-safe-pattern">Idempotency Keys</a> &mdash; making queued-offline replays safe.</li>
+<li>Platform home: <a href="https://vayupress.com">vayupress.com</a> / <a href="https://github.com/johalputt/VayuPress">GitHub</a>.</li>
+</ul>

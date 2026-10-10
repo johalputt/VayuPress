@@ -12,6 +12,15 @@ const FIX = path.join(__dirname, "..", "..", "internal", "render", "testdata", "
 const POSTS = {
   "halcyon-wide": { title: "GitComet 0.2.5 vs GitKraken vs Sourcetree vs lazygit 0.65.1: The Git Client Field Test, Refreshed", file: "gitcomet-wide-content.html", tags: ["git", "tools"] },
   "halcyon-long": { title: "Technical Debt Without the Drowning: Classify, Price, Service, Prevent", file: "technical-debt-visible-paydown-guide.html", tags: ["engineering-culture", "architecture"] },
+  // johal.in's own, as stored: an imported post with its own <style> (two
+  // third-party @imports, rules for every element), its own <h1>, a
+  // full-width wrapper and its own JSON-LD; its style rules and middle
+  // sections are shortened, every kind of construct kept.
+  "halcyon-legacy": { title: "Cilium and Istio 1.20: The Performance Battle observability for Security", file: "legacy-own-style.html", tags: ["cilium", "istio", "performance", "observability", "tutorial"] },
+  // johal.in's longest title, with its post's opening sections, and a topic
+  // as long as a topic may be (tag rules: 40 characters).
+  "halcyon-title": { title: "Service Worker Offline Patterns That Hold Up in Production: Caching Strategies, Update Choreography, and Quota Discipline", file: "long-title-opening.html", tags: ["web", "pwa", "offline first progressive web app design"] },
+  "halcyon-edges": { title: "Edge shapes", file: "edge-shapes.html", tags: ["e2e"] },
 };
 
 test.beforeAll(async ({ request }) => {
@@ -70,6 +79,49 @@ test.describe("Halcyon", () => {
         }
       });
     }
+  }
+
+  // An imported post's own stylesheet is not the page's: nothing of it is
+  // shown or fetched, and the post still reads.
+  test("an imported post's own style is neither shown nor fetched", async ({ page }) => {
+    const asked = [];
+    page.on("request", (r) => asked.push(new URL(r.url()).host));
+    await page.goto("/halcyon-legacy");
+    await expect(page.locator(".h-post h1")).toHaveText(POSTS["halcyon-legacy"].title);
+    const text = await page.locator(".h .content").innerText();
+    for (const leak of ["@import", "FORCE CENTERING", "magazine-article", "schema.org"]) expect(text, leak).not.toContain(leak);
+    expect(asked.filter((h) => /googleapis|cdnjs/.test(h))).toEqual([]);
+    await expect(page.locator(".h .content")).toContainText("Cilium leads in raw performance");
+  });
+
+  // A topic as long as a topic may be still sits on a phone.
+  test("a topic page with the longest name fits a phone", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 900 });
+    await page.goto("/tags/offline-first-progressive-web-app-design");
+    await expect(page.locator("h1")).toHaveText("offline first progressive web app design");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+  });
+
+  // An image that does not arrive is left out with its caption, not shown as
+  // a hole; one that does stays. Both ways it can fail: before the script
+  // runs (found by decode()), and after (its error event), the second by
+  // holding the missing image's answer back until the page has settled.
+  for (const late of [false, true]) {
+    test(`an image that does not arrive is left out, with its caption${late ? ", failing late" : ""}`, async ({ page }) => {
+      if (late) {
+        await page.route("**/media/does-not-exist-e2e.png", async (route) => {
+          await new Promise((r) => setTimeout(r, 1500));
+          await route.fulfill({ status: 404, body: "" });
+        });
+      }
+      // A plain goto waits for every image, the held one included.
+      await page.goto("/halcyon-edges", { waitUntil: late ? "domcontentloaded" : "load" });
+      const figs = page.locator(".h .content figure");
+      if (late) await expect(figs.nth(1)).toBeVisible();
+      await expect(figs.nth(1)).toBeHidden();
+      await expect(figs.nth(0)).toBeVisible();
+      await expect(page.getByText("A caption for an image that will not arrive.")).toBeHidden();
+    });
   }
 
   test("every cell of the wide table is still there on a phone, labelled", async ({ page }) => {

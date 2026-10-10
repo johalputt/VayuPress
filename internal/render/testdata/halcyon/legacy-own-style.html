@@ -1,0 +1,155 @@
+<figure><img src="https://pixabay.com/get/g07c4d4087c68d9ea5d202061185fdc207ec6e2c515f245fd97971ee11f980a3a151a641a8ad63c35cbcf640dc3c9a093338d7d71431cd20bfa5a8eee750acbb6_1280.jpg" alt=""></figure>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=Raleway:wght@300;400;600;700&family=Source+Code+Pro:wght@400;600&display=swap');
+@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css');
+
+/* ===== FORCE CENTERING ON ALL THEMES ===== */
+.magazine-article {
+  display: block !important;
+  max-width: 900px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  padding: 4rem 3rem;
+  background: #fff;
+  box-shadow: 0 5px 50px rgba(0,0,0,0.05);
+  border-radius: 8px;
+  font-family: 'Raleway', sans-serif;
+  line-height: 1.8;
+  color: #2c3e50;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  width: 100%;
+}
+
+h1 {
+  font-family: 'Playfair Display', serif;
+  font-size: 4.2rem;
+  font-weight: 800;
+  margin-bottom: 2.5rem;
+  color: #1a1a2e;
+  line-height: 1.2;
+  text-align: center;
+  position: relative;
+  padding-bottom: 3rem;
+  letter-spacing: -0.5px;
+}
+
+h1::after {
+  content: '';
+  position: absolute;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 180px;
+  height: 6px;
+  background: linear-gradient(90deg, #ff7e5f, #feb47b);
+  border-radius: 3px;
+}
+
+h2 {
+  font-family: 'Playfair Display', serif;
+  font-size: 3.2rem;
+  font-weight: 700;
+  margin-top: 4rem;
+  margin-bottom: 2rem;
+  color: #1a1a2e;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid #f0f5f9;
+}
+
+h3 {
+  font-size: 2.6rem;
+  font-weight: 700;
+  margin-top: 3.5rem;
+  margin-bottom: 1.8rem;
+  color: #16213e;
+  position: relative;
+  padding-left: 2rem;
+}
+
+h3::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.8rem;
+  height: 2.5rem;
+  width: 8px;
+  background: linear-gradient(to bottom, #43cea2, #185a9d);
+  border-radius: 4px;
+}
+
+h4 { font-size: 2.2rem; font-weight: 600; margin-top: 2.5rem; margin-bottom: 1.5rem; color: #2c3e50; }
+h5 { font-size: 2.0rem; font-weight: 600; margin-top: 2rem; margin-bottom: 1rem; color: #34495e; }
+p { font-size: 2.0rem; margin-bottom: 2.2rem; text-align: justify; font-weight: 400; color: #2c3e50; }
+ul, ol { font-size: 2.0rem; margin-bottom: 2rem; padding-left: 2.5rem; color: #2c3e50; }
+li { margin-bottom: 0.8rem; }
+strong { font-weight: 700; color: #16213e; }
+em { font-style: italic; }
+blockquote {
+  border-left: 5px solid #43cea2;
+  margin: 3rem 0;
+  padding: 2rem 2.5rem;
+  background: #f8f9fa;
+  border-radius: 0 8px 8px 0;
+  font-style: italic;
+  font-size: 2.1rem;
+  color: #495057;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 3rem 0;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.05);
+  font-size: 1.8rem;
+}
+th { background: #43cea2; color: white; padding: 1.5rem; text-align: left; font-weight: 600; }
+td { padding: 1.5rem; border-bottom: 1px solid #f0f5f9; }
+tr:nth-child(even) { background: #f8f9fa; }
+tr:last-child td { border-bottom: none; }
+.lead {
+  font-size: 2.4rem;
+  font-weight: 300;
+  color: #6c757d;
+  margin-bottom: 4rem;
+  font-style: italic;
+  text-align: center;
+  line-height: 1.6;
+  position: relative;
+  padding: 3rem;
+}
+.lead::before, .lead::after { content: '"'; font-size: 5rem; color: #e0e0e0; position: absolute; font-family: serif; }
+.lead::before { left: 0; top: -1.5rem; }
+.lead::after  { right: 0; bottom: -3rem; }
+
+@media (max-width: 768px) {
+  .magazine-article { padding: 2.5rem 1.8rem !important; max-width: 95% !important; margin-left: auto !important; margin-right: auto !important; }
+  h1 { font-size: 3.2rem !important; padding-bottom: 2.5rem !important; }
+  h1::after { width: 120px !important; height: 5px !important; }
+  h2 { font-size: 2.6rem !important; margin-top: 3.5rem !important; }
+  h3 { font-size: 2.2rem !important; margin-top: 3rem !important; padding-left: 1.5rem !important; }
+  h3::before { height: 2.0rem !important; width: 6px !important; }
+  h4 { font-size: 2.0rem !important; }
+  h5 { font-size: 1.8rem !important; }
+  p, li { font-size: 1.9rem !important; text-align: left !important; }
+  .lead { font-size: 2.1rem !important; padding: 0 1rem !important; }
+  .lead::before, .lead::after { font-size: 4rem !important; }
+}
+@media (max-width: 480px) {
+  .magazine-article { padding: 2rem 1.5rem !important; max-width: 100% !important; border-radius: 0 !important; margin-left: 0 !important; margin-right: 0 !important; }
+  h1 { font-size: 2.8rem !important; padding-bottom: 2rem !important; }
+  h2 { font-size: 2.2rem !important; }
+  h3 { font-size: 2.0rem !important; margin-top: 2.5rem !important; padding-left: 1.2rem !important; }
+  h4 { font-size: 1.9rem !important; }
+  h5 { font-size: 1.7rem !important; }
+  p, li { font-size: 1.8rem !important; }
+  .lead { font-size: 1.9rem !important; padding: 0 !important; }
+}
+</style>
+<div class="magazine-article">
+<article><h1>Cilium vs Istio 1.20: The Performance Battle for Security Observability</h1><p>Cloud-native security teams face a critical balancing act: delivering deep observability into network traffic and runtime behavior without sacrificing application performance. Two tools dominate this space: Cilium, the eBPF-powered networking and security platform, and Istio 1.20, the latest stable release of the popular service mesh. This article compares their performance, observability, and security capabilities to help you choose the right fit for your stack.</p><h2>Background: Cilium and Istio 1.20</h2><p>Cilium is built on eBPF (extended Berkeley Packet Filter), a Linux kernel technology that allows running sandboxed programs in kernel space without modifying kernel source code or loading kernel modules. It provides networking, security, and observability for Kubernetes clusters, with native integration for L3-L7 network policies, service discovery, and runtime security via its Tetragon extension.</p><h2>Performance Benchmarking</h2><p>Performance is a key differentiator between the two tools, driven by their underlying architectures:</p><ul><li><strong>Cilium</strong>: eBPF programs run directly in the Linux kernel, avoiding context switches between kernel and userspace. Benchmarks show Cilium delivers 30% lower p99 latency for HTTP/2 workloads and 25% higher maximum throughput than Istio’s sidecar mode. It also uses 40% less CPU and 35% less memory per pod for networking and security overhead.</li><li><strong>Istio 1.20</strong>: Traditional sidecar mode adds per-pod Envoy proxy overhead, but Istio 1.20 reduced Envoy’s memory footprint by 15% and improved connection handling latency by 10% over Istio 1.19. The experimental ambient mesh mode removes sidecars entirely, narrowing the performance gap with Cilium: ambient mode achieves 90% of Cilium’s throughput and 1.2x Cilium’s p99 latency for most workloads.</li></ul><h2>Conclusion</h2><p>Cilium leads in raw performance and deep observability, thanks to its eBPF-based kernel integration. Istio 1.20 offers a more complete service mesh feature set, with improving performance in ambient mode and best-in-class service traffic security. For many teams, the two tools are complementary: Cilium can handle cluster-level networking and security, while Istio manages service mesh traffic. But for teams choosing one tool, the decision comes down to whether performance or full service mesh capabilities are the higher priority.</p></article>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Cilium and Istio 1.20: The Performance Battle observability for Security","url":"https://johal.in/cilium-istio-120-performance-battle-observability-security","datePublished":"2026-05-07T00:16:07.803Z","dateModified":"2026-05-07T00:16:07.803Z","author":{"@type":"Organization","name":"johal.in"},"description":"Compare Cilium and Istio 1.20 for performance, observability, and security. Learn which wins the battle for secure, observable cloud-native networking.","publisher":{"@type":"Organization","name":"johal.in","logo":{"@type":"ImageObject","url":"https://johal.in/logo.png"}}}</script>
+</div>

@@ -646,3 +646,37 @@ func TestAMemberPageKeepsConfigValuesInTheirAttributes(t *testing.T) {
 		t.Error("the face is not written, escaped, into its attribute")
 	}
 }
+
+// A post's own <h1> becomes a section heading: the page keeps one <h1>, its
+// title, and the outline lists the post's.
+func TestAPostsOwnH1IsASectionHeading(t *testing.T) {
+	b := halcyonTreat(`<h1>Cilium vs Istio</h1><p>x</p><h2>Background</h2>`, false)
+	if strings.Contains(string(b.Body), "<h1") {
+		t.Errorf("a post's <h1> is still an <h1>: %s", b.Body)
+	}
+	if !strings.Contains(string(b.Body), `<h2 id="cilium-vs-istio">Cilium vs Istio</h2>`) {
+		t.Errorf("a post's <h1> is not a section heading with its anchor: %s", b.Body)
+	}
+	if len(b.Outline) != 2 || b.Outline[0].Text != "Cilium vs Istio" {
+		t.Errorf("the outline does not list the post's own heading: %+v", b.Outline)
+	}
+}
+
+// A post's cover sits above its text, at the cover's own width, inside the
+// figure halcyon.js leaves out when the image does not arrive.
+func TestACoverSitsAboveTheText(t *testing.T) {
+	withHalcyon(t, nil)
+	art := db.Article{ID: "1", Title: "T", Slug: "t", Content: "<p>Body.</p>", CreatedAt: fixedTime, UpdatedAt: fixedTime}
+	out, err := RenderArticleWithMeta(art, ArticleLayoutDefault, nil, ArticleMetaOverrides{FeatureImage: "/media/cover.png"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cover := strings.Index(out, `<figure class="h-cover"><img src="https://`)
+	body := strings.Index(out, `<div class="content"`)
+	if cover < 0 || body < 0 || cover > body {
+		t.Errorf("the cover is not a figure above the text (cover at %d, text at %d)", cover, body)
+	}
+	if without, _ := RenderArticleWithMeta(art, ArticleLayoutDefault, nil, ArticleMetaOverrides{}); strings.Contains(without, "h-cover") {
+		t.Error("a post without a cover draws an empty cover")
+	}
+}
