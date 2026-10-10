@@ -381,42 +381,8 @@ func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
 		a.handleNotFound(w, r)
 		return
 	}
-	offset := (page - 1) * homeFeedPageSize
-
-	listArgs := append(append([]any{}, domArgs...), homeFeedPageSize, offset)
-	var ids []string
-	if rows, err := dbpkg.Reader().Query(homeFeedIDsSQL+domClause+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...); err == nil {
-		for rows.Next() {
-			var id string
-			if rows.Scan(&id) == nil {
-				ids = append(ids, id)
-			}
-		}
-		_ = rows.Err()
-		_ = rows.Close()
-	}
-	articles := listingCards(r.Context(), ids)
-	author := render.GetActiveSettings().Author
-	for i := range articles {
-		articles[i].Author = author
-	}
-
-	// Per-domain branding: a secondary domain with its own brand renders from its
-	// branded settings; the primary and single-domain installs take the original
-	// call, byte-identical.
-	s, branded := a.brandForRequest(r)
-	if !branded {
-		s = render.GetActiveSettings()
-	}
-	in := render.HomeInput{Settings: s, Domain: config.Cfg.Domain, Version: Version, Articles: articles,
-		Total: total, Page: page, TotalPages: totalPages}
-	if _, on := render.Halcyon(); on {
-		key, scope, scoped, count := a.halcyonScope(r)
-		in.Topics, in.TopicTotal = a.halcyonTopics(key, count)
-		if page == 1 {
-			in.Desks = a.halcyonDesks(r.Context(), in.Topics, in.TopicTotal, scope, scoped)
-		}
-	}
+	_, halcyon := render.Halcyon()
+	in := a.homeInput(r, page, total, totalPages, domClause, domArgs, halcyon)
 	html, err := render.RenderHomePage(in)
 	if err != nil {
 		http.Error(w, "render error", 500)
@@ -654,26 +620,11 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 	} else {
 		related = a.relatedArticles(r.Context(), art.Slug, art.Tags, 4)
 	}
-	pm := loadPostMeta(r.Context(), art.Slug)
 	// Per-domain branding: the ownership gate above guarantees this article is
 	// served only on its owning domain, so branded settings (when that owner is a
 	// secondary domain with a brand) apply cleanly; the primary and single-domain
 	// installs take the original call, byte-identical.
-	ov := render.ArticleMetaOverrides{
-		Excerpt:            pm.Excerpt,
-		FeatureImage:       pm.FeatureImage,
-		MetaTitle:          pm.MetaTitle,
-		MetaDescription:    pm.MetaDescription,
-		CanonicalURL:       pm.CanonicalURL,
-		OGTitle:            pm.OGTitle,
-		OGDescription:      pm.OGDescription,
-		OGImage:            pm.OGImage,
-		TwitterTitle:       pm.TwitterTitle,
-		TwitterDescription: pm.TwitterDescription,
-		TwitterImage:       pm.TwitterImage,
-		Featured:           pm.Featured,
-		IsPage:             pm.IsPage,
-	}
+	ov := postOverrides(r.Context(), art.Slug)
 	var htmlOut string
 	var err error
 	if s, ok := a.brandForRequest(r); ok {
@@ -2089,4 +2040,70 @@ func relatedByTag(ctx context.Context, norms []string, currentSlug string, perTa
 		}
 	}
 	return out
+}
+
+// homeInput reads one page of the home feed and everything it is rendered
+// from: the page's cards, the site (or the request's branded domain), and,
+// when withHalcyon, the topic counts and front-page desks Halcyon shows. The
+// home handler and Theme Studio's preview both read it here, so the preview is
+// the page a reader would get.
+func (a *App) homeInput(r *http.Request, page, total, totalPages int, domClause string, domArgs []any, withHalcyon bool) render.HomeInput {
+	offset := (page - 1) * homeFeedPageSize
+
+	listArgs := append(append([]any{}, domArgs...), homeFeedPageSize, offset)
+	var ids []string
+	if rows, err := dbpkg.Reader().Query(homeFeedIDsSQL+domClause+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...); err == nil {
+		for rows.Next() {
+			var id string
+			if rows.Scan(&id) == nil {
+				ids = append(ids, id)
+			}
+		}
+		_ = rows.Err()
+		_ = rows.Close()
+	}
+	articles := listingCards(r.Context(), ids)
+	author := render.GetActiveSettings().Author
+	for i := range articles {
+		articles[i].Author = author
+	}
+
+	// Per-domain branding: a secondary domain with its own brand renders from its
+	// branded settings; the primary and single-domain installs take the original
+	// call, byte-identical.
+	s, branded := a.brandForRequest(r)
+	if !branded {
+		s = render.GetActiveSettings()
+	}
+	in := render.HomeInput{Settings: s, Domain: config.Cfg.Domain, Version: Version, Articles: articles,
+		Total: total, Page: page, TotalPages: totalPages}
+	if withHalcyon {
+		key, scope, scoped, count := a.halcyonScope(r)
+		in.Topics, in.TopicTotal = a.halcyonTopics(key, count)
+		if page == 1 {
+			in.Desks = a.halcyonDesks(r.Context(), in.Topics, in.TopicTotal, scope, scoped)
+		}
+	}
+	return in
+}
+
+// postOverrides reads a post's publishing options (its own excerpt, image,
+// titles and share text) as the renderer takes them.
+func postOverrides(ctx context.Context, slug string) render.ArticleMetaOverrides {
+	pm := loadPostMeta(ctx, slug)
+	return render.ArticleMetaOverrides{
+		Excerpt:            pm.Excerpt,
+		FeatureImage:       pm.FeatureImage,
+		MetaTitle:          pm.MetaTitle,
+		MetaDescription:    pm.MetaDescription,
+		CanonicalURL:       pm.CanonicalURL,
+		OGTitle:            pm.OGTitle,
+		OGDescription:      pm.OGDescription,
+		OGImage:            pm.OGImage,
+		TwitterTitle:       pm.TwitterTitle,
+		TwitterDescription: pm.TwitterDescription,
+		TwitterImage:       pm.TwitterImage,
+		Featured:           pm.Featured,
+		IsPage:             pm.IsPage,
+	}
 }

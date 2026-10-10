@@ -47,7 +47,12 @@ func (a *App) handleMemberSigninPage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Robots-Tag", "index, follow")
+	_, _ = w.Write([]byte(render.HalcyonMemberPage(a.memberSigninPage(r), render.MemberTask)))
+}
 
+// memberSigninPage builds the sign-in page as every theme but Halcyon shows
+// it; Theme Studio's preview dresses the same page in the options being edited.
+func (a *App) memberSigninPage(r *http.Request) string {
 	brand := html.EscapeString(config.Cfg.Domain)
 	nonce := render.CSPNonce(r)
 	notice := ""
@@ -134,7 +139,7 @@ if(vb){
 })();
 </script>
 </body></html>`
-	_, _ = w.Write([]byte(render.HalcyonMemberPage(page, render.MemberTask)))
+	return page
 }
 
 // =============================================================================

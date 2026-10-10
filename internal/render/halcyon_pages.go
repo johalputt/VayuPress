@@ -585,3 +585,63 @@ func halcyonScripts(trending bool) template.HTML {
 	}
 	return template.HTML(b.String()) //nolint:gosec // G203: script tags built by this package
 }
+
+// ── Theme Studio's preview ────────────────────────────────────────────────────
+
+// HalcyonPreview is the real site data Theme Studio previews a page with.
+type HalcyonPreview struct {
+	Home      HomeInput
+	Topic     TopicInput
+	Article   *db.Article
+	Related   []RelatedArticle
+	Overrides ArticleMetaOverrides
+	Query     string
+	Hits      []SearchHit
+	SignIn    string // the sign-in page as cmd builds it
+}
+
+// RenderHalcyonPreview renders one page of the site in Halcyon with the
+// options being edited (cfg) rather than the saved ones, so the Studio shows
+// the real page each setting changes. page is home, topic, article, search or
+// signin.
+//
+// cssHref is the stylesheet being edited, which takes the place of the live
+// /theme.css. The reader's saved preferences are not applied (the preview
+// shows the site's defaults as they are being set) and the analytics beacon
+// is left out, so a preview is never counted as a reader's visit.
+func RenderHalcyonPreview(page string, cfg theme.HalcyonConfig, p HalcyonPreview, cssHref string) (string, error) {
+	out, err := renderHalcyonPreviewPage(page, cfg, p)
+	if err != nil {
+		return "", err
+	}
+	out = strings.Replace(out, `<link rel="stylesheet" href="/theme.css">`,
+		`<link id="vayu-theme-css" rel="stylesheet" href="`+template.HTMLEscapeString(cssHref)+`">`, 1)
+	out = strings.Replace(out, `<script>`+halcyonPrefsJS+`</script>`, ``, 1)
+	out = strings.Replace(out, `class="h"`, `class="h js"`, 1)
+	out = strings.Replace(out, `<script defer src="/static/vp-analytics.js"></script>`, ``, 1)
+	return out, nil
+}
+
+func renderHalcyonPreviewPage(page string, cfg theme.HalcyonConfig, p HalcyonPreview) (string, error) {
+	switch page {
+	case "topic":
+		return renderHalcyonTopic(p.Topic, cfg)
+	case "article":
+		if p.Article == nil {
+			return renderHalcyonHome(p.Home, cfg)
+		}
+		a := *p.Article
+		_, hasContactForm := ParseContactForm(a.Content)
+		if hasContactForm {
+			a.Content = contactFormRe.ReplaceAllString(a.Content, "")
+		}
+		a.Content = renderContentHTML(a.Content)
+		s := getActiveSettings()
+		return renderHalcyonArticle(s, buildArticlePage(s, a, ArticleLayoutDefault, p.Related, p.Overrides, hasContactForm), cfg)
+	case "search":
+		return renderHalcyonSearch(p.Query, p.Hits, cfg)
+	case "signin":
+		return halcyonMemberPage(p.SignIn, MemberTask, cfg), nil
+	}
+	return renderHalcyonHome(p.Home, cfg)
+}

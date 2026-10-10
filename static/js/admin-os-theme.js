@@ -44,7 +44,17 @@
   // changing the operator's OS setting.
   var previewScheme = 'dark';
   var lastDraftID = '';
-  function schemeQS() { return previewScheme === 'light' ? '&scheme=light' : ''; }
+  // A theme that brings its own layout (Halcyon) is previewed as the real page
+  // rendered with the options being edited, so the Studio also chooses which
+  // page, and reloads it on every change instead of swapping a stylesheet.
+  var loadedLayout = '';
+  var previewPage = 'home';
+  var pageBtns = Array.prototype.slice.call(document.querySelectorAll('[data-theme-page]'));
+  var pageSwitch = document.querySelector('[data-theme-pages]');
+  function ownLayout() { return loadedLayout === 'halcyon'; }
+  function schemeQS() {
+    return (previewScheme === 'light' ? '&scheme=light' : '&scheme=dark') + (ownLayout() ? '&page=' + previewPage : '');
+  }
 
   // Token + option controls.
   var inputs = {};
@@ -93,12 +103,15 @@
       else el.value = v;
     });
     activePresetName = tok.Name || '';
+    loadedLayout = tok.layout || '';
+    if (pageSwitch) pageSwitch.hidden = !ownLayout();
     loadedCustomCSS = tok.custom_css || tok.CustomCSS || '';
     options = {};
     var saved = (tok && (tok.options || tok.Options)) || {};
     Object.keys(optInputs).forEach(function (key) {
       var el = optInputs[key];
-      el.value = saved[key] != null ? String(saved[key]) : (el.options[0] ? el.options[0].value : '');
+      var def = el.querySelector('option[data-default]') || el.options[0];
+      el.value = saved[key] != null ? String(saved[key]) : (def ? def.value : '');
       options[key] = el.value;
     });
     if (activeNameEl) activeNameEl.textContent = activePresetName ? 'Current theme: ' + activePresetName : 'Current theme';
@@ -113,21 +126,36 @@
     });
   }
 
-  // Show only the per-theme extra options that apply to the active theme.
+  // Show only the options that apply to the active theme: its per-theme
+  // extras, and the shared ones unless the theme brings its own layout (which
+  // the shared options, written for the shared page, would not change).
   function updateOptionVisibility() {
     Object.keys(optInputs).forEach(function (key) {
       var el = optInputs[key];
-      var row = el.closest('[data-opt-theme]');
+      var row = el.closest('[data-opt-theme],[data-opt-shared]');
       if (!row) return;
-      var themes = (row.getAttribute('data-opt-theme') || '').split(',');
-      var show = themes.indexOf(activePresetName) !== -1;
+      var show;
+      if (row.hasAttribute('data-opt-shared')) show = !ownLayout();
+      else show = (row.getAttribute('data-opt-theme') || '').split(',').indexOf(activePresetName) !== -1;
       row.hidden = !show;
-      if (!show && el.options.length && el.value !== el.options[0].value) {
-        el.value = el.options[0].value;
+      var dflt = el.querySelector('option[data-default]') || el.options[0];
+      if (!show && dflt && el.value !== dflt.value) {
+        el.value = dflt.value;
         options[key] = el.value;
       }
     });
+    // A section whose every option is hidden (Halcyon's for another theme, the
+    // shared Layout section for Halcyon) goes with them, so no heading stands
+    // over nothing.
+    root.querySelectorAll('.sa-insp').forEach(function (sec) {
+      var rows = sec.querySelectorAll('[data-opt-theme],[data-opt-shared]');
+      if (!rows.length || sec.querySelector('[data-token]:not([data-token-opt]), [data-font-pair], input[type="checkbox"], input[type="file"], textarea')) return;
+      var any = false;
+      rows.forEach(function (row) { if (!row.hidden) any = true; });
+      sec.hidden = !any;
+    });
   }
+
 
   // ── Preview payload (mirrors Apply) ────────────────────────────────────────
   function buildTokens() {
@@ -138,6 +166,7 @@
     var css = loadedCustomCSS || '';
     if (cssArea && cssArea.value) css = (css ? css + '\n' : '') + cssArea.value;
     if (css) t.custom_css = css;
+    if (loadedLayout) t.layout = loadedLayout;
     t.options = options;
     return t;
   }
@@ -177,10 +206,10 @@
 
     // Fallback mode (or first load): reload the iframe with the draft page —
     // always works, even if cross-frame messaging is blocked.
-    if (useReload || !framePointed) {
+    if (useReload || !framePointed || ownLayout()) {
       framePointed = true;
       if (frame) frame.src = pageURL;
-      if (!useReload) startReadyTimer(); // first load: detect a dead handshake
+      if (!useReload && !ownLayout()) startReadyTimer(); // first load: detect a dead handshake
       return;
     }
     // Hot-swap path: ask the iframe to swap its stylesheet (no flicker, keeps
@@ -211,7 +240,7 @@
       useReload = true;
       if (frame) frame.src = pageURL;
       showLoading(false);
-      setPreviewStatus('Live preview');
+      setPreviewStatus(fitNote || 'Live preview');
     }, 900);
   }
 
@@ -223,7 +252,7 @@
       previewReady = true;
       clearTimeout(readyTimer);
       showLoading(false);
-      setPreviewStatus('Live preview');
+      setPreviewStatus(fitNote || 'Live preview');
       if (pending && frame && frame.contentWindow) {
         var p = pending; pending = null;
         frame.contentWindow.postMessage({ type: 'vayu-preview-css', href: p.cssHref }, location.origin);
@@ -232,21 +261,66 @@
     } else if (d.type === 'vayu-preview-ack') {
       clearTimeout(ackTimer);
       showLoading(false);
-      setPreviewStatus('Live preview');
+      setPreviewStatus(fitNote || 'Live preview');
     }
   });
   if (frame) {
-    frame.addEventListener('load', function () { showLoading(false); });
+    frame.addEventListener('load', function () {
+      showLoading(false);
+      // A page rendered for the options (no stylesheet handshake) is live once it loads.
+      if (ownLayout()) setPreviewStatus(fitNote || 'Live preview');
+    });
   }
+
+  // ── Desktop at its true width ───────────────────────────────────────────────
+  // The preview pane is narrower than a desktop, and a page drawn at the pane's
+  // width shows its tablet layout. So Desktop is drawn at 1440 px and scaled to
+  // fit, and the status line says so; Tablet and Phone are drawn at their true
+  // widths unscaled.
+  var DESKTOP = 1440, fitNote = '';
+  function fitFrame() {
+    if (!frame || !viewport) return;
+    var wrap = frame.parentNode;
+    var desktop = viewport.getAttribute('data-device') === 'desktop';
+    var w = wrap.clientWidth;
+    if (desktop && w > 0 && w < DESKTOP) {
+      var k = w / DESKTOP;
+      frame.style.width = DESKTOP + 'px';
+      frame.style.height = (wrap.clientHeight / k) + 'px';
+      frame.style.transform = 'scale(' + k + ')';
+      frame.style.transformOrigin = '0 0';
+      fitNote = 'Desktop at 1440 px, shown at ' + Math.round(k * 100) + '%';
+    } else {
+      frame.style.width = frame.style.height = frame.style.transform = frame.style.transformOrigin = '';
+      fitNote = '';
+    }
+    setPreviewStatus(fitNote || 'Live preview');
+  }
+  window.addEventListener('resize', fitFrame);
 
   // ── Device toggle ────────────────────────────────────────────────────────────
   deviceBtns.forEach(function (btn) {
     btn.addEventListener('click', function () {
       var dev = btn.getAttribute('data-theme-device') || 'desktop';
       if (viewport) viewport.setAttribute('data-device', dev);
+      // After the pane's width transition (200 ms) has settled.
+      setTimeout(fitFrame, 240);
       deviceBtns.forEach(function (b) {
         b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
       });
+    });
+  });
+
+  // ── Which page the preview shows (themes with their own layout) ──────────────
+  pageBtns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      previewPage = btn.getAttribute('data-theme-page') || 'home';
+      pageBtns.forEach(function (b) { b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'); });
+      if (!lastDraftID || !frame) return;
+      var pageURL = '/os/theme/preview?draft=' + encodeURIComponent(lastDraftID) + schemeQS();
+      if (newTabLink) newTabLink.setAttribute('href', pageURL);
+      showLoading(true);
+      frame.src = pageURL;
     });
   });
 
@@ -712,6 +786,7 @@
     .then(function () {
       if (!applyLoadParam()) { highlightActiveCard(activePresetName); setStatus('Ready'); }
       baseline = snapshot(); countDiff(); // seed the changes pill from saved state
+      fitFrame();
       schedulePreview(); // first preview load
       offerDraft();
     })

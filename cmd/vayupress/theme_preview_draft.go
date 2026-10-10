@@ -39,6 +39,10 @@ const (
 
 type previewDraftEntry struct {
 	css string
+	// tok is the theme the CSS was compiled from. A theme that brings its own
+	// layout (Halcyon) previews by rendering its pages, which needs the
+	// options, not just the stylesheet.
+	tok theme.Tokens
 	exp time.Time
 }
 
@@ -57,7 +61,7 @@ func previewDraftID() string {
 // previewDraftPut stores compiled CSS and returns its id. Expired entries are
 // reaped first; if the store is still at capacity, entries are dropped to make
 // room (drafts are disposable, so eviction order is unimportant).
-func previewDraftPut(css string) string {
+func previewDraftPut(css string, tok theme.Tokens) string {
 	id := previewDraftID()
 	now := time.Now()
 	previewDraftMu.Lock()
@@ -73,23 +77,30 @@ func previewDraftPut(css string) string {
 			break
 		}
 	}
-	previewDraftStore[id] = previewDraftEntry{css: css, exp: now.Add(previewDraftTTL)}
+	previewDraftStore[id] = previewDraftEntry{css: css, tok: tok, exp: now.Add(previewDraftTTL)}
 	return id
 }
 
 // previewDraftGet returns the CSS for an id if it exists and hasn't expired.
 func previewDraftGet(id string) (string, bool) {
+	d, ok := previewDraft(id)
+	return d.css, ok
+}
+
+// previewDraft returns the whole draft for an id if it exists and hasn't
+// expired.
+func previewDraft(id string) (previewDraftEntry, bool) {
 	previewDraftMu.Lock()
 	defer previewDraftMu.Unlock()
 	d, ok := previewDraftStore[id]
 	if !ok {
-		return "", false
+		return previewDraftEntry{}, false
 	}
 	if time.Now().After(d.exp) {
 		delete(previewDraftStore, id)
-		return "", false
+		return previewDraftEntry{}, false
 	}
-	return d.css, true
+	return d, true
 }
 
 // handleOSThemePreviewDraft compiles the operator's in-progress theme (the same
@@ -124,7 +135,7 @@ func (a *App) handleOSThemePreviewDraft(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	id := previewDraftPut(css)
+	id := previewDraftPut(css, t)
 	writeJSON(w, r, http.StatusOK, map[string]string{
 		"id":       id,
 		"css_href": "/os/theme/preview.css?draft=" + id,

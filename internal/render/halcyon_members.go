@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/johalputt/vayupress/internal/theme"
 )
 
 // halcyon_members.go — the member pages under Halcyon.
@@ -54,6 +56,10 @@ func HalcyonMemberPage(page string, kind MemberPage) string {
 	if !ok {
 		return page
 	}
+	return halcyonMemberPage(page, kind, cfg)
+}
+
+func halcyonMemberPage(page string, kind MemberPage, cfg theme.HalcyonConfig) string {
 	c := halcyonChrome(getActiveSettings(), cfg, "member")
 	open := `<html lang="en" class="h" data-face="` + cfg.Face + `" data-size="` + strconv.Itoa(cfg.TextSize) +
 		`" data-site-face="` + cfg.Face + `" data-site-size="` + strconv.Itoa(cfg.TextSize) + `" data-appearance="` + cfg.Appearance + `"`

@@ -282,15 +282,19 @@ func (a *App) handleOSThemePreview(w http.ResponseWriter, r *http.Request) {
 	// Determine the stylesheet to apply: a live Studio draft (by id) or a named
 	// preset (the Store preview), optionally carrying customization options.
 	var cssHref, title string
+	var tok theme.Tokens
 	if draft := r.URL.Query().Get("draft"); draft != "" {
-		if _, ok := previewDraftGet(draft); !ok {
+		d, ok := previewDraft(draft)
+		if !ok {
 			http.Error(w, "preview expired", http.StatusNotFound)
 			return
 		}
+		tok = d.tok
 		cssHref = "/os/theme/preview.css?draft=" + url.QueryEscape(draft)
 		title = "Live preview"
 	} else {
-		tok, ok := findPreset(r.URL.Query().Get("preset"))
+		var ok bool
+		tok, ok = findPreset(r.URL.Query().Get("preset"))
 		if !ok {
 			http.Error(w, "unknown preset", http.StatusNotFound)
 			return
@@ -304,6 +308,13 @@ func (a *App) handleOSThemePreview(w http.ResponseWriter, r *http.Request) {
 		}
 		cssHref = "/os/theme/preview.css?" + q.Encode()
 		title = tok.Name
+		if opts := previewOptionsFromQuery(r); len(opts) > 0 {
+			tok.Options = opts
+		}
+	}
+	if tok.Layout == theme.LayoutHalcyon {
+		a.writeHalcyonPreview(w, r, tok, cssHref)
+		return
 	}
 
 	// The preview iframe hot-swaps its stylesheet on a same-origin postMessage.

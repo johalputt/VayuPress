@@ -2400,7 +2400,28 @@ func RenderArticleWithMetaSettings(s SiteSettings, a db.Article, layout ArticleL
 	}
 	a.Content = renderContentHTML(a.Content)
 	start := time.Now()
-	var buf strings.Builder
+	data := buildArticlePage(s, a, layout, related, ov, hasContactForm)
+	var out string
+	var err error
+	if cfg, ok := Halcyon(); ok {
+		out, err = renderHalcyonArticle(s, data, cfg)
+	} else {
+		var buf strings.Builder
+		err = articleTmpl.Execute(&buf, data)
+		out = buf.String()
+	}
+	if err != nil {
+		return "", fmt.Errorf("template: %w", err)
+	}
+	metrics.RenderLatency.Record(time.Since(start))
+	return out, nil
+}
+
+// buildArticlePage resolves everything a post's page shows from the post (its
+// body already rendered), the site, its related posts and its publishing
+// options. Both the shared template and Halcyon render from it, so the two
+// describe a post identically to search engines and readers' tools.
+func buildArticlePage(s SiteSettings, a db.Article, layout ArticleLayoutType, related []RelatedArticle, ov ArticleMetaOverrides, hasContactForm bool) articlePage {
 	seoMeta := seo.Compute(a.Title, a.Slug, a.Content, a.CreatedAt, a.UpdatedAt, config.Cfg.Domain, s.Name)
 	domain := config.Cfg.Domain
 
@@ -2484,19 +2505,7 @@ func RenderArticleWithMetaSettings(s SiteSettings, a db.Article, layout ArticleL
 	if data.AuthorSlug == "" && AuthorInfoFn != nil && data.Author != "" {
 		data.AuthorSlug, data.AuthorAvatar = AuthorInfoFn(data.Author)
 	}
-	if cfg, ok := Halcyon(); ok {
-		out, err := renderHalcyonArticle(s, data, cfg)
-		if err != nil {
-			return "", fmt.Errorf("template: %w", err)
-		}
-		metrics.RenderLatency.Record(time.Since(start))
-		return out, nil
-	}
-	if err := articleTmpl.Execute(&buf, data); err != nil {
-		return "", fmt.Errorf("template: %w", err)
-	}
-	metrics.RenderLatency.Record(time.Since(start))
-	return buf.String(), nil
+	return data
 }
 
 // DetectLayout selects the layout for an article based on admin query param or content tags.

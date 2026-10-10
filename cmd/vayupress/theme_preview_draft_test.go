@@ -12,7 +12,7 @@ import (
 // TestPreviewDraftRoundTrip proves a stored draft can be fetched by id and that
 // unknown ids are reported missing.
 func TestPreviewDraftRoundTrip(t *testing.T) {
-	id := previewDraftPut("body{color:red}")
+	id := previewDraftPut("body{color:red}", theme.Tokens{})
 	if id == "" {
 		t.Fatal("expected a draft id")
 	}
@@ -29,7 +29,7 @@ func TestPreviewDraftRoundTrip(t *testing.T) {
 // customizer session can't leak memory.
 func TestPreviewDraftCap(t *testing.T) {
 	for i := 0; i < previewDraftMax+50; i++ {
-		previewDraftPut("x")
+		previewDraftPut("x", theme.Tokens{})
 	}
 	previewDraftMu.Lock()
 	n := len(previewDraftStore)
@@ -78,7 +78,7 @@ func TestPreviewDraftCompilesFullDesign(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile Apex: %v", err)
 	}
-	id := previewDraftPut(css)
+	id := previewDraftPut(css, theme.Tokens{})
 	got, ok := previewDraftGet(id)
 	if !ok {
 		t.Fatal("draft not stored")

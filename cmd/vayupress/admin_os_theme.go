@@ -199,13 +199,21 @@ func textRow(field, label, placeholder string) string {
 func optionSelectRow(o theme.Option, themesCSV string) string {
 	opts := ""
 	for _, c := range o.Choices {
-		opts += `<option value="` + html.EscapeString(c.Value) + `">` + html.EscapeString(c.Label) + `</option>`
+		// The default is marked: it is not always the first choice (text size
+		// runs 17 to 23 and defaults to 20), and the Studio falls back to it.
+		def := ""
+		if c.Value == o.Default {
+			def = ` data-default`
+		}
+		opts += `<option value="` + html.EscapeString(c.Value) + `"` + def + `>` + html.EscapeString(c.Label) + `</option>`
 	}
 	hint := ""
 	if o.Help != "" {
 		hint = `<span class="theme-field__hint">` + html.EscapeString(o.Help) + `</span>`
 	}
-	attr := ""
+	// A shared option is marked so the Studio can hide it for a theme that
+	// brings its own layout, which the shared options would not change.
+	attr := ` data-opt-shared`
 	if themesCSV != "" {
 		attr = ` data-opt-theme="` + html.EscapeString(themesCSV) + `" hidden`
 	}
@@ -411,7 +419,12 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 		`<details class="sa-insp sa-insp--more"><summary class="sa-insp__head">Every colour, dark</summary><div class="theme-fields">` + darkRows + `</div></details>` +
 		`<details class="sa-insp sa-insp--more"><summary class="sa-insp__head">Every colour, light</summary><div class="theme-fields">` + lightRows + `</div></details>`
 
-	layout := sec("Layout", `<div class="theme-fields theme-fields--text">`+optionRowsByKeys("archetype", "width", "corners", "feedlayout", "cardimage", "headeralign", "navstyle", "cardstyle", "density", "columnrules", "pagefade")+`</div>`) +
+	var halcyonRows strings.Builder
+	for _, o := range theme.HalcyonOptions() {
+		halcyonRows.WriteString(optionSelectRow(o, theme.Halcyon().Name))
+	}
+	layout := sec("Halcyon", `<div class="theme-fields theme-fields--text">`+halcyonRows.String()+`</div>`) +
+		sec("Layout", `<div class="theme-fields theme-fields--text">`+optionRowsByKeys("archetype", "width", "corners", "feedlayout", "cardimage", "headeralign", "navstyle", "cardstyle", "density", "columnrules", "pagefade")+`</div>`) +
 		sec("Hero", `<label class="sa-insp__check"><input type="checkbox" class="toggle" role="switch" id="home-hero"`+heroChecked+`> A hero on the home page</label>
         <span class="sa-insp__hint" id="home-hero-status" role="status" aria-live="polite"></span>
         <div class="cz-logo">
@@ -476,6 +489,13 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     <button type="button" class="sa-seg__opt" data-theme-device="desktop" aria-pressed="true">Desktop</button>
     <button type="button" class="sa-seg__opt" data-theme-device="tablet" aria-pressed="false">Tablet</button>
     <button type="button" class="sa-seg__opt" data-theme-device="mobile" aria-pressed="false">Phone</button>
+  </div>
+  <div class="sa-seg" role="group" aria-label="Preview page" data-theme-pages hidden>
+    <button type="button" class="sa-seg__opt" data-theme-page="home" aria-pressed="true">Home</button>
+    <button type="button" class="sa-seg__opt" data-theme-page="topic" aria-pressed="false">Topic</button>
+    <button type="button" class="sa-seg__opt" data-theme-page="article" aria-pressed="false">Article</button>
+    <button type="button" class="sa-seg__opt" data-theme-page="search" aria-pressed="false">Search</button>
+    <button type="button" class="sa-seg__opt" data-theme-page="signin" aria-pressed="false">Sign in</button>
   </div>
   <div class="sa-seg" role="group" aria-label="Preview colour scheme">
     <button type="button" class="sa-seg__opt" data-theme-scheme="dark" aria-pressed="true">Dark</button>
