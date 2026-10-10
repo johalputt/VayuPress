@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -94,7 +95,9 @@ func TestTheStoredTagsAreCleanedOnce(t *testing.T) {
 		_ = rows.Scan(&id, &tags)
 		originals[id] = tags
 	}
-	_ = rows.Close()
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		t.Fatal(err)
+	}
 	if len(originals) != 2 || originals["p1"] != strings.Join(sent, ",") || originals["p2"] != "Go Lang" {
 		t.Errorf("originals kept = %v; want p1's and p2's as they were, and no other", originals)
 	}
