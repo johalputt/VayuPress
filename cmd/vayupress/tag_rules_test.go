@@ -306,3 +306,22 @@ func TestABroadTagPageIsServedNoindex(t *testing.T) {
 		t.Errorf("/tags/tutorial on 90%% of the posts: %d, noindex %v", rec.Code, strings.Contains(rec.Body.String(), "noindex"))
 	}
 }
+
+// A hosted site's topic index lists each tag once, by key, as the whole
+// install's does.
+func TestASitesTopicIndexIsByKey(t *testing.T) {
+	setupRelatedTestDB(t)
+	at := time.Now()
+	for _, p := range []struct{ id, tag, norm string }{{"s1", "Machine Learning", "machine learning"}, {"s2", "machine-learning", "machine-learning"}} {
+		if _, err := dbpkg.DB.Exec(`INSERT INTO articles(id,title,slug,content,tags,status,domain_id,created_at,updated_at) VALUES(?,?,?,?,?,'published','b.example',?,?)`, p.id, p.id, p.id, "<p>x</p>", p.tag, at, at); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := dbpkg.DB.Exec(`INSERT INTO article_tags(article_id, tag, tag_norm, created_at) VALUES(?,?,?,?)`, p.id, p.tag, p.norm, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	infos, total := (&App{}).tagIndexScoped(context.Background(), "b.example")
+	if total != 2 || len(infos) != 1 || infos[0].Name != "machine-learning" || infos[0].Count != 2 {
+		t.Errorf("site index = %+v (total %d), want machine-learning: 2", infos, total)
+	}
+}
