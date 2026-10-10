@@ -87,7 +87,7 @@ scaled to fit and saying so), Tablet and Phone, and in either scheme. A
 stylesheet swap cannot show a layout option.
 
 **New installs start on Halcyon; existing installs do not move.** Migration
-106 saves `Default()`, exactly as `theme.Load` returned it, for every install
+108 saves `Default()`, exactly as `theme.Load` returned it, for every install
 that already has a user or a post and no saved theme. `theme.Load` now returns
 Halcyon for a missing row, which only a new install has.
 

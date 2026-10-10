@@ -68,10 +68,15 @@ func (a *App) halcyonTopics(key string, count func(context.Context) ([]render.Ta
 	return e.infos, e.total
 }
 
-// halcyonDeskPostsSQL reads a topic's newest posts from the tag index alone,
-// as relatedPerTagSQL does; the candidates are then checked against the
-// articles by primary key.
-const halcyonDeskPostsSQL = `SELECT article_id FROM article_tags WHERE tag_norm=? ORDER BY created_at DESC LIMIT ?`
+// halcyonDeskPostsSQL reads a topic's newest published posts, for the whole
+// install or one site, from idx_article_tags_live alone (migration 106), as the
+// topic page does. Filtering publication and site in the index, not after it,
+// means drafts or another site's posts cannot fill the window and leave a desk
+// short.
+const (
+	halcyonDeskPostsSQL       = `SELECT article_id FROM article_tags WHERE tag_norm=? AND live=1 ORDER BY created_at DESC LIMIT ?`
+	halcyonDeskPostsScopedSQL = `SELECT article_id FROM article_tags WHERE tag_norm=? AND live=1 AND domain_id=? ORDER BY created_at DESC LIMIT ?`
+)
 
 // halcyonDesks builds the front page's three topic desks: the largest topics
 // that are not ubiquitous, each with its three newest published posts.
@@ -94,7 +99,11 @@ func (a *App) halcyonDesks(ctx context.Context, topics []render.TagInfo, total i
 }
 
 func (a *App) halcyonTopicPosts(ctx context.Context, norm string, n int, scope string, scoped bool) []render.HomeArticle {
-	rows, err := dbpkg.Reader().QueryContext(ctx, halcyonDeskPostsSQL, norm, n*4)
+	q, args := halcyonDeskPostsSQL, []any{norm, n * 4}
+	if scoped {
+		q, args = halcyonDeskPostsScopedSQL, []any{norm, scope, n * 4}
+	}
+	rows, err := dbpkg.Reader().QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil
 	}
@@ -110,16 +119,11 @@ func (a *App) halcyonTopicPosts(ctx context.Context, norm string, n int, scope s
 	if len(ids) == 0 {
 		return nil
 	}
-	// Drafts, pages and another domain's posts can share the tag index; only
-	// published posts of this domain go on a desk.
-	in, args := placeholders(ids)
-	q := `SELECT id FROM articles WHERE id IN (` + in + `) AND +status='published' AND is_page=0`
-	if scoped {
-		q += ` AND domain_id=?`
-		args = append(args, scope)
-	}
+	// A page can carry a topic too, and its tag row cannot say so; a desk
+	// lists posts only.
+	in, pargs := placeholders(ids)
 	ok := map[string]bool{}
-	if rs, err := dbpkg.Reader().QueryContext(ctx, q, args...); err == nil {
+	if rs, err := dbpkg.Reader().QueryContext(ctx, `SELECT id FROM articles WHERE id IN (`+in+`) AND is_page=0`, pargs...); err == nil {
 		for rs.Next() {
 			var id string
 			if rs.Scan(&id) == nil {

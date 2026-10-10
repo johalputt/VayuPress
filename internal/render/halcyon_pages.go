@@ -427,6 +427,9 @@ func renderHalcyonTopic(in TopicInput, cfg theme.HalcyonConfig) (string, error) 
 	c.PageTitle = strings.ReplaceAll(in.Tag, "-", " ") + " — " + c.SiteName
 	c.Description = groupThousands(in.Total) + " " + pluralWord(in.Total, "article", "articles") + " filed under “" + in.Tag + "” on " + c.SiteName + "."
 	c.Canonical = seo.Origin(in.Domain) + "/tags/" + url.PathEscape(in.Tag)
+	if in.Total < thinTagPosts {
+		c.Robots = "noindex,follow"
+	}
 	c.Scripts = halcyonScripts(false)
 	l := hListing{hChrome: c, Topic: in.Tag, Total: in.Total, Page: 1, TotalPages: 1,
 		Eyebrow: "The archive", EyebrowHref: "/tags", Heading: strings.ReplaceAll(in.Tag, "-", " ")}

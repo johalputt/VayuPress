@@ -163,7 +163,7 @@ func TestLoadReturnsHalcyonWhenEmpty(t *testing.T) {
 		t.Fatalf("Load() on empty table returned error: %v", err)
 	}
 	// No saved theme means a new install, which starts on Halcyon. Existing
-	// installs were pinned to Default by migration 106 (see store.go).
+	// installs were pinned to Default by migration 108 (see store.go).
 	if loaded.Name != "Halcyon" || loaded.Layout != theme.LayoutHalcyon {
 		t.Errorf("an install with no saved theme should start on Halcyon, got %q (layout %q)", loaded.Name, loaded.Layout)
 	}

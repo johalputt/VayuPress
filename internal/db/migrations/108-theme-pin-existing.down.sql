@@ -1,3 +1,3 @@
--- Migration 106 (down): remove the pinned theme only while it is still the
+-- Migration 108 (down): remove the pinned theme only while it is still the
 -- untouched pin; a theme the operator has since chosen stays.
 DELETE FROM theme_tokens WHERE id=1 AND name='Default' AND tokens='{"Name":"Default","BgDark":"#0a0f1a","SurfaceDark":"#111827","TextDark":"#e5e7eb","MutedDark":"#7a8290","AccentDark":"#2dd4bf","Accent2Dark":"#f59e0b","HiDark":"#fbbf24","GreenDark":"#34d399","BgLight":"#f8fafc","SurfaceLight":"#ffffff","TextLight":"#111827","MutedLight":"#6b7280","AccentLight":"#0b8176","Accent2Light":"#d97706","HiLight":"#b45309","FontSans":"system-ui,-apple-system,BlinkMacSystemFont,''Segoe UI'',Roboto,Helvetica,Arial,sans-serif","FontMono":"ui-monospace,SFMono-Regular,''SF Mono'',Menlo,Consolas,''Liberation Mono'',monospace","FontSizeBase":"1rem","LineHeight":"1.6","MaxWidth":"72ch","RadiusSm":"0.25rem","RadiusLg":"0.75rem"}';

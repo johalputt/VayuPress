@@ -29,7 +29,7 @@ func Save(ctx context.Context, db *sql.DB, t Tokens) error {
 // Load retrieves the active tokens from the database.
 //
 // With no saved theme it returns Halcyon, the theme a new install starts on.
-// An install that existed before Halcyon is not moved by this: migration 106
+// An install that existed before Halcyon is not moved by this: migration 108
 // saved the theme it was showing (Default) for every install that already had
 // a user or a post, so only an install created since has no row. On a read
 // error it still returns Default(), as before, because an error says nothing

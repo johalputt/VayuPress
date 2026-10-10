@@ -439,3 +439,19 @@ func TestCachePurgeListingsKeepsEveryPost(t *testing.T) {
 		}
 	}
 }
+
+// Halcyon's topic page keeps a thin topic out of search as the shared one does
+// (tags_thin_test.go), at the same threshold.
+func TestAThinHalcyonTopicIsNotIndexed(t *testing.T) {
+	withHalcyon(t, nil)
+	const noindex = `<meta name="robots" content="noindex,follow">`
+	for n, want := range map[int]bool{1: true, thinTagPosts - 1: true, thinTagPosts: false, 40: false} {
+		page, err := RenderTopicPage(TopicInput{Domain: "example.com", Version: "1.0.0", Tag: "go", Total: n})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Contains(page, noindex); got != want {
+			t.Errorf("%d posts: noindex %v, want %v", n, got, want)
+		}
+	}
+}

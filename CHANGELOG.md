@@ -35,7 +35,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
-- **Existing sites keep their theme.** Migration 106 saves the theme an
+- **Existing sites keep their theme.** Migration 108 saves the theme an
   install was already showing, so only a new install starts on Halcyon.
   Apply Halcyon in Theme Studio, or with the connector's `apply_theme`, to
   move a site to it.
