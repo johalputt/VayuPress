@@ -406,6 +406,47 @@ test.describe("Halcyon", () => {
     }
   });
 
+  // Light to load (PLAN.md §5): a first visit fetches only the font faces
+  // the page draws with, and no page type grows past its weight.
+  //
+  // The budget is a first visit's transfer, fonts, script and stylesheets
+  // included: 320 KB. Measured on 2026-10-10 at 147 KB (sign-in) to 286 KB
+  // (the long post, seven faces with code); the margin is for a post with
+  // more to draw, and growth past it is a decision, made by raising this
+  // number with its reason here.
+  test("a first visit fetches only the fonts it draws with, within its weight", async ({ browser }) => {
+    for (const p of ["/", "/halcyon-long", "/halcyon-wide", "/tags/architecture", "/search?q=GitComet", "/members"]) {
+      const ctx = await browser.newContext();
+      const page = await ctx.newPage();
+      const cdp = await ctx.newCDPSession(page);
+      await cdp.send("Network.enable");
+      let bytes = 0;
+      const faces = [];
+      cdp.on("Network.loadingFinished", (e) => { bytes += e.encodedDataLength; });
+      page.on("request", (r) => { if (r.resourceType() === "font") faces.push(new URL(r.url()).pathname.split("/").pop()); });
+      await page.goto(p, { waitUntil: "networkidle" });
+      const drawn = await page.evaluate(() => {
+        const out = new Set();
+        for (const e of document.querySelectorAll("body *")) {
+          if (!e.getClientRects().length || ![...e.childNodes].some((n) => n.nodeType === 3 && n.data.trim())) continue;
+          const s = getComputedStyle(e);
+          out.add([s.fontFamily.split(",")[0].replace(/["']/g, "").trim().toLowerCase().replace(/ /g, "-"), s.fontWeight, s.fontStyle].join(" "));
+        }
+        return [...out];
+      });
+      // A face file is named family-latin-weight[-style]: newsreader-latin-400-italic.
+      const unused = faces.filter((f) => {
+        const m = f.match(/^(.+?)-latin-(\d+)(?:-(normal|italic))?\.woff2$/);
+        if (!m) return true;
+        const [, fam, w, st = "normal"] = m;
+        return !drawn.some((d) => { const [df, dw, ds] = d.split(" "); return df === fam && ds === st && Math.abs(+dw - +w) <= 100; });
+      });
+      expect(unused, `${p}: fonts fetched that nothing draws with`).toEqual([]);
+      expect(bytes / 1024, `${p}: a first visit's transfer, KB`).toBeLessThanOrEqual(320);
+      await ctx.close();
+    }
+  });
+
   // A site served over plain HTTP (a .onion) has no clipboard API. Localhost
   // counts as secure, so the page is told otherwise to reach that path.
   test("copies a link where the clipboard API is not offered", async ({ page }) => {
