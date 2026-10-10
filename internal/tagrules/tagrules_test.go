@@ -21,6 +21,11 @@ func TestAKeyIsOneTagHoweverWritten(t *testing.T) {
 		"Node.js":              "node.js",
 		"Zürich":               "zürich",
 		"東京":                   "東京",
+		// Stop-words that are also topics on a technical site.
+		"IT":  "it",
+		"CAN": "can",
+		"D":   "d",
+		"#1":  "#1",
 	} {
 		if got := Key(in); got != want {
 			t.Errorf("Key(%q) = %q, want %q", in, got, want)
@@ -30,7 +35,7 @@ func TestAKeyIsOneTagHoweverWritten(t *testing.T) {
 
 // What is no tag: empty, a stop-word, longer than a topic.
 func TestWhatIsNoTag(t *testing.T) {
-	for _, in := range []string{"", " - ", "with", "Which", "about", strings.Repeat("a", MaxLen+1)} {
+	for _, in := range []string{"", " - ", "with", "Which", "about", strings.Repeat("a", MaxLen+1), "...", "#", "+", "..", ". #"} {
 		if got := Key(in); got != "" {
 			t.Errorf("Key(%q) = %q, want no tag", in, got)
 		}

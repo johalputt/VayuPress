@@ -11,7 +11,9 @@
 //     one page and one URL. "+", "#" and "." are kept: C++, C# and Node.js
 //     are not C, C or "node-js".
 //   - At most MaxLen characters: a sentence is not a topic.
-//   - Never a stop-word.
+//   - Never a stop-word, and at least one letter or digit: "..." and "#"
+//     are punctuation, and a key of dots alone is no address ("/tags/.."
+//     is the page above).
 //   - At most MaxPerPost to a post. When more are sent the rarest across the
 //     site are kept, rarity being what makes a tag specific; a post is never
 //     refused for its tags.
@@ -46,7 +48,7 @@ func Key(tag string) string {
 		}
 	}
 	k := b.String()
-	if k == "" || len([]rune(k)) > MaxLen || stopWords[k] {
+	if k == "" || len([]rune(k)) > MaxLen || stopWords[k] || !strings.ContainsFunc(k, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) {
 		return ""
 	}
 	return k
@@ -105,9 +107,13 @@ func Clean(tags []string, frequency func(key string) int) []string {
 }
 
 // stopWords are the standard English stop-words (NLTK's list): words that say
-// nothing about what a post is about.
+// nothing about what a post is about. Three are taken out because on a
+// technical site each is also a topic: "it" (IT), "can" (the CAN bus) and
+// "d" (the D language). Removing them from a post was lost writing, where
+// leaving a stray "it" tag costs a thin page that is noindex anyway.
 var stopWords = func() map[string]bool {
 	m := map[string]bool{}
+	topics := map[string]bool{"it": true, "can": true, "d": true}
 	for _, w := range strings.Fields(`i me my myself we our ours ourselves you your yours yourself yourselves
 		he him his himself she her hers herself it its itself they them their theirs themselves what which who
 		whom this that these those am is are was were be been being have has had having do does did doing a an
@@ -116,7 +122,9 @@ var stopWords = func() map[string]bool {
 		when where why how all any both each few more most other some such no nor not only own same so than too
 		very s t can will just don should now d ll m o re ve y ain aren couldn didn doesn hadn hasn haven isn ma
 		mightn mustn needn shan shouldn wasn weren won wouldn`) {
-		m[w] = true
+		if !topics[w] {
+			m[w] = true
+		}
 	}
 	return m
 }()
