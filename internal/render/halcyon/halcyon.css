@@ -93,6 +93,10 @@
 .h button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
 .h img { max-width: 100%; }
 .h .h-i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+/* Every placeholder in the theme, in its quietest text colour that still
+   reads (4.8:1 or better on each surface); browsers otherwise use their own
+   grey, and Firefox dims it further with opacity. */
+.h ::placeholder { color: var(--h-t3); opacity: 1; }
 .h :focus-visible { outline: 2px solid var(--h-accent); outline-offset: 3px; border-radius: 4px; }
 .h ::selection { background: var(--h-mark); }
 .h .h-vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -128,7 +132,6 @@
 .h .h-btn-wide { display: flex; width: 100%; }
 .h .h-btn .h-i { width: 16px; height: 16px; }
 .h .h-field { height: 44px; width: 100%; padding: 0 20px; border-radius: 22px; border: 0; box-shadow: inset 0 0 0 1px var(--h-line-2); background: var(--h-surface); color: var(--h-t1); font: 400 15px/1 var(--h-sans); }
-.h .h-field::placeholder { color: var(--h-t3); }
 .h .h-field:focus { outline: none; box-shadow: inset 0 0 0 1.5px var(--h-accent), 0 0 0 4px var(--h-mark); }
 .h .h-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 22px; background: var(--h-sunken); }
 .h .h-seg button { min-height: 36px; padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 18px; font: 500 12px/1 var(--h-sans); color: var(--h-t3); transition: background-color 200ms var(--h-ease), color 200ms var(--h-ease); }
@@ -472,7 +475,6 @@
 .h .vayu-search-icon { display: none; }
 .h .vayu-search-field { flex: 1; min-width: 0; height: 44px; border: 0; background: none; color: var(--h-t1); font: 400 21px/1 var(--h-serif); }
 .h .vayu-search-field:focus { outline: none; }
-.h .vayu-search-field::placeholder { color: var(--h-t3); }
 .h .vayu-search-esc { min-height: 44px; padding: 0 10px; font: 500 11px/1 var(--h-sans); color: var(--h-t3); }
 .h .vayu-search-status { padding: 14px 22px 4px; font: 500 12px/1.3 var(--h-sans); color: var(--h-t3); }
 .h .vayu-search-results { overflow-y: auto; padding: 6px 10px 12px; }

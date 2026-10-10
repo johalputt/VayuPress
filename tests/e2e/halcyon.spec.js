@@ -57,6 +57,55 @@ async function overflow(page) {
   });
 }
 
+// WCAG 2.2 AA, measured on the page as drawn: every visible piece of text
+// against the background it actually sits on (4.5:1, 3:1 when large),
+// composited through any translucent layers. Text a reader cannot see is
+// skipped: visually hidden, aria-hidden, and disabled controls (WCAG exempts
+// inactive components).
+async function lowContrast(page) {
+  return page.evaluate(() => {
+    const rgba = (s) => { const m = s.match(/rgba?\(([^)]+)\)/); if (!m) return null; const p = m[1].split(/[ ,/]+/).filter(Boolean).map(Number); return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1]; };
+    const over = (top, under) => { const a = top[3]; return [0, 1, 2].map((i) => top[i] * a + under[i] * (1 - a)).concat(1); };
+    const bg = (el) => { const chain = []; for (let e = el; e; e = e.parentElement) chain.push(rgba(getComputedStyle(e).backgroundColor) || [0, 0, 0, 0]); let c = [255, 255, 255, 1]; for (let i = chain.length - 1; i >= 0; i--) if (chain[i][3] > 0) c = over(chain[i], c); return c; };
+    const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+    const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+    const out = [], seen = new Set();
+    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) {
+      const el = n.parentElement;
+      if (!n.data.trim() || !el || seen.has(el)) continue;
+      seen.add(el);
+      if (!el.getClientRects().length || el.closest("[aria-hidden='true'], .h-vh, [hidden], script, style, noscript, :disabled")) continue;
+      const cs = getComputedStyle(el);
+      if (cs.visibility === "hidden" || +cs.opacity === 0) continue;
+      const back = bg(el), fg = over(rgba(cs.color), back);
+      const size = parseFloat(cs.fontSize), bold = +cs.fontWeight >= 700;
+      const need = size >= 24 || (size >= 18.66 && bold) ? 3 : 4.5;
+      const r = ratio(fg, back);
+      if (r < need) out.push(`${el.tagName.toLowerCase()}.${el.className} "${n.data.trim().slice(0, 30)}" ${r.toFixed(2)}:1 < ${need}`);
+    }
+    return out;
+  });
+}
+
+// Every control a keyboard reaches says what it is.
+async function unnamed(page) {
+  return page.evaluate(() => {
+    const name = (el) => {
+      const by = el.getAttribute("aria-labelledby");
+      const t = el.getAttribute("aria-label") || (by && by.split(/\s+/).map((id) => (document.getElementById(id) || {}).textContent || "").join(" ")) ||
+        (el.id && (document.querySelector(`label[for="${CSS.escape(el.id)}"]`) || {}).textContent) || (el.closest("label") || {}).textContent ||
+        el.textContent || el.getAttribute("title") || (el.querySelector("img[alt]") || {}).alt || (el.type === "submit" ? el.value : "") || "";
+      return t.trim();
+    };
+    return [...document.querySelectorAll("a[href], button, input:not([type=hidden]), select, textarea, [tabindex]:not([tabindex='-1'])")]
+      .filter((el) => el.getClientRects().length && !el.closest("[hidden], [aria-hidden='true']"))
+      .filter((el) => !name(el)).map((el) => el.outerHTML.slice(0, 90));
+  });
+}
+
+const A11Y_PAGES = ["/", "/halcyon-long", "/tags/architecture", "/search?q=GitComet", "/search?q=zzzqqq", "/members"];
+
 test.describe("Halcyon", () => {
   test("is the theme a new install starts on", async ({ page }) => {
     await page.goto("/halcyon-long");
@@ -287,6 +336,74 @@ test.describe("Halcyon", () => {
     await expect(page.locator(".vayu-comment-gate")).toBeVisible();
     await expect(note, "never shown with nobody signed in").toHaveCount(0);
     expect(await page.evaluate((k) => localStorage.getItem(k), `vp-pending:${slug}`)).toBeNull();
+  });
+
+  for (const scheme of ["light", "dark"]) {
+    test(`every text on every page type reaches its contrast, ${scheme}`, async ({ page }) => {
+      await page.addInitScript((s) => localStorage.setItem("vayu-theme", s), scheme);
+      for (const p of A11Y_PAGES) {
+        await page.goto(p);
+        await expect(page.locator("html")).toHaveAttribute("data-theme", scheme);
+        expect(await lowContrast(page), `${p} (${scheme})`).toEqual([]);
+      }
+    });
+  }
+
+  test("every control a keyboard reaches has a name", async ({ page }) => {
+    for (const p of A11Y_PAGES) {
+      await page.goto(p);
+      expect(await unnamed(page), p).toEqual([]);
+    }
+  });
+
+  // Keyboard focus is always visible, in a colour that stands out from what
+  // is behind it (3:1, WCAG 1.4.11), and placeholders are readable text.
+  for (const scheme of ["light", "dark"]) {
+    test(`focus is visible and placeholders are readable, ${scheme}`, async ({ page }) => {
+      await page.addInitScript((s) => localStorage.setItem("vayu-theme", s), scheme);
+      await page.goto("/halcyon-long");
+      const misses = [];
+      for (let i = 0; i < 14; i++) {
+        await page.keyboard.press("Tab");
+        const r = await page.evaluate(() => {
+          const el = document.activeElement, cs = getComputedStyle(el);
+          const ring = cs.outlineStyle !== "none" && parseFloat(cs.outlineWidth) >= 2;
+          return { what: el.outerHTML.slice(0, 70), seen: ring || cs.boxShadow !== "none" };
+        });
+        if (!r.seen) misses.push(r.what);
+      }
+      expect(misses, "focused with nothing to show it").toEqual([]);
+      await page.goto("/search?q=GitComet");
+      for (const sel of ["#h-q", "#h-letter-email"]) {
+        await page.goto(sel === "#h-q" ? "/search?q=GitComet" : "/");
+        if (!(await page.locator(sel).count())) continue;
+        const ph = await page.evaluate((sel) => {
+          const rgba = (s) => { const p = s.match(/[\d.]+/g).map(Number); return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1]; };
+          const over = (top, under) => { const a = top[3]; return [0, 1, 2].map((i) => top[i] * a + under[i] * (1 - a)).concat(1); };
+          const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+          const el = document.querySelector(sel);
+          const chain = [];
+          for (let e = el; e; e = e.parentElement) chain.push(rgba(getComputedStyle(e).backgroundColor));
+          let b = [255, 255, 255, 1];
+          for (let i = chain.length - 1; i >= 0; i--) if (chain[i][3] > 0) b = over(chain[i], b);
+          const ps = getComputedStyle(el, "::placeholder");
+          const c = over([...rgba(ps.color).slice(0, 3), rgba(ps.color)[3] * +ps.opacity], b);
+          const x = lum(c), y = lum(b);
+          return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+        }, sel);
+        expect(ph, `${sel} placeholder contrast`).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+  }
+
+  // Reflow (WCAG 1.4.10): at 320 CSS px, what a 1280 px screen shows at 400%
+  // zoom, no page type scrolls sideways.
+  test("every page type reflows at 320 px", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 640 });
+    for (const p of [...A11Y_PAGES, "/halcyon-title", "/halcyon-edges", "/halcyon-legacy", "/tags", "/tags/offline-first-progressive-web-app-design"]) {
+      await page.goto(p);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), p).toBeLessThanOrEqual(0);
+    }
   });
 
   // A site served over plain HTTP (a .onion) has no clipboard API. Localhost
