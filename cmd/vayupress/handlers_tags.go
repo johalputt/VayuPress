@@ -245,7 +245,12 @@ func (a *App) handleTagPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	html, err := render.RenderTagPage(config.Cfg.Domain, Version, tag, articles, total)
+	in := render.TopicInput{Domain: config.Cfg.Domain, Version: Version, Tag: tag, Articles: articles, Total: total}
+	if _, on := render.Halcyon(); on {
+		key, _, _, count := a.halcyonScope(r)
+		in.Topics, in.TopicTotal = a.halcyonTopics(key, count)
+	}
+	html, err := render.RenderTopicPage(in)
 	if err != nil {
 		http.Error(w, "render error", http.StatusInternalServerError)
 		return

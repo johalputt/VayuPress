@@ -162,6 +162,9 @@ var tagPageTmpl = template.Must(template.New("tagpage").Funcs(tagFuncs).Parse(`<
 // RenderTagIndex renders the public topic-index page listing every tag with its
 // post count. tags should already be sorted by the caller (count desc, name asc).
 func RenderTagIndex(domain, version string, tags []TagInfo, totalPosts int) (string, error) {
+	if cfg, ok := Halcyon(); ok {
+		return renderHalcyonTopics(domain, tags, totalPosts, cfg)
+	}
 	var buf strings.Builder
 	s := getActiveSettings()
 	err := tagIndexTmpl.Execute(&buf, tagIndexPage{
@@ -193,6 +196,9 @@ const thinTagPosts = 3
 // RenderTagPage renders a single tag's listing page from the published articles
 // carrying that tag. totalCount is the number of matching posts.
 func RenderTagPage(domain, version, tag string, articles []HomeArticle, totalCount int) (string, error) {
+	if cfg, ok := Halcyon(); ok {
+		return renderHalcyonTopic(TopicInput{Domain: domain, Version: version, Tag: tag, Articles: articles, Total: totalCount}, cfg)
+	}
 	var buf strings.Builder
 	s := getActiveSettings()
 	err := tagPageTmpl.Execute(&buf, tagPage{

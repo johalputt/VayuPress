@@ -1,0 +1,119 @@
+<blockquote><p>Every engineering organization carries technical debt; the difference between healthy and drowning teams isn&rsquo;t the amount &mdash; it&rsquo;s whether the debt is VISIBLE, priced, and serviced deliberately instead of compounding silently until refactors become rewrites. Treating debt like financial debt changes everything: an inventory with interest rates (what does this shortcut cost monthly?), repayment strategies matched to debt classes (the fix-now versus document-and-monitor calculus), capacity allocation that survives roadmap pressure (the fixed percentage that actually ships), prevention habits lowering future borrowing (why most new debt enters through review gaps), and the communication frameworks translating engineering pain into roadmap language executives can act on. This guide covers all of it &mdash; plus the honest failure modes: debt registries nobody reads, refactor purges that become their own debt, and the cultural traps keeping teams borrowing forever.</p></blockquote>
+
+<h2 id="classes">Debt taxonomy: different kinds need different handling</h2>
+
+<table class="vp-table">
+<thead><tr><th>Class</th><th>Example</th><th>Interest rate</th><th>Strategy</th></tr></thead>
+<tbody>
+<tr><td>Deliberate/short-lived</td><td>Hackathon-quality flag behind launch</td><td>Known, bounded, scheduled</td><td>Repay by date -- tracked ticket from day one</td></tr>
+<tr><td>Inadvertent/drifted</td><td>Design outgrown by requirements</td><td>Grows quietly with usage</td><td>Scheduled redesigns driven by metrics</td></tr>
+<tr><td>Structural/architectural</td><td>Monolith module boundaries dissolved</td><td>Compounds per feature added</td><td>Strangler-fig programs, not big-bang</td></tr>
+<tr><td>Dependency/environmental</td><td>EOL framework, abandoned library</td><td>Jumps at vendor whims</td><td>Continuous upgrade discipline + exit plans</td></tr>
+</tbody>
+</table>
+
+<p>The table&rsquo;s organizing insight: "technical debt" as one bucket produces one useless strategy; classified debts produce matching treatments. A deliberate launch hack needs a dated ticket; architectural drift needs a multi-quarter strangler program &mdash; confusing them is how registries die.</p>
+
+<h2 id="inventory">The inventory that actually gets read</h2>
+
+<pre><code># Debt record schema (keep it BORING):
+#   id, title
+#   class:        deliberate|drift|structural|dependency
+#   location:     repo/module/file hints -- findable in 30s
+#   interest:     what it costs MONTHLY (hours lost, risk carried)
+#   principal:    rough fix cost (S/M/L/XL)
+#   trigger:      event that promotes repayment urgency
+#                 ("before next schema migration", "&gt;10k req/min")
+#   owner:        a NAME -- unowned debt is decorative
+#
+# The interest column is the whole game: debt without estimated
+# cost is just complaints; debt WITH costs becomes prioritizable
+# against features using the same currency (engineer-hours).</code></pre>
+
+<ul>
+<li><strong>Write records when FEELING the debt:</strong> the moment someone mutters "this again" during work is the moment to capture it &mdash; context-rich and honestly priced; retroactive inventories written during planning weeks produce fiction.</li>
+<li><strong>Cap the list ruthlessly:</strong> fifty well-priced items beat five hundred shrugs &mdash; prune annually, merge duplicates, delete entries whose interest turned out imaginary (calibrates future estimates too).</li>
+<li><strong>Location precision is adoption:</strong> "payments module has tangled state logic" loses to "checkout/state_machine.go: branches per legacy gateway" &mdash; findable debt gets fixed; vague debt gets vibes.</li>
+<li><strong>The registry lives where planning happens:</strong> linked from backlog tooling, not buried in wikis &mdash; visibility at decision moments is the entire point.</li>
+</ul>
+
+<h2 id="capacity">Servicing debt without starving the roadmap</h2>
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 150" role="img" aria-label="Capacity allocation fixed percentage debt servicing plus trigger based repayments balanced against features" style="max-width:100%;height:auto;background:#0b1220;border-radius:8px">
+  <g stroke="#7ea6ff" stroke-width="1.3">
+    <rect x="28" y="42" width="330" height="66" rx="8"/>
+    <text x="40" y="64" font-family="ui-monospace,monospace" font-size="9" fill="#dce6ff">STANDING ALLOCATION: 15-20% per team, per quarter</text>
+    <text x="40" y="82" font-family="ui-monospace,monospace" font-size="8" fill="#8fa3c8">negotiated ONCE with product leadership;</text>
+    <text x="40" y="98" font-family="ui-monospace,monospace" font-size="8" fill="#7ee08a">not re-litigated every sprint -- that's the trick</text>
+    <rect x="390" y="42" width="305" height="66" rx="8"/>
+    <text x="402" y="64" font-family="ui-monospace,monospace" font-size="9" fill="#ffe08a">TRIGGERED REPAYMENTS: event-driven top-ups</text>
+    <text x="402" y="82" font-family="ui-monospace,monospace" font-size="8" fill="#8fa3c8">debt whose trigger fires (traffic threshold,</text>
+    <text x="402" y="98" font-family="ui-monospace,monospace" font-size="8" fill="#ffe08a">upcoming migration) jumps the queue deliberately</text>
+    <path d="M360,75 L388,75"/>
+    <text x="360" y="132" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#8fa3c8">allocation = maintenance metabolism ÃÃÃÃÃÂ¢ triggers = planned surgery</text>
+  </g>
+</svg>
+
+<ul>
+<li><strong>The fixed percentage survives politics precisely because it&rsquo;s boring:</strong> renegotiated once per year with data (interest paid last quarter, incidents traced to debt), never sprint-by-sprint where urgency bias always wins.</li>
+<li><strong>Attach repayments to touching work:</strong> code being modified anyway gets its neighborhood cleaned (the boy-scout rule with scope limits) &mdash; opportunistic repayment compounds cheaply.</li>
+<li><strong>Budget debt INTO features honestly:</strong> estimates including "plus cleanup of touched debt" produce truthful timelines; pretending debt doesn&rsquo;t exist produces the schedule slips everyone already expects.</li>
+<li><strong>Celebrate repayments visibly:</strong> changelog entries, demo-day mentions, interest-retired metrics &mdash; invisible work doesn&rsquo;t get budget twice.</li>
+</ul>
+
+<h2 id="prevention">Borrowing less: where new debt enters</h2>
+
+<p>New debt enters through four doors worth guarding: <strong>review gaps</strong> (the blocking-versus-preference discipline catching shortcuts BEFORE they land &mdash; most structural debt was once a small compromise nobody flagged); <strong>unpriced compromises</strong> (deliberate hacks shipping without registry entries or dates &mdash; the paperwork IS the discipline); <strong>dependency neglect</strong> (continuous minor upgrades preventing the cliff-edge major migrations that consume quarters); and <strong>knowledge loss</strong> ( undocumented systems drifting toward rewrite-because-nobody-knows &mdash; documentation as debt prevention). None require perfectionism: they require the same few percent of friction applied consistently at entry points. The economics justify it bluntly: debt repaid at entry costs minutes; the same debt discovered two years later costs sprints surrounded by archaeology. Prevention isn&rsquo;t the opposite of speed &mdash; it&rsquo;s speed&rsquo;s savings account.</p>
+
+<h2 id="programs">Running repayment programs that finish</h2>
+
+<p>Structural debt needs programs, and programs die from the same few wounds: unbounded scope ("refactor auth" never completes), invisible progress (quarters of work with nothing demoable), and priority erosion (every fire eats the allocation). The counter-design: <strong>strangler-fig decomposition</strong> &mdash; each increment ships a working slice behind an interface (one gateway extracted, one module boundary enforced), each independently valuable and revertible; <strong>parallel-run verification</strong> where behavior-critical (old and new pricing computed side-by-side, diffs alerted, confidence compounding before cutover); <strong>published roadmaps with shipped-slice metrics</strong> (module count migrated per quarter &mdash; progress denominated in deletions, the only honest unit); and <strong>program-level triggers pre-agreed</strong> (if two quarters slip without shipped slices, scope re-cuts rather than zombie-marching). The commerce recovery in this guide ran exactly this shape &mdash; three quarters, four shipped slices, zero big-bang moments. Programs that finish share one trait retroactively obvious: every increment could have been the LAST one without stranding anything, because debt repaid incrementally never holds the codebase hostage.</p>
+
+<h3>How do we keep debt conversations blameless while still accountable?</h3>
+<p>Focus records on ARTIFACTS and COSTS, never authorship &mdash; "the pricing module carries X monthly interest" not "who wrote this"; deliberate debts get logged as DECISIONS (with context that made them rational then), making repayment a scheduled follow-through rather than a confession. The accountability lives in the SYSTEM: entry-point discipline, allocation honesty, trigger follow-ups &mdash; all auditable without naming culprits. Teams that weaponize debt ledgers get hidden hacks instead of honest ledgers; the registry&rsquo;s psychological safety IS its data quality.</p>
+
+<h3>Does AI-assisted coding change debt dynamics?</h3>
+<p>Volume changes; economics don&rsquo;t: generated code accelerates BOTH feature delivery AND debt accumulation when entry-point discipline lags &mdash; more compromises landing faster with fewer humans reading every line. The countermeasures sharpen rather than change: review attention on generated diffs (the code-review guide&rsquo;s protocols matter MORE), registry entries for accepted shortcuts regardless of authorship, and test coverage as the receipt trail proving behavior survived generation. Debt is debt whether typed by hands or models &mdash; price it identically.</p>
+
+<h2 id="worked">A worked recovery: the platform nobody dared touch</h2>
+
+<p>A ten-year-old commerce platform had crossed into untouchability: deployment fear (changes to the pricing engine broke things quarterly), tribal knowledge concentrated in two surviving veterans, and a rewrite proposal stalled for two years because nobody could bound its blast radius. The recovery started with measurement rather than courage: incident tagging revealed forty percent of production incidents traced to three modules; those modules got the first inventory entries with honest interest math (eleven engineer-hours monthly across incidents, avoided-feature-work, and fear-driven double-review); a standing fifteen-percent allocation funded a strangler program extracting the pricing engine behind an interface over three quarters &mdash; each extraction shipped independently, verified by parallel-run comparisons, deleting old paths only after confidence compounded. By year&rsquo;s end: incident share for the treated modules fell under ten percent, the veterans&rsquo; bus factor diversified through forced documentation during extractions, and the stalled rewrite died quietly &mdash; replaced by continuous, reversible progress nobody had to bet the company on. The CTO&rsquo;s board slide said it plainly: "we stopped proposing to fix everything someday and started paying interest down weekly."</p>
+
+<h2 id="faq">Frequently asked questions</h2>
+
+<h3>Isn&rsquo;t "technical debt" just an excuse for sloppy work?</h3>
+<p>The metaphor&rsquo;s critics have a point about sloppiness masquerading as strategy &mdash; but the answer is classification, not abolition: DELIBERATE debt (documented, dated, priced) is legitimate engineering leverage exactly like financial debt; INADVERTENT mess is quality failure belonging to review processes, not debt ledgers. Teams conflating them get neither: no honest leveraging AND no accountability. The vocabulary split fixes both conversations.</p>
+
+<h3>How do we quantify interest rates credibly?</h3>
+<p>Triangulate from traces, not feelings: incident tickets referencing affected modules (hours per month), support/contact drivers tied to known quirks, velocity observations (features near debt-heavy areas estimating slower &mdash; compare historicals), and onboarding time-to-first-meaningful-PR as a systemic proxy. Estimates start rough and calibrate against reality annually &mdash; the discipline of PRICING matters more than any single number&rsquo;s precision, because pricing forces the feature-vs-debt comparison onto shared ground.</p>
+
+<h3>When is a full rewrite genuinely right?</h3>
+<p>Rarely, provably: when the interest math shows maintenance exceeding rebuild cost within a bounded horizon AND incremental extraction demonstrably can&rsquo;t proceed (platform migrations, EOL runtimes beneath everything) AND the organization can sustain dual-running during cutover. Most "rewrite everything" urges dissolve under strangler-fig pressure &mdash; but dismissing rewrites dogmatically is its own error; some estates genuinely end. Demand the numbers, accept them when they&rsquo;re real.</p>
+
+<h3>How do we stop debt registries becoming graveyards?</h3>
+<p>Tie the registry to money and motion: entries surface in quarterly planning automatically (top-interest items pre-loaded into roadmap conversations), repayments close loops publicly (fixed items announced with hours saved), and stale entries get pruned on schedule with their lessons noted. A registry nobody spent budget FROM last quarter is decoration &mdash; audit yourself honestly and either wire it into allocation decisions or shrink it until someone would miss it.</p>
+
+<h3>What about debt in data models and schemas specifically?</h3>
+<p>The highest-interest class there is: schema debt taxes EVERY query, migration, and integration built atop it. Treat accordingly: expand-contract migrations as standing capability, generated columns bridging old/new access patterns, deprecation windows for dead columns enforced by usage queries proving zero readers, and naming conventions reviewed at design time (future-you reads today&rsquo;s names forever). The materialized-views and JSONB guides compose here as remediation tools once the diagnosis lands.</p>
+
+<h3>How do we communicate debt urgency to non-engineers?</h3>
+<p>Translate to their currencies: reliability (incidents traced to X, downtime minutes), velocity (feature estimates inflated Y% while Z persists), risk (compliance/security exposure with dates), and talent (exit interviews citing the codebase). One page per quarter, trend lines over anecdotes, asks phrased as allocations not complaints ("15% of capacity prevents the Q3 repeat of checkout week"). Engineers who price debt in business units stop being ignored &mdash; it&rsquo;s the same skill as writing good error messages, pointed upward.</p>
+
+<h3>What single habit reduces debt fastest?</h3>
+<p>The entry-point discipline: no compromise ships without a record (class, interest guess, date or trigger) &mdash; thirty seconds at decision moments converting invisible future pain into visible ledger lines. Everything else (allocations, inventories, programs) operates on what the ledger catches; catch debt at birth and the entire downstream machinery stays small enough to actually run. Borrow consciously, repay mechanically, and the swamp never forms.</p>
+
+<h3>What&rsquo;s a realistic maturity timeline for a drowning team?</h3>
+<p>Quarter one: inventory top-twenty interests, win the standing allocation, catch every NEW compromise at entry &mdash; stop the bleeding without touching legacy yet. Quarter two-three: first triggered repayments (highest interest, smallest principals) building the credibility track record. Quarters four-six: first strangler program against the worst structural debt, quarterly reporting normalized. Year two: the system self-sustains &mdash; allocation boring, registry trusted, interest trending down visibly. Drowning teams want rescue in a sprint; honest pacing prevents the abandonment that leaves them wetter than before.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>Technical debt becomes manageable the moment it stops being a mood and becomes a market: classified liabilities with priced interests, inventoried where planning happens, serviced through protected allocation plus triggered surgery, prevented at entry points through recording discipline, and translated relentlessly into the currencies decision-makers spend. The commerce platform&rsquo;s recovery showed the arc&rsquo;s shape &mdash; measure interest, allocate capacity, strangle instead of rewrite, compound wins &mdash; and ended with the rewrite conversation dying not from politics but from irrelevance: continuous payment had done what the grand plan never could. All code rots somewhere; engineered teams choose which rot they service. Keep the ledger honest, keep the percentage boring, keep borrowing deliberate &mdash; and debt returns to being leverage instead of legacy.</p>
+
+<h2 id="related">Related reading</h2>
+<ul>
+<li><a href="https://johal.in/code-review-speed-quality-balance-guide">Code Review Balance</a> &mdash; where new debt gets caught.</li>
+<li><a href="https://johal.in/zero-downtime-migrations">Zero-Downtime Migrations</a> &mdash; expand-contract everywhere.</li>
+<li><a href="https://johal.in/materialized-views-heavy-query-caching-guide">Materialized Views</a> &mdash; remediating schema-debt symptoms.</li>
+<li><a href="https://johal.in/flaky-tests-quarantine-economics-guide">Flaky Test Economics</a> &mdash; test debt priced the same way.</li>
+<li>Platform home: <a href="https://vayupress.com">vayupress.com</a> / <a href="https://github.com/johalputt/VayuPress">GitHub</a>.</li>
+</ul>

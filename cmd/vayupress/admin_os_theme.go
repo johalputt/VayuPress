@@ -728,7 +728,7 @@ func (a *App) handleOSThemeImport(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, r, http.StatusInternalServerError, map[string]string{"error": "failed to persist tokens: " + err.Error()})
 		return
 	}
-	render.SetThemeCSS(css)
+	render.ActivateTheme(env.Tokens, css)
 
 	kv := map[string]string{
 		settings.KeyThemeCustomCSS:   ccss,

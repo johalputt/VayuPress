@@ -181,8 +181,9 @@ func (a *App) saveAndActivateTheme(ctx context.Context, t theme.Tokens, css stri
 	if err := theme.Save(ctx, dbpkg.DB, t); err != nil {
 		return err
 	}
-	render.SetThemeCSS(css)
+	render.ActivateTheme(t, css)
 	render.CachePurgeAll()
+	a.warmHalcyonTopics()
 	return nil
 }
 

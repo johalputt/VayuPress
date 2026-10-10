@@ -791,11 +791,18 @@ const CommentsJS = `(function(){
   function fmt(d){try{var t=new Date(d);return t.toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})+' · '+t.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});}catch(e){return '';}}
   function rel(d){try{var s=Math.floor((Date.now()-new Date(d).getTime())/1000);if(s<45)return 'just now';var m=Math.round(s/60);if(m<60)return m+'m ago';var h=Math.round(m/60);if(h<24)return h+'h ago';var dd=Math.round(h/24);if(dd<31)return dd+'d ago';var mo=Math.round(dd/30);if(mo<12)return mo+'mo ago';return Math.round(mo/12)+'y ago';}catch(e){return '';}}
   function iso(d){try{return new Date(d).toISOString();}catch(e){return '';}}
-  function globe(){var s=document.createElement('span');s.className='vayu-comment-flag vayu-comment-flag--unknown';s.textContent='🌐';s.title='Location unknown';s.setAttribute('aria-label','Location unknown');return s;}
+  function globe(){var s=document.createElement('span');s.className='vayu-comment-flag vayu-comment-flag--unknown vayu-ico';s.textContent='🌐';s.title='Location unknown';s.setAttribute('aria-label','Location unknown');return s;}
   function flagEl(cc){cc=esc(cc).trim().toLowerCase();if(!/^[a-z]{2}$/.test(cc))return globe();
     var CC=cc.toUpperCase();var img=document.createElement('img');img.className='vayu-comment-flag';img.src='/os/static/flags/'+cc+'.svg';img.width=20;img.height=15;img.alt=CC;img.title=CC;img.loading='lazy';img.decoding='async';img.setAttribute('aria-label','From '+CC);
     img.addEventListener('error',function(){if(img.parentNode)img.parentNode.replaceChild(globe(),img);});return img;}
   function clear(n){while(n.firstChild)n.removeChild(n.firstChild);}
+  // label sets an element's text with its pictograph in an aria-hidden span of
+  // its own: before the words for a button, after them for a sentence. A
+  // screen reader reads the words, and a theme that sets no pictographs hides
+  // .vayu-ico; on every other theme the result looks as it did.
+  function label(el,text,ico,after){clear(el);var s=document.createElement('span');s.className='vayu-ico';s.setAttribute('aria-hidden','true');
+    if(after){el.appendChild(document.createTextNode(text+' '));s.textContent=ico;el.appendChild(s);}
+    else{s.textContent=ico+' ';el.appendChild(s);el.appendChild(document.createTextNode(text));}}
   function field(ph,type,req){var i=document.createElement(type==='textarea'?'textarea':'input');if(type!=='textarea')i.type=type;i.placeholder=ph;if(req)i.required=true;i.className='vayu-comment-input';return i;}
   function initials(n){n=esc(n).trim();return (n?n.charAt(0):'?').toUpperCase();}
   // Inline-edit a comment you own: swap the body <p> for a textarea + Save/Cancel,
@@ -848,8 +855,8 @@ const CommentsJS = `(function(){
           // An operator/staff comment is auto-approved server-side (status
           // "approved"): show it live by reloading the thread. A member's comment
           // still enters moderation, so it reports the awaiting-review state.
-          if(res.d&&res.d.status==='approved'){status.textContent='Posted ✓';load();}
-          else{status.textContent='Thanks! Awaiting moderation. ✨';}
+          if(res.d&&res.d.status==='approved'){label(status,'Posted','✓',true);load();}
+          else{label(status,'Thanks! Awaiting moderation.','✨',true);}
           if(onPosted)onPosted();}
         else if(res.status===401){me=null;status.textContent='Please sign in as a member to comment.';if(typeof window.vpPortalOpen==='function'){window.vpPortalOpen('signin');}}
         else{status.textContent=(res.d&&res.d.error&&(res.d.error.message||res.d.error))||'Could not post comment.';}});});
@@ -889,21 +896,21 @@ const CommentsJS = `(function(){
       var bar=document.createElement('div');bar.className='vayu-comment-bar';
       var holder=document.createElement('div');holder.className='vayu-comment-replyform';
       if(canReply){
-        var rbtn=document.createElement('button');rbtn.type='button';rbtn.className='vayu-comment-act vayu-comment-reply-btn';rbtn.textContent='↩ Reply';
+        var rbtn=document.createElement('button');rbtn.type='button';rbtn.className='vayu-comment-act vayu-comment-reply-btn';label(rbtn,'Reply','↩');
         rbtn.addEventListener('click',function(){
-          if(holder.firstChild){clear(holder);rbtn.textContent='↩ Reply';return;}
+          if(holder.firstChild){clear(holder);label(rbtn,'Reply','↩');return;}
           rbtn.textContent='Cancel';
-          var f=commentForm(c.id,'Write a reply…','Post reply',function(){setTimeout(function(){clear(holder);rbtn.textContent='↩ Reply';},1500);});
+          var f=commentForm(c.id,'Write a reply…','Post reply',function(){setTimeout(function(){clear(holder);label(rbtn,'Reply','↩');},1500);});
           holder.appendChild(f);f.querySelector('textarea').focus();});
         bar.appendChild(rbtn);
       }
       if(canEdit){
-        var ebtn=document.createElement('button');ebtn.type='button';ebtn.className='vayu-comment-act';ebtn.textContent='✎ Edit';
+        var ebtn=document.createElement('button');ebtn.type='button';ebtn.className='vayu-comment-act';label(ebtn,'Edit','✎');
         ebtn.addEventListener('click',function(){startEdit(el,body,c);});
         bar.appendChild(ebtn);
       }
       if(canDelete){
-        var dbtn=document.createElement('button');dbtn.type='button';dbtn.className='vayu-comment-act vayu-comment-del-btn';dbtn.textContent='🗑 Delete';
+        var dbtn=document.createElement('button');dbtn.type='button';dbtn.className='vayu-comment-act vayu-comment-del-btn';label(dbtn,'Delete','🗑');
         dbtn.addEventListener('click',function(){doDelete(c.id);});
         bar.appendChild(dbtn);
       }
@@ -913,7 +920,7 @@ const CommentsJS = `(function(){
   }
   function render(items){
     clear(listEl);
-    if(!items||!items.length){var p=document.createElement('p');p.className='vayu-comment-empty';p.textContent='No comments yet. Be the first. 💬';listEl.appendChild(p);return;}
+    if(!items||!items.length){var p=document.createElement('p');p.className='vayu-comment-empty';label(p,'No comments yet. Be the first.','💬',true);listEl.appendChild(p);return;}
     var kids={};items.forEach(function(c){if(c.parent_id){(kids[c.parent_id]=kids[c.parent_id]||[]).push(c);}});
     items.forEach(function(c){
       if(c.parent_id)return;
@@ -928,7 +935,7 @@ const CommentsJS = `(function(){
   root.appendChild(h);root.appendChild(listEl);
   var compose=document.createElement('div');compose.className='vayu-comment-compose';root.appendChild(compose);
   function guestPrompt(){clear(compose);
-    var p=document.createElement('p');p.className='vayu-comment-gate';p.textContent='Join the conversation — sign in as a member to comment. 💬';
+    var p=document.createElement('p');p.className='vayu-comment-gate';label(p,'Join the conversation — sign in as a member to comment.','💬',true);
     var b=document.createElement('button');b.type='button';b.className='vayu-comment-submit';b.textContent='Sign in to comment';
     b.addEventListener('click',function(){if(typeof window.vpPortalOpen==='function'){window.vpPortalOpen('signin');}else{window.location.href='/members';}});
     compose.appendChild(p);compose.appendChild(b);}
@@ -1087,7 +1094,7 @@ const TrendingJS = `(function () {
 
     var badge = document.createElement('span');
     if (isPin) {
-      badge.className = 'vayu-trending-pin';
+      badge.className = 'vayu-trending-pin vayu-ico';
       badge.textContent = '\uD83D\uDCCC'; // 📌
       badge.setAttribute('aria-hidden', 'true');
     } else {
@@ -1122,14 +1129,23 @@ const TrendingJS = `(function () {
     return list;
   }
 
-  function group(labelText, icon) {
+  // The pictograph is its own aria-hidden span, so a screen reader reads the
+  // label alone and a theme that sets no pictographs can hide it; data-group
+  // lets a theme show or hide the pinned and trending lists separately.
+  function group(labelText, icon, kind) {
     var g = document.createElement('div');
     g.className = 'vayu-trending-group';
+    g.setAttribute('data-group', kind);
     var head = document.createElement('div');
     head.className = 'vayu-trending-head';
     var label = document.createElement('span');
     label.className = 'vayu-trending-label';
-    label.textContent = icon + ' ' + labelText;
+    var ico = document.createElement('span');
+    ico.className = 'vayu-ico';
+    ico.setAttribute('aria-hidden', 'true');
+    ico.textContent = icon + ' ';
+    label.appendChild(ico);
+    label.appendChild(document.createTextNode(labelText));
     head.appendChild(label);
     g.appendChild(head);
     return { group: g, head: head };
@@ -1139,7 +1155,7 @@ const TrendingJS = `(function () {
     section.textContent = ''; // idempotent: clear any prior render
 
     if (pinned.length) {
-      var p = group('Pinned', '\uD83D\uDCCC');
+      var p = group('Pinned', '\uD83D\uDCCC', 'pinned');
       p.group.appendChild(listEl(pinned, true));
       section.appendChild(p.group);
     }
@@ -1148,7 +1164,7 @@ const TrendingJS = `(function () {
     var win30 = windows['30'] || [];
     if (!win7.length && !win30.length) return;
 
-    var t = group('Trending', '\uD83D\uDD25'); // 🔥
+    var t = group('Trending', '\uD83D\uDD25', 'trending'); // 🔥
     var tabs = document.createElement('div');
     tabs.className = 'vayu-trending-tabs';
     tabs.setAttribute('role', 'tablist');
@@ -1338,9 +1354,15 @@ const SearchModalJS = `(function () {
       .catch(function () { loading = false; status.textContent = 'Search is unavailable'; });
   }
 
+  // The control that opened the sheet gets focus back when it closes, so a
+  // keyboard reader is returned to where they were. A search field opens the
+  // sheet on focus, so giving focus back to one must not open it again:
+  // returning marks that focus as ours.
+  var opener = null, returning = false;
   function open(prefill) {
     ensureBuilt();
     load();
+    if (!overlay.classList.contains('is-open')) opener = document.activeElement;
     document.documentElement.classList.add('vayu-modal-open');
     overlay.classList.add('is-open');
     if (prefill) input.value = prefill;
@@ -1351,6 +1373,8 @@ const SearchModalJS = `(function () {
     if (!overlay) return;
     overlay.classList.remove('is-open');
     document.documentElement.classList.remove('vayu-modal-open');
+    if (opener && opener.focus) { returning = true; opener.focus(); returning = false; }
+    opener = null;
   }
 
   function onInput() {
@@ -1469,7 +1493,7 @@ const SearchModalJS = `(function () {
 
   forms.forEach(function (form) {
     var field = form.querySelector('input[type="search"]');
-    function trigger(e) { e.preventDefault(); open(field ? field.value : ''); }
+    function trigger(e) { e.preventDefault(); if (!returning) open(field ? field.value : ''); }
     form.addEventListener('submit', trigger);
     if (field) {
       field.addEventListener('focus', trigger);
@@ -1589,6 +1613,10 @@ type RelatedArticle struct {
 	Title     string
 	Slug      string
 	CreatedAt time.Time
+	// Shared are the current post's topics (normalised) this one also
+	// carries. Halcyon ranks by them and gives them as the reason; the shared
+	// templates do not read them.
+	Shared []string
 }
 
 // codeBlockRe matches <pre><code class="language-LANG"> or <pre><code class="lang-LANG">
@@ -2065,6 +2093,10 @@ func RenderHome(domain, version string, articles []HomeArticle, totalCount, page
 // while the primary install keeps calling RenderHome (which passes the global
 // settings), so a single-host site is byte-identical.
 func RenderHomeWithSettings(s SiteSettings, domain, version string, articles []HomeArticle, totalCount, page, totalPages int) (string, error) {
+	if cfg, ok := Halcyon(); ok {
+		return renderHalcyonHome(HomeInput{Settings: s, Domain: domain, Version: version, Articles: articles,
+			Total: totalCount, Page: page, TotalPages: totalPages}, cfg)
+	}
 	var buf strings.Builder
 	if page < 1 {
 		page = 1
@@ -2235,6 +2267,9 @@ var searchTmpl = template.Must(template.New("search").Funcs(homeFuncs).Parse(`<!
 // Results pages are marked noindex (thin, query-dependent) but follow links so
 // the linked posts are still discoverable.
 func RenderSearch(domain, version, query string, hits []SearchHit) (string, error) {
+	if cfg, ok := Halcyon(); ok {
+		return renderHalcyonSearch(query, hits, cfg)
+	}
 	var buf strings.Builder
 	s := getActiveSettings()
 	err := searchTmpl.Execute(&buf, searchPage{
@@ -2259,6 +2294,9 @@ func RenderSearch(domain, version, query string, hits []SearchHit) (string, erro
 
 // Render404 renders the branded not-found page.
 func Render404(domain, version string) string {
+	if cfg, ok := Halcyon(); ok {
+		return renderHalcyon404(cfg)
+	}
 	var buf strings.Builder
 	s := getActiveSettings()
 	_ = notFoundTmpl.Execute(&buf, homePage{
@@ -2445,6 +2483,14 @@ func RenderArticleWithMetaSettings(s SiteSettings, a db.Article, layout ArticleL
 	// when it wasn't already set from the per-post author.
 	if data.AuthorSlug == "" && AuthorInfoFn != nil && data.Author != "" {
 		data.AuthorSlug, data.AuthorAvatar = AuthorInfoFn(data.Author)
+	}
+	if cfg, ok := Halcyon(); ok {
+		out, err := renderHalcyonArticle(s, data, cfg)
+		if err != nil {
+			return "", fmt.Errorf("template: %w", err)
+		}
+		metrics.RenderLatency.Record(time.Since(start))
+		return out, nil
 	}
 	if err := articleTmpl.Execute(&buf, data); err != nil {
 		return "", fmt.Errorf("template: %w", err)

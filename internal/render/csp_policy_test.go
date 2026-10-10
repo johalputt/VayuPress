@@ -105,8 +105,8 @@ func TestAllowancesMergeIntoWhateverPolicyThePageBuilt(t *testing.T) {
 		return ""
 	}
 	for name, want := range map[string]string{
-		// The nonce and the theme hash survive; the service's origin is added.
-		"script-src": "script-src 'self' 'nonce-n0nce' " + ThemeToggleCSPHash + " https://js.stripe.com",
+		// The nonce and both inline-script hashes survive; the service's origin is added.
+		"script-src": "script-src 'self' 'nonce-n0nce' " + ThemeToggleCSPHash + " " + HalcyonPrefsCSPHash + " https://js.stripe.com",
 		// A directive the page already widened keeps its widening.
 		"frame-src": "frame-src 'self' https://www.youtube-nocookie.com https://hooks.stripe.com https://js.stripe.com",
 		// Absent before, so default-src 'self' applied: created with 'self' first.

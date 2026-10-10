@@ -1,0 +1,26 @@
+<h2 id="contenders">The four contenders at a glance</h2>
+
+<table class="vp-table">
+<thead><tr><th>Dimension</th><th>GitComet 0.2.5</th><th>GitKraken</th><th>Sourcetree</th><th>lazygit 0.65.1</th></tr></thead>
+<tbody>
+<tr><td>Form factor</td><td>Desktop GUI (Rust, GPUI)</td><td>Desktop GUI (Electron-class)</td><td>Desktop GUI (Java/WPF lineage)</td><td>Terminal UI (Go)</td></tr>
+<tr><td>License / model</td><td>AGPL-3.0 open source; "Professional next"</td><td>Closed source; freemium + paid tiers</td><td>Freeware (Atlassian)</td><td>Open source, free</td></tr>
+<tr><td>Platforms</td><td>Win/macOS/Linux (+ ARM64 all three)</td><td>Win/macOS/Linux</td><td>Win + macOS only</td><td>Anywhere Go + git run</td></tr>
+<tr><td>Release evidence</td><td>10 public releases since May 2026; repo pushed the day we tested</td><td>Unverifiable (Cloudflare wall)</td><td>Windows 3.4.32, macOS 4.2.19 (from Atlassian's real links)</td><td>v0.65.1, Sep 13 2026, 25+ releases since April</td></tr>
+<tr><td>Checksums published?</td><td>Yes &mdash; sha256 + md5 per release, verified match</td><td>No public per-release hash sheet we could reach</td><td>No per-release hash sheet</td><td>Release checksums published</td></tr>
+<tr><td>Artifact weight (Win x64)</td><td>27.5 MB zip / 118 MB binary, no installer needed</td><td>&gt;100 MB installer class</td><td>&gt;100 MB installer class</td><td>6.9 MB zip total</td></tr>
+<tr><td>Community signal</td><td>865 stars / 49 forks / 62 open issues; Discussions active</td><td>Commercial support org</td><td>Atlassian's forums</td><td>Enormous, multi-year</td></tr>
+</tbody>
+</table>
+
+<h2 id="audit">The hands-on audit, with real output</h2>
+
+<p>GitComet publishes <code>checksums.sha256</code> and <code>checksums.md5</code> on every release &mdash; 15 assets per release covering every platform including arm64 variants and a Homebrew formula. We pulled the sha256 sheet and the Windows portable zip, and ran the comparison:</p>
+
+<pre><code>PS&gt; curl.exe -sSL -o gitcomet-v0.2.5-windows-x86_64-portable.zip `
+  https://github.com/Auto-Explore/GitComet/releases/download/v0.2.5/gitcomet-v0.2.5-windows-x86_64-portable.zip
+PS&gt; (Get-FileHash .\gitcomet-v0.2.5-windows-x86_64-portable.zip -Algorithm SHA256).Hash.ToLower()
+ba6ee455dbcaee62f3fcb50431bce1665599f74a484007b85ffa470e5cf3d9d5
+PS&gt; Get-Content gitcomet-v0.2.5-checksums.sha256 | Select-String 'windows-x86_64-portable'
+ba6ee455dbcaee62f3fcb50431bce1665599f74a484007b85ffa470e5cf3d9d5  gitcomet-v0.2.5-windows-x86_64-portable.zip
+# local == vendor: FULL MATCH -- byte-level verification complete</code></pre>

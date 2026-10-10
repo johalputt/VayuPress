@@ -68,3 +68,12 @@ Bundled web font (Vayu theme):
   Licensed under the SIL Open Font License, Version 1.1 (OFL-1.1).
   The full license accompanies the font files at static/fonts/OFL.txt.
   Shipped as a latin-subset woff2, served same-origin; no external font request.
+
+Bundled web font (Halcyon theme):
+
+* Newsreader (400, 400 italic, 500, 600)
+  Copyright 2020 The Newsreader Project Authors
+  (https://github.com/productiontype/Newsreader)
+  Licensed under the SIL Open Font License, Version 1.1 (OFL-1.1).
+  The full license accompanies the font files at static/fonts/NEWSREADER-LICENSE.txt.
+  Shipped as latin-subset woff2, served same-origin; no external font request.

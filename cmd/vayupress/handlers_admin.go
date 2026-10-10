@@ -404,13 +404,20 @@ func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
 	// Per-domain branding: a secondary domain with its own brand renders from its
 	// branded settings; the primary and single-domain installs take the original
 	// call, byte-identical.
-	var html string
-	var err error
-	if s, ok := a.brandForRequest(r); ok {
-		html, err = render.RenderHomeWithSettings(s, config.Cfg.Domain, Version, articles, total, page, totalPages)
-	} else {
-		html, err = render.RenderHome(config.Cfg.Domain, Version, articles, total, page, totalPages)
+	s, branded := a.brandForRequest(r)
+	if !branded {
+		s = render.GetActiveSettings()
 	}
+	in := render.HomeInput{Settings: s, Domain: config.Cfg.Domain, Version: Version, Articles: articles,
+		Total: total, Page: page, TotalPages: totalPages}
+	if _, on := render.Halcyon(); on {
+		key, scope, scoped, count := a.halcyonScope(r)
+		in.Topics, in.TopicTotal = a.halcyonTopics(key, count)
+		if page == 1 {
+			in.Desks = a.halcyonDesks(r.Context(), in.Topics, in.TopicTotal, scope, scoped)
+		}
+	}
+	html, err := render.RenderHomePage(in)
 	if err != nil {
 		http.Error(w, "render error", 500)
 		return
@@ -641,7 +648,12 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	layout := render.DetectLayout(art, r, isAdmin)
-	related := a.relatedArticles(r.Context(), art.Slug, art.Tags, 4)
+	var related []render.RelatedArticle
+	if _, on := render.Halcyon(); on {
+		related = a.halcyonRelated(r, art.Slug, art.Tags)
+	} else {
+		related = a.relatedArticles(r.Context(), art.Slug, art.Tags, 4)
+	}
 	pm := loadPostMeta(r.Context(), art.Slug)
 	// Per-domain branding: the ownership gate above guarantees this article is
 	// served only on its owning domain, so branded settings (when that owner is a
@@ -2004,6 +2016,9 @@ func relatedByTag(ctx context.Context, norms []string, currentSlug string, perTa
 		at time.Time
 	}
 	var cands []candidate
+	// shared records, for each candidate, which of the post's tags it was found
+	// under: the topics it shares, which Halcyon ranks by and gives as the reason.
+	shared := map[string][]string{}
 	for _, n := range norms {
 		rows, err := dbpkg.Reader().QueryContext(ctx, relatedPerTagSQL, n, perTag)
 		if err != nil {
@@ -2014,6 +2029,7 @@ func relatedByTag(ctx context.Context, norms []string, currentSlug string, perTa
 			if rows.Scan(&c.id, &c.at) != nil {
 				continue
 			}
+			shared[c.id] = append(shared[c.id], n)
 			cands = append(cands, c) // a post under two tags appears twice; relatedArticles keeps it once
 		}
 		_ = rows.Err()
@@ -2046,6 +2062,7 @@ func relatedByTag(ctx context.Context, norms []string, currentSlug string, perTa
 	out := make([]render.RelatedArticle, 0, len(byID))
 	for _, c := range cands {
 		if ra, ok := byID[c.id]; ok {
+			ra.Shared = shared[c.id]
 			out = append(out, ra)
 		}
 	}

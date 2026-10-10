@@ -825,7 +825,7 @@ func main() {
 	// Load persisted design-token theme into the render pipeline.
 	if tok, err := theme.Load(context.Background(), dbpkg.DB); err == nil {
 		if css, err := theme.CompileCSS(tok); err == nil {
-			render.SetThemeCSS(css)
+			render.ActivateTheme(tok, css)
 		}
 	}
 
@@ -1089,6 +1089,9 @@ func main() {
 			return dbpkg.StorageUsedBytes(), dbpkg.StorageQuotaBytes()
 		},
 	}
+	// The topic counts Halcyon's front page shows, counted once now rather than
+	// by the first visitor (needs the article service just wired).
+	a.warmHalcyonTopics()
 
 	// Wire VayuFlow — the deterministic automation engine (ADR-0151).
 	//

@@ -239,6 +239,12 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		"portal.css":        "portal.css",
 		"docs.css":          "docs.css",
 	}
+	// Halcyon's stylesheets and script are compiled into the render package
+	// and served from memory, content-hashed and immutable like the rest.
+	for _, name := range []string{"halcyon.css", "halcyon-members.css"} {
+		r.Get("/static/css/"+name, a.handleHalcyonAsset(name))
+	}
+	r.Get("/static/js/halcyon.js", a.handleHalcyonAsset("halcyon.js"))
 	r.Get("/static/css/{file}", func(w http.ResponseWriter, r *http.Request) {
 		canon, ok := cssAllowlist[chi.URLParam(r, "file")]
 		if !ok {

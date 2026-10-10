@@ -124,6 +124,22 @@ func publicAssetCache(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 }
 
+// handleHalcyonAsset serves one of Halcyon's static files. The ?v= on every
+// link is the hash of these bytes, so a year's cache is safe.
+func (a *App) handleHalcyonAsset(name string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		body, ctype, ok := render.HalcyonAsset(name)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", ctype)
+		w.Header().Set("Cache-Control", "public, immutable, max-age=31536000")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		_, _ = w.Write(body)
+	}
+}
+
 // handleThemeToggleJS serves the public sun/moon theme switcher script.
 // Same-origin static asset → satisfies `script-src 'self'` without a nonce.
 func (a *App) handleThemeToggleJS(w http.ResponseWriter, r *http.Request) {
@@ -217,16 +233,20 @@ func (a *App) handleHTMXJS(w http.ResponseWriter, r *http.Request) {
 // without leaving the origin. Every file is SIL OFL; the licences are vendored
 // beside them in static/fonts/.
 var fontAllowlist = map[string]bool{
-	"space-grotesk-latin-400.woff2":  true,
-	"space-grotesk-latin-500.woff2":  true,
-	"space-grotesk-latin-600.woff2":  true,
-	"space-grotesk-latin-700.woff2":  true,
-	"inter-latin-300.woff2":          true,
-	"inter-latin-400.woff2":          true,
-	"inter-latin-500.woff2":          true,
-	"inter-latin-600.woff2":          true,
-	"jetbrains-mono-latin-400.woff2": true,
-	"jetbrains-mono-latin-500.woff2": true,
+	"space-grotesk-latin-400.woff2":     true,
+	"space-grotesk-latin-500.woff2":     true,
+	"space-grotesk-latin-600.woff2":     true,
+	"space-grotesk-latin-700.woff2":     true,
+	"newsreader-latin-400-normal.woff2": true,
+	"newsreader-latin-400-italic.woff2": true,
+	"newsreader-latin-500-normal.woff2": true,
+	"newsreader-latin-600-normal.woff2": true,
+	"inter-latin-300.woff2":             true,
+	"inter-latin-400.woff2":             true,
+	"inter-latin-500.woff2":             true,
+	"inter-latin-600.woff2":             true,
+	"jetbrains-mono-latin-400.woff2":    true,
+	"jetbrains-mono-latin-500.woff2":    true,
 }
 
 // handleStaticFont serves an allowlisted, self-hosted woff2 web font from the

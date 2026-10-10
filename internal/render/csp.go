@@ -72,7 +72,7 @@ func applyOnionCSP(csp string) string {
 // switcher is inlined in the page head to avoid a render-blocking request, and
 // its hash keeps the strict `script-src 'self' 'nonce'` policy intact.
 var cspBaseline = "default-src 'self'; font-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; " +
-	"script-src 'self' 'nonce-%s' " + ThemeToggleCSPHash + "; img-src 'self' data: https:; connect-src 'self'; " +
+	"script-src 'self' 'nonce-%s' " + ThemeToggleCSPHash + " " + HalcyonPrefsCSPHash + "; img-src 'self' data: https:; connect-src 'self'; " +
 	"frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /csp-report"
 
 // BuildCSP returns the page Content-Security-Policy for the given nonce. When
@@ -148,7 +148,7 @@ var adImgConnectOrigins = []string{
 // the vetted Google ad origins (and merging in any allowlisted video-embed
 // frame origins). 'self' and the per-request nonce are always preserved.
 func BuildAdCSP(nonce string, frameOrigins []string) string {
-	scriptSrc := "script-src 'self' 'nonce-" + nonce + "' " + ThemeToggleCSPHash + " " + strings.Join(adScriptOrigins, " ")
+	scriptSrc := "script-src 'self' 'nonce-" + nonce + "' " + ThemeToggleCSPHash + " " + HalcyonPrefsCSPHash + " " + strings.Join(adScriptOrigins, " ")
 	imgSrc := "img-src 'self' data: https: " + strings.Join(adImgConnectOrigins, " ")
 	connectSrc := "connect-src 'self' " + strings.Join(adImgConnectOrigins, " ")
 	frames := append([]string{}, adFrameOrigins...)
