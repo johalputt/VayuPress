@@ -50,14 +50,17 @@ func (a *App) halcyonTopics(key string, count func(context.Context) ([]render.Ta
 	if start {
 		go func() {
 			refreshTagIndex(key, count)
-			// Pages rendered while the memo was cold went out without their
-			// topic sections; mark them stale so the next visit rebuilds them.
+			// Home and the topic pages rendered while the memo was cold went out
+			// without their topic sections; drop them so the next visit rebuilds
+			// them. Only those: a post rendered in that window keeps its related
+			// reading until its own next render, rather than every cached post
+			// on the site re-rendering after each restart.
 			if !have {
 				tagIndexMemo.Lock()
 				_, filled := tagIndexMemo.m[key]
 				tagIndexMemo.Unlock()
 				if _, on := render.Halcyon(); filled && on {
-					render.CachePurgeAll()
+					render.CachePurgeListings()
 				}
 			}
 		}()
@@ -148,7 +151,9 @@ func (a *App) halcyonRelated(r *http.Request, slug string, tags []string) []rend
 		counts[strings.ToLower(strings.TrimSpace(t.Name))] = t.Count
 	}
 	ubiquitous := func(tag string) bool { return render.Ubiquitous(counts[tag], total) }
-	return render.RankRelated(a.relatedArticles(r.Context(), slug, tags, 12), ubiquitous, 3)
+	// relatedArticles reads four times its limit from each tag: six gives
+	// twenty-four candidates a tag, ample for the three Halcyon keeps.
+	return render.RankRelated(a.relatedArticles(r.Context(), slug, tags, 6), ubiquitous, 3)
 }
 
 // warmHalcyonTopics starts the first topic count at boot while Halcyon is the

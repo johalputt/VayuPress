@@ -27,8 +27,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   - **Every style is a choice in Theme Studio,** whose preview is now the
     real page with the options being edited, by page, device and scheme.
   - **Light to load:** one small script and its own fonts served from this
-    site, with no third-party request. Its stylesheet is 9.5 KB and its
-    script 3.7 KB gzipped. (ADR-0166)
+    site, with no third-party request. Its stylesheet is 9.4 KB and its
+    script 3.8 KB gzipped. (ADR-0166)
 - **Ads in a side column.** The sidebar placement shows in Halcyon's rail on
   Home's river and beside a post. On narrower screens it follows the post
   rather than being hidden.

@@ -2671,6 +2671,36 @@ func CachePurgeAll() {
 	writeRenderStamp(renderStampPath(), cacheFingerprint(), now)
 }
 
+// CachePurgeListings removes the cached pages that list posts (Home and every
+// topic page, a multi-domain install's included), leaving each post's own page
+// cached.
+//
+// Deleting rather than CachePurgeAll's stale mark is deliberate: the mark is
+// one cutoff for every page, so it would re-render every post on its next
+// visit after each restart, for a change only the listings carry. Each file's
+// size is taken off the storage count, as CachePurgePost does.
+func CachePurgeListings() {
+	root := config.Cfg.CacheDir
+	dirs := []string{filepath.Join(root, "home"), filepath.Join(root, "tags")}
+	// Per-domain topic pages live under d_<domain>/tags (handlers_tags.go); a
+	// per-domain Home lives under home/, already listed.
+	if perDomain, err := filepath.Glob(filepath.Join(root, "d_*", "tags")); err == nil {
+		dirs = append(dirs, perDomain...)
+	}
+	for _, dir := range dirs {
+		_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			if fi, err := d.Info(); err == nil {
+				db.UpdateStorageDelta(-fi.Size())
+			}
+			_ = os.Remove(p)
+			return nil
+		})
+	}
+}
+
 // CachePurgePost removes just the cached HTML for a single article slug. Used
 // when an article's access level changes so the paywall takes effect at once.
 func CachePurgePost(slug string) {

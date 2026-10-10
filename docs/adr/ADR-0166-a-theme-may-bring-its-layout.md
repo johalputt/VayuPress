@@ -28,8 +28,8 @@ while its layout is active. Every other theme renders exactly as before:
 to what the commit before Halcyon rendered from the same inputs. The one
 difference is the version in three widget script URLs, below.
 
-**Halcyon's own files.** A stylesheet (9.5 KB gzipped against a 16 KB budget)
-and a script (3.7 KB against 6 KB) are compiled into the binary and served
+**Halcyon's own files.** A stylesheet (9.4 KB gzipped against a 16 KB budget)
+and a script (3.8 KB against 6 KB) are compiled into the binary and served
 immutable under content hashes. Newsreader (SIL OFL) joins the self-hosted
 fonts. Halcyon pages load neither Pico nor `article.css`. The editor's
 component rules (video facades, embed cards, `vp-*` blocks) are taken from
@@ -110,7 +110,8 @@ Halcyon for a missing row, which only a new install has.
   - every overlay follows its rules;
   - the reader's choices apply before paint;
   - motion stops under reduced motion;
-  - no request leaves the host.
+  - no request leaves the host;
+  - a link copies where the clipboard API is not offered (a .onion).
 - **Not done here:**
   - Inline SVG diagrams are removed by the article sanitiser on every theme
     and their labels leak as loose text. Admitting or dropping them is a

@@ -23,8 +23,6 @@
   // ── Appearance ─────────────────────────────────────────────────────────
   // The reader's choice is stored under the shared theme key; "auto" removes
   // it, and the site's own default (on <html>) applies again.
-  var ICON = { auto: 'M10 3.4a6.6 6.6 0 0 1 0 13.2z', light: '', dark: '' };
-  function scheme() { return r.getAttribute('data-theme') && localStorage.getItem(K) ? r.getAttribute('data-theme') : 'auto'; }
   function setScheme(s) {
     if (s === 'auto') {
       store(K, null);
@@ -51,7 +49,6 @@
       setScheme(order[(order.indexOf(current()) + 1) % 3]);
     } else setScheme(b.getAttribute('data-h-scheme'));
   });
-  void ICON; void scheme;
 
   // ── Reading settings (Aa) ──────────────────────────────────────────────
   function paintReader() {
@@ -145,8 +142,18 @@
   });
 
   // ── Share and links ────────────────────────────────────────────────────
+  // The clipboard API exists only on a secure page; a site served over plain
+  // HTTP (a .onion) copies through a selected, off-screen field instead.
   function copy(text, done) {
-    if (navigator.clipboard) navigator.clipboard.writeText(text).then(function () { say(done); }, function () {});
+    if (navigator.clipboard && w.isSecureContext) {
+      navigator.clipboard.writeText(text).then(function () { say(done); }, function () {});
+      return;
+    }
+    var t = d.createElement('textarea');
+    t.value = text; t.setAttribute('readonly', ''); t.className = 'h-vh';
+    d.body.appendChild(t); t.select();
+    try { if (d.execCommand('copy')) say(done); } catch (e) {}
+    d.body.removeChild(t);
   }
   d.addEventListener('click', function (e) {
     var b = e.target.closest && e.target.closest('[data-h-share],[data-h-copylink]');
@@ -161,7 +168,13 @@
   var lefts = $$('[data-h-left]');
   var minutes = 0;
   if (body) minutes = Math.max(1, Math.round(body.textContent.split(/\s+/).length / 200));
-  var heads = $$('.h-outline a').map(function (a) { return d.getElementById(decodeURIComponent(a.getAttribute('href').slice(1))); }).filter(Boolean);
+  // An author's own anchor can hold a % that does not decode; that heading is
+  // left out of the tracking rather than stopping the whole script.
+  var heads = $$('.h-outline a').map(function (a) {
+    var id = a.getAttribute('href').slice(1);
+    try { id = decodeURIComponent(id); } catch (e) {}
+    return d.getElementById(id);
+  }).filter(Boolean);
   var items = $$('.h-outline li');
   var ticking = false;
   function frame() {

@@ -162,7 +162,8 @@ const halcyonShared = `
 
 const halcyonHomeTmpl = `{{template "start" .}}<div class="h-page"><main id="main-content" class="h-wrap">
 {{$caps := .Cfg.SmallCaps}}
-{{if eq .Composition "front"}}
+{{if eq .Composition "empty"}}<p class="h-empty">Nothing is published here yet.</p>
+{{else if eq .Composition "front"}}
 {{if .Lead}}<section class="h-front">
 <article class="h-lead">{{template "meta" .Lead}}<h2><a href="/{{.Lead.Slug}}">{{.Lead.Title}}</a></h2>{{if .Lead.Excerpt}}<p class="h-excerpt">{{caps $caps .Lead.Excerpt}}</p>{{end}}{{if .Lead.Author}}<p class="h-meta h-by">By {{.Lead.Author}}</p>{{end}}</article>
 {{if .Also}}<aside class="h-also" aria-labelledby="h-also-h"><h2 class="h-label" id="h-also-h">Also new</h2><ol>{{range .Also}}<li>{{template "meta" .}}<a class="h-also-t" href="/{{.Slug}}">{{.Title}}</a></li>{{end}}</ol><div class="h-rail-ads" data-ads="sidebar"></div></aside>{{end}}
@@ -346,6 +347,11 @@ func renderHalcyonHome(in HomeInput, cfg theme.HalcyonConfig) (string, error) {
 		if cfg.Archives == "home" {
 			comp = "river"
 		}
+	}
+	// A site with nothing published (every new install, on Halcyon) says so,
+	// rather than showing a front page or a river of nothing.
+	if len(in.Articles) == 0 && comp != "index" {
+		comp = "empty"
 	}
 	l.Composition = comp
 	switch comp {

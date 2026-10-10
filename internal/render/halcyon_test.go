@@ -8,11 +8,13 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/theme"
 )
@@ -399,5 +401,41 @@ func TestMemberPagesTakeHalcyon(t *testing.T) {
 	}
 	if strings.Contains(got, "📮") || !strings.Contains(got, "<h2>Your VayuMail ID</h2>") {
 		t.Errorf("the heading's pictograph should go and its words stay: %s", got)
+	}
+}
+
+// A new install starts on Halcyon with nothing published; its Home says so
+// rather than showing an empty front page.
+func TestAnEmptyHomeSaysSo(t *testing.T) {
+	for _, comp := range []string{"front", "river"} {
+		withHalcyon(t, map[string]string{"home": comp})
+		out, err := RenderHomePage(HomeInput{Page: 1, TotalPages: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, "Nothing is published here yet.") {
+			t.Errorf("%s: an empty Home does not say so", comp)
+		}
+	}
+}
+
+func TestCachePurgeListingsKeepsEveryPost(t *testing.T) {
+	dir := t.TempDir()
+	prev := config.Cfg.CacheDir
+	config.Cfg.CacheDir = dir
+	t.Cleanup(func() { config.Cfg.CacheDir = prev })
+	for _, f := range []string{"home/index.html", "home/d_b.example/index.html", "tags/devops.html", "d_b.example/tags/go.html", "posts/debt.html"} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, f)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	CachePurgeListings()
+	for f, want := range map[string]bool{"home/index.html": false, "home/d_b.example/index.html": false, "tags/devops.html": false, "d_b.example/tags/go.html": false, "posts/debt.html": true} {
+		if _, err := os.Stat(filepath.Join(dir, f)); (err == nil) != want {
+			t.Errorf("%s: present = %v, want %v", f, err == nil, want)
+		}
 	}
 }

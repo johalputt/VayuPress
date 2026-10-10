@@ -164,4 +164,14 @@ test.describe("Halcyon", () => {
     for (const p of ["/", "/halcyon-long", "/tags", "/members"]) await page.goto(p);
     expect(off).toEqual([]);
   });
+
+  // A site served over plain HTTP (a .onion) has no clipboard API. Localhost
+  // counts as secure, so the page is told otherwise to reach that path.
+  test("copies a link where the clipboard API is not offered", async ({ page }) => {
+    await page.goto("/halcyon-long");
+    await page.evaluate(() => Object.defineProperty(window, "isSecureContext", { value: false }));
+    await page.locator(".h-byline [data-h-copylink]").click();
+    await expect(page.locator("#h-live")).toHaveText("Link copied");
+    await expect(page.locator("textarea")).toHaveCount(0);
+  });
 });
