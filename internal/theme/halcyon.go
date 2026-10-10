@@ -115,6 +115,11 @@ type HalcyonConfig struct {
 
 // ResolveHalcyon resolves an options map to a HalcyonConfig. A value that is
 // not one of an option's choices falls back to that option's default.
+//
+// A match returns the choice's own value from halcyonOptions, never the
+// caller's string: equal, but a config built only from this table carries
+// nothing a request wrote, which is what lets the renderer (and CodeQL's
+// taint tracking, which does not take an equality as a barrier) trust it.
 func ResolveHalcyon(opts map[string]string) HalcyonConfig {
 	get := func(key string) string {
 		for _, o := range halcyonOptions {
@@ -124,7 +129,7 @@ func ResolveHalcyon(opts map[string]string) HalcyonConfig {
 			v := opts[key]
 			for _, c := range o.Choices {
 				if c.Value == v {
-					return v
+					return c.Value
 				}
 			}
 			return o.Default

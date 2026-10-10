@@ -61,10 +61,14 @@ func HalcyonMemberPage(page string, kind MemberPage) string {
 
 func halcyonMemberPage(page string, kind MemberPage, cfg theme.HalcyonConfig) string {
 	c := halcyonChrome(getActiveSettings(), cfg, "member")
-	open := `<html lang="en" class="h" data-face="` + cfg.Face + `" data-size="` + strconv.Itoa(cfg.TextSize) +
-		`" data-site-face="` + cfg.Face + `" data-site-size="` + strconv.Itoa(cfg.TextSize) + `" data-appearance="` + cfg.Appearance + `"`
+	// The config's values are its options' own literals (theme.ResolveHalcyon),
+	// and are escaped here anyway: this tag is assembled as a string, outside
+	// html/template, so nothing an option ever holds can leave its attribute.
+	face, appearance := template.HTMLEscapeString(cfg.Face), template.HTMLEscapeString(cfg.Appearance)
+	open := `<html lang="en" class="h" data-face="` + face + `" data-size="` + strconv.Itoa(cfg.TextSize) +
+		`" data-site-face="` + face + `" data-site-size="` + strconv.Itoa(cfg.TextSize) + `" data-appearance="` + appearance + `"`
 	if cfg.Appearance == "light" || cfg.Appearance == "dark" {
-		open += ` data-theme="` + cfg.Appearance + `"`
+		open += ` data-theme="` + appearance + `"`
 	}
 	page = strings.Replace(page, `<html lang="en">`, open+">", 1)
 

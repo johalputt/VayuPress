@@ -32,8 +32,12 @@ func (a *App) writeHalcyonPreview(w http.ResponseWriter, r *http.Request, tok th
 	cfg := theme.ResolveHalcyon(tok.Options)
 	// The Studio's scheme switch shows each scheme as a reader with that
 	// appearance would see it.
-	if s := r.URL.Query().Get("scheme"); s == "light" || s == "dark" {
-		cfg.Appearance = s
+	// Literals, not the query's string: see theme.ResolveHalcyon.
+	switch r.URL.Query().Get("scheme") {
+	case "light":
+		cfg.Appearance = "light"
+	case "dark":
+		cfg.Appearance = "dark"
 	}
 	page := r.URL.Query().Get("page")
 	if !halcyonPreviewPages[page] {

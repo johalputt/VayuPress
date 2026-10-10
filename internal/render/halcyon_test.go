@@ -630,3 +630,19 @@ func TestALibraryImageCarriesItsSize(t *testing.T) {
 		}
 	}
 }
+
+// The member pages' <html> tag is assembled as a string, outside
+// html/template; whatever a config value holds stays inside its attribute.
+func TestAMemberPageKeepsConfigValuesInTheirAttributes(t *testing.T) {
+	cfg := theme.ResolveHalcyon(nil)
+	cfg.Face, cfg.Appearance = `serif" onload="x`, `dark" data-x="y`
+	out := halcyonMemberPage(`<!DOCTYPE html><html lang="en"><head></head><body></body></html>`, MemberTask, cfg)
+	for _, bad := range []string{` onload="x"`, ` data-x="y"`} {
+		if strings.Contains(out, bad) {
+			t.Errorf("a config value left its attribute: %s", bad)
+		}
+	}
+	if !strings.Contains(out, `data-face="serif&#34; onload=&#34;x"`) {
+		t.Error("the face is not written, escaped, into its attribute")
+	}
+}
