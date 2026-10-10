@@ -520,7 +520,10 @@ func TestATopicPageOffersNewestAndMostRead(t *testing.T) {
 		{"newest is current", newest, `href="/tags/devops" aria-current="true">Newest`, true},
 		{"newest is indexed", newest, `noindex`, false},
 		{"most read says how many and over what", read, "2 of 40 articles read in the last 30 days, most read first.", true},
-		{"most read is current", read, `href="/tags/devops?sort=read" aria-current="true">Most read`, true},
+		{"most read is current", read, `href="/tags/devops?sort=read" rel="nofollow" aria-current="true">Most read`, true},
+		// A crawler is not sent to rank every topic: the order is noindex,
+		// and each ranking costs a grouping of the month's pageviews.
+		{"most read is not followed", newest, `href="/tags/devops?sort=read" rel="nofollow">Most read`, true},
 		{"most read is not indexed", read, `<meta name="robots" content="noindex,follow">`, true},
 		{"most read is ranked, not by month", read, `<h2>Most read</h2><ol><li><a class="h-row" href="/most"><span class="h-d">1</span>`, true},
 		{"its search keeps the topic", read, `<input type="hidden" name="topic" value="devops"><input type="hidden" name="sort" value="read">`, true},
