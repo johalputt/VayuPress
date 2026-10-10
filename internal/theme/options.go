@@ -213,6 +213,12 @@ func AllOptions() []Option {
 // OptionsFor returns the options for a theme: the shared set (AllOptions) plus
 // any per-theme extras that apply to it.
 func OptionsFor(name string) []Option {
+	// Halcyon has its own markup, so the shared options (which restyle the
+	// vayu-* markup of the shared templates) would change nothing on it; its
+	// Studio shows only the options that do.
+	if name == Halcyon().Name {
+		return HalcyonOptions()
+	}
 	out := AllOptions()
 	for _, to := range perThemeOptions {
 		for _, t := range to.Themes {
@@ -342,6 +348,9 @@ func OptionKeys() []string {
 	for _, to := range perThemeOptions {
 		add(to.Option.Key)
 	}
+	for _, o := range halcyonOptions {
+		add(o.Key)
+	}
 	return keys
 }
 
@@ -363,6 +372,12 @@ func AllOptionDefs() []Option {
 		if !seen[to.Option.Key] {
 			seen[to.Option.Key] = true
 			out = append(out, to.Option)
+		}
+	}
+	for _, o := range halcyonOptions {
+		if !seen[o.Key] {
+			seen[o.Key] = true
+			out = append(out, o)
 		}
 	}
 	return out

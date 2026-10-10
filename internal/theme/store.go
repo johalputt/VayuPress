@@ -27,12 +27,18 @@ func Save(ctx context.Context, db *sql.DB, t Tokens) error {
 }
 
 // Load retrieves the active tokens from the database.
-// If no row exists it returns Default() so callers always get a usable value.
+//
+// With no saved theme it returns Halcyon, the theme a new install starts on.
+// An install that existed before Halcyon is not moved by this: migration 106
+// saved the theme it was showing (Default) for every install that already had
+// a user or a post, so only an install created since has no row. On a read
+// error it still returns Default(), as before, because an error says nothing
+// about whether the install is new.
 func Load(ctx context.Context, db *sql.DB) (Tokens, error) {
 	var raw string
 	err := db.QueryRowContext(ctx, `SELECT tokens FROM theme_tokens WHERE id = 1`).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
-		return Default(), nil
+		return Halcyon(), nil
 	}
 	if err != nil {
 		return Default(), err

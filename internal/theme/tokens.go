@@ -39,6 +39,11 @@ type Tokens struct {
 	RadiusSm string
 	RadiusLg string
 
+	// Layout names the template set the renderer uses for this theme. Empty
+	// means the shared templates every theme used before Halcyon; only
+	// LayoutHalcyon is recognised. See halcyon.go.
+	Layout string `json:"layout,omitempty"`
+
 	// Per-preset CSS (optional) — injected into /theme.css when this preset is active.
 	CustomCSS string `json:"custom_css,omitempty"`
 

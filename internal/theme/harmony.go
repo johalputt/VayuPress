@@ -162,7 +162,9 @@ func Harmony(req HarmonyRequest) (HarmonyPalette, bool) {
 	return p, true
 }
 
-// ContrastRatio returns WCAG contrast (1–21) between two #hex colours.
+// ContrastRatio returns WCAG contrast (1–21) between two #hex colours. An
+// unparsable colour reads as black. It is the one formula the console's checks
+// and the Halcyon accent check share.
 func ContrastRatio(fg, bg string) float64 {
 	lum := func(hex string) float64 {
 		r, g, b, ok := ParseHex(hex)
@@ -182,9 +184,9 @@ func ContrastRatio(fg, bg string) float64 {
 	if l1 < l2 {
 		l1, l2 = l2, l1
 	}
-	if l2 <= 0 {
-		return 21
-	}
+	// No special case for a black background: the 0.05 flare term keeps the
+	// division finite, and a guard that returned 21 there rated black on black
+	// as perfect contrast.
 	return (l1 + 0.05) / (l2 + 0.05)
 }
 

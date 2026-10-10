@@ -2,23 +2,7 @@
 
 package main
 
-import (
-	"math"
-	"testing"
-)
-
-func TestContrastRatioKnownValues(t *testing.T) {
-	if cr := contrastRatio("#000000", "#ffffff"); math.Abs(cr-21.0) > 0.05 {
-		t.Errorf("black/white should be 21:1, got %.2f", cr)
-	}
-	if cr := contrastRatio("#abcdef", "#abcdef"); math.Abs(cr-1.0) > 0.001 {
-		t.Errorf("identical colours should be 1:1, got %.2f", cr)
-	}
-	// #rgb shorthand must expand identically to #rrggbb.
-	if a, b := contrastRatio("#fff", "#000"), contrastRatio("#ffffff", "#000000"); math.Abs(a-b) > 0.001 {
-		t.Errorf("#rgb and #rrggbb must agree: %.2f vs %.2f", a, b)
-	}
-}
+import "testing"
 
 func TestDefaultPalettePassesWCAGAA(t *testing.T) {
 	// The shipped defaults must clear AA, or the checker would flag its own

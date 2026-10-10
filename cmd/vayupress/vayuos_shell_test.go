@@ -15,6 +15,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/mode"
+	"github.com/johalputt/vayupress/internal/theme"
 	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/vayuos/torspace"
 )
@@ -362,40 +363,40 @@ func TestStillAirPaletteClearsAA(t *testing.T) {
 	dark, light := stillAirTokens(t)
 	surfaces := []string{"--color-canvas", "--surface-1", "--surface-2", "--surface-overlay", "--surface-sunken"}
 	texts := []string{"--text-1", "--text-2", "--text-3", "--accent", "--ok", "--warn", "--danger"}
-	for _, theme := range []struct {
+	for _, scheme := range []struct {
 		name string
 		tok  map[string]string
 	}{{"graphite", dark}, {"paper", light}} {
 		for _, fg := range texts {
 			for _, bg := range surfaces {
-				f, b := theme.tok[fg], theme.tok[bg]
+				f, b := scheme.tok[fg], scheme.tok[bg]
 				if f == "" || b == "" {
-					t.Fatalf("%s: token %s or %s missing", theme.name, fg, bg)
+					t.Fatalf("%s: token %s or %s missing", scheme.name, fg, bg)
 				}
-				if r := contrastRatio(f, b); r < wcagAANormal {
-					t.Errorf("%s: %s %s on %s %s is %.2f:1, below %.1f", theme.name, fg, f, bg, b, r, wcagAANormal)
+				if r := theme.ContrastRatio(f, b); r < wcagAANormal {
+					t.Errorf("%s: %s %s on %s %s is %.2f:1, below %.1f", scheme.name, fg, f, bg, b, r, wcagAANormal)
 				}
 			}
 		}
 		// Text on the blended surfaces it really sits on: a selected row, and a
 		// tag on its own tint. These are where the first draft failed.
 		for _, base := range []string{"--color-canvas", "--surface-1", "--surface-2"} {
-			sel := blend(t, theme.tok["--surface-select"], theme.tok[base])
+			sel := blend(t, scheme.tok["--surface-select"], scheme.tok[base])
 			for _, fg := range []string{"--text-1", "--text-2", "--text-3"} {
-				if r := contrastRatio(theme.tok[fg], sel); r < wcagAANormal {
-					t.Errorf("%s: %s on a selected row over %s is %.2f:1", theme.name, fg, base, r)
+				if r := theme.ContrastRatio(scheme.tok[fg], sel); r < wcagAANormal {
+					t.Errorf("%s: %s on a selected row over %s is %.2f:1", scheme.name, fg, base, r)
 				}
 			}
 			for _, tone := range [][2]string{{"--accent", "--accent-soft"}, {"--ok", "--ok-soft"}, {"--warn", "--warn-soft"}, {"--danger", "--danger-soft"}} {
-				tint := blend(t, theme.tok[tone[1]], theme.tok[base])
-				if r := contrastRatio(theme.tok[tone[0]], tint); r < wcagAANormal {
-					t.Errorf("%s: a %s tag over %s is %.2f:1", theme.name, tone[0], base, r)
+				tint := blend(t, scheme.tok[tone[1]], scheme.tok[base])
+				if r := theme.ContrastRatio(scheme.tok[tone[0]], tint); r < wcagAANormal {
+					t.Errorf("%s: a %s tag over %s is %.2f:1", scheme.name, tone[0], base, r)
 				}
 			}
 		}
 		for _, p := range [][2]string{{"--on-accent", "--accent"}, {"--on-danger", "--danger"}} {
-			if r := contrastRatio(theme.tok[p[0]], theme.tok[p[1]]); r < wcagAANormal {
-				t.Errorf("%s: %s on %s is %.2f:1", theme.name, p[0], p[1], r)
+			if r := theme.ContrastRatio(scheme.tok[p[0]], scheme.tok[p[1]]); r < wcagAANormal {
+				t.Errorf("%s: %s on %s is %.2f:1", scheme.name, p[0], p[1], r)
 			}
 		}
 	}

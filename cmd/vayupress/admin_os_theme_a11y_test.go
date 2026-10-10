@@ -5,6 +5,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/johalputt/vayupress/internal/theme"
 )
 
 // TestThemeA11yGradesContrastHonestly: the readout must grade by measured WCAG
@@ -118,7 +120,7 @@ func TestShippedReadingTextClearsAA(t *testing.T) {
 		{"muted on dark card", mutedTextDark, darkModeSurface},
 		{"muted on light", mutedTextLight, lightModeBG},
 	} {
-		if got := contrastRatio(c.fg, c.bg); got < wcagAANormal {
+		if got := theme.ContrastRatio(c.fg, c.bg); got < wcagAANormal {
 			t.Errorf("%s: %s on %s = %.2f:1, below the WCAG AA bar of %.1f:1",
 				c.label, c.fg, c.bg, got, wcagAANormal)
 		}

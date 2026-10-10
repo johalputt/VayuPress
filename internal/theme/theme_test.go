@@ -140,7 +140,7 @@ func TestStoreRoundTrip(t *testing.T) {
 
 // TestLoadReturnsDefaultWhenEmpty verifies that Load() returns the Default preset
 // when no row exists in the database.
-func TestLoadReturnsDefaultWhenEmpty(t *testing.T) {
+func TestLoadReturnsHalcyonWhenEmpty(t *testing.T) {
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
 		t.Fatalf("failed to open in-memory SQLite: %v", err)
@@ -162,8 +162,9 @@ func TestLoadReturnsDefaultWhenEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() on empty table returned error: %v", err)
 	}
-	def := theme.Default()
-	if loaded.Name != def.Name {
-		t.Errorf("expected Default preset name %q, got %q", def.Name, loaded.Name)
+	// No saved theme means a new install, which starts on Halcyon. Existing
+	// installs were pinned to Default by migration 106 (see store.go).
+	if loaded.Name != "Halcyon" || loaded.Layout != theme.LayoutHalcyon {
+		t.Errorf("an install with no saved theme should start on Halcyon, got %q (layout %q)", loaded.Name, loaded.Layout)
 	}
 }

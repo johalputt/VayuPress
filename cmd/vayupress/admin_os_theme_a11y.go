@@ -16,6 +16,7 @@ import (
 	"html"
 	"strings"
 
+	"github.com/johalputt/vayupress/internal/theme"
 	"github.com/johalputt/vayupress/internal/ui"
 )
 
@@ -83,7 +84,7 @@ func themeA11yChecks(accentDark, accent2Dark, accentLight, accent2Light string) 
 		if strings.TrimSpace(fg) == "" {
 			return
 		}
-		out = append(out, a11yCheck{Label: label, Foreground: fg, Background: bg, Ratio: contrastRatio(fg, bg)})
+		out = append(out, a11yCheck{Label: label, Foreground: fg, Background: bg, Ratio: theme.ContrastRatio(fg, bg)})
 	}
 	add("Accent on dark background", accentDark, darkModeBG)
 	add("Accent 2 on dark background", accent2Dark, darkModeBG)

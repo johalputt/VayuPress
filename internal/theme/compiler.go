@@ -53,6 +53,11 @@ func CompileCSS(t Tokens) (string, error) {
 	// mutate the tokens below (so the choice flows through every bridge), and
 	// the rest return scoped CSS appended at the end.
 	optionCSS := applyThemeOptions(&t)
+	if t.Layout == LayoutHalcyon {
+		if err := applyHalcyonAccent(&t); err != nil {
+			return "", err
+		}
+	}
 
 	// The colour-field list is shared with the VCB validator (validate.go) so
 	// the published compatibility contract is exactly what is enforced here.

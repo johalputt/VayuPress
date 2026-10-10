@@ -299,6 +299,8 @@ func AllPresets() []Tokens {
 
 func allPresetsRaw() []Tokens {
 	return []Tokens{
+		// Halcyon leads the store: it is the theme a new install starts on.
+		Halcyon(),
 		Default(),
 		Aurora(),
 		Slate(),
