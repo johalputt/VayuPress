@@ -64,7 +64,9 @@ func legacyPages(t *testing.T) map[string]string {
 // show.
 var scriptVersions = regexp.MustCompile(`/static/js/(trending|comments|search)\.js\?v=[0-9a-f]+`)
 
-func normaliseLegacy(s string) string { return scriptVersions.ReplaceAllString(s, "/static/js/$1.js?v=") }
+func normaliseLegacy(s string) string {
+	return scriptVersions.ReplaceAllString(s, "/static/js/$1.js?v=")
+}
 
 func TestWriteLegacyGolden(t *testing.T) {
 	dir := os.Getenv("LEGACY_GOLDEN_OUT")
