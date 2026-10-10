@@ -724,7 +724,9 @@ func (a *App) injectArticleAds(ctx context.Context, nonce, htmlOut string) (stri
 		above = renderPlacement(ads.PlacementAbovePost)
 		below = renderPlacement(ads.PlacementBelowPost)
 		footer = renderPlacement(ads.PlacementFooter)
-		htmlOut = fillSidebarAds(htmlOut, renderPlacement)
+		if strings.Contains(htmlOut, sidebarAdAnchor) {
+			htmlOut = fillSidebarAds(htmlOut, renderPlacement(ads.PlacementSidebar))
+		}
 	}
 
 	// Affiliate disclosure renders above the article body, before any above-post
@@ -760,14 +762,10 @@ func (a *App) injectArticleAds(ctx context.Context, nonce, htmlOut string) (stri
 // stay unrendered, as before.
 const sidebarAdAnchor = `<div class="h-rail-ads" data-ads="sidebar"></div>`
 
-// fillSidebarAds renders the sidebar placement into the page's anchor. The
-// placement is rendered only when the page has somewhere to put it, so a page
+// fillSidebarAds puts the rendered sidebar slots into the page's anchor. The
+// callers render the placement only when the page has the anchor, so a page
 // without a side column never loads an AdSense unit it cannot show.
-func fillSidebarAds(htmlOut string, render func(placement string) string) string {
-	if !strings.Contains(htmlOut, sidebarAdAnchor) {
-		return htmlOut
-	}
-	slots := render(ads.PlacementSidebar)
+func fillSidebarAds(htmlOut, slots string) string {
 	if slots == "" {
 		return htmlOut
 	}
@@ -806,7 +804,9 @@ func (a *App) injectHomeAds(ctx context.Context, nonce, htmlOut string) (string,
 	}
 	header := renderPlacement(ads.PlacementHeader)
 	footer := renderPlacement(ads.PlacementFooter)
-	htmlOut = fillSidebarAds(htmlOut, renderPlacement)
+	if strings.Contains(htmlOut, sidebarAdAnchor) {
+		htmlOut = fillSidebarAds(htmlOut, renderPlacement(ads.PlacementSidebar))
+	}
 
 	if header != "" {
 		htmlOut = strings.Replace(htmlOut, `<main id="main-content">`, `<main id="main-content">`+header, 1)

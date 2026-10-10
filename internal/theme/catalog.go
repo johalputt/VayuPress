@@ -56,6 +56,12 @@ const (
 // catalogMeta maps a preset Name to its store metadata. Names must match the
 // Tokens.Name returned by the corresponding AllPresets() constructor exactly.
 var catalogMeta = map[string]ThemeMeta{
+	"Halcyon": {
+		Tagline:     "The VayuPress theme: calm, quiet, for reading.",
+		Description: "The theme new VayuPress sites start on, and the first to bring its own layout. A reading serif (Newsreader) on warm paper and a dusk that is never black, one quiet accent held to 4.5:1 on every surface, hairline rules instead of boxes, and large italic numerals for the topics on its front page. Home is a front page, a river or an index; articles are a centred column or a margin with the facts; topics are an index by month. Readers choose their own face, size, width and appearance (saved on their device only), follow an outline that marks where they are, and on a phone read with a dock at the foot of the screen. Code wraps and tables become labelled blocks, so nothing scrolls sideways. Comments, most read, pinned and related posts, sign-in, sign-up and the member pages all take the same design. One small script, its own fonts served from this site, no third-party request, light and dark.",
+		Tags:        []string{"flagship", "reading", "serif", "editorial", "calm", "layout", "fast"},
+		Category:    CatFlagship,
+	},
 	"Default": {
 		Tagline:     "Balanced neutral tones, ready for anything.",
 		Description: "The stock VayuPress look — calm slate-and-teal palette with comfortable typography. A dependable starting point you can deploy as-is or fine-tune in the Studio.",
