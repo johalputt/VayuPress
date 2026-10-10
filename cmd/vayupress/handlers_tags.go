@@ -248,7 +248,14 @@ func (a *App) handleTagPage(w http.ResponseWriter, r *http.Request) {
 		scope = a.contentScope(r)
 	}
 
+	// Halcyon's "Most read" order of a topic is rendered per request from a
+	// short-held ranking, never written to the page cache, which holds the
+	// one order every theme shares under the topic's own path.
+	_, halcyon := render.Halcyon()
+	mostRead := halcyon && r.URL.Query().Get("sort") == "read"
+
 	cacheRel, cacheable := render.TagPageCacheRel(tag)
+	cacheable = cacheable && !mostRead
 	if cacheable && scope != "" {
 		cacheRel = "d_" + domCacheDir(scope) + "/" + cacheRel
 	}
@@ -267,15 +274,25 @@ func (a *App) handleTagPage(w http.ResponseWriter, r *http.Request) {
 	}
 	defer release()
 
-	articles, total := a.articlesByTag(r.Context(), tag, 200, scope, scoped)
+	// The most-read order needs only the count from articlesByTag: a limit of
+	// none materialises no post.
+	limit := 200
+	if mostRead {
+		limit = 0
+	}
+	articles, total := a.articlesByTag(r.Context(), tag, limit, scope, scoped)
 	if total == 0 {
 		// No published post carries this tag — indistinguishable from a bad URL.
 		a.handleNotFound(w, r)
 		return
 	}
+	if mostRead {
+		articles = a.halcyonTopicMostRead(r.Context(), tag, 200, scope, scoped)
+	}
 
-	in := render.TopicInput{Domain: config.Cfg.Domain, Version: Version, Tag: tag, Articles: articles, Total: total, Broad: broadTag(key)}
-	if _, on := render.Halcyon(); on {
+	in := render.TopicInput{Domain: config.Cfg.Domain, Version: Version, Tag: tag, Articles: articles, Total: total,
+		Broad: broadTag(key), MostRead: mostRead, ReadDays: halcyonReadDays}
+	if halcyon {
 		key, _, _, count := a.halcyonScope(r)
 		in.Topics, in.TopicTotal = a.halcyonTopics(key, count)
 	}

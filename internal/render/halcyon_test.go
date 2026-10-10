@@ -493,3 +493,109 @@ func TestABroadTagPageIsNotIndexedInHalcyon(t *testing.T) {
 		t.Error("a broad tag page in Halcyon with 40 posts is offered to search")
 	}
 }
+
+// A topic page offers its two orders. Most read says how many of the topic's
+// posts were read and over what window, numbers them by rank, and is kept out
+// of search engines since its posts are the topic page's own.
+func TestATopicPageOffersNewestAndMostRead(t *testing.T) {
+	withHalcyon(t, nil)
+	arts := []HomeArticle{{Title: "Most", Slug: "most", CreatedAt: fixedTime}, {Title: "Next", Slug: "next", CreatedAt: fixedTime.AddDate(0, -1, 0)}}
+	in := TopicInput{Domain: "example.com", Version: "1", Tag: "devops", Articles: arts, Total: 40, ReadDays: 30}
+	newest, err := RenderTopicPage(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in.MostRead = true
+	read, err := RenderTopicPage(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name, page, want string
+		has              bool
+	}{
+		{"newest names its order", newest, "40 articles, newest first.", true},
+		{"newest is current", newest, `href="/tags/devops" aria-current="true">Newest`, true},
+		{"newest is indexed", newest, `noindex`, false},
+		{"most read says how many and over what", read, "2 of 40 articles read in the last 30 days, most read first.", true},
+		{"most read is current", read, `href="/tags/devops?sort=read" aria-current="true">Most read`, true},
+		{"most read is not indexed", read, `<meta name="robots" content="noindex,follow">`, true},
+		{"most read is ranked, not by month", read, `<h2>Most read</h2><ol><li><a class="h-row" href="/most"><span class="h-d">1</span>`, true},
+		{"its search keeps the topic", read, `<input type="hidden" name="topic" value="devops"><input type="hidden" name="sort" value="read">`, true},
+	} {
+		if strings.Contains(c.page, c.want) != c.has {
+			t.Errorf("%s: %q present = %v", c.name, c.want, !c.has)
+		}
+	}
+	in.Articles = nil
+	if empty, _ := RenderTopicPage(in); !strings.Contains(empty, "Nothing in this topic was read in the last 30 days.") {
+		t.Error("a topic nobody read says so")
+	}
+}
+
+// Under "Same as Home", a topic page is the river, and still names its topic
+// and offers its orders.
+func TestATopicInTheRiverKeepsItsHeading(t *testing.T) {
+	withHalcyon(t, map[string]string{"archives": "home"})
+	out, err := RenderTopicPage(TopicInput{Domain: "example.com", Tag: "devops", Articles: []HomeArticle{{Title: "One", Slug: "one", CreatedAt: fixedTime}}, Total: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`<h1>devops</h1>`, `aria-label="Order"`, `class="h-river"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the river topic page lacks %q", want)
+		}
+	}
+}
+
+// A search from a topic page stays in the topic and keeps its order; with
+// nothing found it offers every topic. A site-wide search that finds nothing
+// offers the largest topics.
+func TestASearchCanBeScopedToATopic(t *testing.T) {
+	withHalcyon(t, nil)
+	scoped, err := RenderSearchPage(SearchInput{Query: "kafka", Topic: "devops", MostRead: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"<h1>Search devops</h1>", "Nothing in devops matches “kafka”.", `<input type="hidden" name="topic" value="devops"><input type="hidden" name="sort" value="read">`, `href="/search?q=kafka">Search every topic`} {
+		if !strings.Contains(scoped, want) {
+			t.Errorf("a topic search lacks %q", want)
+		}
+	}
+	found, _ := RenderSearchPage(SearchInput{Query: "kafka", Topic: "devops", Hits: []SearchHit{{Title: "K", Slug: "k", CreatedAt: fixedTime}}})
+	if !strings.Contains(found, "1 result for “kafka”, newest first") {
+		t.Error("a topic search's results do not name their order")
+	}
+	wide, _ := RenderSearchPage(SearchInput{Query: "kafka", Topics: []TagInfo{{Name: "devops", Count: 4}, {Name: "tutorial", Count: 10}}, TopicTotal: 10})
+	if !strings.Contains(wide, `<nav class="h-topics" aria-label="Topics"><a href="/tags/devops">devops<span class="h-n">4</span></a></nav>`) {
+		t.Error("an empty search does not offer the topics, without the ubiquitous one")
+	}
+}
+
+// An update that changes Halcyon re-renders a Halcyon site's cached pages,
+// and only a Halcyon site's: the fingerprint names Halcyon's templates and
+// files while it is active and nothing of them otherwise.
+func TestTheCacheFingerprintFollowsHalcyonOnlyWhileItIsActive(t *testing.T) {
+	Init(t.TempDir())
+	ActivateTheme(theme.Default(), "")
+	other := cacheFingerprint()
+	withHalcyon(t, nil)
+	on := cacheFingerprint()
+	if on == other {
+		t.Fatal("the fingerprint does not change when Halcyon is active")
+	}
+	prev := halcyonPages["article"]
+	halcyonPages["article"] = prev + " "
+	changed := cacheFingerprint()
+	halcyonPages["article"] = prev
+	if changed == on {
+		t.Error("a change to a Halcyon template leaves its cached pages in place")
+	}
+	ActivateTheme(theme.Default(), "")
+	halcyonPages["article"] = prev + " "
+	still := cacheFingerprint()
+	halcyonPages["article"] = prev
+	if still != other {
+		t.Error("a change to Halcyon re-renders a site on another theme")
+	}
+}

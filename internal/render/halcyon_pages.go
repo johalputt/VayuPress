@@ -155,6 +155,10 @@ const halcyonShared = `
 
 {{define "trend"}}{{if or .Cfg.MostRead .Cfg.Pinned}}<section class="h-trend" aria-labelledby="h-trend-h" data-mostread="{{if .Cfg.MostRead}}on{{else}}off{{end}}" data-pinned="{{if .Cfg.Pinned}}on{{else}}off{{end}}"><h2 class="h-sec" id="h-trend-h">{{if .Cfg.MostRead}}Most read{{else}}Pinned{{end}}</h2><div data-vayu-trending hidden></div></section>{{end}}{{end}}
 
+{{define "ixhead"}}<header class="h-ix-head"><div>{{if .Eyebrow}}<p class="h-eyebrow">{{if .EyebrowHref}}<a href="{{.EyebrowHref}}">{{.Eyebrow}}</a>{{else}}{{.Eyebrow}}{{end}}{{if .Topic}} / <a href="{{tagURL .Topic}}">{{topicName .Topic}}</a>{{end}}</p>{{end}}<h1>{{.Heading}}</h1>{{if .Total}}<p class="h-count">{{if .MostRead}}{{num .Listed}} of {{num .Total}} {{plural .Total "article" "articles"}} read in the last {{.ReadDays}} days, most read first.{{else}}{{num .Total}} {{plural .Total "article" "articles"}}, newest first.{{end}}</p>{{end}}</div>
+{{if .ShowSearch}}{{if .Topic}}<form class="h-find" method="get" action="/search" role="search"><label class="h-vh" for="h-find-q">Search {{topicName .Topic}}</label>{{icon "search"}}<input id="h-find-q" type="search" name="q" placeholder="Search {{topicName .Topic}}"><input type="hidden" name="topic" value="{{.Topic}}">{{if .MostRead}}<input type="hidden" name="sort" value="read">{{end}}</form>{{else}}<form class="h-find" method="get" action="/search" role="search" data-vayu-search><label class="h-vh" for="h-find-q">Search the archive</label>{{icon "search"}}<input id="h-find-q" type="search" name="q" placeholder="Search the archive"><kbd class="h-js-only" aria-hidden="true">/</kbd></form>{{end}}{{end}}</header>
+{{if .Topic}}<nav class="h-sort" aria-label="Order"><a href="{{tagURL .Topic}}"{{if not .MostRead}} aria-current="true"{{end}}>Newest</a><a href="{{tagURL .Topic}}?sort=read"{{if .MostRead}} aria-current="true"{{end}}>Most read</a></nav>{{end}}{{end}}
+
 {{define "topicrow"}}{{if .Topics}}<nav class="h-topic-nav" aria-label="Topics">{{$cur := .Topic}}{{range .Topics}}<a href="{{tagURL .Name}}"{{if eq .Name $cur}} aria-current="page"{{end}}>{{topicName .Name}}<span class="h-n">{{num .Count}}</span></a>{{end}}<a href="/tags">All topics</a></nav>{{end}}{{end}}
 
 {{define "subscribe"}}{{if and .Cfg.Subscribe .ShowMembership}}<section class="h-letter" aria-label="Subscribe"><p>One email when there is something new worth reading.</p><form method="POST" action="/members/login" class="h-letter-form"><label class="h-vh" for="h-letter-email">Email address</label><input class="h-field" id="h-letter-email" type="email" name="email" required autocomplete="email" placeholder="you@example.com"><button class="h-btn h-btn-ink" type="submit">Subscribe</button></form></section>{{end}}{{end}}
@@ -173,14 +177,13 @@ const halcyonHomeTmpl = `{{template "start" .}}<div class="h-page"><main id="mai
 {{if .Months}}<section class="h-more" aria-labelledby="h-more-h"><h2 class="h-sec" id="h-more-h">More new writing</h2>{{template "months" .}}</section>{{end}}
 {{template "subscribe" .}}
 {{else if eq .Composition "river"}}
-{{if and (eq .Page 1) .About}}<section class="h-intro"><p>{{.About}}</p></section>{{end}}
-<div class="h-river"><div class="h-entries">{{range .River}}<article class="h-entry">{{template "meta" .}}<h2><a href="/{{.Slug}}">{{.Title}}</a></h2>{{if .Excerpt}}<p class="h-excerpt">{{caps $caps .Excerpt}}</p>{{end}}</article>{{end}}{{template "pager" .}}</div>
+{{if .Topic}}{{template "ixhead" .}}{{else if and (eq .Page 1) .About}}<section class="h-intro"><p>{{.About}}</p></section>{{end}}
+<div class="h-river"><div class="h-entries">{{range .River}}<article class="h-entry">{{template "meta" .}}<h2><a href="/{{.Slug}}">{{.Title}}</a></h2>{{if .Excerpt}}<p class="h-excerpt">{{caps $caps .Excerpt}}</p>{{end}}</article>{{else}}{{if $.MostRead}}<p class="h-empty">Nothing in this topic was read in the last {{$.ReadDays}} days.</p>{{end}}{{end}}{{template "pager" .}}</div>
 <aside class="h-side">{{template "trend" .}}{{if and .Cfg.Topics .Topics}}<section aria-labelledby="h-side-topics"><h2 class="h-label" id="h-side-topics">Topics</h2><div class="h-topics">{{range .Topics}}<a href="{{tagURL .Name}}">{{topicName .Name}}<span class="h-n">{{num .Count}}</span></a>{{end}}</div></section>{{end}}{{template "subscribe" .}}<div class="h-rail-ads" data-ads="sidebar"></div></aside></div>
 {{else}}
-<header class="h-ix-head"><div>{{if .Eyebrow}}<p class="h-eyebrow">{{if .EyebrowHref}}<a href="{{.EyebrowHref}}">{{.Eyebrow}}</a>{{else}}{{.Eyebrow}}{{end}}{{if .Topic}} / <a href="{{tagURL .Topic}}">{{topicName .Topic}}</a>{{end}}</p>{{end}}<h1>{{.Heading}}</h1>{{if .Total}}<p class="h-count">{{num .Total}} {{plural .Total "article" "articles"}}, newest first.</p>{{end}}</div>
-{{if .ShowSearch}}<form class="h-find" method="get" action="/search" role="search" data-vayu-search><label class="h-vh" for="h-find-q">Search the archive</label>{{icon "search"}}<input id="h-find-q" type="search" name="q" placeholder="Search the archive"><kbd class="h-js-only" aria-hidden="true">/</kbd></form>{{end}}</header>
+{{template "ixhead" .}}
 {{if .Cfg.Topics}}{{template "topicrow" .}}{{end}}
-{{if .Months}}{{template "months" .}}{{else}}<p class="h-empty">Nothing is published here yet.</p>{{end}}
+{{if .Months}}{{template "months" .}}{{else if .MostRead}}<p class="h-empty">Nothing in this topic was read in the last {{.ReadDays}} days.</p>{{else}}<p class="h-empty">Nothing is published here yet.</p>{{end}}
 {{template "pager" .}}
 {{end}}
 </main></div>{{template "end" .}}`
@@ -202,7 +205,7 @@ const halcyonArticleTmpl = `{{template "start" .}}<div class="h-page"><main id="
 {{if .Tags}}<p class="h-filed">Filed under {{range $i, $t := .Tags}}{{if $i}}{{if eq (inc $i) (len $.Tags)}} and {{else}}, {{end}}{{end}}<a href="{{tagURL $t}}" rel="tag">{{topicName $t}}</a>{{end}}.</p>{{end}}
 {{if and .Author .AuthorBio}}<section class="h-author" aria-label="About the author"><div><p class="h-author-name">{{if .AuthorSlug}}<a href="/author/{{.AuthorSlug}}" rel="author">{{.Author}}</a>{{else}}{{.Author}}{{end}}</p><p>{{.AuthorBio}}</p></div>{{if .AuthorSlug}}<a class="h-follow" href="/author/{{.AuthorSlug}}">More from {{.Author}}</a>{{end}}</section>{{end}}
 {{if .Related}}<section class="h-next" aria-labelledby="h-next-h"><h2 class="h-label" id="h-next-h">Related reading</h2><ol class="h-rel">{{range .Related}}<li><div><a href="/{{.Slug}}">{{.Title}}</a><p class="h-why">{{reason .Shared}}</p></div><time class="h-meta" datetime="{{shortDate .CreatedAt}}">{{humanDate .CreatedAt}}</time></li>{{end}}</ol></section>{{end}}
-{{if .CommentsOn}}<section class="h-talk" aria-labelledby="h-talk-h"><div class="h-talk-head"><h2 id="h-talk-h">Comments</h2><p>Comments are read before they appear.</p></div><div id="vayu-comments" class="vayu-comments" data-slug="{{.Slug}}"></div></section>{{end}}
+{{if .CommentsOn}}<section class="h-talk" aria-labelledby="h-talk-h"><div class="h-talk-head"><h2 id="h-talk-h">Comments</h2><p>Comments are read before they appear.</p></div><div id="vayu-comments" class="vayu-comments" data-slug="{{.Slug}}" data-own-pending></div></section>{{end}}
 {{template "trend" .}}
 </div>
 <div class="h-pop h-reader" id="h-reader" role="dialog" aria-label="Reading settings" hidden>
@@ -218,10 +221,11 @@ const halcyonArticleTmpl = `{{template "start" .}}<div class="h-page"><main id="
 </main></div>{{template "end" .}}`
 
 const halcyonSearchTmpl = `{{template "start" .}}<div class="h-page"><main id="main-content" class="h-wrap h-narrow">
-<header class="h-ix-head h-ix-head--search"><div><h1>Search</h1>{{if .Query}}<p class="h-count">{{if .Hits}}{{len .Hits}} {{plural (len .Hits) "result" "results"}} for “{{.Query}}”{{else}}Nothing matches “{{.Query}}”.{{end}}</p>{{end}}</div></header>
-<form class="h-find h-find--page" method="get" action="/search" role="search"><label class="h-vh" for="h-q">Search the site</label>{{icon "search"}}<input id="h-q" type="search" name="q" value="{{.Query}}" placeholder="Search the site" autofocus><button class="h-btn h-btn-ink" type="submit">Search</button></form>
+<header class="h-ix-head h-ix-head--search"><div>{{if .Topic}}<p class="h-eyebrow"><a href="/tags">The archive</a> / <a href="{{tagURL .Topic}}{{if .MostRead}}?sort=read{{end}}">{{topicName .Topic}}</a></p><h1>Search {{topicName .Topic}}</h1>{{else}}<h1>Search</h1>{{end}}{{if .Query}}<p class="h-count">{{if .Hits}}{{len .Hits}} {{plural (len .Hits) "result" "results"}} for “{{.Query}}”{{if .Topic}}, {{if .MostRead}}most read{{else}}newest{{end}} first{{end}}{{else if .Topic}}Nothing in {{topicName .Topic}} matches “{{.Query}}”.{{else}}Nothing matches “{{.Query}}”.{{end}}</p>{{end}}</div></header>
+<form class="h-find h-find--page" method="get" action="/search" role="search"><label class="h-vh" for="h-q">{{if .Topic}}Search {{topicName .Topic}}{{else}}Search the site{{end}}</label>{{icon "search"}}<input id="h-q" type="search" name="q" value="{{.Query}}" placeholder="{{if .Topic}}Search {{topicName .Topic}}{{else}}Search the site{{end}}" autofocus>{{if .Topic}}<input type="hidden" name="topic" value="{{.Topic}}">{{if .MostRead}}<input type="hidden" name="sort" value="read">{{end}}{{end}}<button class="h-btn h-btn-ink" type="submit">Search</button></form>
+{{if .Topic}}<p class="h-scope"><a href="/search{{if .Query}}?q={{.Query}}{{end}}">Search every topic</a></p>{{end}}
 {{if .Query}}{{if .Hits}}<ol class="h-results">{{range .Hits}}<li><a href="/{{.Slug}}">{{.Title}}</a><p class="h-meta">{{with firstTopicOf .Tags}}<span class="h-topic">{{topicName .}}</span><span class="h-sep" aria-hidden="true">·</span>{{end}}<time datetime="{{shortDate .CreatedAt}}">{{humanDate .CreatedAt}}</time></p></li>{{end}}</ol>
-{{else}}<div class="h-empty"><p>Check the spelling, or try a broader word. <a href="/tags">The topics</a> are a good place to start.</p></div>{{end}}{{end}}
+{{else}}<div class="h-empty"><p>Check the spelling, or try a broader word.{{if not .Topic}} <a href="/tags">The topics</a> are a good place to start.{{end}}</p>{{if .Topics}}<nav class="h-topics" aria-label="Topics">{{range .Topics}}<a href="{{tagURL .Name}}">{{topicName .Name}}<span class="h-n">{{num .Count}}</span></a>{{end}}</nav>{{end}}</div>{{end}}{{end}}
 </main></div>{{template "end" .}}`
 
 const halcyonTopicsTmpl = `{{template "start" .}}<div class="h-page"><main id="main-content" class="h-wrap">
@@ -235,15 +239,20 @@ const halcyonNotFoundTmpl = `{{template "start" .}}<div class="h-page"><main id=
 <p class="h-lost-links"><a class="h-btn h-btn-ink" href="{{blogBase}}">Go to {{.SiteName}}</a>{{if .ShowSearch}}<a class="h-btn h-btn-line" href="/search">Search the site</a>{{end}}</p>
 </main></div>{{template "end" .}}`
 
+// halcyonPages are Halcyon's page templates by name. The parsed set and the
+// cache fingerprint (halcyonRenderSum) both read this one map, so a template
+// cannot be added without the fingerprint covering it.
+var halcyonPages = map[string]string{
+	"home":     halcyonHomeTmpl,
+	"article":  halcyonArticleTmpl,
+	"search":   halcyonSearchTmpl,
+	"topics":   halcyonTopicsTmpl,
+	"notfound": halcyonNotFoundTmpl,
+}
+
 var halcyonTmpl = func() map[string]*template.Template {
 	out := map[string]*template.Template{}
-	for name, body := range map[string]string{
-		"home":     halcyonHomeTmpl,
-		"article":  halcyonArticleTmpl,
-		"search":   halcyonSearchTmpl,
-		"topics":   halcyonTopicsTmpl,
-		"notfound": halcyonNotFoundTmpl,
-	} {
+	for name, body := range halcyonPages {
 		t := template.Must(template.New("halcyon-shared").Funcs(halcyonFuncs).Parse(halcyonShared))
 		out[name] = template.Must(t.New(name).Parse(body))
 	}
@@ -288,6 +297,10 @@ type hListing struct {
 	Heading              string
 	Total                int
 	Page, TotalPages     int
+	// A topic page's order: newest first, or most read in the last ReadDays.
+	MostRead bool
+	ReadDays int
+	Listed   int // how many posts the page lists, for the most-read count
 }
 
 // RenderHomePage renders Home (or one of its later pages) in the active theme.
@@ -411,6 +424,10 @@ type TopicInput struct {
 	Broad           bool      // on so large a part of the site it is kept out of search (tag rules)
 	Topics          []TagInfo // the largest topics, for the topic row
 	TopicTotal      int
+	// MostRead orders the page by reads in the last ReadDays days instead of
+	// by date; Articles then holds only the posts read in that window.
+	MostRead bool
+	ReadDays int
 }
 
 // RenderTopicPage renders one topic's page in the active theme.
@@ -428,12 +445,15 @@ func renderHalcyonTopic(in TopicInput, cfg theme.HalcyonConfig) (string, error) 
 	c.PageTitle = strings.ReplaceAll(in.Tag, "-", " ") + " — " + c.SiteName
 	c.Description = groupThousands(in.Total) + " " + pluralWord(in.Total, "article", "articles") + " filed under “" + in.Tag + "” on " + c.SiteName + "."
 	c.Canonical = seo.Origin(in.Domain) + "/tags/" + url.PathEscape(in.Tag)
-	if in.Total < thinTagPosts || in.Broad {
+	// A broad topic, and the most-read order (the same posts as the topic
+	// page, its canonical), are never offered to search engines on their own.
+	if in.Total < thinTagPosts || in.Broad || in.MostRead {
 		c.Robots = "noindex,follow"
 	}
 	c.Scripts = halcyonScripts(false)
 	l := hListing{hChrome: c, Topic: in.Tag, Total: in.Total, Page: 1, TotalPages: 1,
-		Eyebrow: "The archive", EyebrowHref: "/tags", Heading: strings.ReplaceAll(in.Tag, "-", " ")}
+		Eyebrow: "The archive", EyebrowHref: "/tags", Heading: strings.ReplaceAll(in.Tag, "-", " "),
+		MostRead: in.MostRead, ReadDays: in.ReadDays, Listed: len(in.Articles)}
 	if cfg.Topics {
 		l.Topics = halcyonTopTopics(in.Topics, in.TopicTotal, 8)
 		// The current topic is always in its own row, marked, even when it is
@@ -446,10 +466,15 @@ func renderHalcyonTopic(in TopicInput, cfg theme.HalcyonConfig) (string, error) 
 			l.Topics = append(l.Topics, TagInfo{Name: in.Tag, Count: in.Total})
 		}
 	}
-	if cfg.Archives == "home" {
+	switch {
+	case cfg.Archives == "home":
 		l.Composition = "river"
 		l.River = in.Articles
-	} else {
+	case in.MostRead:
+		// A ranking is not a calendar: one list, numbered by rank.
+		l.Composition = "index"
+		l.Months = halcyonRanked(in.Articles)
+	default:
 		l.Composition = "index"
 		l.Months = halcyonMonths(in.Articles)
 	}
@@ -478,22 +503,50 @@ func renderHalcyonTopics(domain string, tags []TagInfo, total int, cfg theme.Hal
 	return executeHalcyon("topics", hTopics{hChrome: c, Tags: tags, Total: total})
 }
 
-type hSearch struct {
-	hChrome
-	Query string
-	Hits  []SearchHit
+// SearchInput is what the search page shows: the query, its hits, and under
+// Halcyon the topic it is scoped to with that topic page's order, and the
+// largest topics to offer when nothing matches.
+type SearchInput struct {
+	Domain, Version, Query string
+	Hits                   []SearchHit
+	Topic                  string
+	MostRead               bool
+	Topics                 []TagInfo
+	TopicTotal             int
 }
 
-func renderHalcyonSearch(query string, hits []SearchHit, cfg theme.HalcyonConfig) (string, error) {
+// RenderSearchPage renders the search page in the active theme. Only Halcyon
+// scopes a search to a topic; every other theme renders as it always has.
+func RenderSearchPage(in SearchInput) (string, error) {
+	if cfg, ok := Halcyon(); ok {
+		return renderHalcyonSearch(in, cfg)
+	}
+	return RenderSearch(in.Domain, in.Version, in.Query, in.Hits)
+}
+
+type hSearch struct {
+	hChrome
+	Query    string
+	Hits     []SearchHit
+	Topic    string
+	MostRead bool
+	Topics   []TagInfo
+}
+
+func renderHalcyonSearch(in SearchInput, cfg theme.HalcyonConfig) (string, error) {
 	c := halcyonChrome(getActiveSettings(), cfg, "search")
 	c.PageTitle = "Search — " + c.SiteName
-	if query != "" {
-		c.PageTitle = "Search: " + query + " — " + c.SiteName
+	if in.Query != "" {
+		c.PageTitle = "Search: " + in.Query + " — " + c.SiteName
 	}
 	c.Robots = "noindex,follow"
 	c.Analytics = false
 	c.Scripts = halcyonScripts(false)
-	return executeHalcyon("search", hSearch{hChrome: c, Query: query, Hits: hits})
+	v := hSearch{hChrome: c, Query: in.Query, Hits: in.Hits, Topic: in.Topic, MostRead: in.MostRead}
+	if in.Query != "" && len(in.Hits) == 0 && in.Topic == "" && cfg.Topics {
+		v.Topics = halcyonTopTopics(in.Topics, in.TopicTotal, 8)
+	}
+	return executeHalcyon("search", v)
 }
 
 func renderHalcyon404(cfg theme.HalcyonConfig) string {
@@ -565,7 +618,9 @@ func renderHalcyonArticle(s SiteSettings, data articlePage, cfg theme.HalcyonCon
 // halcyonArticleHead is the article's head as the shared template writes it:
 // Open Graph, Twitter, the BlogPosting and breadcrumb graphs, and the code
 // stylesheet when the post has highlighted code.
-var halcyonArticleHead = template.Must(template.New("hhead").Funcs(halcyonFuncs).Parse(`<meta property="og:type" content="article">
+var halcyonArticleHead = template.Must(template.New("hhead").Funcs(halcyonFuncs).Parse(halcyonArticleHeadTmpl))
+
+const halcyonArticleHeadTmpl = `<meta property="og:type" content="article">
 <meta property="og:title" content="{{.OGTitle}}">
 <meta property="og:description" content="{{.OGDescription}}">
 <meta property="og:url" content="{{.Canonical}}">
@@ -580,7 +635,7 @@ var halcyonArticleHead = template.Must(template.New("hhead").Funcs(halcyonFuncs)
 <meta name="twitter:description" content="{{.TwitterDescription}}">
 {{if .TwitterImageURL}}<meta name="twitter:image" content="{{.TwitterImageURL}}">{{end}}
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"{{.Title | jsonAttr}}","description":"{{.SEODescription | jsonAttr}}","datePublished":"{{isoDate .CreatedAt}}","dateModified":"{{isoDate .UpdatedAt}}","url":"{{.Canonical}}","mainEntityOfPage":{"@type":"WebPage","@id":"{{.Canonical}}"},"inLanguage":"en",{{if .OGImage}}"image":"{{.OGImage}}",{{end}}"author":{"@type":"Person","name":"{{if .Author}}{{.Author | jsonAttr}}{{else if .SiteName}}{{.SiteName | jsonAttr}}{{else}}{{.Domain | jsonAttr}}{{end}}"},"publisher":{"@type":"Organization","name":"{{if .SiteName}}{{.SiteName | jsonAttr}}{{else}}{{.Domain | jsonAttr}}{{end}}","url":"{{.Origin}}"}}</script>{{.BreadcrumbJSONLD}}
-{{.ChromaCSSLink}}`))
+{{.ChromaCSSLink}}`
 
 // halcyonScripts are the page's deferred scripts after the content: the
 // trending widget where most read or pinned is shown, and the search modal
@@ -649,7 +704,7 @@ func renderHalcyonPreviewPage(page string, cfg theme.HalcyonConfig, p HalcyonPre
 		s := getActiveSettings()
 		return renderHalcyonArticle(s, buildArticlePage(s, a, ArticleLayoutDefault, p.Related, p.Overrides, hasContactForm), cfg)
 	case "search":
-		return renderHalcyonSearch(p.Query, p.Hits, cfg)
+		return renderHalcyonSearch(SearchInput{Query: p.Query, Hits: p.Hits}, cfg)
 	case "signin":
 		return halcyonMemberPage(p.SignIn, MemberTask, cfg), nil
 	}

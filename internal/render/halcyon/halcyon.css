@@ -213,6 +213,14 @@
 .h .h-topic-nav a:hover, .h .h-topic-nav [aria-current] { color: var(--h-t1); }
 .h .h-topic-nav [aria-current] { text-decoration: underline; text-underline-offset: 6px; text-decoration-thickness: 1px; }
 .h .h-topic-nav .h-n { margin-left: 4px; }
+/* A topic's order: two quiet text choices in the interface face, the current
+   one marked as the topic row marks its topic. */
+.h .h-sort { display: flex; gap: 22px; padding: 0 0 14px; font: 400 14px/1.6 var(--h-sans); color: var(--h-t3); }
+.h .h-sort a:hover, .h .h-sort [aria-current] { color: var(--h-t1); }
+.h .h-sort [aria-current] { text-decoration: underline; text-underline-offset: 6px; text-decoration-thickness: 1px; }
+.h .h-scope { margin: 12px 0 0; font: 400 14px/1.6 var(--h-sans); color: var(--h-t3); }
+.h .h-scope a { text-decoration: underline; text-underline-offset: 4px; }
+.h .h-scope a:hover { color: var(--h-t1); }
 .h .h-month { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 40px; padding: 36px 0 12px; }
 .h .h-month h2 { font: italic 400 22px/1.3 var(--h-serif); color: var(--h-t2); position: sticky; top: 92px; align-self: start; }
 .h .h-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) minmax(0, 180px); gap: 4px 24px; align-items: baseline; padding: 15px 0; border-bottom: 1px solid var(--h-line); }
@@ -368,6 +376,9 @@
 .h .vayu-comment-act:hover { color: var(--h-t1); background: var(--h-hover); }
 .h .vayu-comment-replies { grid-column: 2; margin-top: 8px; }
 .h .vayu-comment--reply { margin-left: 0; padding: 16px 0 4px 20px; border-left: 1px solid var(--h-line-2); border-bottom: 0; }
+/* Your own comment before moderation: present, quieter, and saying who sees it. */
+.h .vayu-comment--pending .vayu-comment-body { color: var(--h-t2); }
+.h .vayu-comment-pending { margin-top: 8px; font: italic 400 15px/1.5 var(--h-serif); color: var(--h-t3); }
 .h .vayu-comment-empty { padding: 28px 0 8px; font: italic 400 22px/1.3 var(--h-serif); color: var(--h-t1); }
 .h .vayu-comment-compose { margin-top: 28px; }
 .h .vayu-comment-as, .h .vayu-comment-gate { margin-bottom: 12px; font: 400 15px/1.5 var(--h-serif); color: var(--h-t2); }

@@ -15,6 +15,8 @@ package main
 import (
 	"context"
 	"net/http"
+	"sort"
+	"sync"
 	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
@@ -168,4 +170,135 @@ func (a *App) warmHalcyonTopics() {
 	}
 	logging.LogInfo("render", "Halcyon: counting topics for the front page")
 	a.halcyonTopics("", a.tagIndexGlobal)
+}
+
+// halcyonTopicReadSQL ranks a topic's published posts by their pageviews over
+// a window, in the shape trendingByViewsSQL already runs for the Trending
+// widget: views are grouped per path inside idx_apv_trending's date range
+// first, and only the paths that were read are joined to their post and its
+// tag row. A topic's unread posts are never touched, so the cost follows the
+// window's traffic, not the topic's size.
+//
+// The unary + on the tag columns is load-bearing. Without it the planner
+// reaches a read post's tag rows through idx_article_tags_live by tag, which
+// walks every post of the topic once per read path: for "tutorial" on
+// johal.in, 234k rows for each of some twenty thousand paths. With it, a
+// post's few tag rows are found by idx_article_tags_article and tested.
+const halcyonTopicReadSQL = `SELECT a.id FROM (
+	SELECT RTRIM(SUBSTR(url_path, 2), '/') AS slug, COUNT(1) AS v
+	FROM analytics_pageviews
+	WHERE event_type = 1 AND created_at >= ? AND url_path LIKE '/%'
+	GROUP BY RTRIM(SUBSTR(url_path, 2), '/')
+) pv
+CROSS JOIN articles a ON a.slug = pv.slug
+CROSS JOIN article_tags t ON t.article_id = a.id
+WHERE pv.slug <> '' AND a.is_page = 0 AND +t.tag_norm = ? AND +t.live = 1`
+
+// halcyonReadDays is the window "Most read" counts over: the Trending widget's
+// longer window, so the two never disagree about what was read.
+const halcyonReadDays = 30
+
+// halcyonReadTTL is how long a topic's ranking is held. Reads move slowly; a
+// ranking ten minutes old is still true, and holding it means a crawler
+// walking every topic's "Most read" runs the grouping once per topic per ten
+// minutes, not once per request.
+const halcyonReadTTL = 10 * time.Minute
+
+// halcyonReadMemoCap bounds the held rankings. Past it the memo is emptied
+// rather than evicted one by one: a request for any of the topics' many
+// spellings cannot grow memory without limit, and a cleared memo only costs
+// each topic its next query.
+const halcyonReadMemoCap = 512
+
+var halcyonReadMemo = struct {
+	sync.Mutex
+	m map[string]halcyonReadEntry
+}{m: map[string]halcyonReadEntry{}}
+
+type halcyonReadEntry struct {
+	ids []string
+	at  time.Time
+}
+
+// halcyonTopicMostRead returns a topic's posts read in the last
+// halcyonReadDays days, most read first (newest first on a tie), at most max.
+// A post nobody read in the window is not listed: "Most read" never pads
+// itself with unread posts.
+func (a *App) halcyonTopicMostRead(ctx context.Context, tag string, max int, scope string, scoped bool) []render.HomeArticle {
+	norm := tagrules.Key(tag)
+	if dbpkg.DB == nil || norm == "" {
+		return nil
+	}
+	key := scope + "\x00" + norm
+	halcyonReadMemo.Lock()
+	e, ok := halcyonReadMemo.m[key]
+	halcyonReadMemo.Unlock()
+	if !ok || time.Since(e.at) >= halcyonReadTTL {
+		q, args := halcyonTopicReadSQL, []any{time.Now().UTC().AddDate(0, 0, -(halcyonReadDays - 1)).Format("2006-01-02"), norm}
+		if scoped {
+			q += ` AND +t.domain_id = ?`
+			args = append(args, scope)
+		}
+		rows, err := dbpkg.Reader().QueryContext(ctx, q+` ORDER BY pv.v DESC, a.created_at DESC LIMIT ?`, append(args, max)...)
+		if err != nil {
+			return nil
+		}
+		e = halcyonReadEntry{at: time.Now()}
+		for rows.Next() {
+			var id string
+			if rows.Scan(&id) == nil {
+				e.ids = append(e.ids, id)
+			}
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil
+		}
+		halcyonReadMemo.Lock()
+		if len(halcyonReadMemo.m) >= halcyonReadMemoCap {
+			halcyonReadMemo.m = map[string]halcyonReadEntry{}
+		}
+		halcyonReadMemo.m[key] = e
+		halcyonReadMemo.Unlock()
+	}
+	return listingCards(ctx, e.ids)
+}
+
+// hasTopic reports whether a post's tags include topic, as the topic page
+// matches them: by key (tagrules.Key), so "Machine Learning" is in
+// machine-learning.
+func hasTopic(tags []string, topic string) bool {
+	want := tagrules.Key(topic)
+	if want == "" {
+		return false
+	}
+	for _, t := range tags {
+		if tagrules.Key(t) == want {
+			return true
+		}
+	}
+	return false
+}
+
+// orderTopicHits puts a topic's search results in the topic page's order:
+// newest first, or most read over halcyonReadDays (newest first on a tie, and
+// after every read post when nothing was recorded for them).
+func (a *App) orderTopicHits(ctx context.Context, hits []render.SearchHit, mostRead bool) {
+	views := map[string]int64{}
+	if mostRead && a.analytics != nil && len(hits) > 0 {
+		slugs := make([]string, len(hits))
+		for i, h := range hits {
+			slugs[i] = h.Slug
+		}
+		if m, err := a.analytics.ViewsBySlug(ctx, halcyonReadDays, slugs); err == nil {
+			views = m
+		}
+	}
+	sort.SliceStable(hits, func(i, j int) bool {
+		if vi, vj := views[hits[i].Slug], views[hits[j].Slug]; vi != vj {
+			return vi > vj
+		}
+		return hits[i].CreatedAt.After(hits[j].CreatedAt)
+	})
 }

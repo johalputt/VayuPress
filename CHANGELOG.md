@@ -15,7 +15,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   quiet accent and hairline rules instead of boxes.
   - **Home** is a front page with numbered topic desks, a river, or an index
     by month; **articles** are a centred column or a margin with the facts;
-    **topics** are an index by month.
+    **topics** are an index by month, newest first or most read over the
+    last 30 days, with a search that stays in the topic and keeps its order.
+    A search that finds nothing offers the largest topics.
   - **Readers choose** their own face, size, width and appearance, saved on
     their device only and applied before the page is drawn.
   - **Reading:** an outline marks where they are, a selection toolbar
@@ -23,7 +25,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   - **Nothing scrolls sideways:** code wraps, and on a phone a table becomes
     labelled blocks.
   - **The whole site in one design:** comments, most read, pinned and related
-    posts, sign-in, sign-up and the member pages.
+    posts, sign-in, sign-up and the member pages. A member's own comment
+    stays on the page for them, marked as waiting for moderation, until it
+    is approved; it is kept in their browser only.
   - **Every style is a choice in Theme Studio,** whose preview is now the
     real page with the options being edited, by page, device and scheme.
   - **Light to load:** one small script and its own fonts served from this

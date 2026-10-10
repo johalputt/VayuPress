@@ -165,6 +165,78 @@ test.describe("Halcyon", () => {
     expect(off).toEqual([]);
   });
 
+  // A topic page offers newest and most read, and its search stays in the
+  // topic and keeps the order. The seeded posts carry different topics, so a
+  // search for one post's title finds it from its own topic and not another's.
+  test("a topic page has its two orders, and a search that stays in the topic", async ({ page }) => {
+    await page.goto("/tags/git");
+    const order = page.getByRole("navigation", { name: "Order" });
+    await expect(order.getByRole("link", { name: "Newest" })).toHaveAttribute("aria-current", "true");
+    await order.getByRole("link", { name: "Most read" }).click();
+    await expect(page).toHaveURL(/\/tags\/git\?sort=read$/);
+    await expect(order.getByRole("link", { name: "Most read" })).toHaveAttribute("aria-current", "true");
+    await expect(page.locator(".h-count, .h-empty").first()).toContainText("in the last 30 days");
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", "noindex,follow");
+
+    const q = "GitComet";
+    await expect.poll(async () => {
+      await page.goto("/tags/git?sort=read");
+      await page.locator("#h-find-q").fill(q);
+      await page.locator("#h-find-q").press("Enter");
+      return page.locator(".h-results li").count();
+    }, { timeout: 30000 }).toBeGreaterThan(0);
+    await expect(page).toHaveURL(/topic=git/);
+    await expect(page).toHaveURL(/sort=read/);
+    await expect(page.locator("h1")).toHaveText("Search git");
+    await expect(page.locator(".h-count")).toContainText("most read first");
+    await expect(page.locator(".h-results")).toContainText(POSTS["halcyon-wide"].title);
+
+    await page.goto(`/search?q=${q}&topic=architecture`);
+    await expect(page.locator(".h-count")).toHaveText(`Nothing in architecture matches “${q}”.`);
+    await page.getByRole("link", { name: "Search every topic" }).click();
+    await expect(page.locator(".h-results")).toContainText(POSTS["halcyon-wide"].title);
+  });
+
+  // Your own comment before moderation stays on the page for you, marked, until
+  // it is approved; it is kept in that browser only, and goes when nobody is
+  // signed in there. The comments API is stubbed as comments.spec.js does: this
+  // run has no member session. One stage per rule.
+  test("your own comment awaiting moderation is shown to you alone, until it is approved", async ({ page }) => {
+    const slug = "halcyon-long";
+    let approved = false, signedIn = true;
+    const mine = { id: "p1", parent_id: "", author: "Asha", body: "Does the 15% hold for platform teams?", created_at: new Date().toISOString(), status: "pending" };
+    await page.route("**/api/v1/members/me", (route) => signedIn
+      ? route.fulfill({ contentType: "application/json", body: JSON.stringify({ authenticated: true, member: { name: "Asha", email: "asha@example.com" } }) })
+      : route.fulfill({ status: 401, contentType: "application/json", body: "{}" }));
+    await page.route(`**/api/v1/articles/${slug}/comments`, (route) => route.request().method() === "POST"
+      ? route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify(mine) })
+      : route.fulfill({ contentType: "application/json", body: JSON.stringify({ comments: approved ? [{ ...mine, status: "approved" }] : [] }) }));
+    const note = page.locator(".vayu-comment-pending");
+
+    await page.goto(`/${slug}`);
+    await page.locator(".vayu-comment-compose textarea").fill(mine.body);
+    await page.locator(".vayu-comment-compose .vayu-comment-submit").click();
+    await expect(note).toHaveText("Waiting for moderation · only you can see this");
+    await expect(page.locator(".vayu-comment--pending .vayu-comment-body")).toHaveText(mine.body);
+
+    await page.reload();
+    await expect(note, "kept across a reload").toHaveCount(1);
+
+    approved = true;
+    await page.reload();
+    await expect(page.locator(".vayu-comment-body")).toHaveCount(1);
+    await expect(note, "gone once the approved list carries it").toHaveCount(0);
+    expect(await page.evaluate((k) => localStorage.getItem(k), `vp-pending:${slug}`)).toBeNull();
+
+    approved = false;
+    await page.evaluate(([k, v]) => localStorage.setItem(k, v), [`vp-pending:${slug}`, JSON.stringify([mine])]);
+    signedIn = false;
+    await page.reload();
+    await expect(page.locator(".vayu-comment-gate")).toBeVisible();
+    await expect(note, "never shown with nobody signed in").toHaveCount(0);
+    expect(await page.evaluate((k) => localStorage.getItem(k), `vp-pending:${slug}`)).toBeNull();
+  });
+
   // A site served over plain HTTP (a .onion) has no clipboard API. Localhost
   // counts as secure, so the page is told otherwise to reach that path.
   test("copies a link where the clipboard API is not offered", async ({ page }) => {

@@ -421,6 +421,14 @@ func (a *App) handleSearchPage(w http.ResponseWriter, r *http.Request) {
 	if len(q) > 120 {
 		q = q[:120]
 	}
+	in := render.SearchInput{Domain: config.Cfg.Domain, Version: Version, Query: q}
+	_, halcyon := render.Halcyon()
+	if halcyon {
+		// A topic page's search box scopes to its topic and keeps its order.
+		// The topic is taken as its key (tagrules), as its page is.
+		in.Topic = tagrules.Key(r.URL.Query().Get("topic"))
+		in.MostRead = in.Topic != "" && r.URL.Query().Get("sort") == "read"
+	}
 	var hits []render.SearchHit
 	if q != "" {
 		release, ok := admitColdRender(w, r)
@@ -432,13 +440,34 @@ func (a *App) handleSearchPage(w http.ResponseWriter, r *http.Request) {
 	if q != "" && a.search != nil {
 		ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
 		defer cancel()
-		if res, err := a.searchScoped(ctx, r, q, 30); err == nil {
+		// Scoped to a topic, the page keeps the thirty best matches carrying
+		// it, so it reads further down the ranking: the same depth a hosted
+		// site's search reads to keep its own thirty.
+		fetch := 30
+		if in.Topic != "" {
+			fetch = 500
+		}
+		if res, err := a.searchScoped(ctx, r, q, fetch); err == nil {
 			for _, h := range res.Hits {
+				if in.Topic != "" && !hasTopic(h.Tags, in.Topic) {
+					continue
+				}
 				hits = append(hits, render.SearchHit{Title: h.Title, Slug: h.Slug, Tags: h.Tags, CreatedAt: h.CreatedAt})
+				if len(hits) == 30 {
+					break
+				}
 			}
 		}
+		if in.Topic != "" {
+			a.orderTopicHits(ctx, hits, in.MostRead)
+		}
 	}
-	out, err := render.RenderSearch(config.Cfg.Domain, Version, q, hits)
+	in.Hits = hits
+	if halcyon && q != "" && len(hits) == 0 && in.Topic == "" {
+		key, _, _, count := a.halcyonScope(r)
+		in.Topics, in.TopicTotal = a.halcyonTopics(key, count)
+	}
+	out, err := render.RenderSearchPage(in)
 	if err != nil {
 		http.Error(w, "render error", http.StatusInternalServerError)
 		return

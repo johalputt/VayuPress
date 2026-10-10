@@ -742,10 +742,19 @@ func VideoFacadeJSLink() template.HTML {
 // delete any comment (moderation); the server authorises every such action by
 // session, never trusting client-sent flags. Each comment shows a real
 // self-hosted SVG country flag (/os/static/flags/<cc>.svg) rather than an emoji.
+//
+// Where the theme asks for it (data-own-pending, Halcyon), a member's own
+// comment waiting for moderation stays on the page for them: the comment the
+// POST returned is kept in that browser and drawn, marked, until the approved
+// list carries it. The API is unchanged and nobody else is shown it. The copy
+// goes when it is approved, after 30 days, or when no member is signed in on
+// that browser.
 const CommentsJS = `(function(){
   var root=document.getElementById('vayu-comments');if(!root)return;
   var slug=root.getAttribute('data-slug');if(!slug)return;
-  var me=null;
+  var me=null,own=root.hasAttribute('data-own-pending'),PK='vp-pending:'+slug,PDAYS=30;
+  function pending(){try{var a=JSON.parse(localStorage.getItem(PK)||'[]');return Array.isArray(a)?a:[];}catch(e){return [];}}
+  function keepPending(a){try{if(a.length)localStorage.setItem(PK,JSON.stringify(a));else localStorage.removeItem(PK);}catch(e){}}
   var listEl=document.createElement('div');listEl.className='vayu-comment-list';
   function esc(t){return t==null?'':String(t);}
   // Web addresses in a comment become links. Only http(s) addresses are matched,
@@ -857,7 +866,10 @@ const CommentsJS = `(function(){
           // "approved"): show it live by reloading the thread. A member's comment
           // still enters moderation, so it reports the awaiting-review state.
           if(res.d&&res.d.status==='approved'){label(status,'Posted','✓',true);load();}
-          else{label(status,'Thanks! Awaiting moderation.','✨',true);}
+          else{label(status,'Thanks! Awaiting moderation.','✨',true);
+            if(own&&res.d&&res.d.id){var p=pending().filter(function(x){return x.id!==res.d.id;});
+              p.push({id:res.d.id,parent_id:res.d.parent_id||'',author:res.d.author,body:res.d.body,created_at:res.d.created_at,avatar:res.d.avatar||''});
+              keepPending(p.slice(-5));load();}}
           if(onPosted)onPosted();}
         else if(res.status===401){me=null;status.textContent='Please sign in as a member to comment.';if(typeof window.vpPortalOpen==='function'){window.vpPortalOpen('signin');}}
         else{status.textContent=(res.d&&res.d.error&&(res.d.error.message||res.d.error))||'Could not post comment.';}});});
@@ -889,6 +901,7 @@ const CommentsJS = `(function(){
     meta.appendChild(av);meta.appendChild(idc);
     var body=document.createElement('p');body.className='vayu-comment-body';fillBody(body,c.body);
     el.appendChild(meta);el.appendChild(body);
+    if(c.pending){el.className+=' vayu-comment--pending';var pn=document.createElement('p');pn.className='vayu-comment-pending';pn.textContent='Waiting for moderation · only you can see this';el.appendChild(pn);return el;}
     // Action bar: Reply (signed-in, top-level only), plus Edit/Delete when the
     // server says this viewer may (own comment → edit+delete; operator → delete
     // any). Only rendered when at least one action applies, so guest views stay clean.
@@ -921,6 +934,10 @@ const CommentsJS = `(function(){
   }
   function render(items){
     clear(listEl);
+    if(own&&me){var seen={};(items||[]).forEach(function(c){seen[c.id]=1;});
+      var mine=pending().filter(function(x){return !seen[x.id]&&Date.now()-new Date(x.created_at).getTime()<PDAYS*864e5;});
+      keepPending(mine);
+      items=(items||[]).concat(mine.map(function(x){x.pending=true;return x;}));}
     if(!items||!items.length){var p=document.createElement('p');p.className='vayu-comment-empty';label(p,'No comments yet. Be the first.','💬',true);listEl.appendChild(p);return;}
     var kids={};items.forEach(function(c){if(c.parent_id){(kids[c.parent_id]=kids[c.parent_id]||[]).push(c);}});
     items.forEach(function(c){
@@ -935,7 +952,7 @@ const CommentsJS = `(function(){
   var h=document.createElement('h2');h.className='vayu-comment-heading';h.textContent='Comments';
   root.appendChild(h);root.appendChild(listEl);
   var compose=document.createElement('div');compose.className='vayu-comment-compose';root.appendChild(compose);
-  function guestPrompt(){clear(compose);
+  function guestPrompt(){clear(compose);if(own)keepPending([]);
     var p=document.createElement('p');p.className='vayu-comment-gate';label(p,'Join the conversation — sign in as a member to comment.','💬',true);
     var b=document.createElement('button');b.type='button';b.className='vayu-comment-submit';b.textContent='Sign in to comment';
     b.addEventListener('click',function(){if(typeof window.vpPortalOpen==='function'){window.vpPortalOpen('signin');}else{window.location.href='/members';}});
@@ -2270,7 +2287,7 @@ var searchTmpl = template.Must(template.New("search").Funcs(homeFuncs).Parse(`<!
 // the linked posts are still discoverable.
 func RenderSearch(domain, version, query string, hits []SearchHit) (string, error) {
 	if cfg, ok := Halcyon(); ok {
-		return renderHalcyonSearch(query, hits, cfg)
+		return renderHalcyonSearch(SearchInput{Domain: domain, Version: version, Query: query, Hits: hits}, cfg)
 	}
 	var buf strings.Builder
 	s := getActiveSettings()
@@ -2846,11 +2863,21 @@ func cacheFingerprint() string {
 	// Invalidation is driven only by things that actually change rendered output:
 	// the CSS content hashes (auto-detected) and cacheSchema. When a template
 	// change isn't captured by a CSS hash, bump cacheSchema to force a rebuild.
-	sum := sha256.Sum256([]byte(strings.Join([]string{
+	parts := []string{
 		cacheSchema,
 		cssHashes.ArticleCSS, cssHashes.CustomCSS,
 		cssHashes.HighContrastCSS, cssHashes.AdminCSS,
-	}, "|")))
+	}
+	// A site on Halcyon renders from Halcyon's own templates and files, which
+	// none of the above covers: without them, an update that changed Halcyon
+	// kept serving cached pages in the old markup beside the new stylesheet.
+	// Only while it is active, so an update that changes Halcyon alone never
+	// re-renders a site on any other theme. Boot activates the saved theme
+	// before ReconcileCacheVersion runs, and switching theme purges the cache.
+	if _, ok := Halcyon(); ok {
+		parts = append(parts, halcyonRenderSum())
+	}
+	sum := sha256.Sum256([]byte(strings.Join(parts, "|")))
 	return hex.EncodeToString(sum[:])
 }
 

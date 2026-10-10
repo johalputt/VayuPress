@@ -308,6 +308,47 @@ func halcyonMonths(arts []HomeArticle) []hMonth {
 	return out
 }
 
+// halcyonRenderSum fingerprints everything Halcyon renders a cached page
+// from: its shared and page templates, the article head, and its stylesheets
+// and script.
+func halcyonRenderSum() string {
+	names := make([]string, 0, len(halcyonPages))
+	for n := range halcyonPages {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	h := sha256.New()
+	for _, src := range []string{halcyonShared, halcyonArticleHeadTmpl} {
+		h.Write([]byte(src))
+		h.Write([]byte{0})
+	}
+	for _, n := range names {
+		h.Write([]byte(n + "\x00" + halcyonPages[n] + "\x00"))
+	}
+	for _, n := range []string{"halcyon.css", "halcyon-members.css", "halcyon.js"} {
+		h.Write([]byte(halcyonAssets[n].ver + "\x00"))
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// halcyonRanked sets a most-read list as one group numbered by rank, in the
+// index's row: a ranking grouped by month would hide its order.
+func halcyonRanked(arts []HomeArticle) []hMonth {
+	if len(arts) == 0 {
+		return nil
+	}
+	g := hMonth{Label: "Most read"}
+	for i, a := range arts {
+		g.Rows = append(g.Rows, hRow{
+			HomeArticle: a,
+			Day:         strconv.Itoa(i + 1),
+			Topic:       firstTopic(a.Tags),
+			WithExc:     i < 2 && a.Excerpt != "",
+		})
+	}
+	return []hMonth{g}
+}
+
 // firstTopic is the topic a listing names for a post: its first tag, as
 // stored. Tags are shown lower case and never title-cased, because a theme
 // cannot know that "sre" is an acronym.
