@@ -206,6 +206,12 @@ func TestSmallCapsLeaveTablesAlone(t *testing.T) {
 	}
 }
 
+func TestSmallCapsOnlyWholeWords(t *testing.T) {
+	if b := halcyonTreat(`<p>Use SQLite and GraphQL.</p>`, true); strings.Contains(string(b.Body), `class="sc"`) {
+		t.Errorf("capitals inside a word are part of its name, not a run to set in small caps: %s", b.Body)
+	}
+}
+
 // The mojibake in 3au is not a run of capitals and must not be dressed as one.
 func TestSmallCapsIgnoreBrokenCharacters(t *testing.T) {
 	if b := halcyonTreat(`<p>allocation ÃÃÃÃÃÂ¢ triggers</p>`, true); strings.Contains(string(b.Body), `class="sc"`) {

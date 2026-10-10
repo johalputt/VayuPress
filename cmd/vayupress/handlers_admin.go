@@ -764,11 +764,9 @@ const sidebarAdAnchor = `<div class="h-rail-ads" data-ads="sidebar"></div>`
 
 // fillSidebarAds puts the rendered sidebar slots into the page's anchor. The
 // callers render the placement only when the page has the anchor, so a page
-// without a side column never loads an AdSense unit it cannot show.
+// without a side column never loads an AdSense unit it cannot show. With no
+// slots the anchor stays empty and its own rule (.h-rail-ads:empty) hides it.
 func fillSidebarAds(htmlOut, slots string) string {
-	if slots == "" {
-		return htmlOut
-	}
 	return strings.Replace(htmlOut, sidebarAdAnchor, `<div class="h-rail-ads" data-ads="sidebar">`+slots+`</div>`, 1)
 }
 

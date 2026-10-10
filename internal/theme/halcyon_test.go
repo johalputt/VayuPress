@@ -83,8 +83,12 @@ func TestHalcyonKeepsAReadableCustomAccent(t *testing.T) {
 func TestOtherThemesKeepTheirAccentFreedom(t *testing.T) {
 	d := Default()
 	d.AccentLight = "#eeeeee"
-	if _, err := CompileCSS(d); err != nil {
-		t.Errorf("a theme on the shared templates was refused an accent: %v", err)
+	css, err := CompileCSS(d)
+	if err != nil {
+		t.Fatalf("a theme on the shared templates was refused an accent: %v", err)
+	}
+	if !strings.Contains(css, "--accent:#eeeeee") {
+		t.Error("a theme on the shared templates had its accent replaced")
 	}
 }
 

@@ -34,9 +34,10 @@ type halcyonBody struct {
 	Outline    []OutlineEntry
 }
 
-// capsRe matches a run of two or more capitals standing as a word: HTML, SQL,
-// VISIBLE. The ASCII range is deliberate: a broken character such as the
-// mojibake in 3au is not a capital and must not be dressed as one.
+// capsRe matches a run of two or more capitals standing as a whole word: HTML,
+// SQL, VISIBLE, but not the SQL in SQLite. Go's \b is an ASCII word boundary,
+// so a run of broken characters such as the mojibake in 3au never matches:
+// it is not a word of capitals and must not be dressed as one.
 var capsRe = regexp.MustCompile(`\b[A-Z][A-Z0-9]*[A-Z]\b`)
 
 // capsSkip are the elements whose text keeps its capitals as written: code and
