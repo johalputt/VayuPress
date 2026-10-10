@@ -8,6 +8,43 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Halcyon, the VayuPress theme, and the theme a new site starts on.** A
+  reading serif (Newsreader) on warm paper, a dusk that is never black, one
+  quiet accent and hairline rules instead of boxes.
+  - **Home** is a front page with numbered topic desks, a river, or an index
+    by month; **articles** are a centred column or a margin with the facts;
+    **topics** are an index by month.
+  - **Readers choose** their own face, size, width and appearance, saved on
+    their device only and applied before the page is drawn.
+  - **Reading:** an outline marks where they are, a selection toolbar
+    quotes and links, and on a phone they read with a dock.
+  - **Nothing scrolls sideways:** code wraps, and on a phone a table becomes
+    labelled blocks.
+  - **The whole site in one design:** comments, most read, pinned and related
+    posts, sign-in, sign-up and the member pages.
+  - **Every style is a choice in Theme Studio,** whose preview is now the
+    real page with the options being edited, by page, device and scheme.
+  - **Light to load:** one small script and its own fonts served from this
+    site, with no third-party request. Its stylesheet is 9.5 KB and its
+    script 3.7 KB gzipped. (ADR-0166)
+- **Ads in a side column.** The sidebar placement shows in Halcyon's rail on
+  Home's river and beside a post. On narrower screens it follows the post
+  rather than being hidden.
+
+### Changed
+
+- **Existing sites keep their theme.** Migration 106 saves the theme an
+  install was already showing, so only a new install starts on Halcyon.
+  Apply Halcyon in Theme Studio, or with the connector's `apply_theme`, to
+  move a site to it.
+- **The pictographs in the comments and trending widgets are hidden from
+  screen readers,** and the search sheet returns focus to whatever opened
+  it. Other themes look as before.
+- **Theme Studio's Desktop preview is a desktop:** drawn at 1440 px and scaled
+  to fit, and it says so.
+
 ### Fixed
 
 - **A saved search or a label opens with its results already there.** Mail
@@ -43,6 +80,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   history. A run whose bytes were lost before it reached VayuPress cannot be
   known and is left as it is; the Posts page names those posts until each is
   fixed by hand. Text inside code blocks is never changed.
+
+- **Black text on a black background no longer passes the contrast check.**
+  The theme helper rated any colour on pure black as 21:1. It is now the one
+  contrast formula the console uses too.
 
 ### Security
 

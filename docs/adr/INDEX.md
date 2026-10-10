@@ -9,6 +9,7 @@
 
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
+| [ADR-0166](ADR-0166-a-theme-may-bring-its-layout.md) | A theme may name a template set; Halcyon is the first, and the theme new installs start on; every other theme byte-identical; existing installs keep theirs (migration 106) | Accepted | Core | 2026-10-10 |
 | [ADR-0165](ADR-0165-a-site-edited-by-file-or-built-from-a-repository.md) | A hosted site is edited file by file, or built from a repository the install pulls; one deploy path; a followed site refuses hand edits | Accepted | Core | 2026-09-27 |
 | [ADR-0164](ADR-0164-outside-services-in-a-sites-csp.md) | A site may allow outside services: passive content from typed origins, code only from a vetted catalogue; one merge point; session pages always strict | Accepted | Security | 2026-09-26 |
 | [ADR-0163](ADR-0163-translating-the-console.md) | Console translation: per-user language, own catalog, whole-sentence keys, plurals, escaped data; built when a first language exists | Accepted | Core | 2026-09-24 |
