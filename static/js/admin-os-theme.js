@@ -52,6 +52,19 @@
   var pageBtns = Array.prototype.slice.call(document.querySelectorAll('[data-theme-page]'));
   var pageSwitch = document.querySelector('[data-theme-pages]');
   function ownLayout() { return loadedLayout === 'halcyon'; }
+  // The page the preview shows goes into the preview's URL, so it is taken
+  // from this fixed list and never from the button's text: whatever an
+  // attribute holds, the URL carries one of these literals (the server keeps
+  // the same list in writeHalcyonPreview and shows Home for anything else).
+  function previewPageOf(v) {
+    switch (v) {
+      case 'topic': return 'topic';
+      case 'article': return 'article';
+      case 'search': return 'search';
+      case 'signin': return 'signin';
+      default: return 'home';
+    }
+  }
   function schemeQS() {
     return (previewScheme === 'light' ? '&scheme=light' : '&scheme=dark') + (ownLayout() ? '&page=' + previewPage : '');
   }
@@ -314,7 +327,7 @@
   // ── Which page the preview shows (themes with their own layout) ──────────────
   pageBtns.forEach(function (btn) {
     btn.addEventListener('click', function () {
-      previewPage = btn.getAttribute('data-theme-page') || 'home';
+      previewPage = previewPageOf(btn.getAttribute('data-theme-page'));
       pageBtns.forEach(function (b) { b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'); });
       if (!lastDraftID || !frame) return;
       var pageURL = '/os/theme/preview?draft=' + encodeURIComponent(lastDraftID) + schemeQS();
