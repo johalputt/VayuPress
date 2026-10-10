@@ -106,10 +106,15 @@
 .h .ma-mailid, .h .ma-2fa-key { background: var(--h-sunken); border: 0; color: var(--h-t1); font-family: var(--h-mono); }
 .h .ma-2fa-enroll, .h .ma-upgrade { border-color: var(--h-line); }
 .h .ma-acc, .h .ma-acc[open] { background: none; border: 0; border-top: 1px solid var(--h-line); border-radius: 0; box-shadow: none; }
-.h .ma-acc__sum { min-height: 64px; }
+.h .ma-acc__sum { min-height: 64px; padding-left: 0; padding-right: 0; }
+/* The rows' pictograph tiles are decoration (aria-hidden), and Halcyon sets
+   no pictographs on the member pages: the words carry each row. */
+.h .ma-acc__ic { display: none; }
+/* The plan: its heading, its list and its action, each with room. */
+.h .ma-plan-h { margin-top: 10px; }
+.h .ma-card--plan .ma-benefits { margin: 12px 0 22px; }
 .h .ma-acc__title { font: 500 18px/1.3 var(--h-serif); }
 .h .ma-acc__sub { font: 400 13px/1.4 var(--h-sans); color: var(--h-t3); }
-.h .ma-acc__ic { background: var(--h-sunken); color: var(--h-t2); box-shadow: none; }
 .h .ma-bill-row { border-color: var(--h-line); }
 .h .ma-bill-row dt { color: var(--h-t3); font: 400 13px/1.4 var(--h-sans); }
 .h .ma-bill-row dd { font: 400 16px/1.4 var(--h-serif); }
