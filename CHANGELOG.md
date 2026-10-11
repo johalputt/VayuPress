@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.1] — 2026-10-11
+
+Applying Halcyon from Theme Studio now changes the site, as its preview
+showed.
+
+### Fixed
+
+- **Theme Studio's Apply switches the site to a theme's own layout.** Apply
+  sent a theme's colours and options but not its layout, so applying Halcyon
+  in Theme Studio kept the site on the shared layout while the preview showed
+  Halcyon. Apply it again after updating. The connector's `apply_theme` was
+  not affected.
+
 ## [3.18.0] — 2026-10-11
 
 Halcyon, VayuPress's own theme: a reading serif on warm paper, every style a
