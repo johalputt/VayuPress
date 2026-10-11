@@ -60,9 +60,15 @@ var halcyonFuncs = template.FuncMap{
 	"tagURL":        func(s string) string { return "/tags/" + tagURL(s) },
 	"topicName":     topicName,
 	"previewRobots": previewRobots,
-	"caps":          func(on bool, s string) template.HTML { return capsText(on)(s) },
-	"reason":        sharesReason,
-	"num":           groupThousands,
+	"initial": func(s string) string {
+		for _, r := range strings.TrimSpace(s) {
+			return strings.ToUpper(string(r))
+		}
+		return ""
+	},
+	"caps":   func(on bool, s string) template.HTML { return capsText(on)(s) },
+	"reason": sharesReason,
+	"num":    groupThousands,
 	"plural": func(n int, one, many string) string {
 		if n == 1 {
 			return one
@@ -123,7 +129,7 @@ const halcyonShared = `
 
 {{define "bar"}}<header class="h-bar" data-h-bar><div class="h-wrap h-bar-in">
 {{if eq .Kind "article"}}<a class="h-ib h-only-phone" href="{{blogBase}}" aria-label="Back to {{.SiteName}}">{{icon "back"}}</a>{{end}}
-{{if and (eq .Kind "home") (ne .Composition "index")}}<h1 class="h-name-h"><a class="h-name" href="{{blogBase}}">{{.SiteName}}</a></h1>{{else}}<a class="h-name" href="{{blogBase}}">{{.SiteName}}</a>{{end}}
+{{if and (eq .Kind "home") (ne .Composition "index")}}<h1 class="h-name-h"><a class="h-name" href="{{blogBase}}"><img class="h-logo" src="/static/brand-48.png" alt="" width="28" height="28">{{.SiteName}}</a></h1>{{else}}<a class="h-name" href="{{blogBase}}"><img class="h-logo" src="/static/brand-48.png" alt="" width="28" height="28">{{.SiteName}}</a>{{end}}
 {{if .Nav}}<nav class="h-links" aria-label="Primary">{{range .Nav}}<a href="{{.Href}}"{{if .External}} rel="noopener noreferrer"{{end}}>{{.Label}}</a>{{end}}</nav>{{end}}
 <div class="h-tools">
 {{if .ShowSearch}}<form class="h-search" method="get" action="/search" role="search" data-vayu-search><button class="h-ib" type="submit" aria-label="Search">{{icon "search"}}</button></form>{{end}}
@@ -163,6 +169,8 @@ const halcyonShared = `
 
 {{define "topicrow"}}{{if .Topics}}<nav class="h-topic-nav" aria-label="Topics">{{$cur := .Topic}}{{range .Topics}}<a href="{{tagURL .Name}}"{{if eq .Name $cur}} aria-current="page"{{end}}>{{topicName .Name}}<span class="h-n">{{num .Count}}</span></a>{{end}}<a href="/tags">All topics</a></nav>{{end}}{{end}}
 
+{{define "avatar"}}{{if .AuthorAvatar}}<img class="h-av" src="{{.AuthorAvatar}}" alt="" width="40" height="40" loading="lazy" decoding="async" itemprop="image">{{else}}<span class="h-av h-av--i" aria-hidden="true">{{initial .Author}}</span>{{end}}{{end}}
+
 {{define "subscribe"}}{{if and .Cfg.Subscribe .ShowMembership}}<section class="h-letter" aria-label="Subscribe"><p>One email when there is something new worth reading.</p><form method="POST" action="/members/login" class="h-letter-form"><label class="h-vh" for="h-letter-email">Email address</label><input class="h-field" id="h-letter-email" type="email" name="email" required autocomplete="email" placeholder="you@example.com"><button class="h-btn h-btn-ink" type="submit">Subscribe</button></form></section>{{end}}{{end}}
 `
 
@@ -197,7 +205,7 @@ const halcyonArticleTmpl = `{{template "start" .}}<div class="h-page"><main id="
 {{if and (not .IsPage) (ne .Cfg.Article "margin")}}<p class="h-kicker">{{if .Topic}}<a href="{{tagURL .Topic}}">{{topicName .Topic}}</a> · {{end}}<time itemprop="datePublished" datetime="{{shortDate .CreatedAt}}">{{humanDate .CreatedAt}}</time> · {{.Minutes}} min read</p>{{end}}
 <h1 itemprop="headline">{{.Title}}</h1>
 {{if .Standfirst}}<div class="h-standfirst">{{.Standfirst}}</div>{{end}}
-{{if not .IsPage}}<div class="h-byline">{{if and .Author (ne .Cfg.Article "margin")}}<p class="h-who" itemprop="author" itemscope itemtype="https://schema.org/Person">By {{if .AuthorSlug}}<a href="/author/{{.AuthorSlug}}" rel="author"><b itemprop="name">{{.Author}}</b></a>{{else}}<b itemprop="name">{{.Author}}</b>{{end}}</p>{{end}}<div class="h-tools h-js-only"><button class="h-ib h-aa" type="button" data-h-open="h-reader" aria-expanded="false" aria-controls="h-reader" aria-label="Reading settings">Aa</button><button class="h-ib" type="button" data-h-share aria-label="Share">{{icon "share"}}</button><button class="h-ib" type="button" data-h-copylink aria-label="Copy link">{{icon "link"}}</button></div></div>{{end}}
+{{if not .IsPage}}<div class="h-byline">{{if and .Author (ne .Cfg.Article "margin")}}<p class="h-who" itemprop="author" itemscope itemtype="https://schema.org/Person">{{template "avatar" .}}By {{if .AuthorSlug}}<a href="/author/{{.AuthorSlug}}" rel="author"><b itemprop="name">{{.Author}}</b></a>{{else}}<b itemprop="name">{{.Author}}</b>{{end}}</p>{{end}}<div class="h-tools h-js-only"><button class="h-ib h-aa" type="button" data-h-open="h-reader" aria-expanded="false" aria-controls="h-reader" aria-label="Reading settings">Aa</button><button class="h-ib" type="button" data-h-share aria-label="Share">{{icon "share"}}</button><button class="h-ib" type="button" data-h-copylink aria-label="Copy link">{{icon "link"}}</button></div></div>{{end}}
 </header>
 {{if .FeatureImage}}<figure class="h-cover"><img src="{{.FeatureImage}}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer"></figure>{{end}}
 <aside class="h-rail">{{if .Outline}}<nav class="h-outline" aria-labelledby="h-outline-h"><h2 class="h-label" id="h-outline-h">On this page</h2><ol>{{range .Outline}}<li><a href="#{{.ID}}">{{.Text}}</a></li>{{end}}</ol><p class="h-left h-js-only" data-h-left></p></nav>{{end}}<div class="h-rail-ads" data-ads="sidebar"></div></aside>
@@ -205,7 +213,7 @@ const halcyonArticleTmpl = `{{template "start" .}}<div class="h-page"><main id="
 </article>
 {{if not .IsPage}}<div class="h-end">
 {{if .Tags}}<p class="h-filed">Filed under {{range $i, $t := .Tags}}{{if $i}}{{if eq (inc $i) (len $.Tags)}} and {{else}}, {{end}}{{end}}<a href="{{tagURL $t}}" rel="tag">{{topicName $t}}</a>{{end}}.</p>{{end}}
-{{if and .Author .AuthorBio}}<section class="h-author" aria-label="About the author"><div><p class="h-author-name">{{if .AuthorSlug}}<a href="/author/{{.AuthorSlug}}" rel="author">{{.Author}}</a>{{else}}{{.Author}}{{end}}</p><p>{{.AuthorBio}}</p></div>{{if .AuthorSlug}}<a class="h-follow" href="/author/{{.AuthorSlug}}">More from {{.Author}}</a>{{end}}</section>{{end}}
+{{if and .Author .AuthorBio}}<section class="h-author" aria-label="About the author">{{template "avatar" .}}<div><p class="h-author-name">{{if .AuthorSlug}}<a href="/author/{{.AuthorSlug}}" rel="author">{{.Author}}</a>{{else}}{{.Author}}{{end}}</p><p>{{.AuthorBio}}</p></div>{{if .AuthorSlug}}<a class="h-follow" href="/author/{{.AuthorSlug}}">More from {{.Author}}</a>{{end}}</section>{{end}}
 {{if .Related}}<section class="h-next" aria-labelledby="h-next-h"><h2 class="h-label" id="h-next-h">Related reading</h2><ol class="h-rel">{{range .Related}}<li><div><a href="/{{.Slug}}">{{.Title}}</a><p class="h-why">{{reason .Shared}}</p></div><time class="h-meta" datetime="{{shortDate .CreatedAt}}">{{humanDate .CreatedAt}}</time></li>{{end}}</ol></section>{{end}}
 {{if .CommentsOn}}<section class="h-talk" aria-labelledby="h-talk-h"><div class="h-talk-head"><h2 id="h-talk-h">Comments</h2><p>Comments are read before they appear.</p></div><div id="vayu-comments" class="vayu-comments" data-slug="{{.Slug}}" data-own-pending></div></section>{{end}}
 {{template "trend" .}}
@@ -590,6 +598,7 @@ type hArticle struct {
 	Minutes                       int
 	Topic                         string
 	Author, AuthorBio, AuthorSlug string
+	AuthorAvatar                  string // the author's picture; their initial when there is none
 	FeatureImage                  string
 	IsPage                        bool
 	Related                       []RelatedArticle
@@ -613,7 +622,7 @@ func renderHalcyonArticle(s SiteSettings, data articlePage, cfg theme.HalcyonCon
 	a := hArticle{
 		hChrome: c, Article: data.Article, Body: treated.Body, Standfirst: treated.Standfirst,
 		Minutes: readMinutes(data.Content), Topic: firstTopic(data.Tags),
-		Author: data.Author, AuthorBio: data.AuthorBio, AuthorSlug: data.AuthorSlug,
+		Author: data.Author, AuthorBio: data.AuthorBio, AuthorSlug: data.AuthorSlug, AuthorAvatar: data.AuthorAvatar,
 		FeatureImage: data.FeatureImage, IsPage: data.IsPage, Related: data.Related,
 		CommentsOn: data.CommentsEnabled && cfg.Comments, ContactForm: data.ContactForm,
 	}

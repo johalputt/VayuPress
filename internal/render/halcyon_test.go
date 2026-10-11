@@ -698,7 +698,7 @@ func TestHalcyonHomeHasOneTopHeading(t *testing.T) {
 		if n := strings.Count(out, "<h1"); n != 1 {
 			t.Errorf("%s: %d top headings, want 1", comp, n)
 		}
-		if got := strings.Contains(out, `<h1 class="h-name-h"><a class="h-name" href="/">Acme Press</a></h1>`); got != nameIsH1 {
+		if got := strings.Contains(out, `<h1 class="h-name-h"><a class="h-name" href="/"><img class="h-logo" src="/static/brand-48.png" alt="" width="28" height="28">Acme Press</a></h1>`); got != nameIsH1 {
 			t.Errorf("%s: the site's name is the top heading: %v, want %v", comp, got, nameIsH1)
 		}
 	}

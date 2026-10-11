@@ -144,6 +144,15 @@
 .h .h-bar-in { height: 68px; display: flex; align-items: center; gap: 28px; }
 .h .h-name { font: 500 24px/1 var(--h-serif); letter-spacing: -0.012em; color: var(--h-t1); }
 .h .h-name-h { margin: 0; display: flex; }
+.h .h-name { display: inline-flex; align-items: center; gap: 10px; }
+.h .h-logo { width: 28px; height: 28px; flex: none; border-radius: 6px; }
+/* The author's picture, or their initial on the paper's own tint. */
+.h .h-av { width: 40px; height: 40px; flex: none; border-radius: 50%; object-fit: cover; }
+.h .h-av--i { display: inline-grid; place-items: center; background: var(--h-line); color: var(--h-t2); font: 500 16px/1 var(--h-serif); }
+.h .h-who { display: flex; align-items: center; gap: 12px; }
+.h .h-author > div { flex: 1; min-width: 0; }
+.h .h-author .h-av { width: 56px; height: 56px; }
+.h .h-author .h-av--i { font-size: 22px; }
 .h .h-links { display: flex; gap: 24px; margin-left: auto; font: 400 14px/1 var(--h-sans); color: var(--h-t2); }
 .h .h-links a:hover { color: var(--h-t1); }
 .h .h-tools { display: flex; align-items: center; gap: 2px; }
@@ -256,11 +265,13 @@
 .h .h-lost-links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 32px; }
 
 /* ── A post: the column, and the margin ───────────────────────────────── */
-.h .h-post { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, var(--h-measure)) minmax(0, 1fr); column-gap: 72px; max-width: 1400px; margin: 0 auto; padding: 64px var(--h-gutter) 0; }
+.h .h-post { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, var(--h-measure)) minmax(0, 1fr); column-gap: clamp(32px, 4vw, 72px); max-width: 1400px; margin: 0 auto; padding: 64px var(--h-gutter) 0; }
 .h .h-post > .h-post-head, .h .h-post > .h-body, .h .h-post > .h-cover { grid-column: 2; }
 .h .h-post > .h-cover { grid-column: 1 / 4; justify-self: center; width: 100%; max-width: 1040px; margin-top: 44px; }
 .h .h-cover img { display: block; width: 100%; height: auto; border-radius: 6px; }
-.h .h-post > .h-rail { grid-column: 3; grid-row: 1 / span 3; align-self: start; position: sticky; top: 112px; width: 240px; padding-top: 52px; }
+/* The rail fits its column: a fixed 240 px overran a 14-inch laptop's
+   1280 px and the page scrolled sideways. */
+.h .h-post > .h-rail { grid-column: 3; grid-row: 1 / span 3; align-self: start; position: sticky; top: 112px; width: 100%; max-width: 240px; padding-top: 52px; }
 .h .h-post--margin { grid-template-columns: 260px minmax(0, var(--h-measure)) minmax(0, 1fr); max-width: 1200px; }
 .h .h-post--margin > .h-rail { grid-column: 1; grid-row: 2 / span 3; width: auto; padding-top: 48px; }
 .h .h-post--page { grid-template-columns: minmax(0, 1fr) minmax(0, var(--h-measure)) minmax(0, 1fr); }
@@ -593,3 +604,21 @@
   .h .h-bar, .h .h-foot, .h .h-rail, .h .h-dock, .h .h-trend, .h .h-talk, .h .h-next, .h .vp-ads { display: none !important; }
   .h .content { color: #000; }
 }
+
+/* The member panel and its button (portal.css) in Halcyon's paper and ink:
+   portal.css draws from its own --vpp-* palette, a dark one unless a theme
+   says otherwise, and under Halcyon it stood out as the old design. Buttons
+   are ink, as Halcyon's are: the accent with white text, as portal.css has
+   it, is unreadable on the dusk's light accent. */
+.h .vp-portal-overlay, .h .vp-portal-trigger {
+  --vpp-bg: var(--h-canvas); --vpp-surface: var(--h-surface); --vpp-surface-2: var(--h-surface);
+  --vpp-border: var(--h-line); --vpp-text: var(--h-t1); --vpp-muted: var(--h-t3);
+  --vpp-accent: var(--h-ink); --vpp-accent-2: var(--h-ink);
+  --vpp-font: var(--h-sans); --vpp-shadow: var(--h-lift-2);
+}
+.h .vp-portal-overlay { background: var(--h-scrim); }
+.h .vp-portal-panel { background: var(--h-surface); border-left: 1px solid var(--h-line); }
+.h .vp-portal-trigger, .h .vp-portal-btn { color: var(--h-on-ink); background: var(--h-ink); box-shadow: var(--h-lift); }
+.h .vp-portal-title { font: 400 30px/1.15 var(--h-serif); letter-spacing: -0.01em; }
+.h .vp-portal-input:focus { border-color: var(--h-t2); box-shadow: 0 0 0 3px var(--h-line-2); }
+.h .vp-portal-avatar { color: var(--h-on-ink); background: var(--h-ink); }
