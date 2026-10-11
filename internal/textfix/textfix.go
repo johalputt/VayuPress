@@ -61,7 +61,29 @@ type Result struct {
 }
 
 // Repair restores every run in s that can be restored and leaves the rest.
+// It is applied when the author asks (the Posts page), never on its own: see
+// Changes.
 func Repair(s string) (string, Result) {
+	return walk(s, nil)
+}
+
+// Change is one run Repair would restore: the text as it reads now, and as
+// it would read.
+type Change struct{ From, To string }
+
+// Changes lists what Repair would restore in s, in order, without changing
+// it. A repair is offered, never applied unasked: the same bytes are damage
+// in one post and the author's own example in another (a guide to mojibake
+// quotes "Ã©" in its prose on purpose), and only the author can tell.
+func Changes(s string) []Change {
+	var out []Change
+	walk(s, func(from, to string) { out = append(out, Change{from, to}) })
+	return out
+}
+
+// walk repairs s outside protected markup, telling seen (when set) of each
+// run it restores.
+func walk(s string, seen func(from, to string)) (string, Result) {
 	var res Result
 	if !hasLead(s) {
 		return s, res
@@ -69,16 +91,16 @@ func Repair(s string) (string, Result) {
 	var b strings.Builder
 	last := 0
 	for _, loc := range protected.FindAllStringIndex(s, -1) {
-		b.WriteString(repairText(s[last:loc[0]], &res))
+		b.WriteString(repairText(s[last:loc[0]], &res, seen))
 		b.WriteString(s[loc[0]:loc[1]])
 		last = loc[1]
 	}
-	b.WriteString(repairText(s[last:], &res))
+	b.WriteString(repairText(s[last:], &res, seen))
 	return b.String(), res
 }
 
 // repairText repairs each run of characters a single byte can read as.
-func repairText(s string, res *Result) string {
+func repairText(s string, res *Result, seen func(from, to string)) string {
 	if !hasLead(s) {
 		return s
 	}
@@ -86,7 +108,12 @@ func repairText(s string, res *Result) string {
 	start := -1
 	flush := func(end int) {
 		if start >= 0 {
-			b.WriteString(repairRun(s[start:end], res))
+			run := s[start:end]
+			out := repairRun(run, res)
+			if seen != nil && out != run {
+				seen(run, out)
+			}
+			b.WriteString(out)
 			start = -1
 		}
 	}

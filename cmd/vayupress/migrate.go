@@ -20,9 +20,12 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -35,7 +38,6 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/markdown"
 	"github.com/johalputt/vayupress/internal/tagrules"
-	"github.com/johalputt/vayupress/internal/textfix"
 )
 
 // runMigrate is the entry point for `vayupress migrate <subcommand> [flags]`.
@@ -212,8 +214,8 @@ func runMigrateMarkdown(args []string) error {
 		tags := strings.Join(tagrules.Clean(doc.tags, nil), ",")
 
 		// Sanitise HTML before persisting (mirrors article write-queue).
-		sanitised, _ := textfix.Repair(bluemonday.UGCPolicy().Sanitize(doc.html))
-		title, _ := textfix.Repair(doc.title)
+		sanitised := bluemonday.UGCPolicy().Sanitize(doc.html)
+		title := doc.title
 
 		res, err := db.Exec(
 			`INSERT OR IGNORE INTO articles(id,title,slug,content,tags,created_at,updated_at)
@@ -238,12 +240,23 @@ func runMigrateMarkdown(args []string) error {
 			doc.slug, "markdown", doc.rawBody,
 		)
 
+		offerImportedText(db, os.Stdout, prefix, doc.slug, title, sanitised)
 		fmt.Printf("%s → %q  slug=%s  ✓\n", prefix, doc.title, doc.slug)
 		inserted++
 	}
 
 	fmt.Printf("\nDone. Inserted: %d  Skipped: %d  Errors: %d\n", inserted, skipped, errs)
 	return nil
+}
+
+// offerImportedText lists an imported post for its author's review when its
+// text reads as garbled, as every write does (api.ArticleService): an import
+// stores what it was given, since a post about encodings quotes such text on
+// purpose. The post is imported either way.
+func offerImportedText(db *sql.DB, out io.Writer, prefix, slug, title, content string) {
+	if err := dbpkg.OfferTextRepair(context.Background(), db, slug, dbpkg.TextChanges(title, content)); err != nil {
+		fmt.Fprintf(out, "%s %s: not listed for text review: %v\n", prefix, slug, err)
+	}
 }
 
 func dryRunList(files []string, skipDrafts bool) error {

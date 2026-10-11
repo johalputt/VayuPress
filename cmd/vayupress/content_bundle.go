@@ -33,7 +33,6 @@ import (
 	"github.com/johalputt/vayupress/internal/api"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/tagrules"
-	"github.com/johalputt/vayupress/internal/textfix"
 )
 
 // bundleFormat is the on-disk format tag; import refuses anything else.
@@ -197,12 +196,12 @@ func importBundle(db *sql.DB, b contentBundle, mode string, dryRun bool, out io.
 		}
 
 		// The same rules as every other write (tags under the tag rules and
-		// comma-separated, garbled text restored); stored as JSON, the tags
-		// read back as `["news"` and `"go"]`.
+		// comma-separated, garbled text stored as sent and offered for
+		// review); stored as JSON, the tags read back as `["news"` and `"go"]`.
 		tags := tagrules.Clean(p.Tags, nil)
 		tagsCSV := strings.Join(tags, ",")
-		title, _ := textfix.Repair(p.Title)
-		sanitised, _ := textfix.Repair(bluemonday.UGCPolicy().Sanitize(p.Content))
+		title := p.Title
+		sanitised := bluemonday.UGCPolicy().Sanitize(p.Content)
 		created := parseImportTime(p.CreatedAt, "").UTC().Format(time.RFC3339)
 		updated := parseImportTime(p.UpdatedAt, p.CreatedAt).UTC().Format(time.RFC3339)
 
@@ -217,6 +216,7 @@ func importBundle(db *sql.DB, b contentBundle, mode string, dryRun bool, out io.
 			if sErr := syncBundleTags(db, slug, tags); sErr != nil {
 				return ins, upd, skip, sErr
 			}
+			offerImportedText(db, out, prefix, slug, title, sanitised)
 			upd++
 			fmt.Fprintf(out, "%s %q ✓ updated\n", prefix, p.Title)
 			continue
@@ -237,6 +237,7 @@ func importBundle(db *sql.DB, b contentBundle, mode string, dryRun bool, out io.
 		if sErr := syncBundleTags(db, slug, tags); sErr != nil {
 			return ins, upd, skip, sErr
 		}
+		offerImportedText(db, out, prefix, slug, title, sanitised)
 		ins++
 		fmt.Fprintf(out, "%s %q ✓ new\n", prefix, p.Title)
 	}

@@ -10,7 +10,6 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/queue"
 	"github.com/johalputt/vayupress/internal/tagrules"
-	"github.com/johalputt/vayupress/internal/textfix"
 	"github.com/johalputt/vayupress/internal/trace"
 )
 
@@ -132,6 +131,7 @@ func (s *ArticleService) create(ctx context.Context, title, slug, content string
 	if err := s.Queue.Enqueue(ctx, art, "insert"); err != nil {
 		return CreateResult{}, fmt.Errorf("queue: %w", err)
 	}
+	offerRepair(ctx, art.Slug, art.Title, art.Content)
 	return CreateResult{ID: art.ID, Slug: art.Slug}, nil
 }
 
@@ -212,6 +212,7 @@ func (s *ArticleService) BulkCreate(ctx context.Context, items []BulkCreateItem)
 			res.SkipReasons = append(res.SkipReasons, in.Slug+": enqueue failed ("+err.Error()+")")
 			continue
 		}
+		offerRepair(ctx, art.Slug, art.Title, art.Content)
 		res.Queued++
 	}
 	return res, nil
@@ -254,6 +255,7 @@ func (s *ArticleService) Update(ctx context.Context, slug string, title, content
 	if err := s.Queue.Enqueue(ctx, art, "update"); err != nil {
 		return art, fmt.Errorf("queue: %w", err)
 	}
+	offerRepair(ctx, art.Slug, art.Title, art.Content)
 	return art, nil
 }
 
@@ -392,18 +394,20 @@ func mapRepoErr(err error) error {
 }
 
 // prepare is what every create, bulk create and update stores: the title and
-// body with garbled text restored, and the tags under the tag rules
-// (internal/tagrules), the rarest kept by TagFrequency when it is set.
+// body as sent, and the tags under the tag rules (internal/tagrules), the
+// rarest kept by TagFrequency when it is set.
 func (s *ArticleService) prepare(title, content string, tags []string) (string, string, []string) {
-	return repairText(title), repairText(content), tagrules.Clean(tags, s.TagFrequency)
+	return title, content, tagrules.Clean(tags, s.TagFrequency)
 }
 
-// repairText restores text that arrives garbled (UTF-8 read as Latin-1 or
-// Windows-1252 and sent on, once or more): posts on johal.in were written that
-// way by the tool that sent them. Every create and update passes through here,
-// so the API, the connector and the editor all store the text as it was meant;
-// a run whose bytes were lost on the way is left as sent (internal/textfix).
-func repairText(s string) string {
-	out, _ := textfix.Repair(s)
-	return out
+// offerRepair lists a post just written for its author's review when its text
+// reads as garbled (UTF-8 read as Latin-1 or Windows-1252 and sent on, as the
+// tool that wrote johal.in's posts did). The text is stored as sent: the same
+// bytes are an author's own example in a post about encodings, so the repair
+// is the author's to apply, from the Posts page (internal/textfix.Changes).
+// Best-effort: a failed record never fails the write.
+func offerRepair(ctx context.Context, slug, title, content string) {
+	if dbpkg.DB != nil {
+		_ = dbpkg.OfferTextRepair(ctx, dbpkg.WDB, slug, dbpkg.TextChanges(title, content))
+	}
 }

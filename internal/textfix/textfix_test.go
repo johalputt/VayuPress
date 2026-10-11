@@ -81,3 +81,22 @@ func TestCleanTextAndCodeAreLeft(t *testing.T) {
 		t.Errorf("only the text outside code is repaired: %q", got)
 	}
 }
+
+// Changes names each run Repair would restore, in order, as it reads and as it
+// would read, and changes nothing; text inside code is not offered.
+func TestChangesListsEachRunWithoutChangingIt(t *testing.T) {
+	s := "a " + layers(t, "—", 1, false) + " b <code>" + layers(t, "é", 1, false) + "</code> " + layers(t, "’", 2, false)
+	got := Changes(s)
+	want := []Change{{layers(t, "—", 1, false), "—"}, {layers(t, "’", 2, false), "’"}}
+	if len(got) != len(want) {
+		t.Fatalf("Changes(%q) = %q, want %q", s, got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("change %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+	if Changes("plain café") != nil {
+		t.Error("clean text offered a change")
+	}
+}

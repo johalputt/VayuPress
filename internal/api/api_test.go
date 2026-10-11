@@ -211,9 +211,10 @@ func TestArticleService_ListTags(t *testing.T) {
 	_ = tags
 }
 
-// Text that arrives garbled is stored as it was meant, through create and
-// update alike: the title and the body both.
-func TestArticleService_GarbledTextIsRestoredOnWrite(t *testing.T) {
+// Text that reads as garbled is stored as it was sent, through create, bulk
+// create and update alike, and the post is offered to its author for review;
+// a write that leaves nothing to restore takes it off the list.
+func TestArticleService_GarbledTextIsStoredAsSentAndOffered(t *testing.T) {
 	svc := makeService()
 	queued := func() (title, content string) {
 		t.Helper()
@@ -222,19 +223,47 @@ func TestArticleService_GarbledTextIsRestoredOnWrite(t *testing.T) {
 		}
 		return title, content
 	}
-	if _, err := svc.Create(bg, "It\u00e2\u20ac\u2122s fine", "garbled-create", "<p>a \u00e2\u20ac\u201d b</p>", []string{"go"}); err != nil {
+	offer := func(slug string) string {
+		var state string
+		_ = dbpkg.DB.QueryRow(`SELECT state FROM text_repair_offer WHERE slug=?`, slug).Scan(&state)
+		return state
+	}
+	sentTitle, sentBody := "It\u00e2\u20ac\u2122s fine", "<p>a \u00e2\u20ac\u201d b</p>"
+	if _, err := svc.Create(bg, sentTitle, "garbled-create", sentBody, []string{"go"}); err != nil {
 		t.Fatal(err)
 	}
-	if title, content := queued(); title != "It’s fine" || content != "<p>a — b</p>" {
-		t.Errorf("create queued %q, %q", title, content)
+	if title, content := queued(); title != sentTitle || content != sentBody {
+		t.Errorf("create queued %q, %q: not as sent", title, content)
+	}
+	if got := offer("garbled-create"); got != "offered" {
+		t.Errorf("create: offer %q", got)
+	}
+	if _, err := svc.BulkCreate(bg, []BulkCreateItem{{Title: "Bulk", Slug: "garbled-bulk", Content: sentBody, Tags: []string{"go"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, content := queued(); content != sentBody {
+		t.Errorf("bulk create queued %q: not as sent", content)
+	}
+	if got := offer("garbled-bulk"); got != "offered" {
+		t.Errorf("bulk create: offer %q", got)
 	}
 	dbpkg.DB.Exec(`INSERT INTO articles(id,title,slug,content,tags,created_at,updated_at) VALUES('g','T','garbled-update','c','',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`)
 	title, body := "na\u00c3\u00afve", "<p>caf\u00c3\u00a9</p>"
 	if _, err := svc.Update(bg, "garbled-update", &title, &body, nil); err != nil {
 		t.Fatal(err)
 	}
-	if title, content := queued(); title != "naïve" || content != "<p>café</p>" {
-		t.Errorf("update queued %q, %q", title, content)
+	if gotTitle, content := queued(); gotTitle != title || content != body {
+		t.Errorf("update queued %q, %q: not as sent", gotTitle, content)
+	}
+	if got := offer("garbled-update"); got != "offered" {
+		t.Errorf("update: offer %q", got)
+	}
+	title, body = "naïve", "<p>café</p>"
+	if _, err := svc.Update(bg, "garbled-update", &title, &body, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := offer("garbled-update"); got != "" {
+		t.Errorf("a clean write left the post offered: %q", got)
 	}
 }
 

@@ -96,23 +96,32 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
     list each tag once, by its key, and count published posts only. They
     counted drafts, and listed "Python" and "python" as two topics.
   - The posts already stored are brought under these rules once, in the
-    background and paced, before the text repair above. Each changed post's
-    tags as they were are kept in `tag_originals` (migration 109), and its
+    background and paced, before the garbled-text check below. Each changed
+    post's tags as they were are kept in `tag_originals` (migration 109), and its
     date is unchanged. Until the pass reaches a post, its page already shows
     its tags under the rules.
 - **Content bundles and Markdown imports keep their tags.** Both stored tags as
   a JSON list in a column every other path reads as comma-separated, so an
   imported post's tags read as `["news"` and `"go"]`; a bundle export carried
   no tags at all, and a bundle import left an updated post linked to its old
-  tags. Imports now store tags, and restore garbled text, as every write does.
-- **Garbled characters are restored.** Text that arrives as UTF-8 read as
-  Latin-1 or Windows-1252 and sent on, once or several times (a dash shown as three stray characters)
-  is restored as it is written, through the API, the connector and the
-  editor alike. The posts already stored are restored once, in the background
-  and paced, each through the write queue so its text before is kept in its
-  history. A run whose bytes were lost before it reached VayuPress cannot be
-  known and is left as it is; the Posts page names those posts until each is
-  fixed by hand. Text inside code blocks is never changed.
+  tags. Imports now store tags, and offer garbled text for review, as every
+  write does.
+- **Garbled characters are found, and restored when you say so.** Text that
+  arrives as UTF-8 read as Latin-1 or Windows-1252 and sent on, once or
+  several times (a dash shown as three stray characters), is stored as it was
+  sent, and the post is listed under **Posts → Text to review** (migration
+  110). Each post's inspector shows every change as it reads now and as it
+  would read; **Restore the text** saves the restored text as an edit (the
+  text before is kept as a version), and **Keep as written** takes the post
+  off the list until different garbled text is written into it. Nothing is
+  restored unasked: the same bytes are damage in one post and an example in
+  another, as in a guide to encoding bugs that quotes `Ã©` on purpose. Every
+  write is checked (the API, the connector, the editor, the importers and
+  content bundles), and the posts already stored are checked once, in the
+  background and paced, without changing any. A run whose bytes were lost
+  before it reached VayuPress cannot be known; the Posts page names those
+  posts until each is fixed by hand. Text inside code blocks is never
+  offered.
 
 - **Black text on a black background no longer passes the contrast check.**
   The theme helper rated any colour on pure black as 21:1. It is now the one

@@ -782,6 +782,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// HTMX in-place pin/unpin: returns the flipped pin button + an out-of-band
 		// "Pinned" badge, so the row updates without a full-page reload.
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/{slug}/pin-fragment", a.handleOSPostPinFragment)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/{slug}/text-fragment", a.handleOSPostTextFragment)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/posts/{slug}", a.handleOSPostDelete)
 		// Session-friendly branding (favicon) upload — the /admin/theme/favicon
 		// original is in the API-key-only group, so a browser operator can't reach
@@ -2530,6 +2531,7 @@ type postDetail struct {
 	ViewsKnown                 bool
 	IndexNow                   dbpkg.IndexNowStatus
 	IndexNowOK                 bool
+	TextChanges                []textfix.Change // garbled text offered for review, if any
 }
 
 // osPostInspector renders the inspector for one post: its cover, title and
@@ -2564,6 +2566,9 @@ func osPostInspector(p postDetail) string {
 	b.WriteString(`<div class="sa-insp__actions">` + osPostStatusButton(esc, p.Status) + osPostPinButton(esc, p.Featured) +
 		osIndexNowButton(esc, p.IndexNow, p.IndexNowOK, isDraft) +
 		`<button type="button" class="btn btn--sm btn--danger" data-post-delete data-slug="` + esc + `" data-title="` + html.EscapeString(p.Title) + `">Delete</button></div>`)
+	if len(p.TextChanges) > 0 {
+		b.WriteString(osTextReview(esc, p.TextChanges))
+	}
 	return b.String()
 }
 
@@ -2581,6 +2586,7 @@ func (a *App) postDetailFor(ctx context.Context, slug string) (postDetail, bool)
 	p.Tags = splitCSVTags(tagsCSV)
 	p.Featured = featured != 0
 	p.IndexNow, p.IndexNowOK = dbpkg.IndexNowStatusOf(slug)
+	p.TextChanges = textChangesToReview(ctx, slug, p.Title)
 	if a.analytics != nil {
 		if v, err := a.analytics.ViewsBySlug(ctx, 30, []string{slug}); err == nil {
 			p.Views, p.ViewsKnown = v[slug], true
@@ -2620,7 +2626,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 		q = q[:120]
 	}
 	status := qv.Get("status")
-	if status != "published" && status != "draft" && status != "garbled" {
+	if status != "published" && status != "draft" && status != "garbled" && status != "review" {
 		status = "all"
 	}
 	period := qv.Get("period")
@@ -2671,6 +2677,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 	lost := a.postsWithLostText(ctx, status == "garbled")
+	toReview := a.postsToReview(ctx, status == "review")
 	loadErr := false
 
 	allCount, published, drafts := 0, 0, 0
@@ -2707,6 +2714,8 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 		total = drafts
 	case "garbled":
 		total = lost
+	case "review":
+		total = toReview
 	}
 
 	// ── Pagination maths (100 per page; page clamped to a valid range) ────────
@@ -2735,6 +2744,8 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 		listWhere = append(listWhere, "status='draft'")
 	case "garbled":
 		listWhere = append(listWhere, "slug IN (SELECT slug FROM text_repair_lost)")
+	case "review":
+		listWhere = append(listWhere, dbpkg.TextOfferWhere())
 	}
 	listClause := ""
 	if len(listWhere) > 0 {
@@ -2771,7 +2782,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 		body = a.osPostsList(ctx, osPostsView{
 			posts: posts, status: status, q: q, from: from, to: to, period: period,
 			page: page, totalPages: totalPages, total: total, offset: offset,
-			all: allCount, published: published, drafts: drafts, lost: lost, loadErr: loadErr,
+			all: allCount, published: published, drafts: drafts, lost: lost, toReview: toReview, loadErr: loadErr,
 		}, nonce)
 	}
 	writeOSHTML(w, r, adminOSLayout(nonce, "Posts", "posts", cfg, htmpl.HTML(body)))
@@ -2784,6 +2795,7 @@ type osPostsView struct {
 	page, totalPages, total, offset int
 	all, published, drafts          int
 	lost                            int // posts with characters that could not be restored
+	toReview                        int // posts whose garbled text waits on the author (text_repair_review.go)
 	loadErr                         bool
 }
 
@@ -2870,13 +2882,23 @@ func (a *App) osPostsList(ctx context.Context, v osPostsView, nonce string) stri
 			keep = append(keep, kv)
 		}
 	}
+	// Each list names what it holds when it is shown; otherwise every list with
+	// posts in it is pointed to, both at once, since neither waits on the other.
 	var sub ui.HTML
-	switch {
-	case v.status == "garbled":
+	switch v.status {
+	case "review":
+		sub = ui.HTML(`<p class="muted text-sm">Text in these posts reads as garbled on its way in. Select a post to see each change, then restore it or keep it as written.</p>`)
+	case "garbled":
 		sub = ui.HTML(`<p class="muted text-sm">Characters in these posts were lost before they reached VayuPress, so they could not be restored. Fix each in the editor; a post leaves this list once it is clean.</p>`)
-	case v.lost > 0:
-		sub = ui.HTML(`<p class="muted text-sm">` + itoaSafe(v.lost) + ` ` + map[bool]string{true: "post has", false: "posts have"}[v.lost == 1] +
-			` characters that could not be restored. <a href="` + osPostsHref("garbled", "", "", "", "", 1) + `">Show them</a></p>`)
+	default:
+		if v.toReview > 0 {
+			sub += ui.HTML(`<p class="muted text-sm">` + itoaSafe(v.toReview) + ` ` + map[bool]string{true: "post has", false: "posts have"}[v.toReview == 1] +
+				` text to review. <a href="` + osPostsHref("review", "", "", "", "", 1) + `">Show them</a></p>`)
+		}
+		if v.lost > 0 {
+			sub += ui.HTML(`<p class="muted text-sm">` + itoaSafe(v.lost) + ` ` + map[bool]string{true: "post has", false: "posts have"}[v.lost == 1] +
+				` characters that could not be restored. <a href="` + osPostsHref("garbled", "", "", "", "", 1) + `">Show them</a></p>`)
+		}
 	}
 	return string(ui.List(ui.ListPage{
 		Title: "Posts",

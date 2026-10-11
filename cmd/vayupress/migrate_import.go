@@ -18,7 +18,6 @@ import (
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/tagrules"
-	"github.com/johalputt/vayupress/internal/textfix"
 )
 
 // importedPost is the normalised shape both importers produce before insertion.
@@ -66,10 +65,10 @@ func insertImported(posts []importedPost, dryRun, skipDrafts bool) error {
 		// The same rules as every other write: tags under the tag rules, kept
 		// comma-separated as the column is everywhere else (this stored a JSON
 		// array, which every reader split into tags such as `["go"`), and
-		// garbled text restored.
+		// garbled text stored as sent and offered for review.
 		tags := strings.Join(tagrules.Clean(p.Tags, nil), ",")
-		title, _ := textfix.Repair(p.Title)
-		sanitised, _ := textfix.Repair(bluemonday.UGCPolicy().Sanitize(p.HTML))
+		title := p.Title
+		sanitised := bluemonday.UGCPolicy().Sanitize(p.HTML)
 		res, err := db.Exec(
 			`INSERT OR IGNORE INTO articles(id,title,slug,content,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`,
 			id, title, p.Slug, sanitised, tags, dateStr, dateStr)
@@ -82,6 +81,7 @@ func insertImported(posts []importedPost, dryRun, skipDrafts bool) error {
 			skipped++
 			continue
 		}
+		offerImportedText(db, os.Stdout, prefix, p.Slug, title, sanitised)
 		fmt.Printf("%s %q  slug=%s  ✓\n", prefix, p.Title, p.Slug)
 		inserted++
 	}

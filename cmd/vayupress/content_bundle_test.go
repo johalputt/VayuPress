@@ -37,6 +37,7 @@ func newBundleTestDB(t *testing.T) *sql.DB {
 	}
 	applyMigration(t, db, "048-article-tags")
 	applyMigration(t, db, "106-article-tags-live")
+	applyMigration(t, db, "110-text-repair-offers")
 	return db
 }
 
@@ -109,6 +110,39 @@ func TestBundleRoundTrip(t *testing.T) {
 	}
 	if tags != "news,Go" || links != "go,news" {
 		t.Errorf("imported tags=%q links=%q, want news,Go and go,news", tags, links)
+	}
+}
+
+// An import stores a post's text as it was sent, garbled or not, and offers
+// what reads as garbled for review, on a new post and on a merged one alike.
+func TestABundleImportOffersGarbledTextAndKeepsIt(t *testing.T) {
+	sent := "<p>a \u00e2\u20ac\u201d b</p>"
+	b := contentBundle{Format: bundleFormat, Posts: []bundlePost{
+		{Title: "New", Slug: "new-one", Content: sent},
+		{Title: "Merged", Slug: "merged-one", Content: sent},
+	}}
+	b.Count = len(b.Posts)
+	sum, err := bundleChecksum(b.Posts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.Checksum = sum
+	dst := newBundleTestDB(t)
+	seedArticle(t, dst, "m", "Merged", "merged-one", "<p>old</p>", "", 0)
+	if _, _, _, err := importBundle(dst, b, "merge", false, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	for _, slug := range []string{"new-one", "merged-one"} {
+		var content, state string
+		if err := dst.QueryRow(`SELECT a.content, COALESCE(o.state,'') FROM articles a LEFT JOIN text_repair_offer o ON o.slug=a.slug WHERE a.slug=?`, slug).Scan(&content, &state); err != nil {
+			t.Fatal(err)
+		}
+		if content != sent {
+			t.Errorf("%s stored %q, not as sent", slug, content)
+		}
+		if state != "offered" {
+			t.Errorf("%s: offer %q", slug, state)
+		}
 	}
 }
 

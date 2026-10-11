@@ -35,6 +35,7 @@ func TestPostFragmentsRejectMaliciousSlug(t *testing.T) {
 	}{
 		{"status", a.handleOSPostToggleFragment, "status=draft"},
 		{"pin", a.handleOSPostPinFragment, "pinned=1"},
+		{"text", a.handleOSPostTextFragment, "do=keep"},
 	} {
 		rec := httptest.NewRecorder()
 		tc.h(rec, postFragReq(bad, tc.body))

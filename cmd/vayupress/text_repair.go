@@ -14,15 +14,18 @@ import (
 	"github.com/johalputt/vayupress/internal/textfix"
 )
 
-// text_repair.go is the one pass over the posts already stored that restores
-// garbled characters (internal/textfix): new writes are restored as they
-// arrive (api.ArticleService), the posts written before are restored here.
+// text_repair.go is the one pass over the posts already stored that finds
+// garbled characters (internal/textfix). It changes no post: each with text
+// that can be restored is offered on the Posts page (migration 110), and its
+// author restores it or keeps it as written there. The 3.18.0 release audit
+// found why: on johal.in the guide to mojibake quotes such text on purpose,
+// and a repair applied unasked would have rewritten its examples. New writes
+// are offered the same way as they arrive (api.ArticleService). Runs whose
+// bytes were lost are listed to fix by hand (text_repair_lost).
 //
 // It reads every body, on johal.in some gigabytes, so it walks the table in
 // batches with pauses, off the request path, and waits while the write queue
-// is busy. A post is restored through the write queue like any edit, so its
-// text before is kept as a "pre-update" version and its cached pages are
-// purged. Where it is (text_repair, migration 107) survives a restart, and
+// is busy. Where it is (text_repair, migration 107) survives a restart, and
 // once it has reached the end it never runs again.
 
 const (
@@ -33,9 +36,9 @@ const (
 
 // startStoredPasses runs the passes over the posts already stored in the
 // background, after boot has settled: the tags first (tag_cleanup.go), then
-// this one. Not the other way round, and not side by side: this pass re-queues
-// each post it restores with the tags it read, and would write a post's old
-// tags back over a cleaning done between its read and its write.
+// this one, one after the other so that two walks over every body never load
+// the box at once. This one writes no post (it only offers), so it cannot
+// undo the tag pass's work.
 func (a *App) startStoredPasses(done <-chan struct{}) {
 	go func() {
 		select {
@@ -80,7 +83,7 @@ func (a *App) repairStoredText(ctx context.Context, done <-chan struct{}, pause 
 				return nil
 			}
 		}
-		next, scanned, restored, err := a.repairTextBatch(ctx, cursor)
+		next, scanned, offered, err := a.repairTextBatch(ctx, cursor)
 		if err != nil {
 			return err
 		}
@@ -88,10 +91,10 @@ func (a *App) repairStoredText(ctx context.Context, done <-chan struct{}, pause 
 			_, err = dbpkg.DB.ExecContext(ctx, `UPDATE text_repair SET done_at=CURRENT_TIMESTAMP WHERE id=1`)
 			var total, fixed, lost int
 			_ = dbpkg.DB.QueryRowContext(ctx, `SELECT scanned, restored, (SELECT COUNT(1) FROM text_repair_lost) FROM text_repair WHERE id=1`).Scan(&total, &fixed, &lost)
-			dbpkg.AuditLog("content.text_repair", "system", "", fmt.Sprintf("scanned=%d restored=%d unrestorable=%d", total, fixed, lost))
+			dbpkg.AuditLog("content.text_repair", "system", "", fmt.Sprintf("scanned=%d offered=%d unrestorable=%d", total, fixed, lost))
 			return err
 		}
-		if _, err := dbpkg.DB.ExecContext(ctx, `UPDATE text_repair SET cursor=?, scanned=scanned+?, restored=restored+? WHERE id=1`, next, scanned, restored); err != nil {
+		if _, err := dbpkg.DB.ExecContext(ctx, `UPDATE text_repair SET cursor=?, scanned=scanned+?, restored=restored+? WHERE id=1`, next, scanned, offered); err != nil {
 			return err
 		}
 		cursor = next
@@ -101,17 +104,18 @@ func (a *App) repairStoredText(ctx context.Context, done <-chan struct{}, pause 
 	}
 }
 
-// repairTextBatch repairs the batch of posts after cursor. It returns the last
-// id read, how many it read and how many it queued restored.
+// repairTextBatch reads the batch of posts after cursor and offers each with
+// text that can be restored. It returns the last id read, how many it read and
+// how many it offered.
 func (a *App) repairTextBatch(ctx context.Context, cursor string) (string, int, int, error) {
 	rows, err := dbpkg.Reader().QueryContext(ctx, `SELECT id, slug, title, content FROM articles WHERE id > ? ORDER BY id LIMIT ?`, cursor, textRepairBatch)
 	if err != nil {
 		return cursor, 0, 0, err
 	}
 	type found struct {
-		slug, title, content string
-		restored             bool
-		lost                 int
+		slug    string
+		changes int
+		lost    int
 	}
 	var hits []found
 	scanned := 0
@@ -123,36 +127,35 @@ func (a *App) repairTextBatch(ctx context.Context, cursor string) (string, int, 
 		}
 		scanned++
 		cursor = id
-		newTitle, t := textfix.Repair(title)
-		newContent, c := textfix.Repair(content)
+		_, t := textfix.Repair(title)
+		_, c := textfix.Repair(content)
 		if t.Restored+c.Restored+t.Lost+c.Lost > 0 {
-			hits = append(hits, found{slug, newTitle, newContent, t.Restored+c.Restored > 0, t.Lost + c.Lost})
+			hits = append(hits, found{slug, t.Restored + c.Restored, t.Lost + c.Lost})
 		}
 	}
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return cursor, 0, 0, err
 	}
-	restored := 0
+	offered := 0
 	for _, h := range hits {
 		if h.lost > 0 {
 			if _, err := dbpkg.DB.ExecContext(ctx, `INSERT OR REPLACE INTO text_repair_lost(slug, runs) VALUES(?, ?)`, h.slug, h.lost); err != nil {
 				return cursor, 0, 0, err
 			}
 		}
-		if !h.restored {
+		if h.changes == 0 {
 			continue
 		}
 		art, err := a.articles.Repo.Get(ctx, h.slug)
 		if err != nil {
 			continue // deleted since it was read
 		}
-		art.Title, art.Content, art.UpdatedAt = h.title, h.content, time.Now().UTC()
-		if err := a.articles.Queue.Enqueue(ctx, art, "update"); err != nil {
+		if err := dbpkg.OfferTextRepair(ctx, dbpkg.WDB, art.Slug, dbpkg.TextChanges(art.Title, art.Content)); err != nil {
 			return cursor, 0, 0, err
 		}
-		restored++
+		offered++
 	}
-	return cursor, scanned, restored, nil
+	return cursor, scanned, offered, nil
 }
 
 // writeBacklog is how many writes are waiting in the queue.
