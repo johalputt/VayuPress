@@ -74,7 +74,7 @@ type Change struct{ From, To string }
 // Changes lists what Repair would restore in s, in order, without changing
 // it. A repair is offered, never applied unasked: the same bytes are damage
 // in one post and the author's own example in another (a guide to mojibake
-// quotes "Ã©" in its prose on purpose), and only the author can tell.
+// quotes a garbled "é" in its prose on purpose), and only the author can tell.
 func Changes(s string) []Change {
 	var out []Change
 	walk(s, func(from, to string) { out = append(out, Change{from, to}) })
