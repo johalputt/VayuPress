@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.2] — 2026-10-11
+
+Halcyon fits a 14-inch laptop, shows the site's logo and the author's
+picture, and the member panel takes its design.
+
+### Fixed
+
+- **No sideways scroll on a 14-inch laptop.** A post's outline was a fixed
+  240 px beside a column that shrinks, so at about 1280 px wide the page
+  scrolled left to right. It now fits its column.
+- **The site's logo and the author's picture show in Halcyon.** The logo is
+  beside the site's name, as in the other themes; the author's picture is
+  in the byline and the author box, or their initial when there is none.
+- **The member panel is in Halcyon's design.** It kept the old dark palette;
+  it now takes the theme's paper, ink and lines, in light and dark.
+
 ## [3.18.1] — 2026-10-11
 
 Applying Halcyon from Theme Studio now changes the site, as its preview
