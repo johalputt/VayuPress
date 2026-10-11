@@ -1242,6 +1242,24 @@ test("theme studio offers unapplied work back, and forgets it when discarded", a
   await expect(page.locator("[data-theme-draft]")).toBeHidden();
 });
 
+// Applying a theme that brings its own layout sends that layout, as the
+// preview does. Apply sent the colours and options only, so on johal.in
+// Halcyon showed in the preview and the site stayed on the shared layout.
+// The request is answered here rather than applied: switching the live theme
+// would change the pages the other specs are reading.
+test("theme studio applies a theme with its own layout", async ({ page }) => {
+  await openConsole(page);
+  await page.goto("/os/theme");
+  let sent = null;
+  await page.route("**/os/api/theme/apply", async (route) => {
+    sent = JSON.parse(route.request().postData() || "{}");
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "ok", name: "Halcyon" }) });
+  });
+  await page.locator('[data-theme-presets] .theme-card[data-preset="Halcyon"]').click();
+  await page.locator("[data-theme-apply]").click();
+  await expect.poll(() => sent && sent.tokens && sent.tokens.layout, { message: "Apply sent no layout" }).toBe("halcyon");
+});
+
 // A write the server refuses is said out loud. HTMX leaves the page unchanged
 // on a 4xx or 5xx, so without this a failed save looked exactly like a
 // successful one that did nothing.

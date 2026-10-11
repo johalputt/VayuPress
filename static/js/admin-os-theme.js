@@ -460,6 +460,10 @@
     var payload = {};
     Object.keys(model).forEach(function (k) { payload[k] = model[k]; });
     if (loadedCustomCSS) payload.custom_css = loadedCustomCSS;
+    // The layout is what the preview draws with (previewTokens); without it
+    // Apply saved Halcyon's colours and options under the shared layout, and
+    // the site went on looking as before while the preview showed Halcyon.
+    if (loadedLayout) payload.layout = loadedLayout;
     payload.options = options;
     fetch('/os/api/theme/apply', {
       method: 'POST',
