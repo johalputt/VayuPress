@@ -8,6 +8,28 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.0] — 2026-10-11
+
+Halcyon, VayuPress's own theme: a reading serif on warm paper, every style a
+choice in Theme Studio, its own layout for Home, posts, topics and search,
+and the member pages in the same design. A new site starts on it; an
+existing site keeps its theme until it is applied. Tags become topics: one
+address each, a few to a post, counted from the published posts. Every post,
+in every theme, tells search and answer engines more of what is true of it:
+its author, topic and FAQ, as structured data. Garbled characters are found
+in every post and listed for their author to restore or keep; nothing is
+restored unasked.
+
+### Upgrade Notes
+
+- **Nothing changes on a live site's look until Halcyon is applied** in
+  Theme Studio or with the connector's `apply_theme`.
+- **Two one-time passes run after the update,** paced behind the write
+  queue: stored tags are cleaned to the tag rules (each post's tags as they
+  were are kept), and posts are checked for garbled text, which changes no
+  post: those found are listed under **Posts → Text to review**. Pages
+  re-render as they are next requested.
+
 ### Added
 
 - **Halcyon, the VayuPress theme, and the theme a new site starts on.** A
@@ -23,11 +45,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   - **Reading:** an outline marks where they are, a selection toolbar
     quotes and links, and on a phone they read with a dock.
   - **Nothing scrolls sideways:** code wraps, and on a phone a table becomes
-    labelled blocks.
+    labelled blocks. Proven on johal.in's own posts, an imported one with its
+    own stylesheet among them, and at 320 px.
+  - **Images:** a library image is given its size so the text below it does
+    not jump as it loads, and an image that does not arrive is left out with
+    its caption rather than shown as a hole. A post's own top heading is set
+    as a section heading, so the page keeps one.
+  - **Accessible:** text contrast, control names, keyboard focus and reflow
+    are measured on every page type in both schemes (WCAG 2.2 AA).
   - **The whole site in one design:** comments, most read, pinned and related
     posts, sign-in, sign-up and the member pages. A member's own comment
     stays on the page for them, marked as waiting for moderation, until it
-    is approved; it is kept in their browser only.
+    is approved; it is kept in their browser only, and shown to no other
+    member who signs in on that browser.
   - **Made to be found and quoted:** the site's name is Home's top heading;
     Home, a topic and the topic index carry their link previews (the shared
     templates did, Halcyon's did not); a topic page offered to search lists
@@ -102,7 +132,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
     "machine-learning" are one tag at `/tags/machine-learning`; the other
     spellings redirect there permanently. `+`, `#` and `.` are kept, so C++, C#
     and .NET stay distinct.
-  - A stop-word, or a "tag" longer than 40 characters, is not a tag.
+  - A stop-word, a "tag" longer than 40 characters, or one with no letter or
+    digit in it (`...`, `#`) is not a tag. Three stop-words stay tags, since
+    on a technical site each is a topic: IT, the CAN bus and the D language.
   - A post keeps at most ten tags: when sent more, the rarest on the site. A
     post is never refused for its tags, so the limit of 20 that refused a
     post is gone, from the API, the connector and scheduled posts alike.
@@ -133,19 +165,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   text before is kept as a version), and **Keep as written** takes the post
   off the list until different garbled text is written into it. Nothing is
   restored unasked: the same bytes are damage in one post and an example in
-  another, as in a guide to encoding bugs that quotes `Ã©` on purpose. Every
-  write is checked (the API, the connector, the editor, the importers and
-  content bundles), and the posts already stored are checked once, in the
-  background and paced, without changing any. A run whose bytes were lost
-  before it reached VayuPress cannot be known; the Posts page names those
-  posts until each is fixed by hand. Text inside code blocks is never
-  offered.
+  another, as in a guide to encoding bugs that quotes a garbled "é" on
+  purpose. Every write is checked (the API, the connector, the editor, the
+  importers and content bundles), and the posts already stored are checked
+  once, in the background and paced, without changing any. A run whose
+  bytes were lost before it reached VayuPress cannot be known; the Posts
+  page names those posts until each is fixed by hand. Text inside code
+  blocks is never offered.
 
 - **Black text on a black background no longer passes the contrast check.**
   The theme helper rated any colour on pure black as 21:1. It is now the one
   contrast formula the console uses too.
 
 ### Security
+
+- **Theme Studio's preview and the member pages take no text from the page
+  or the request into what they build.** The preview's page is one of a
+  fixed list, a theme's option values are its own, and the member pages
+  escape what they write into their opening tag. None was exploitable; code
+  scanning now reads none of the eleven it reported.
 
 - **Code scanning no longer takes a mail address for a password.** Profile
   reads now go through a `user_profiles` view (migration 105), so no query
