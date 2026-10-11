@@ -2885,7 +2885,8 @@
 
 .vp-os .vp-trend-legend { display: flex; align-items: center; gap: 1.2rem; margin-bottom: .6rem; font-size: 13px; color: var(--text-2); }
 
-.vp-os .vp-trend-peak { margin-left: auto; font-size: 12px; color: var(--text-3); padding: .12rem .55rem; border-radius: var(--radius-control); background: var(--accent-soft); }
+/* Legend text, not a pill: the page grammar keeps a fill for controls. */
+.vp-os .vp-trend-peak { margin-left: auto; font-size: 12px; color: var(--text-3); }
 
 .vp-os .vp-trend-svg { width: 100%; height: auto; max-height: 320px; display: block; overflow: visible; }
 
