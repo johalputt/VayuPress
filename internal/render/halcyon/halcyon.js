@@ -164,7 +164,7 @@
   });
 
   // ── Reading: the header line, the outline, minutes left ────────────────
-  var bar = $('[data-h-bar]'), line = $('[data-h-line]'), body = $('.h-article .content');
+  var bar = $('[data-h-bar]'), line = $('[data-h-line]'), body = $('.h-is-article .content');
   var lefts = $$('[data-h-left]');
   var minutes = 0;
   if (body) minutes = Math.max(1, Math.round(body.textContent.split(/\s+/).length / 200));

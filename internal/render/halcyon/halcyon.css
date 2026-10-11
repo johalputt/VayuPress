@@ -143,6 +143,7 @@
 .h .h-bar.is-scrolled { box-shadow: 0 1px 0 var(--h-line); }
 .h .h-bar-in { height: 68px; display: flex; align-items: center; gap: 28px; }
 .h .h-name { font: 500 24px/1 var(--h-serif); letter-spacing: -0.012em; color: var(--h-t1); }
+.h .h-name-h { margin: 0; display: flex; }
 .h .h-links { display: flex; gap: 24px; margin-left: auto; font: 400 14px/1 var(--h-sans); color: var(--h-t2); }
 .h .h-links a:hover { color: var(--h-t1); }
 .h .h-tools { display: flex; align-items: center; gap: 2px; }

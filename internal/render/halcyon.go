@@ -195,7 +195,7 @@ type hChrome struct {
 	Copyright      string
 
 	PageTitle, Description, Canonical, Robots string
-	OGType, OGImage                           string
+	OGImage                                   string // the site's share image, absolute; a post's own is in ArticleHead
 	HeadMeta, JSONLD                          template.HTML
 	PrevURL, NextURL                          string
 	Version                                   string
@@ -224,6 +224,7 @@ func halcyonChrome(s SiteSettings, cfg theme.HalcyonConfig, kind string) hChrome
 		ShowMembership: s.ShowMembership,
 		ShowSearch:     searchEnabled.Load(),
 		HeadMeta:       headMetaHTML(s),
+		OGImage:        absoluteURL(config.Cfg.Domain, s.OGImage),
 		Version:        Version,
 		Analytics:      kind != "notfound",
 		CSSHref:        halcyonCSSHref(),
@@ -348,6 +349,9 @@ func halcyonRanked(arts []HomeArticle) []hMonth {
 	}
 	return []hMonth{g}
 }
+
+// topicName is a topic as a page names it: its key's words.
+func topicName(s string) string { return strings.ReplaceAll(s, "-", " ") }
 
 // firstTopic is the topic a listing names for a post: its first tag, as
 // stored. Tags are shown lower case and never title-cased, because a theme

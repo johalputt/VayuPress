@@ -14,18 +14,35 @@ import (
 var (
 	tagRe    = regexp.MustCompile(`<[^>]*>`)
 	imgSrcRe = regexp.MustCompile(`(?i)<img[^>]+src=["']([^"']+)["']`)
+	// unreadRe is markup whose text is not prose a reader reads: a diagram's
+	// labels, code, and what is never shown. On johal.in an inline SVG's
+	// labels ("STANDING ALLOCATION: 15-20% per team") would otherwise be read
+	// as a sentence of the post.
+	unreadRe = regexp.MustCompile(`(?is)<(svg|pre|script|style|template|noscript)\b.*?</(?:svg|pre|script|style|template|noscript)>`)
+	// blockEndRe ends a block: its text and the next block's are two
+	// sentences, not one word ("…end.Next").
+	blockEndRe = regexp.MustCompile(`(?i)</(?:p|h[1-6]|li|blockquote|div|td|th|dt|dd|figcaption)>|<br\s*/?>`)
 )
 
-// ExtractDescription returns the first 160 chars of plain text from HTML.
-// HTML tags are stripped with a simple regex; HTML entities are unescaped.
+// descriptionMax is the length a search result shows of a description before
+// it cuts it short itself.
+const descriptionMax = 160
+
+// PlainText is the prose a reader reads in a post's HTML, as one line: no
+// markup, no code, no diagram labels, entities decoded.
+func PlainText(htmlContent string) string {
+	plain := unreadRe.ReplaceAllString(htmlContent, " ")
+	plain = blockEndRe.ReplaceAllString(plain, " ")
+	plain = tagRe.ReplaceAllString(plain, "")
+	return oneLine(html.UnescapeString(plain))
+}
+
+// ExtractDescription is the opening of a post's prose, cut at a word within
+// descriptionMax bytes and marked as cut. It was the first 160 bytes, which
+// ended mid-word and could end mid-character: an invalid description is one a
+// search engine replaces with text of its own choosing.
 func ExtractDescription(htmlContent string) string {
-	plain := tagRe.ReplaceAllString(htmlContent, "")
-	plain = html.UnescapeString(plain)
-	plain = strings.Join(strings.Fields(plain), " ")
-	if len(plain) > 160 {
-		return plain[:160]
-	}
-	return plain
+	return clip(PlainText(htmlContent), descriptionMax)
 }
 
 // ExtractFirstImage returns the src of the first <img> tag in the HTML, or "".

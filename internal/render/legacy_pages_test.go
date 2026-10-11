@@ -85,6 +85,11 @@ func TestWriteLegacyGolden(t *testing.T) {
 // testdata/legacy holds each public page as the commit before Halcyon rendered
 // it from these inputs (TestWriteLegacyGolden, run there); this build must
 // match it byte for byte, the three widget script versions aside.
+//
+// One change was made to every theme on purpose, and article.html was
+// re-recorded for it alone: a post's head (its description cut at a word, the
+// robots and author meta, the structured data built by seo.ArticleJSONLD).
+// Every other page is still the pre-Halcyon recording.
 func TestSharedTemplatesUnchangedByHalcyon(t *testing.T) {
 	Init(t.TempDir())
 	ActivateTheme(theme.Default(), "")

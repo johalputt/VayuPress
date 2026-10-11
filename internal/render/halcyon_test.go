@@ -683,3 +683,136 @@ func TestACoverSitsAboveTheText(t *testing.T) {
 		t.Error("a post without a cover draws an empty cover")
 	}
 }
+
+// Home has one top heading, the site's name, in every composition that has no
+// heading of its own; the index has its own ("Writing") and the name is not a
+// second.
+func TestHalcyonHomeHasOneTopHeading(t *testing.T) {
+	cards := []HomeArticle{{Title: "One", Slug: "one", CreatedAt: fixedTime}, {Title: "Two", Slug: "two", CreatedAt: fixedTime}}
+	for comp, nameIsH1 := range map[string]bool{"front": true, "river": true, "index": false} {
+		withHalcyon(t, map[string]string{"home": comp})
+		out, err := RenderHomePage(HomeInput{Settings: SiteSettings{Name: "Acme Press"}, Domain: "example.com", Articles: cards, Total: 2, Page: 1, TotalPages: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n := strings.Count(out, "<h1"); n != 1 {
+			t.Errorf("%s: %d top headings, want 1", comp, n)
+		}
+		if got := strings.Contains(out, `<h1 class="h-name-h"><a class="h-name" href="/">Acme Press</a></h1>`); got != nameIsH1 {
+			t.Errorf("%s: the site's name is the top heading: %v, want %v", comp, got, nameIsH1)
+		}
+	}
+}
+
+// Every page that is not a post tells a link preview what it is, with the
+// site's share image; a post's own preview is its article head, not a second.
+func TestHalcyonPagesCarryTheirLinkPreview(t *testing.T) {
+	withHalcyon(t, nil)
+	config.Cfg.Domain = "example.com"
+	SetActiveSettings(SiteSettings{Name: "Acme Press", OGImage: "/media/share.png"})
+	t.Cleanup(func() { SetActiveSettings(SiteSettings{}) })
+	home, err := RenderHomePage(HomeInput{Settings: getActiveSettings(), Domain: "example.com", Page: 1, TotalPages: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	topic, err := RenderTopicPage(TopicInput{Domain: "example.com", Tag: "go", Total: 40})
+	if err != nil {
+		t.Fatal(err)
+	}
+	topics, err := RenderTagIndex("example.com", "1", []TagInfo{{Name: "go", Count: 40}}, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, page := range map[string]string{"home": home, "topic": topic, "topics": topics} {
+		for _, want := range []string{`<meta property="og:type" content="website">`, `<meta property="og:site_name" content="Acme Press">`,
+			`<meta property="og:image" content="https://example.com/media/share.png">`, `<meta name="twitter:card" content="summary_large_image">`} {
+			if !strings.Contains(page, want) {
+				t.Errorf("%s lacks %s", name, want)
+			}
+		}
+	}
+	if !strings.Contains(topic, `<meta property="og:url" content="https://example.com/tags/go">`) || !strings.Contains(topic, `<meta property="og:title" content="go — Acme Press">`) {
+		t.Error("the topic's preview does not name the topic's page")
+	}
+	art := db.Article{ID: "1", Title: "T", Slug: "t", Content: "<p>x</p>", CreatedAt: fixedTime, UpdatedAt: fixedTime}
+	post, err := RenderArticleWithMeta(art, ArticleLayoutDefault, nil, ArticleMetaOverrides{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(post, `og:type" content="website"`) || strings.Count(post, `property="og:type"`) != 1 {
+		t.Error("a post carries the website preview beside its own")
+	}
+}
+
+// A page offered to search asks for full previews; one kept out says only
+// that it is kept out.
+func TestHalcyonAsksForFullPreviewsOnlyWhereIndexed(t *testing.T) {
+	withHalcyon(t, nil)
+	const full = `<meta name="robots" content="max-image-preview:large, max-snippet:-1, max-video-preview:-1">`
+	for _, tc := range []struct {
+		name  string
+		in    TopicInput
+		full  bool
+		graph bool
+	}{
+		{"an indexed topic", TopicInput{Domain: "example.com", Tag: "go", Total: 40, Articles: []HomeArticle{{Title: "One", Slug: "one"}}}, true, true},
+		{"a thin topic", TopicInput{Domain: "example.com", Tag: "go", Total: 1}, false, false},
+		{"most read", TopicInput{Domain: "example.com", Tag: "go", Total: 40, MostRead: true}, false, false},
+	} {
+		page, err := RenderTopicPage(tc.in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Contains(page, full); got != tc.full {
+			t.Errorf("%s: full previews %v, want %v", tc.name, got, tc.full)
+		}
+		if got := strings.Contains(page, `"@type":"CollectionPage"`); got != tc.graph {
+			t.Errorf("%s: describes itself %v, want %v", tc.name, got, tc.graph)
+		}
+		if tc.graph && !strings.Contains(page, `{"@type":"ListItem","name":"One","position":1,"url":"https://example.com/one"}`) {
+			t.Errorf("%s: its list does not name its posts", tc.name)
+		}
+		if n := strings.Count(page, `<meta name="robots"`); n != 1 && !tc.full {
+			t.Errorf("%s: %d robots metas", tc.name, n)
+		}
+	}
+	home, err := RenderHomePage(HomeInput{Domain: "example.com", Page: 1, TotalPages: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(home, full) {
+		t.Error("home does not ask for full previews")
+	}
+	search, err := RenderSearchPage(SearchInput{Domain: "example.com", Query: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(search, full) {
+		t.Error("search, kept out of the index, asks for previews")
+	}
+}
+
+// A page's body names its kind (h-is-…), never a class the stylesheet styles:
+// as "h-topics" and "h-search" it took the topic chips' flex row and the
+// search form's display: contents, and the topic index's bar sat 16 px down.
+func TestABodyClassIsNoStyledClass(t *testing.T) {
+	withHalcyon(t, nil)
+	css, err := halcyonFS.ReadFile("halcyon/halcyon.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	topics, _ := RenderTagIndex("example.com", "1", []TagInfo{{Name: "go", Count: 4}}, 4)
+	search, _ := RenderSearchPage(SearchInput{Domain: "example.com", Query: "x"})
+	home, _ := RenderHomePage(HomeInput{Domain: "example.com", Page: 1, TotalPages: 1})
+	topic, _ := RenderTopicPage(TopicInput{Domain: "example.com", Tag: "go", Total: 4})
+	body := regexp.MustCompile(`<body class="([^"]+)">`)
+	for name, page := range map[string]string{"topics": topics, "search": search, "home": home, "topic": topic} {
+		m := body.FindStringSubmatch(page)
+		if m == nil {
+			t.Fatalf("%s: no body class", name)
+		}
+		if regexp.MustCompile(`\.` + regexp.QuoteMeta(m[1]) + `\b[^-]`).Match(css) {
+			t.Errorf("%s: the body's class %q is styled by halcyon.css", name, m[1])
+		}
+	}
+}

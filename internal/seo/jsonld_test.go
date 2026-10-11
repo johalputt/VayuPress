@@ -125,28 +125,6 @@ func TestHomeJSONLDRefusesToGuess(t *testing.T) {
 	}
 }
 
-func TestBreadcrumbJSONLD(t *testing.T) {
-	doc := parseLD(t, string(BreadcrumbJSONLD("https://example.com", "Example", "First post", "https://example.com/first-post")))
-	if doc["@type"] != "BreadcrumbList" {
-		t.Fatalf("@type = %v", doc["@type"])
-	}
-	items := doc["itemListElement"].([]any)
-	if len(items) != 2 {
-		t.Fatalf("expected 2 crumbs, got %d", len(items))
-	}
-	first := items[0].(map[string]any)
-	if first["position"].(float64) != 1 || first["item"] != "https://example.com/" {
-		t.Errorf("first crumb is wrong: %v", first)
-	}
-
-	if BreadcrumbJSONLD("", "x", "y", "z") != "" {
-		t.Error("no origin should emit nothing")
-	}
-	if BreadcrumbJSONLD("https://example.com", "x", "", "z") != "" {
-		t.Error("no title should emit nothing")
-	}
-}
-
 func mustJSON(t *testing.T, v any) string {
 	t.Helper()
 	b, err := json.Marshal(v)

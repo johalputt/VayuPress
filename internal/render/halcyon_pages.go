@@ -50,25 +50,25 @@ var halcyonFuncs = template.FuncMap{
 	"icon": func(name string) template.HTML {
 		return template.HTML(`<svg class="h-i" viewBox="0 0 20 20" aria-hidden="true" focusable="false">` + halcyonIcons[name] + `</svg>`) //nolint:gosec // G203: constant markup
 	},
-	"blogBase":  BlogBase,
-	"portalJS":  PortalJSLink,
-	"pwaHead":   PWAHeadTags,
-	"pwaJS":     PWARegisterJSLink,
-	"humanDate": func(t time.Time) string { return config.FormatSite(t, "2 January 2006") },
-	"shortDate": func(t time.Time) string { return config.FormatSite(t, "2006-01-02") },
-	"isoDate":   func(t time.Time) string { return config.InSite(t).Format(time.RFC3339) },
-	"tagURL":    func(s string) string { return "/tags/" + tagURL(s) },
-	"topicName": func(s string) string { return strings.ReplaceAll(s, "-", " ") },
-	"caps":      func(on bool, s string) template.HTML { return capsText(on)(s) },
-	"reason":    sharesReason,
-	"num":       groupThousands,
+	"blogBase":      BlogBase,
+	"portalJS":      PortalJSLink,
+	"pwaHead":       PWAHeadTags,
+	"pwaJS":         PWARegisterJSLink,
+	"humanDate":     func(t time.Time) string { return config.FormatSite(t, "2 January 2006") },
+	"shortDate":     func(t time.Time) string { return config.FormatSite(t, "2006-01-02") },
+	"isoDate":       func(t time.Time) string { return config.InSite(t).Format(time.RFC3339) },
+	"tagURL":        func(s string) string { return "/tags/" + tagURL(s) },
+	"topicName":     topicName,
+	"previewRobots": previewRobots,
+	"caps":          func(on bool, s string) template.HTML { return capsText(on)(s) },
+	"reason":        sharesReason,
+	"num":           groupThousands,
 	"plural": func(n int, one, many string) string {
 		if n == 1 {
 			return one
 		}
 		return many
 	},
-	"jsonAttr":     jsonAttr,
 	"inc":          func(i int) int { return i + 1 },
 	"firstTopicOf": firstTopic,
 }
@@ -101,7 +101,9 @@ const halcyonShared = `
 {{if .Description}}<meta name="description" content="{{.Description}}">{{end}}
 {{if .Robots}}<meta name="robots" content="{{.Robots}}">{{end}}
 <meta name="generator" content="VayuPress {{.Version}}">
-{{if .Canonical}}<link rel="canonical" href="{{.Canonical}}">{{end}}{{if .PrevURL}}
+{{if .Canonical}}<link rel="canonical" href="{{.Canonical}}">{{end}}{{if and .Canonical (not .Robots) (not .ArticleHead)}}
+<meta name="robots" content="{{previewRobots}}">{{end}}{{if not .ArticleHead}}
+<meta property="og:type" content="website"><meta property="og:title" content="{{.PageTitle}}">{{if .Description}}<meta property="og:description" content="{{.Description}}">{{end}}<meta property="og:site_name" content="{{.SiteName}}">{{if .Canonical}}<meta property="og:url" content="{{.Canonical}}">{{end}}{{if .OGImage}}<meta property="og:image" content="{{.OGImage}}"><meta name="twitter:card" content="summary_large_image">{{else}}<meta name="twitter:card" content="summary">{{end}}{{end}}{{if .PrevURL}}
 <link rel="prev" href="{{.PrevURL}}">{{end}}{{if .NextURL}}
 <link rel="next" href="{{.NextURL}}">{{end}}
 {{.ArticleHead}}
@@ -115,13 +117,13 @@ const halcyonShared = `
 {{if .Analytics}}<script defer src="/static/vp-analytics.js"></script>{{end}}
 {{portalJS}}
 <script defer src="{{.JSHref}}"></script>
-</head><body class="h-{{.Kind}}">
+</head><body class="h-is-{{.Kind}}">
 <a href="#main-content" class="h-skip">Skip to the content</a>
 {{template "bar" .}}{{end}}
 
 {{define "bar"}}<header class="h-bar" data-h-bar><div class="h-wrap h-bar-in">
 {{if eq .Kind "article"}}<a class="h-ib h-only-phone" href="{{blogBase}}" aria-label="Back to {{.SiteName}}">{{icon "back"}}</a>{{end}}
-<a class="h-name" href="{{blogBase}}">{{.SiteName}}</a>
+{{if and (eq .Kind "home") (ne .Composition "index")}}<h1 class="h-name-h"><a class="h-name" href="{{blogBase}}">{{.SiteName}}</a></h1>{{else}}<a class="h-name" href="{{blogBase}}">{{.SiteName}}</a>{{end}}
 {{if .Nav}}<nav class="h-links" aria-label="Primary">{{range .Nav}}<a href="{{.Href}}"{{if .External}} rel="noopener noreferrer"{{end}}>{{.Label}}</a>{{end}}</nav>{{end}}
 <div class="h-tools">
 {{if .ShowSearch}}<form class="h-search" method="get" action="/search" role="search" data-vayu-search><button class="h-ib" type="submit" aria-label="Search">{{icon "search"}}</button></form>{{end}}
@@ -442,13 +444,23 @@ func RenderTopicPage(in TopicInput) (string, error) {
 func renderHalcyonTopic(in TopicInput, cfg theme.HalcyonConfig) (string, error) {
 	s := getActiveSettings()
 	c := halcyonChrome(s, cfg, "topic")
-	c.PageTitle = strings.ReplaceAll(in.Tag, "-", " ") + " — " + c.SiteName
+	c.PageTitle = topicName(in.Tag) + " — " + c.SiteName
 	c.Description = groupThousands(in.Total) + " " + pluralWord(in.Total, "article", "articles") + " filed under “" + in.Tag + "” on " + c.SiteName + "."
 	c.Canonical = seo.Origin(in.Domain) + "/tags/" + url.PathEscape(in.Tag)
 	// A broad topic, and the most-read order (the same posts as the topic
 	// page, its canonical), are never offered to search engines on their own.
 	if in.Total < thinTagPosts || in.Broad || in.MostRead {
 		c.Robots = "noindex,follow"
+	} else {
+		// Only a page offered to search engines describes itself to them.
+		origin := seo.Origin(in.Domain)
+		items := make([]seo.Crumb, 0, len(in.Articles))
+		for _, a := range in.Articles {
+			items = append(items, seo.Crumb{Name: a.Title, URL: origin + "/" + a.Slug})
+		}
+		c.JSONLD = seo.CollectionJSONLD(seo.CollectionDoc{Origin: origin, Canonical: c.Canonical, SiteName: c.SiteName,
+			Name: topicName(in.Tag), Description: c.Description,
+			Trail: []seo.Crumb{{Name: "Topics", URL: origin + "/tags"}}, Items: items})
 	}
 	c.Scripts = halcyonScripts(false)
 	l := hListing{hChrome: c, Topic: in.Tag, Total: in.Total, Page: 1, TotalPages: 1,
@@ -499,6 +511,12 @@ func renderHalcyonTopics(domain string, tags []TagInfo, total int, cfg theme.Hal
 	c.PageTitle = "Topics — " + c.SiteName
 	c.Description = "Every topic on " + c.SiteName + ", with how many articles each holds."
 	c.Canonical = seo.Origin(domain) + "/tags"
+	items := make([]seo.Crumb, 0, len(tags))
+	for _, t := range tags {
+		items = append(items, seo.Crumb{Name: topicName(t.Name), URL: seo.Origin(domain) + "/tags/" + tagURL(t.Name)})
+	}
+	c.JSONLD = seo.CollectionJSONLD(seo.CollectionDoc{Origin: seo.Origin(domain), Canonical: c.Canonical, SiteName: c.SiteName,
+		Name: "Topics", Description: c.Description, Items: items})
 	c.Scripts = halcyonScripts(false)
 	return executeHalcyon("topics", hTopics{hChrome: c, Tags: tags, Total: total})
 }
@@ -620,7 +638,9 @@ func renderHalcyonArticle(s SiteSettings, data articlePage, cfg theme.HalcyonCon
 // stylesheet when the post has highlighted code.
 var halcyonArticleHead = template.Must(template.New("hhead").Funcs(halcyonFuncs).Parse(halcyonArticleHeadTmpl))
 
-const halcyonArticleHeadTmpl = `<meta property="og:type" content="article">
+const halcyonArticleHeadTmpl = `<meta name="robots" content="{{previewRobots}}">
+{{if .Author}}<meta name="author" content="{{.Author}}">{{end}}
+<meta property="og:type" content="article">
 <meta property="og:title" content="{{.OGTitle}}">
 <meta property="og:description" content="{{.OGDescription}}">
 <meta property="og:url" content="{{.Canonical}}">
@@ -634,7 +654,7 @@ const halcyonArticleHeadTmpl = `<meta property="og:type" content="article">
 <meta name="twitter:title" content="{{.TwitterTitle}}">
 <meta name="twitter:description" content="{{.TwitterDescription}}">
 {{if .TwitterImageURL}}<meta name="twitter:image" content="{{.TwitterImageURL}}">{{end}}
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"{{.Title | jsonAttr}}","description":"{{.SEODescription | jsonAttr}}","datePublished":"{{isoDate .CreatedAt}}","dateModified":"{{isoDate .UpdatedAt}}","url":"{{.Canonical}}","mainEntityOfPage":{"@type":"WebPage","@id":"{{.Canonical}}"},"inLanguage":"en",{{if .OGImage}}"image":"{{.OGImage}}",{{end}}"author":{"@type":"Person","name":"{{if .Author}}{{.Author | jsonAttr}}{{else if .SiteName}}{{.SiteName | jsonAttr}}{{else}}{{.Domain | jsonAttr}}{{end}}"},"publisher":{"@type":"Organization","name":"{{if .SiteName}}{{.SiteName | jsonAttr}}{{else}}{{.Domain | jsonAttr}}{{end}}","url":"{{.Origin}}"}}</script>{{.BreadcrumbJSONLD}}
+{{.ArticleJSONLD}}
 {{.ChromaCSSLink}}`
 
 // halcyonScripts are the page's deferred scripts after the content: the

@@ -9,15 +9,15 @@ import (
 	"time"
 )
 
-// jsonld.go — structured data for the homepage and for article breadcrumbs.
+// jsonld.go — structured data for the homepage; a post's is article.go.
 //
-// WHY THIS IS BUILT WITH encoding/json AND NOT IN THE TEMPLATE. The article
-// page's BlogPosting block is assembled by interpolating fields into a JSON
-// string literal inside the Go template. That works only for as long as every
-// interpolated value goes through the right escaper, and the failure is silent
-// and severe: one unescaped double quote in a post title truncates the JSON, and
-// every search engine and language model silently drops the block — the page
-// looks fine to a person and is invisible to a machine.
+// WHY THIS IS BUILT WITH encoding/json AND NOT IN THE TEMPLATE. JSON written
+// as a string literal inside a Go template, as the article's BlogPosting once
+// was, works only for as long as every interpolated value goes through the
+// right escaper, and the failure is silent and severe: one unescaped double
+// quote in a post title truncates the JSON, and every search engine and
+// language model silently drops the block — the page looks fine to a person
+// and is invisible to a machine.
 //
 // Marshalling a struct cannot produce that. encoding/json also escapes <, > and
 // & to <, > and & by default, so a title containing "</script>"
@@ -179,29 +179,6 @@ func HomeJSONLD(d HomeDoc) template.HTML {
 	}
 
 	return marshalLD(ldGraph{Context: "https://schema.org", Graph: graph})
-}
-
-// BreadcrumbJSONLD returns a BreadcrumbList for a single article.
-//
-// It is a separate block rather than part of the article's BlogPosting so that
-// the existing template stays untouched — the two are read independently.
-func BreadcrumbJSONLD(origin, siteName, title, absoluteURL string) template.HTML {
-	origin = strings.TrimRight(origin, "/")
-	if origin == "" || absoluteURL == "" || title == "" {
-		return ""
-	}
-	if siteName == "" {
-		siteName = "Home"
-	}
-	crumbs := []any{
-		map[string]any{"@type": "ListItem", "position": 1, "name": siteName, "item": origin + "/"},
-		map[string]any{"@type": "ListItem", "position": 2, "name": title, "item": absoluteURL},
-	}
-	return marshalLD(map[string]any{
-		"@context":        "https://schema.org",
-		"@type":           "BreadcrumbList",
-		"itemListElement": crumbs,
-	})
 }
 
 // marshalLD renders a value as a ready-to-embed ld+json script element.

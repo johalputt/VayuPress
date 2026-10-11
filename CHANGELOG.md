@@ -28,6 +28,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
     posts, sign-in, sign-up and the member pages. A member's own comment
     stays on the page for them, marked as waiting for moderation, until it
     is approved; it is kept in their browser only.
+  - **Made to be found and quoted:** the site's name is Home's top heading;
+    Home, a topic and the topic index carry their link previews (the shared
+    templates did, Halcyon's did not); a topic page offered to search lists
+    its posts as structured data, with its breadcrumb; and every page offered
+    to search allows a large image preview and full snippets.
   - **Every style is a choice in Theme Studio,** whose preview is now the
     real page with the options being edited, by page, device and scheme.
   - **Light to load:** one small script and its own fonts served from this
@@ -39,6 +44,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
+- **A post tells search engines and answer engines more of what is true of
+  it, in every theme.** Its structured data is one graph built by the server
+  (it was JSON written into each theme's template): who wrote it and their
+  page, the site and publisher it belongs to (linked to Home's by id), its
+  topic, tags and length, its breadcrumb, and the questions its FAQ section
+  answers, as a FAQPage of that section alone. A standalone page is described
+  as a page, not a post. Its description is the opening prose cut at a word,
+  without a diagram's labels or code: it was cut at 160 bytes, mid-word, and
+  could cut a character in two. The head names the author, and allows a
+  large image preview and full snippets.
+- **`/llms.txt` summarises every post.** A post with no excerpt, as every
+  post the API writes is, is summarised from its opening; on johal.in each
+  was a bare link.
 - **Existing sites keep their theme.** Migration 108 saves the theme an
   install was already showing, so only a new install starts on Halcyon.
   Apply Halcyon in Theme Studio, or with the connector's `apply_theme`, to

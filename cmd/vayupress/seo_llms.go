@@ -37,6 +37,11 @@ import (
 // scan on every crawl.
 const llmsMaxPosts = 200
 
+// llmsOpeningChars is how much of a post with no excerpt is read to summarise
+// it: more than a summary needs, so markup and a diagram before the first
+// paragraph still leave one.
+const llmsOpeningChars = 4000
+
 func (a *App) handleLLMsTxt(w http.ResponseWriter, r *http.Request) {
 	if a.crawlersBlocked(r.Context()) {
 		http.NotFound(w, r)
@@ -54,12 +59,15 @@ func (a *App) handleLLMsTxt(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Same predicate the sitemap uses — published, not a page — so the two
-	// artefacts can never disagree about what the site has.
+	// artefacts can never disagree about what the site has. A post with no
+	// excerpt (every post the API writes has none) is summarised from its
+	// opening, as its meta description is; only the opening is parsed, so a
+	// summary costs the same for a post of any length.
 	rows, err := dbpkg.Reader().Query(
-		`SELECT title,slug,COALESCE(excerpt,''),created_at FROM articles
+		`SELECT title,slug,COALESCE(excerpt,''),CASE WHEN COALESCE(excerpt,'')='' THEN substr(content,1,?) ELSE '' END,created_at FROM articles
 		 WHERE COALESCE(status,'published')='published' AND COALESCE(is_page,0)=0`+domClause+
 			` ORDER BY created_at DESC LIMIT ?`,
-		append(domArgs, llmsMaxPosts)...)
+		append(append([]any{llmsOpeningChars}, domArgs...), llmsMaxPosts)...)
 	if err != nil {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 		return
@@ -68,10 +76,13 @@ func (a *App) handleLLMsTxt(w http.ResponseWriter, r *http.Request) {
 
 	var posts []seo.LLMsPost
 	for rows.Next() {
-		var title, slug, excerpt string
+		var title, slug, excerpt, opening string
 		var created time.Time
-		if err := rows.Scan(&title, &slug, &excerpt, &created); err != nil {
+		if err := rows.Scan(&title, &slug, &excerpt, &opening, &created); err != nil {
 			continue
+		}
+		if excerpt == "" {
+			excerpt = seo.ExtractDescription(opening)
 		}
 		posts = append(posts, seo.LLMsPost{
 			Title:     title,

@@ -3,6 +3,7 @@
 package render
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -50,44 +51,63 @@ func TestArticleJSONLDUsesSettings(t *testing.T) {
 	}
 }
 
-// TestArticleEmitsBreadcrumbJSONLD pins the wiring, not the builder.
-// seo.BreadcrumbJSONLD was written, tested and never called — the deadcode gate
-// is what noticed. A unit test on the builder passes just as happily when
-// nothing renders it, so this one asserts the crumb trail reaches the page, and
-// that it names the same site and article the BlogPosting block beside it does.
-func TestArticleEmitsBreadcrumbJSONLD(t *testing.T) {
+// The post's graph reaches the page in every theme, built from what the page
+// renders: the breadcrumb names the site and the post, the author links their
+// page, and the head asks for full snippets and names the author. Parsed, not
+// pattern-matched: the publisher in the same block names the site too, so a
+// page-wide match would pass with the breadcrumb blank.
+func TestBothThemesEmitThePostsGraph(t *testing.T) {
 	policy = bluemonday.UGCPolicy()
 	config.Cfg.Domain = "example.com"
-	SetActiveSettings(SiteSettings{Name: "Acme Press"})
-	t.Cleanup(func() { SetActiveSettings(SiteSettings{}) })
-
+	SetActiveSettings(SiteSettings{Name: "Acme Press", Author: "Jane Writer"})
+	prevInfo := AuthorInfoFn
+	AuthorInfoFn = func(name string) (string, string) { return "jane", "" }
+	t.Cleanup(func() { SetActiveSettings(SiteSettings{}); AuthorInfoFn = prevInfo })
 	art := db.Article{
-		Title: "Hello", Slug: "hello", Content: "<p>Body.</p>",
-		CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		Title: "Hello", Slug: "hello", Content: "<p>Body text here.</p><h2>FAQ</h2><h3>Why?</h3><p>Because.</p>",
+		Tags: []string{"site-reliability"}, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
-	out, err := RenderArticleWithMeta(art, ArticleLayoutDefault, nil, ArticleMetaOverrides{})
-	if err != nil {
-		t.Fatalf("render: %v", err)
-	}
-	if !strings.Contains(out, `"@type":"BreadcrumbList"`) {
-		t.Fatal("the article page emits no BreadcrumbList; seo.BreadcrumbJSONLD is unreachable again")
-	}
-	// Assert inside the breadcrumb block, not across the whole page. The
-	// BlogPosting block on the same page already carries "name":"Acme Press" as
-	// its publisher, so a page-wide Contains passes even when the crumb trail
-	// names nobody — a mutation that blanked the site name proved exactly that.
-	crumb := ldBlockContaining(t, out, "BreadcrumbList")
-	if !strings.Contains(crumb, `"name":"Acme Press"`) {
-		t.Errorf("the first crumb must name the site, from the same settings the page renders; got %s", crumb)
-	}
-	if !strings.Contains(crumb, `"name":"Hello"`) {
-		t.Errorf("the second crumb must name the article; got %s", crumb)
-	}
-	// The crumb must not be emitted as escaped text: html/template would turn
-	// the script element into &lt;script&gt; if the field were a plain string
-	// rather than template.HTML, and every consumer would see markup, not data.
-	if strings.Contains(out, "&lt;script type=&#34;application/ld+json&#34;&gt;") {
-		t.Error("the breadcrumb block was HTML-escaped into visible text")
+	for _, name := range []string{"default", "halcyon"} {
+		if name == "halcyon" {
+			withHalcyon(t, nil)
+			SetActiveSettings(SiteSettings{Name: "Acme Press", Author: "Jane Writer"})
+		}
+		out, err := RenderArticleWithMeta(art, ArticleLayoutDefault, nil, ArticleMetaOverrides{})
+		if err != nil {
+			t.Fatalf("%s: render: %v", name, err)
+		}
+		var doc map[string]any
+		if err := json.Unmarshal([]byte(ldBlockContaining(t, out, `"BlogPosting"`)), &doc); err != nil {
+			t.Fatalf("%s: the graph does not parse: %v", name, err)
+		}
+		nodes := map[string]map[string]any{}
+		for _, n := range doc["@graph"].([]any) {
+			m := n.(map[string]any)
+			nodes[m["@type"].(string)] = m
+		}
+		crumbs := nodes["BreadcrumbList"]["itemListElement"].([]any)
+		if crumbs[0].(map[string]any)["name"] != "Acme Press" || crumbs[1].(map[string]any)["name"] != "Hello" {
+			t.Errorf("%s: breadcrumb = %v", name, crumbs)
+		}
+		if a := nodes["BlogPosting"]["author"].(map[string]any); a["url"] != "https://example.com/author/jane" {
+			t.Errorf("%s: author = %v", name, a)
+		}
+		if nodes["BlogPosting"]["articleSection"] != "site reliability" {
+			t.Errorf("%s: section = %v", name, nodes["BlogPosting"]["articleSection"])
+		}
+		if nodes["FAQPage"] == nil {
+			t.Errorf("%s: the FAQ section is not in the graph", name)
+		}
+		for _, want := range []string{`<meta name="robots" content="max-image-preview:large, max-snippet:-1, max-video-preview:-1">`, `<meta name="author" content="Jane Writer">`} {
+			if !strings.Contains(out, want) {
+				t.Errorf("%s: the head lacks %s", name, want)
+			}
+		}
+		// html/template would turn the element into visible text if the field
+		// were a plain string rather than template.HTML.
+		if strings.Contains(out, "&lt;script type=&#34;application/ld+json&#34;&gt;") {
+			t.Errorf("%s: the graph was HTML-escaped into visible text", name)
+		}
 	}
 }
 

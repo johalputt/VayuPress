@@ -15,6 +15,7 @@ import (
 	"html"
 	"html/template"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -1605,11 +1606,10 @@ type articlePage struct {
 	// Per-post publishing options (resolved override → derived → site default).
 	TitleTag  string // full <title> text
 	Canonical string // absolute canonical URL
-	// BreadcrumbJSONLD is the article's BreadcrumbList, built in Go rather than
-	// interpolated into the template, for the reason given in
-	// internal/seo/jsonld.go: one unescaped quote in a title truncates
-	// interpolated JSON silently, and every consumer then drops the block.
-	BreadcrumbJSONLD   template.HTML
+	// ArticleJSONLD is the post's structured data (seo.ArticleJSONLD), built
+	// in Go rather than interpolated into the template, for the reason given
+	// in internal/seo/jsonld.go, and the same for every theme.
+	ArticleJSONLD      template.HTML
 	OGTitle            string
 	OGDescription      string
 	TwitterTitle       string
@@ -1798,7 +1798,6 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 		return s
 	},
 	"safeHTML": func(s string) template.HTML { return template.HTML(s) },
-	"jsonAttr": jsonAttr,
 	"readTime": func(s string) int {
 		text := regexp.MustCompile(`<[^>]+>`).ReplaceAllString(s, "")
 		words := len(strings.Fields(text))
@@ -1812,9 +1811,10 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 	// render showed readers — and search engines — the wrong date. RFC3339 keeps
 	// its offset, so the machine date stays unambiguous while agreeing with the
 	// human one.
-	"isoDate":   func(t time.Time) string { return config.InSite(t).Format(time.RFC3339) },
-	"shortDate": func(t time.Time) string { return config.FormatSite(t, "2006-01-02") },
-	"humanDate": func(t time.Time) string { return config.FormatSite(t, "2 January 2006") },
+	"isoDate":       func(t time.Time) string { return config.InSite(t).Format(time.RFC3339) },
+	"shortDate":     func(t time.Time) string { return config.FormatSite(t, "2006-01-02") },
+	"humanDate":     func(t time.Time) string { return config.FormatSite(t, "2 January 2006") },
+	"previewRobots": previewRobots,
 	"initial": func(s string) string {
 		s = strings.TrimSpace(s)
 		if s == "" {
@@ -1828,6 +1828,8 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <meta name="description" content="{{.SEODescription}}">
 <meta name="generator" content="VayuPress {{.Version}}">
 <link rel="canonical" href="{{.Canonical}}">
+<meta name="robots" content="{{previewRobots}}">
+{{if .Author}}<meta name="author" content="{{.Author}}">{{end}}
 <meta property="og:type" content="article">
 <meta property="og:title" content="{{.OGTitle}}">
 <meta property="og:description" content="{{.OGDescription}}">
@@ -1842,7 +1844,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <meta name="twitter:title" content="{{.TwitterTitle}}">
 <meta name="twitter:description" content="{{.TwitterDescription}}">
 {{if .TwitterImageURL}}<meta name="twitter:image" content="{{.TwitterImageURL}}">{{end}}
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"{{.Title | jsonAttr}}","description":"{{.SEODescription | jsonAttr}}","datePublished":"{{.CreatedAt | isoDate}}","dateModified":"{{.UpdatedAt | isoDate}}","url":"{{.Canonical}}","mainEntityOfPage":{"@type":"WebPage","@id":"{{.Canonical}}"},"inLanguage":"en",{{if .OGImage}}"image":"{{.OGImage}}",{{end}}"author":{"@type":"Person","name":"{{if .Author}}{{.Author | jsonAttr}}{{else if .SiteName}}{{.SiteName | jsonAttr}}{{else}}{{.Domain | jsonAttr}}{{end}}"},"publisher":{"@type":"Organization","name":"{{if .SiteName}}{{.SiteName | jsonAttr}}{{else}}{{.Domain | jsonAttr}}{{end}}","url":"{{.Origin}}"}}</script>{{.BreadcrumbJSONLD}}
+{{.ArticleJSONLD}}
 {{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.ChromaCSSLink}}{{.HeadMeta}}{{.ThemeToggleJSLink}}{{.VideoFacadeJSLink}}
 {{pwaHead}}{{pwaJS}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
@@ -2518,7 +2520,6 @@ func buildArticlePage(s SiteSettings, a db.Article, layout ArticleLayoutType, re
 	// title and canonical the BlogPosting block beside it uses — so the two
 	// cannot describe different pages. Empty inputs yield "", and the template
 	// then emits nothing rather than a half-formed crumb trail.
-	data.BreadcrumbJSONLD = seo.BreadcrumbJSONLD(seo.Origin(domain), s.Name, a.Title, canonical)
 	// Per-post author (multi-author) wins over the site-wide author; empty/unknown
 	// falls back to the site author resolved by name below.
 	if a.AuthorID != "" && AuthorByIDFn != nil {
@@ -2531,8 +2532,29 @@ func buildArticlePage(s SiteSettings, a db.Article, layout ArticleLayoutType, re
 	if data.AuthorSlug == "" && AuthorInfoFn != nil && data.Author != "" {
 		data.AuthorSlug, data.AuthorAvatar = AuthorInfoFn(data.Author)
 	}
+	// Built from the values this page renders (its canonical, description,
+	// share image, author and tags), so the structured data and the page
+	// cannot describe different things.
+	authorURL := ""
+	if data.AuthorSlug != "" {
+		authorURL = data.Origin + "/author/" + url.PathEscape(data.AuthorSlug)
+	}
+	data.ArticleJSONLD = seo.ArticleJSONLD(seo.ArticleDoc{
+		Origin: data.Origin, Canonical: canonical, SiteName: s.Name,
+		Title: a.Title, Description: desc, Published: a.CreatedAt, Modified: a.UpdatedAt,
+		ImageURL: ogImage, LogoURL: absoluteURL(domain, s.OGImage),
+		Author: data.Author, AuthorURL: authorURL,
+		Section: topicName(firstTopic(a.Tags)), Keywords: a.Tags,
+		ContentHTML: a.Content, IsPage: ov.IsPage,
+	})
 	return data
 }
+
+// previewRobots asks a search engine to show a page it indexes as fully as it
+// can: a large image (Google Discover shows a page's image large only when
+// allowed to), the whole snippet and any video preview. A page kept out of
+// search says so with its own robots meta instead (noindex), never beside it.
+func previewRobots() string { return "max-image-preview:large, max-snippet:-1, max-video-preview:-1" }
 
 // DetectLayout selects the layout for an article based on admin query param or content tags.
 func DetectLayout(a db.Article, r *http.Request, isAdmin bool) ArticleLayoutType {
