@@ -8,8 +8,47 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.5] — 2026-10-16
+
+Diagrams drawn in a post are shown, one switch decides whether the site's
+links are nofollow, llms.txt is laid out as the convention asks, a saved
+setting shows on the operator's next reload, and Halcyon names a signed-in
+reader.
+
+### Added
+
+- **A diagram drawn in a post is shown, on every theme.** An inline
+  `<svg>` in a post was removed whole: the article sanitiser knows no SVG.
+  Each diagram is now held to its own closed list of shapes, text, groups,
+  markers, gradients and clip paths, with no script, style, foreignObject,
+  image, `use`, link, animation or event handler, and every colour and
+  reference kept inside the drawing. Its `style=""` (which the page's
+  security policy refuses) becomes attributes, a background becomes a
+  backing rectangle so light labels keep their dark ground, and its ids are
+  its own. It is as wide as the column.
+- **One switch for nofollow, in Settings › Writing › Links**, saved in one
+  click, for every post and every comment. On, a link to another site
+  carries `rel="nofollow"` (in a comment, `rel="ugc nofollow"`); off, it is
+  followed. A relative link, or one to the install's main address, is never
+  marked.
+
 ### Changed
 
+- **Links in posts and comments are followed by default.** Every link in
+  every post carried `rel="nofollow"`, the site's own included, from the
+  sanitiser library's preset for text written by strangers; every internal
+  link was discounted. The switch above is off by default.
+- **llms.txt** follows llmstxt.org: the site and what it is, a line of
+  detail, then Start here (pinned posts), Topics (the topic pages offered to
+  search engines), Posts and Optional (home, feed, sitemap), every entry a
+  link. Summaries are prose: an imported post whose own `<style>` opened it
+  was summarised by its CSS, and a post that opens with a table by its
+  cells. A post's meta description reads the same way.
+- **The author's About holds 500 characters**, the site's and each
+  writer's, refused past that by the server as well as the form; Halcyon
+  keeps its line breaks.
+- **Halcyon: the author's picture, hovered, is shown large** (about 160 px),
+  in the byline and the author box.
 - **Halcyon names a signed-in reader.** Where the bar said Sign in and
   Subscribe, it shows the reader's picture (or initial) and name, and so
   does the phone menu; Home's newsletter form is not offered to a member.
@@ -27,6 +66,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **A saved setting shows on the operator's next reload.** A theme or
+  settings save marks every page stale, and the next request for each was
+  answered with the old copy while it re-rendered; that request was usually
+  the operator's own. A post and Home now render a stale page for an
+  administrator signed in to the console, and readers keep the quick stale
+  copy.
+- **A settings save reaches the pages at once for every setting.** The save
+  kept its own copy of the settings-to-pages mapping, which a setting added
+  to the real one could miss until a restart.
+- **Halcyon: Most read's "Last 7 days / Last 30 days" no longer sits on the
+  last pinned post** on a wide screen.
 - **Halcyon: a code block's wrapped lines stay inside it on a phone.** The
   spaces where a long line wrapped were left hanging past the block's edge
   (`white-space: pre-wrap`), and on a 390 px screen, where code runs to the
@@ -34,6 +84,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - **Mail: a template saved as its panel opens keeps "Saved as …".** The
   panel reads its list when it opens, and that read could arrive after a
   save and empty the save's note.
+
+### Security
+
+- **Release audit.** Everything above was attacked before release. llms.txt,
+  public and built per request, now reads at most twenty posts whole for
+  their summaries, where an install of imported posts made it read 200 for
+  every anonymous fetch. The diagram path held against the known sanitiser
+  breaks (HTML in an integration point, a breakout from the drawing,
+  CDATA, a drawing in a drawing, links on allowed elements, markup in a
+  value), judged on the page a browser builds.
+
+### Upgrade Notes
+
+- Every cached page re-renders once, lazily, on its next request: the post
+  HTML itself changed (diagrams, links).
 
 ## [3.18.4] — 2026-10-16
 
