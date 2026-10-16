@@ -101,7 +101,7 @@ func groupThousands(n int) string {
 
 const halcyonShared = `
 {{define "start"}}<!DOCTYPE html>
-<html lang="en" class="h" data-face="{{.Cfg.Face}}" data-size="{{.Cfg.TextSize}}" data-site-face="{{.Cfg.Face}}" data-site-size="{{.Cfg.TextSize}}" data-appearance="{{.Cfg.Appearance}}"{{if eq .Cfg.Appearance "light"}} data-theme="light"{{else if eq .Cfg.Appearance "dark"}} data-theme="dark"{{end}}{{if .Cfg.Selection}} data-selection{{end}}><head>
+<html lang="en" class="h" data-vp-portal="sections" data-face="{{.Cfg.Face}}" data-size="{{.Cfg.TextSize}}" data-site-face="{{.Cfg.Face}}" data-site-size="{{.Cfg.TextSize}}" data-appearance="{{.Cfg.Appearance}}"{{if eq .Cfg.Appearance "light"}} data-theme="light"{{else if eq .Cfg.Appearance "dark"}} data-theme="dark"{{end}}{{if .Cfg.Selection}} data-selection{{end}}><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.PageTitle}}</title>
 {{if .Description}}<meta name="description" content="{{.Description}}">{{end}}
@@ -129,12 +129,12 @@ const halcyonShared = `
 
 {{define "bar"}}<header class="h-bar" data-h-bar><div class="h-wrap h-bar-in">
 {{if eq .Kind "article"}}<a class="h-ib h-only-phone" href="{{blogBase}}" aria-label="Back to {{.SiteName}}">{{icon "back"}}</a>{{end}}
-{{if and (eq .Kind "home") (ne .Composition "index")}}<h1 class="h-name-h"><a class="h-name" href="{{blogBase}}"><img class="h-logo" src="/static/brand-48.png" alt="" width="28" height="28">{{.SiteName}}</a></h1>{{else}}<a class="h-name" href="{{blogBase}}"><img class="h-logo" src="/static/brand-48.png" alt="" width="28" height="28">{{.SiteName}}</a>{{end}}
+{{if and (eq .Kind "home") (ne .Composition "index")}}<h1 class="h-name-h"><a class="h-name" href="{{blogBase}}" data-vp-brand><img class="h-logo" src="/static/brand-48.png" alt="" width="28" height="28">{{.SiteName}}</a></h1>{{else}}<a class="h-name" href="{{blogBase}}" data-vp-brand><img class="h-logo" src="/static/brand-48.png" alt="" width="28" height="28">{{.SiteName}}</a>{{end}}
 {{if .Nav}}<nav class="h-links" aria-label="Primary">{{range .Nav}}<a href="{{.Href}}"{{if .External}} rel="noopener noreferrer"{{end}}>{{.Label}}</a>{{end}}</nav>{{end}}
 <div class="h-tools">
 {{if .ShowSearch}}<form class="h-search" method="get" action="/search" role="search" data-vayu-search><button class="h-ib" type="submit" aria-label="Search">{{icon "search"}}</button></form>{{end}}
 <button class="h-ib h-only-wide h-js-only" type="button" data-h-cycle aria-label="Appearance: follows the device">{{icon "auto"}}</button>
-{{if .ShowMembership}}<a class="h-signin h-only-wide" href="/members">Sign in</a><a class="h-btn h-btn-line h-only-wide" href="/signup">Subscribe</a>{{end}}
+{{if .ShowMembership}}<a class="h-signin h-only-wide" href="/members" data-vp-signin>Sign in</a><a class="h-btn h-btn-line h-only-wide" href="/signup" data-vp-signup>Subscribe</a>{{end}}
 <button class="h-ib h-only-phone h-js-only" type="button" data-h-open="h-menu" aria-label="Menu" aria-expanded="false" aria-controls="h-menu">{{icon "menu"}}</button>
 </div></div>{{if eq .Kind "article"}}<div class="h-line" data-h-line></div>{{end}}</header>{{end}}
 
@@ -149,9 +149,9 @@ const halcyonShared = `
 </div></footer>
 <div class="h-scrim" data-h-scrim hidden></div>
 <div class="h-bsheet" id="h-menu" role="dialog" aria-modal="true" aria-label="Menu" hidden><div class="h-grab" aria-hidden="true"></div>
-<a class="h-it" href="{{blogBase}}">Home</a>{{range .Nav}}<a class="h-it" href="{{.Href}}"{{if .External}} rel="noopener noreferrer"{{end}}>{{.Label}}</a>{{end}}{{if .ShowMembership}}<a class="h-it" href="/members">Sign in</a>{{end}}
+<a class="h-it" href="{{blogBase}}">Home</a>{{range .Nav}}<a class="h-it" href="{{.Href}}"{{if .External}} rel="noopener noreferrer"{{end}}>{{.Label}}</a>{{end}}{{if .ShowMembership}}<a class="h-it" href="/members" data-vp-signin>Sign in</a>{{end}}
 <div class="h-div" aria-hidden="true"></div><p class="h-label">Appearance</p>{{template "schemes" .}}
-{{if .ShowMembership}}<a class="h-btn h-btn-ink h-btn-wide" href="/signup">Subscribe</a>{{end}}
+{{if .ShowMembership}}<a class="h-btn h-btn-ink h-btn-wide" href="/signup" data-vp-signup>Subscribe</a>{{end}}
 </div>
 {{.Scripts}}</body></html>{{end}}
 
@@ -171,7 +171,7 @@ const halcyonShared = `
 
 {{define "avatar"}}{{if .AuthorAvatar}}<img class="h-av" src="{{.AuthorAvatar}}" alt="" width="40" height="40" loading="lazy" decoding="async" itemprop="image">{{else}}<span class="h-av h-av--i" aria-hidden="true">{{initial .Author}}</span>{{end}}{{end}}
 
-{{define "subscribe"}}{{if and .Cfg.Subscribe .ShowMembership}}<section class="h-letter" aria-label="Subscribe"><p>One email when there is something new worth reading.</p><form method="POST" action="/members/login" class="h-letter-form"><label class="h-vh" for="h-letter-email">Email address</label><input class="h-field" id="h-letter-email" type="email" name="email" required autocomplete="email" placeholder="you@example.com"><button class="h-btn h-btn-ink" type="submit">Subscribe</button></form></section>{{end}}{{end}}
+{{define "subscribe"}}{{if and .Cfg.Subscribe .ShowMembership}}<section class="h-letter" aria-label="Subscribe" data-vp-signup><p>One email when there is something new worth reading.</p><form method="POST" action="/members/login" class="h-letter-form"><label class="h-vh" for="h-letter-email">Email address</label><input class="h-field" id="h-letter-email" type="email" name="email" required autocomplete="email" placeholder="you@example.com"><button class="h-btn h-btn-ink" type="submit">Subscribe</button></form></section>{{end}}{{end}}
 `
 
 const halcyonHomeTmpl = `{{template "start" .}}<div class="h-page"><main id="main-content" class="h-wrap">

@@ -58,11 +58,13 @@ func legacyPages(t *testing.T) map[string]string {
 	return out
 }
 
-// scriptVersions are the content hashes of the three shared widget scripts
-// whose pictographs moved into aria-hidden spans with Halcyon. Their ?v=
-// names the new bytes, and that is the only difference the shared pages may
-// show.
-var scriptVersions = regexp.MustCompile(`/static/js/(trending|comments|search)\.js\?v=[0-9a-f]+`)
+// scriptVersions are the content hashes of the shared scripts changed on
+// purpose since Halcyon: the three widgets whose pictographs moved into
+// aria-hidden spans, and the member portal, whose signed-in chip shows an
+// initial where it showed an emoji and which also turns the entries a theme
+// marks (3bk). Their ?v= names the new bytes, and that is the only
+// difference the shared pages may show.
+var scriptVersions = regexp.MustCompile(`/static/js/(trending|comments|search|portal)\.js\?v=[0-9a-f]+`)
 
 func normaliseLegacy(s string) string {
 	return scriptVersions.ReplaceAllString(s, "/static/js/$1.js?v=")
@@ -98,7 +100,9 @@ func TestSharedTemplatesUnchangedByHalcyon(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := normaliseLegacy(html); got != string(want) {
+		// Both sides: a recording keeps the hashes of its day, and a script
+		// added to scriptVersions after it was made is still named in it.
+		if got, want := normaliseLegacy(html), []byte(normaliseLegacy(string(want))); got != string(want) {
 			i := 0
 			for i < len(got) && i < len(want) && got[i] == want[i] {
 				i++

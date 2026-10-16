@@ -8,6 +8,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+
+- **Halcyon names a signed-in reader.** Where the bar said Sign in and
+  Subscribe, it shows the reader's picture (or initial) and name, and so
+  does the phone menu; Home's newsletter form is not offered to a member.
+  Pages are cached for everyone, so they are drawn signed out and turned
+  once `/api/v1/members/me` answers, by the portal's own swap: a theme
+  marks its entries `data-vp-signin` / `data-vp-signup`, and a page that
+  has its own way in no longer gets the floating member button as well.
+  On the other themes the signed-in chip shows an initial in place of 👤.
+- **Halcyon's member panel, redrawn.** Who you are, then your plan and
+  the one thing to do next, then mail, then your comments and advertising
+  as plain rows, and a quiet Sign out: sections under small labels with
+  hairlines, not four folded boxes with icons, chips and chevrons. The
+  panel is 400 px wide, headed by the site's name, and every button's
+  label sits in its middle (a link button drew its words at the top).
+
 ### Fixed
 
 - **Halcyon: a code block's wrapped lines stay inside it on a phone.** The

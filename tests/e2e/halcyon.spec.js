@@ -136,6 +136,70 @@ test.describe("Halcyon", () => {
     }
   }
 
+  // A signed-in reader is named where Sign in and Subscribe were: in the bar,
+  // in the phone menu, and no newsletter form asks them to join. The page is
+  // cached for everyone, so it is drawn signed out and turned by the portal
+  // once /members/me answers (stubbed: this run has no member session). The
+  // account panel is Halcyon's sectioned view, and every button's label sits
+  // in the middle of its button. One stage per rule.
+  test("a signed-in reader is named in the bar, and the account panel is Halcyon's", async ({ page }) => {
+    await page.goto("/os");
+    await page.waitForFunction(() => /(?:^|;\s*)vp_csrf=/.test(document.cookie));
+    const setMembership = (on) => page.evaluate(async (v) => {
+      const csrf = decodeURIComponent(document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/)[1]);
+      const r = await fetch("/os/api/settings", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify({ key: "site.membership_buttons", value: v }) });
+      return r.status;
+    }, on ? "true" : "false");
+    expect(await setMembership(true)).toBe(200);
+    try {
+      const me = { enabled: true, authenticated: false, member: null };
+      await page.route("**/api/v1/members/me", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(me) }));
+      const bar = page.locator(".h-bar");
+
+      // A settings change marks the cached pages stale, and the first request
+      // after it is still answered from the old page while it re-renders
+      // (stale-while-revalidate, cache_swr.go): read until the new one comes.
+      await expect(async () => {
+        await page.goto("/halcyon-long");
+        await expect(bar.locator("[data-vp-signin]")).toHaveText("Sign in", { timeout: 1000 });
+      }).toPass({ timeout: 15000 });
+      await expect(bar.locator("[data-vp-signup]")).toHaveText("Subscribe");
+      await expect(page.locator(".vp-portal-trigger"), "a second way in, floating over the page").toHaveCount(0);
+      await expect(async () => {
+        await page.goto("/");
+        await expect(page.locator(".h-letter"), "Home's newsletter form, signed out").toHaveCount(1, { timeout: 1000 });
+      }).toPass({ timeout: 15000 });
+
+      me.authenticated = true;
+      me.member = { name: "Asha Rao", email: "asha@example.com", paid: false };
+      await page.goto("/halcyon-long");
+      await expect(bar.locator("[data-vp-signin] .vayu-nav-name"), "the bar names the reader").toHaveText("Asha Rao");
+      await expect(bar.locator("[data-vp-signin] .vayu-nav-initial"), "with their initial for a picture").toHaveText("A");
+      await expect(page.locator("[data-vp-signup]"), "a signed-in reader is asked to subscribe").toHaveCount(0);
+      await expect(page.locator("#h-menu [data-vp-signin]"), "the phone menu names the reader").toContainText("Asha Rao");
+      await page.goto("/");
+      await expect(page.locator(".h-bar .vayu-nav-name")).toHaveText("Asha Rao");
+      await expect(page.locator(".h-letter"), "Home asks a member to subscribe").toHaveCount(0);
+      await page.goto("/halcyon-long");
+
+      await bar.locator("[data-vp-signin]").click();
+      const panel = page.locator(".vp-portal-panel");
+      await expect(panel.locator(".vp-sec__name")).toHaveText("Asha Rao");
+      await expect(panel.locator(".vp-sec__label")).toHaveText(["Your plan"]);
+      await expect(panel.locator(".vp-portal-brand"), "the panel is headed by the site").toHaveText("VayuPress");
+      await expect(panel.locator(".vp-sec__state")).toHaveText(["Free"]);
+      await expect(panel.locator("details"), "the account folded into boxes").toHaveCount(0);
+      const off = await panel.locator(".vp-portal-btn").evaluateAll((bs) => bs.map((b) => {
+        const r = document.createRange(); r.selectNodeContents(b);
+        const t = r.getBoundingClientRect(), o = b.getBoundingClientRect();
+        return { label: b.textContent, off: Math.abs((t.top + t.bottom) / 2 - (o.top + o.bottom) / 2) };
+      }).filter((x) => x.off > 1.5));
+      expect(off, "a button's label is not in its middle").toEqual([]);
+    } finally {
+      expect(await setMembership(false)).toBe(200);
+    }
+  });
+
   // An imported post's own stylesheet is not the page's: nothing of it is
   // shown or fetched, and the post still reads.
   test("an imported post's own style is neither shown nor fetched", async ({ page }) => {

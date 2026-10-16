@@ -76,7 +76,7 @@ const PortalJS = `(function () {
   }
 
   function brandName() {
-    var b = document.querySelector('.vayu-nav-brand');
+    var b = document.querySelector('.vayu-nav-brand, [data-vp-brand]');
     var t = b ? b.textContent.trim() : '';
     return t || 'Membership';
   }
@@ -162,6 +162,9 @@ const PortalJS = `(function () {
     var avatarInner = m.avatar
       ? '<img class="vp-portal-avatar-img" src="' + esc(m.avatar) + '" alt="">'
       : esc(initial);
+    if (document.documentElement.getAttribute('data-vp-portal') === 'sections') {
+      return viewAccountSections(m, name, avatarInner, mailBtn);
+    }
 
     // Identity first, then one collapsed row per area of the account. The previous
     // view was a flat stack of seven equal-weight buttons, which said nothing about
@@ -214,6 +217,43 @@ const PortalJS = `(function () {
       '<div class="vp-portal-signout">' +
       '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-logout>Sign out</button>' +
       '</div>' +
+      '<div class="vp-portal-msg" aria-live="polite"></div>';
+  }
+
+  // The account as a theme that draws pages rather than dashboards asks for
+  // it (data-vp-portal="sections" on <html>, Halcyon's): who you are, then
+  // what your membership is and the one thing to do next, then the places to
+  // go as plain rows. No accordions: four closed boxes hid the only facts
+  // the panel exists to give, and their chips, icons and chevrons were the
+  // dashboard furniture this view leaves out.
+  function viewAccountSections(m, name, avatarInner, mailBtn) {
+    var sec = function (label, state, note, actions) {
+      return '<section class="vp-sec"><h3 class="vp-sec__label">' + label + '</h3>' +
+        '<p class="vp-sec__state">' + state + '</p><p class="vp-sec__note">' + note + '</p>' +
+        '<div class="vp-sec__actions">' + actions + '</div></section>';
+    };
+    var row = function (go, title, sub) {
+      return '<li><button type="button" class="vp-sec__row" data-vp-go="' + go + '">' +
+        '<span class="vp-sec__row-t">' + title + '</span><span class="vp-sec__row-s">' + sub + '</span></button></li>';
+    };
+    var out = '<div class="vp-sec__id"><div class="vp-portal-avatar">' + avatarInner + '</div>' +
+      '<div class="vp-sec__who"><h2 class="vp-sec__name">' + esc(name) + '</h2>' +
+      (m.email ? '<p class="vp-sec__mail">' + esc(m.email) + '</p>' : '') + '</div></div>';
+    out += sec('Your plan', m.paid ? 'Premium' : 'Free',
+      m.paid ? 'Premium is active. Billing dates and payments are on your account page.'
+        : 'Premium adds members-only posts and a private mail address.',
+      (m.paid ? '' : '<a class="vp-portal-btn" href="/pricing">See plans</a>') +
+      '<a class="vp-portal-btn vp-portal-btn--ghost" href="/members/account">Manage account</a>');
+    if (m.mail || m.paid) {
+      out += sec('Mail', m.mail ? 'Your mailbox is ready' : 'Included with Premium',
+        m.mail ? 'Your private address on this site.' : 'Pick a name to claim your private address on this site.',
+        m.mail ? mailBtn + '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-go="mailbox">Mailbox settings</button>'
+          : '<button type="button" class="vp-portal-btn" data-vp-go="mailbox">Claim your address</button>');
+    }
+    out += '<ul class="vp-sec__rows">' +
+      row('activity', 'Your comments', 'Where you commented, and what still awaits review') +
+      row('advertise', 'Advertise here', 'Put your product in front of this site’s readers') + '</ul>';
+    return out + '<div class="vp-sec__end"><button type="button" class="vp-sec__out" data-vp-logout>Sign out</button></div>' +
       '<div class="vp-portal-msg" aria-live="polite"></div>';
   }
 
@@ -643,7 +683,10 @@ const PortalJS = `(function () {
       trigger.innerHTML = esc(n);
     }
     trigger.addEventListener('click', function () { open(); });
-    document.body.appendChild(trigger);
+    // A page that marks its own way in (data-vp-signin, as Halcyon's bar does)
+    // gets no floating button as well: two entries to one panel, one of them
+    // over the page's own corner.
+    if (!document.querySelector('[data-vp-signin]')) { document.body.appendChild(trigger); }
 
     overlay = el('div', 'vp-portal-overlay');
     overlay.setAttribute('aria-hidden', 'true');
@@ -689,42 +732,53 @@ const PortalJS = `(function () {
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && overlay.classList.contains('is-open')) { close(); } });
     document.body.appendChild(overlay);
 
-    var si = document.querySelector('.vayu-nav-signin');
-    var su = document.querySelector('.vayu-nav-signup');
+    // Every way in on the page: the shared themes' nav links, and whatever a
+    // theme marks with data-vp-signin / data-vp-signup (Halcyon's bar, its
+    // phone menu and its newsletter form). Pages are cached for everyone, so
+    // they are drawn signed out and turned here, once /members/me has said.
+    var sis = document.querySelectorAll('.vayu-nav-signin, [data-vp-signin]');
+    var sus = document.querySelectorAll('.vayu-nav-signup, [data-vp-signup]');
     if (state.auth && state.member) {
-      // Signed in: drop the "Sign up" link and turn "Sign in" into the account
-      // chip. A reader opens the account panel; a VayuOS operator (console_url set)
-      // links straight to their dashboard, so the owner is recognised on their own
-      // public site instead of being shown "Sign in / Sign up".
-      if (su && su.parentNode) { su.parentNode.removeChild(su); }
-      if (si) {
+      // Signed in: the ways to join go, and each "Sign in" becomes the
+      // member's picture and name. A reader opens the account panel; a VayuOS
+      // operator (console_url set) links straight to their dashboard, so the
+      // owner is recognised on their own public site.
+      sus.forEach(function (su) { if (su.parentNode) { su.parentNode.removeChild(su); } });
+      var nm = state.member.name || 'Account';
+      sis.forEach(function (si) {
         si.classList.add('vayu-nav-member');
-        var nm = state.member.name || 'Account';
+        si.textContent = '';
+        var pic;
         if (state.member.avatar) {
-          si.textContent = '';
-          var img = document.createElement('img');
-          img.className = 'vayu-nav-avatar';
-          img.src = state.member.avatar;
-          img.alt = '';
-          img.width = 22; img.height = 22;
-          si.appendChild(img);
-          si.appendChild(document.createTextNode(' ' + nm));
+          pic = document.createElement('img');
+          pic.className = 'vayu-nav-avatar';
+          pic.src = state.member.avatar;
+          pic.alt = '';
+          pic.width = 22; pic.height = 22;
         } else {
-          si.textContent = '👤 ' + nm;
+          pic = el('span', 'vayu-nav-avatar vayu-nav-initial');
+          pic.setAttribute('aria-hidden', 'true');
+          pic.textContent = nm.charAt(0).toUpperCase();
         }
+        si.appendChild(pic);
+        var label = el('span', 'vayu-nav-name');
+        label.textContent = nm;
+        si.appendChild(label);
+        si.setAttribute('title', state.member.email ? nm + ' · ' + state.member.email : nm);
         if (state.member.console_url) {
-          // Operator/staff: let the chip navigate to the console dashboard.
           si.classList.add('vayu-nav-operator');
           si.setAttribute('href', state.member.console_url);
         } else {
           si.setAttribute('href', '/members/account');
           si.addEventListener('click', function (e) { e.preventDefault(); open('account'); });
         }
-      }
+      });
     } else {
-      // Logged out: upgrade the nav Sign in / Sign up links to open the panel.
-      if (si) { si.addEventListener('click', function (e) { e.preventDefault(); open('signin'); }); }
-      if (su) { su.addEventListener('click', function (e) { e.preventDefault(); open('signup'); }); }
+      // Signed out: Sign in and Subscribe open the panel where they are.
+      sis.forEach(function (si) { si.addEventListener('click', function (e) { e.preventDefault(); open('signin'); }); });
+      sus.forEach(function (su) {
+        if (su.tagName === 'A') { su.addEventListener('click', function (e) { e.preventDefault(); open('signup'); }); }
+      });
     }
   }
 
