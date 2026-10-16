@@ -227,14 +227,8 @@ func mailReplyAll(raw []byte, own string) (to, cc string) {
 }
 
 func parseForQuote(raw []byte) (from, subject, bodyText, date string) {
-	msg, err := netmail.ReadMessage(bytes.NewReader(raw))
-	if err != nil {
-		return "", "", string(raw), ""
-	}
-	from = msg.Header.Get("From")
-	subject = msg.Header.Get("Subject")
-	b, _ := io.ReadAll(msg.Body)
-	return from, subject, string(b), humanMailDate(msg.Header.Get("Date"))
+	from, subject, bodyText, date = vmail.ReplySource(raw)
+	return from, subject, bodyText, humanMailDate(date)
 }
 
 // humanMailDate renders a Date header for the reply attribution line. An

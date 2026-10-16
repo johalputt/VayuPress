@@ -3,9 +3,12 @@
 package mail
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	netmail "net/mail"
+	"net/textproto"
 	"strings"
 	"time"
 )
@@ -147,23 +150,13 @@ func (s *AccountStore) autoreplyRecently(ctx context.Context, mailbox, sender st
 }
 
 // headerValue returns the (first) value of a header in the message's header
-// block, or "". Folded continuation lines are not needed for the headers we
-// inspect (address + token headers), so only the first line is returned.
+// block, unfolded, or "". It read only a header's first line, on the reasoning
+// that the address and token headers it served are never folded; filters
+// then used it for Subject, which a long or encoded subject folds over
+// several lines, so a filter saw only its first fragment.
 func headerValue(raw []byte, name string) string {
-	head := string(raw)
-	if i := strings.Index(head, "\r\n\r\n"); i >= 0 {
-		head = head[:i]
-	} else if i := strings.Index(head, "\n\n"); i >= 0 {
-		head = head[:i]
-	}
-	prefix := strings.ToLower(name) + ":"
-	for _, line := range strings.Split(head, "\n") {
-		l := strings.TrimRight(line, "\r")
-		if strings.HasPrefix(strings.ToLower(l), prefix) {
-			return strings.TrimSpace(l[len(prefix):])
-		}
-	}
-	return ""
+	h, _ := textproto.NewReader(bufio.NewReader(bytes.NewReader(raw))).ReadMIMEHeader()
+	return strings.TrimSpace(h.Get(name))
 }
 
 // noAutoReplySenderRe matches machine senders we must never answer.

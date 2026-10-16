@@ -178,6 +178,20 @@ func partFilename(ctypeParams map[string]string, cdisp string) string {
 	return ""
 }
 
+// ReplySource is what a reply or a forward quotes from a message: its sender,
+// subject and Date header as the reader shows them (encoded-words decoded),
+// and its text decoded from its transfer encoding, or its HTML as text when it
+// has no text part. The reply was built from the raw message, and quoted a
+// quoted-printable body as =E2=80=94 and a subject as =?UTF-8?Q?…?=.
+func ReplySource(raw []byte) (from, subject, text, date string) {
+	pm := ParseMessage(raw)
+	text = pm.Text
+	if text == "" && pm.HTML != "" {
+		text = htmlText(pm.HTML)
+	}
+	return pm.From, pm.Subject, text, pm.Date
+}
+
 func decodeMIMEWord(s string) string {
 	dec := &mime.WordDecoder{}
 	if d, err := dec.DecodeHeader(s); err == nil {

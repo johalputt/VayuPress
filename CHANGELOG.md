@@ -8,6 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **Mail: subjects and names beyond ASCII read as written.** A subject or
+  sender name with a dash, an accent or another script arrives encoded
+  (`=?UTF-8?Q?…?=`), and the message list, its search, the outbox and a
+  reply took it as it arrived; the open message alone decoded it. A reply
+  also quoted a quoted-printable body as its codes (`=E2=80=94`), and a
+  filter on a long subject saw only its first line. All of them now read
+  the message as the reader shows it.
+
 ## [3.18.5] — 2026-10-16
 
 Diagrams drawn in a post are shown, one switch decides whether the site's

@@ -145,12 +145,14 @@ func matchFilter(r FilterRule, raw []byte) bool {
 	}
 	var hay string
 	switch r.Field {
+	// Matched as a reader sees them: a name or subject in another script
+	// arrives as RFC 2047 encoded-words, which a rule's words never match.
 	case "from":
-		hay = headerValue(raw, "From") + " " + headerValue(raw, "Reply-To")
+		hay = decodeMIMEWord(headerValue(raw, "From")) + " " + decodeMIMEWord(headerValue(raw, "Reply-To"))
 	case "to":
-		hay = headerValue(raw, "To") + " " + headerValue(raw, "Cc")
+		hay = decodeMIMEWord(headerValue(raw, "To")) + " " + decodeMIMEWord(headerValue(raw, "Cc"))
 	case "subject":
-		hay = headerValue(raw, "Subject")
+		hay = decodeMIMEWord(headerValue(raw, "Subject"))
 	default:
 		return false
 	}

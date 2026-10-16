@@ -184,7 +184,7 @@ func (q *Queue) Recent(ctx context.Context, limit int) ([]SentInfo, error) {
 		}
 		_ = json.Unmarshal([]byte(toJSON), &si.To)
 		if msg, perr := mail.ReadMessage(bytes.NewReader(raw)); perr == nil {
-			si.Subject = msg.Header.Get("Subject")
+			si.Subject = decodeMIMEWord(msg.Header.Get("Subject"))
 		}
 		out = append(out, si)
 	}

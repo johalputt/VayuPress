@@ -47,7 +47,10 @@ func summarize(r io.Reader, h *cachedHeaders) {
 		return
 	}
 	get := hdr.Get
-	h.from, h.to, h.subject = get("From"), get("To"), get("Subject")
+	// Decoded here, once, so the listing, its search and the inbound feed all
+	// read names and subjects as the reader does: anything beyond ASCII
+	// arrives as RFC 2047 encoded-words, and was listed as =?UTF-8?Q?…?=.
+	h.from, h.to, h.subject = decodeMIMEWord(get("From")), decodeMIMEWord(get("To")), decodeMIMEWord(get("Subject"))
 	if d, derr := netmail.ParseDate(get("Date")); derr == nil {
 		h.date, h.hasDate = d, true
 	}
