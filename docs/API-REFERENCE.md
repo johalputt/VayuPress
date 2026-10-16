@@ -1,21 +1,49 @@
 # VayuPress API Reference
 
+**Last reviewed:** 2026-10-16, against VayuPress 3.18.7
+
 ## Overview
 
-**Base URL**: `https://yourdomain.com/api/v1`  
-**Authentication**: `Authorization: Bearer <API_KEY>` header  
+**Base URL**: `https://yourdomain.com/api/v1` — or `https://api.yourdomain.com/api/v1`,
+the challenge-free host for scripts, CI and agents (keep its CDN proxy off).  
+**Authentication**: an API key, as `X-API-Key: <key>` or `Authorization: Bearer <key>`.  
 **Content-Type**: `application/json`  
-**Versioning**: Stable APIs use `/api/v1/`. Experimental APIs are behind feature flags.
+**Machine-readable spec**: `GET /api/v1/openapi.json` (OpenAPI 3.0.3).  
+**GraphQL**: `GET|POST /api/v1/graphql`, query-only — writes go through REST.
 
-## Authentication
+Reads of published content (`GET /api/v1/articles`, search, tags) are public.
+Everything that writes, and every administrative read, needs a key.
 
-All write endpoints require the `Authorization: Bearer <API_KEY>` header.
+## Keys
 
-State-changing requests also require a CSRF token (double-submit cookie):
-1. Make a `GET` request — the server sets a `vp_csrf` cookie.
-2. Include the cookie value in the `X-CSRF-Token` header for `POST`/`PUT`/`DELETE`.
+There are two kinds:
 
-## Error Format
+- **Scoped keys** — minted in VayuOS → API keys. Each grants chosen
+  `section:action` pairs from a 12 × 6 grid (sections: posts, themes, design,
+  plugins, domains, analytics, media, comments, members, mail, settings,
+  backup; actions: read, write, delete, apply, install, export), with an
+  optional expiry and its own per-minute budget. Stored only as a hash; shown
+  once. Every call is checked against the key's grant and written to the audit
+  log. [Reference →](compatibility/vayuapi.md)
+- **The install key** — `API_KEY` in `/etc/vayupress/env`. It can do
+  everything; keep it for the operator's own use and rotate it as RB-09 in
+  [OPERATIONS.md](OPERATIONS.md) describes.
+
+A key-authenticated request needs **no CSRF token**. The CSRF double-submit
+(`vp_csrf` cookie echoed in `X-CSRF-Token`) applies to requests made with a
+signed-in browser session.
+
+## Rate limits
+
+- **Per key:** 600 requests a minute by default (`VAYU_API_RATE_PER_MIN`), or
+  the key's own budget.
+- **Per address, on the write routes:** 100 requests an hour from one client
+  address. Addresses listed in `TRUSTED_IPS` are exempt.
+
+Over either limit the answer is `429` with `Retry-After`. Use
+`POST /api/v1/articles/bulk` for many posts at once.
+
+## Errors
 
 ```json
 {
@@ -28,50 +56,51 @@ State-changing requests also require a CSRF token (double-submit cookie):
 }
 ```
 
+`request_id` matches the `X-Request-Id` response header and the server log line.
+
 ## Articles
 
-### List Articles
+### List articles
 
+```text
+GET /api/v1/articles?page=1&limit=20&tag=go
 ```
-GET /api/v1/articles
-```
 
-Query parameters:
-- `limit` — max 100, default 20
-- `cursor` — pagination cursor (opaque string from previous response)
-- `tag` — filter by tag
+`limit` is at most 100. Response:
 
-Response:
 ```json
 {
   "articles": [
     {
-      "id": "01J...",
+      "id": "7ff8e4c056eb6015e09e9e4a148a7ca5",
       "title": "My Article",
       "slug": "my-article",
       "tags": ["go", "sqlite"],
-      "created_at": "2026-06-12T00:00:00Z",
-      "updated_at": "2026-06-12T00:00:00Z"
+      "created_at": "2026-10-16T16:41:52Z",
+      "updated_at": "2026-10-16T16:41:52Z"
     }
   ],
-  "next_cursor": "eyJpZCI6..."
+  "page": 1,
+  "limit": 20,
+  "total": 234727,
+  "pages": 11737
 }
 ```
 
-### Get Article
+### Get an article
 
+```text
+GET /api/v1/articles/{slug}
+GET /api/v1/articles/{slug}/toc
 ```
-GET /api/v1/articles/:slug
-```
 
-Returns full article including `content` field.
+Returns the article with its `content`; `/toc` its table of contents.
 
-### Create Article
+### Create
 
-```
+```text
 POST /api/v1/articles
-Authorization: Bearer <API_KEY>
-X-CSRF-Token: <token>
+X-API-Key: <key>
 
 {
   "title": "My Article",
@@ -81,147 +110,119 @@ X-CSRF-Token: <token>
 }
 ```
 
-- `slug`: lowercase alphanumeric, hyphens, underscores; 1–200 chars.
-- `content`: HTML sanitized server-side (bluemonday).
-- Write is enqueued asynchronously; returns `202 Accepted`.
+The write is queued and applied by a worker: the answer is `202` with
+`{"status": "queued", "id": "…", "slug": "my-article"}`, and the article is
+readable a moment later. Content is HTML, sanitised to the
+article allowlist; an inline `<svg>` diagram is kept under its own allowlist.
+Tags are normalised to topics (one address each).
 
-Response:
-```json
-{
-  "id": "01J...",
-  "status": "queued"
-}
+### Create many
+
+```text
+POST /api/v1/articles/bulk
 ```
 
-### Update Article
+An array of the same objects, up to 1,000 per request.
 
-```
-PUT /api/v1/articles/:slug
-Authorization: Bearer <API_KEY>
-X-CSRF-Token: <token>
-```
+### Update, delete
 
-Same body as create. Partial updates supported — omit fields to keep existing values.
-
-### Delete Article
-
-```
-DELETE /api/v1/articles/:slug
-Authorization: Bearer <API_KEY>
-X-CSRF-Token: <token>
+```text
+PUT    /api/v1/articles/{slug}     { "title"?, "content"?, "tags"? }
+DELETE /api/v1/articles/{slug}
 ```
 
-Returns `204 No Content`.
+`PUT` changes only the fields it carries. Each write purges the article's
+cached pages and updates the search index.
 
-## Search
+## Search and topics
 
+```text
+GET /api/v1/search?q=<query>&limit=20
+GET /api/v1/tags
 ```
-GET /api/v1/search?q=<query>&limit=20&offset=0
+
+Search is VayuFind, built in. `/tags` lists topics with their counts.
+
+## Comments
+
+```text
+GET  /api/v1/articles/{slug}/comments
+POST /api/v1/articles/{slug}/comments        (a signed-in member)
+GET  /api/v1/admin/comments                  (key)
 ```
 
-Served by VayuFind, the built-in search engine (ADR-0101). No external search service.
-
-- Search queries are never logged or stored.
-- Rate limited: 10 req/s per IP.
+A comment appears once it is approved.
 
 ## Media
 
-### Upload
+Media is uploaded through the console API, which accepts a key as well as a
+session:
 
-```
-POST /api/v1/media
-Authorization: Bearer <API_KEY>
-Content-Type: multipart/form-data
-```
-
-Allowed MIME types: `image/jpeg`, `image/png`, `image/gif`, `image/webp`, `image/svg+xml`, `application/pdf` (optional).
-
-Returns:
-```json
-{
-  "id": "abc123",
-  "url": "/static/media/abc123.webp",
-  "width": 1200,
-  "height": 630
-}
+```text
+POST /os/api/media/upload      (multipart: file)
+GET  /os/api/media
 ```
 
-- Files processed in seccomp/apparmor sandbox via libvips.
-- SHA-256 deduplication: identical files reuse the same URL.
-- Max upload size governed by `STORAGE_QUOTA_GB`.
+Files are stored content-addressed, checked by magic number, and downscaled
+when oversized.
 
-## Health
+## Analytics
 
-| Endpoint                  | Purpose                              |
-|---------------------------|--------------------------------------|
-| `GET /health`             | Liveness — 200 = alive               |
-| `GET /health/ready`       | Readiness — checks DB, search, storage|
-| `GET /health/db`          | Database connectivity                |
-| `GET /health/search`      | Search availability                  |
-| `GET /health/workers`     | Queue worker health                  |
-| `GET /health/storage`     | Storage quota (503 if >90% full)     |
-| `GET /health/dependencies`| All subsystem status (structured)    |
-| `GET /health/ai`          | AI subsystem health                  |
-| `GET /health/security`    | Security subsystem health            |
-
-Health response:
-```json
-{
-  "status": "ok",
-  "version": "1.0.0-p8",
-  "uptime_seconds": 3600
-}
+```text
+GET /api/v1/analytics/overview | pageviews | pages | referrers | browsers |
+    devices | os | utm | events | realtime | sessions | funnels | retention |
+    revenue | goals | journey
+GET /api/v1/analytics/export     (Parquet)
 ```
 
-Degraded:
-```json
-{
-  "status": "degraded",
-  "components": {
-    "search": "unavailable",
-    "db": "ok"
-  }
-}
+Aggregates only: no visitor is identified.
+
+## Operations
+
+```text
+GET  /api/v1/queue                      the write queue
+POST /api/v1/queue/replay               replay dead-lettered jobs
+GET  /api/v1/admin/mode                 the install's mode
+GET  /api/v1/admin/outbox/stats         the event outbox
+GET  /api/v1/admin/search/drift         search index against the database
+POST /os/api/search/reindex             rebuild the search index
+POST /os/api/storage/refresh-pages      redraw every cached page
 ```
 
-## Metrics
+## Health and metrics
 
-```
-GET /metrics
-```
-
-Prometheus-format metrics (counters, gauges, histograms). Local-first — no external telemetry.
-
-## Cache
-
-```
-POST /api/v1/cache/purge
-Authorization: Bearer <API_KEY>
-X-CSRF-Token: <token>
-
-{ "slug": "my-article" }
+```text
+GET /health, /health/live, /health/ready     public
+GET /health/db | /workers | /queue | /search | /storage | /migrations | /dependencies
+GET /metrics                                  Prometheus format
 ```
 
-Without a slug, every page is marked out of date and rebuilt in the background
-at the pace the server can spare (`purge_type: "full"`; `purged` is the number
-of published posts to rebuild). Nothing is deleted, so visitors keep being
-served while it runs.
-
-Rate-limited to 5 purges/minute per IP.
+The detail probes and `/metrics` answer only a request carrying the API key or
+coming from the machine itself; anyone else gets `404`.
 
 ## Webhooks
 
-VayuPress supports outgoing webhooks on article create/update/delete events.
+`POST /api/v1/admin/webhooks` registers an endpoint for article events. Each
+delivery carries `X-VayuPress-Signature: sha256=<hex>`, an HMAC of the raw body
+under the webhook's secret, so the receiver can verify it;
+`GET /api/v1/admin/webhooks/{id}/deliveries` shows its history.
 
-Configure via environment. Payload signed with HMAC-SHA256; verify the `X-VayuPress-Signature` header.
+## The extension contract (VCB)
+
+```text
+GET  /api/v1/vcb/contract     the live contract
+POST /api/v1/vcb/validate     validate a plugin.json or theme.json
+```
+
+[The Bible →](compatibility/vcb.md)
+
+## MCP
+
+The same capabilities, as tools for Claude and any MCP client, are at `/mcp`
+with OAuth 2.1. [The connector →](compatibility/mcp.md)
 
 ## API Stability Tiers
 
-| Tier         | Endpoints                          | Guarantee                           |
-|--------------|------------------------------------|-------------------------------------|
-| Stable       | `/api/v1/articles`, `/api/v1/search`, `/health` | Backward-compatible in MAJOR version |
-| Beta         | `/api/v1/ai/*`                     | May change with notice              |
-| Experimental | Feature-flagged endpoints          | No guarantees; may disappear        |
-| Internal     | `/admin/*` internals               | No public contract                  |
-
-Deprecated endpoints include a `Sunset: <date>` response header.
+Which routes are stable, and what a stable route promises, is in
+[compatibility/stability-matrix.md](compatibility/stability-matrix.md) and
+[compatibility/api-contracts.md](compatibility/api-contracts.md).
