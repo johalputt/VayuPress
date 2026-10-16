@@ -52,6 +52,13 @@ const (
 	llmsMaxTopics = 12
 )
 
+// llmsMaxWholeReads bounds how many posts one request reads whole for want of
+// prose in their opening. The file is public and built per request; on an
+// install of imported posts each opening all <style>, the fallback read 200
+// full posts for every anonymous fetch (release audit, 3.18.5). Past it, a
+// post is listed with no summary, as the format allows.
+const llmsMaxWholeReads = 20
+
 func (a *App) handleLLMsTxt(w http.ResponseWriter, r *http.Request) {
 	if a.crawlersBlocked(r.Context()) {
 		http.NotFound(w, r)
@@ -147,6 +154,9 @@ func llmsPosts(ctx context.Context, origin, tail string, args []any) ([]seo.LLMs
 	rows.Close()
 	if err != nil {
 		return nil, err
+	}
+	if len(bare) > llmsMaxWholeReads {
+		bare = bare[:llmsMaxWholeReads]
 	}
 	for _, i := range bare {
 		slug := strings.TrimPrefix(posts[i].URL, origin+"/")

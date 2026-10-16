@@ -105,7 +105,7 @@ var settingsCategories = []settingsCategory{
 				{ID: "s-contact-autoreply", Key: settings.KeyContactAutoReply, Label: "Reply to the sender", Hint: "Sends the visitor a note that their message arrived.", Kind: "toggle", Default: "true"},
 			}},
 			{Title: "Links", Hint: "In every post and every comment", Fields: []settingField{
-				{ID: "s-links-nofollow", Key: settings.KeyNoFollowLinks, Label: "Ask search engines not to follow links to other sites", Hint: "On, each link to another site carries rel=\"nofollow\" (in a comment, rel=\"ugc nofollow\"). Off, search engines follow them as links you chose. A link within this site is never marked. Saved as you switch it.", Kind: "toggle", Default: "false", Instant: true},
+				{ID: "s-links-nofollow", Key: settings.KeyNoFollowLinks, Label: "Ask search engines not to follow links to other sites", Hint: "On, each link to another site carries rel=\"nofollow\" (in a comment, rel=\"ugc nofollow\"). Off, search engines follow them as links you chose. A relative link, or one to this install\u2019s main address, is never marked. Saved as you switch it.", Kind: "toggle", Default: "false", Instant: true},
 			}},
 		}},
 	{Slug: "members", Label: "Members", Icon: "audience",

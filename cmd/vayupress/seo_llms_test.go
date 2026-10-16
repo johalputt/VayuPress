@@ -4,6 +4,7 @@ package main
 
 import (
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -71,5 +72,30 @@ func TestLLMsTxtSummariesAreProseAndPinnedPostsComeFirst(t *testing.T) {
 	}
 	if strings.Contains(body, ".rule") || strings.Contains(body, "color:red") {
 		t.Errorf("a post's CSS was read as its summary:\n%s", body)
+	}
+}
+
+// Release audit (3.18.5): a request reads at most llmsMaxWholeReads posts
+// whole. Twenty-five posts whose openings are all style: the first twenty get
+// their prose, the rest no summary, and none is summarised by CSS.
+func TestLLMsTxtReadsFewPostsWhole(t *testing.T) {
+	openMigratedDB(t)
+	css := "<style>" + strings.Repeat(".rule{color:red}\n", llmsOpeningChars/10) + "</style>"
+	base := time.Now()
+	for i := 0; i < 25; i++ {
+		at := base.Add(-time.Duration(i) * time.Minute)
+		if _, err := dbpkg.DB.Exec(`INSERT INTO articles(id,title,slug,content,excerpt,tags,status,created_at,updated_at) VALUES(?,?,?,?,'','','published',?,?)`,
+			"id"+strconv.Itoa(i), "Post "+strconv.Itoa(i), "post-"+strconv.Itoa(i), css+"<p>Prose of post "+strconv.Itoa(i)+".</p>", at, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rec := httptest.NewRecorder()
+	(&App{}).handleLLMsTxt(rec, httptest.NewRequest("GET", "/llms.txt", nil))
+	body := rec.Body.String()
+	if n := strings.Count(body, "): Prose of post "); n != llmsMaxWholeReads {
+		t.Errorf("%d posts read whole, want %d", n, llmsMaxWholeReads)
+	}
+	if strings.Contains(body, "color:red") {
+		t.Error("a post was summarised by its CSS")
 	}
 }

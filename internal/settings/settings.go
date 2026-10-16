@@ -156,7 +156,9 @@ const (
 	// KeyNoFollowLinks asks search engines not to follow links to other
 	// sites, in every post and every comment: one switch for the site, stored
 	// "true" or "false". "true" marks a post's links rel=nofollow and a
-	// comment's rel="ugc nofollow". A link within the site is never marked.
+	// comment's rel="ugc nofollow". A relative link, or one to the install's
+	// main domain, is never marked (a secondary domain's own absolute links
+	// are, since posts are sanitised without knowing which domain shows them).
 	// Off by default: what a post says is written by the site's own writers,
 	// and a comment appears only once it is approved.
 	KeyNoFollowLinks = "links.nofollow"

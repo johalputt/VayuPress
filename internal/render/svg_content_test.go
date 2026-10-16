@@ -6,6 +6,9 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 )
 
 // The technical-debt guide as johal.in stores it: its capacity diagram is
@@ -123,5 +126,68 @@ func TestHalcyonLeavesADiagramsCapitals(t *testing.T) {
 	out := halcyonArticle(t, `<p>The VISIBLE case.</p><svg viewBox="0 0 10 10"><text x="1" y="5">STANDING ALLOCATION</text></svg>`)
 	if !strings.Contains(out, `<text x="1" y="5">STANDING ALLOCATION</text>`) {
 		t.Errorf("the diagram's capitals were dressed: %s", regexp.MustCompile(`(?s)<svg[^>]*vp-svg.*?</svg>`).FindString(out))
+	}
+}
+
+// Release audit (3.18.5): what the classic sanitiser breaks try against the
+// diagram path. Each is judged on the page the browser would build: nothing
+// that runs, no element that can carry an event or a link.
+func TestADiagramSurvivesTheKnownSanitiserBreaks(t *testing.T) {
+	Init(t.TempDir())
+	// What a browser builds from the output: any element that runs or loads,
+	// any event handler or javascript: value, and, inside a drawing, any
+	// element the drawing policy does not allow.
+	drawn := map[string]bool{"svg": true, "g": true, "defs": true, "marker": true, "path": true, "rect": true, "circle": true, "ellipse": true,
+		"line": true, "polyline": true, "polygon": true, "text": true, "tspan": true, "title": true, "desc": true,
+		"lineargradient": true, "radialgradient": true, "stop": true, "clippath": true}
+	never := map[string]bool{"script": true, "iframe": true, "style": true, "object": true, "embed": true}
+	judge := func(out string) string {
+		nodes, err := html.ParseFragment(strings.NewReader(out), &html.Node{Type: html.ElementNode, Data: "body", DataAtom: atom.Body})
+		if err != nil {
+			return "unparseable: " + err.Error()
+		}
+		var bad string
+		var walk func(n *html.Node, inSVG bool)
+		walk = func(n *html.Node, inSVG bool) {
+			if n.Type == html.ElementNode {
+				name := strings.ToLower(n.Data)
+				in := inSVG || (n.Namespace == "svg" && name == "svg")
+				switch {
+				case never[name]:
+					bad = "<" + name + ">"
+				case in && !drawn[name]:
+					bad = "<" + name + "> in a drawing"
+				}
+				for _, at := range n.Attr {
+					if strings.HasPrefix(strings.ToLower(at.Key), "on") || strings.Contains(strings.ToLower(at.Val), "javascript:") || strings.Contains(strings.ToLower(at.Key), "href") && in {
+						bad = at.Key + `="` + at.Val + `"`
+					}
+				}
+				inSVG = in
+			}
+			for c := n.FirstChild; c != nil; c = c.NextSibling {
+				walk(c, inSVG)
+			}
+		}
+		for _, n := range nodes {
+			walk(n, false)
+		}
+		return bad
+	}
+	for _, c := range []struct{ name, in string }{
+		{"an HTML element in an integration point", `<svg viewBox="0 0 9 9"><title><img src=x onerror="alert(1)"></title></svg>`},
+		{"an HTML element in desc", `<svg viewBox="0 0 9 9"><desc><iframe src="javascript:alert(1)"></iframe></desc></svg>`},
+		{"breaking out of the drawing", `<svg viewBox="0 0 9 9"></p><style><a id="</style><img src=1 onerror=alert(1)>"></style></svg>`},
+		{"CDATA", `<svg viewBox="0 0 9 9"><![CDATA[<script>alert(1)</script>]]></svg>`},
+		{"a drawing in a drawing", `<svg viewBox="0 0 9 9"><svg onload="alert(1)"><script>alert(2)</script></svg></svg>`},
+		{"xlink:href on an allowed element", `<svg viewBox="0 0 9 9"><text xlink:href="javascript:alert(1)">t</text></svg>`},
+		{"href on an allowed element", `<svg viewBox="0 0 9 9"><g href="javascript:alert(1)"><rect width="1" height="1"/></g></svg>`},
+		{"markup in a value", `<svg viewBox="0 0 9 9" aria-label="&quot;><img src=x onerror=alert(1)>"><rect width="1" height="1"/></svg>`},
+		{"the token itself", `<p>VAYUSVG0ENDVAYUSVG</p><svg viewBox="0 0 9 9"><rect width="1" height="1"/></svg>`},
+	} {
+		out := renderContentHTML(c.in)
+		if bad := judge(out); bad != "" {
+			t.Errorf("%s: %s survived: %s", c.name, bad, out)
+		}
 	}
 }
