@@ -4,10 +4,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/pace"
 )
 
 // planOf returns a query's plan as one line.
@@ -171,5 +173,43 @@ func TestACardBuiltBeforeAnEditIsNotStored(t *testing.T) {
 	store(updated)
 	if cardCount(t, "c1") != 1 {
 		t.Fatal("a card built from the current text was refused")
+	}
+}
+
+// The warmer builds every listed post's card before a listing asks for it, so
+// a cold tag page reads cards, not bodies. 450 posts share one created_at, so
+// a fill that reads past its first batch must order and resume by id too;
+// drafts and pages are never listed and get none.
+func TestTheWarmerBuildsEveryListedPostsCard(t *testing.T) {
+	openMigratedDB(t)
+	prev := newCardJob
+	newCardJob = func() *pace.Job {
+		return pace.New(pace.Sources{P95: func() (int64, bool) { return 10, true }}).NewJob(pace.JobConfig{Min: 8, Max: 8, Step: 1})
+	}
+	t.Cleanup(func() { newCardJob = prev })
+	const posts = 450
+	for i := 0; i < posts; i++ {
+		seedCardPost(t, fmt.Sprintf("p%03d", i), "Post", `<p>Body.</p>`, "", "", "2026-09-20 10:00:00")
+	}
+	if _, err := dbpkg.DB.Exec(`INSERT INTO articles(id,title,slug,content,status,is_page,created_at,updated_at) VALUES
+		('draft','D','d','<p>x</p>','draft',0,'2026-09-21','2026-09-21'),('page','P','p','<p>x</p>','published',1,'2026-09-21','2026-09-21')`); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := fillMissingCards(context.Background()); got != posts {
+		t.Errorf("built %d cards, want %d", got, posts)
+	}
+	var stored int
+	if err := dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM article_cards`).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != posts {
+		t.Errorf("%d cards stored, want one per published post (%d)", stored, posts)
+	}
+	if cardCount(t, "draft") != 0 || cardCount(t, "page") != 0 {
+		t.Error("a draft or a page was given a card no listing shows")
+	}
+	if again := fillMissingCards(context.Background()); again != 0 {
+		t.Errorf("a second pass rebuilt %d cards that were already stored", again)
 	}
 }

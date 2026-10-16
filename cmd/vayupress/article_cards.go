@@ -18,6 +18,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/api"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/pace"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/seo"
 )
@@ -133,4 +134,64 @@ func fillCards(ctx context.Context, ids []string, cards map[string]render.HomeAr
 		_, _ = tx.ExecContext(ctx, storeCardSQL, b.id, b.card.Title, b.card.Slug, b.tags, b.card.CreatedAt, b.card.Excerpt, b.card.Image, b.id, b.updated)
 	}
 	_ = tx.Commit()
+}
+
+// missingCardsSQL finds published posts without a card, newest first, from
+// idx_articles_feed and article_cards' key alone; the cursor is the last
+// post's created_at text and id, in the index's own order.
+const (
+	missingCardsSQL = `SELECT a.id, CAST(a.created_at AS TEXT) FROM articles a WHERE a.is_page=0 AND a.status='published' ` +
+		`AND NOT EXISTS(SELECT 1 FROM article_cards c WHERE c.article_id=a.id)`
+	missingCardsAfter = ` AND (a.created_at < ? OR (a.created_at = ? AND a.id > ?))`
+	missingCardsOrder = ` ORDER BY a.created_at DESC, a.id LIMIT ?`
+	cardFillBatch     = 25 // cards per pace unit
+)
+
+// newCardJob paces a card fill. A var so a test can pace it with its own pacer.
+var newCardJob = func() *pace.Job {
+	return pace.Host().NewJob(pace.JobConfig{Min: 1, Max: 8, Step: 1})
+}
+
+// fillMissingCards builds the card of every published post that has none, in
+// batches the host pacer sizes, and reports how many it built. A card was
+// built only when a listing first showed its post, so a crawler walking tag
+// pages of a large archive read up to 200 bodies per page: on 235k posts a cold
+// tag page cost 125 ms with its cards missing and 17 ms with them stored. An
+// edit deletes its post's card (migration 103), and the next pass rebuilds it.
+func fillMissingCards(ctx context.Context) int {
+	if dbpkg.DB == nil {
+		return 0
+	}
+	job := newCardJob()
+	var created, last string
+	built := 0
+	for {
+		n, err := job.Next(ctx)
+		if err != nil {
+			return built
+		}
+		q, args := missingCardsSQL, []any{}
+		if last != "" {
+			q += missingCardsAfter
+			args = append(args, created, created, last)
+		}
+		rows, err := dbpkg.Reader().QueryContext(ctx, q+missingCardsOrder, append(args, n*cardFillBatch)...)
+		if err != nil {
+			return built
+		}
+		var ids []string
+		for rows.Next() {
+			if rows.Scan(&last, &created) == nil {
+				ids = append(ids, last)
+			}
+		}
+		_ = rows.Err()
+		_ = rows.Close()
+		if len(ids) == 0 {
+			return built
+		}
+		cards := make(map[string]render.HomeArticle, len(ids))
+		fillCards(ctx, ids, cards)
+		built += len(cards)
+	}
 }

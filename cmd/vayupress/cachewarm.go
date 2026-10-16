@@ -100,16 +100,28 @@ func (a *App) startCacheWarmer(done <-chan struct{}) {
 		defer cancel()
 		t := time.NewTicker(warmInterval())
 		defer t.Stop()
+		warmCards(ctx)
 		a.routineWarm(ctx)
 		for {
 			select {
 			case <-done:
 				return
 			case <-t.C:
+				warmCards(ctx)
 				a.routineWarm(ctx)
 			}
 		}
 	}()
+}
+
+// warmCards builds the listing cards no listing has asked for yet: a cold tag
+// page then reads cards, not up to 200 post bodies. It runs before the pages:
+// after a renderer change the page pass rebuilds every post for hours, and a
+// card costs well under a millisecond.
+func warmCards(ctx context.Context) {
+	if n := fillMissingCards(ctx); n > 0 {
+		logging.LogInfo("cachewarm", "built "+strconv.Itoa(n)+" listing card"+plural(n))
+	}
 }
 
 // contextUntil returns a context cancelled when done is closed, so in-flight
