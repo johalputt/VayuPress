@@ -48,6 +48,18 @@ func TestAMemberWriteFromAnotherOriginIsRefused(t *testing.T) {
 		router.ServeHTTP(rec, req)
 		return rec
 	}
+	// Behind a proxy that sends its upstream as the Host, the host the browser
+	// asked for comes as X-Forwarded-Host, and the site's own write is its own.
+	proxied := httptest.NewRequest("POST", "http://127.0.0.1:8080/members/account", strings.NewReader("name=Ada"))
+	proxied.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	proxied.Header.Set("Origin", "http://localhost:8088")
+	proxied.Header.Set("X-Forwarded-Host", "localhost:8088")
+	proxied.AddCookie(&http.Cookie{Name: memberCookie, Value: token})
+	prec := httptest.NewRecorder()
+	router.ServeHTTP(prec, proxied)
+	if strings.Contains(prec.Body.String(), "cross-origin") {
+		t.Error("the site's own write through a proxy was refused as cross-origin")
+	}
 	routes := [][2]string{
 		{"POST", "/members/account"}, {"POST", "/members/logout"},
 		{"POST", "/api/v1/members/avatar"}, {"POST", "/api/v1/members/avatar/choose"},

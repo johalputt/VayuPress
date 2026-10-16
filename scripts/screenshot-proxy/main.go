@@ -67,6 +67,9 @@ func main() {
 				}
 				pr.Out.Header.Set("X-Forwarded-For", client)
 			}
+			// The Host becomes the upstream's, so say which host the browser
+			// asked for: a write checks the browser's Origin against it.
+			pr.Out.Header.Set("X-Forwarded-Host", pr.In.Host)
 			pr.Out.URL.Scheme = target.Scheme
 			pr.Out.URL.Host = target.Host
 			pr.Out.Host = target.Host

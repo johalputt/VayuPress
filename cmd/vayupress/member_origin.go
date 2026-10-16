@@ -34,7 +34,7 @@ func refuseCrossOrigin(next http.Handler) http.Handler {
 		default:
 			if o := r.Header.Get("Origin"); o != "" {
 				u, err := url.Parse(o)
-				if err != nil || u.Host == "" || !strings.EqualFold(u.Host, r.Host) {
+				if err != nil || u.Host == "" || !originIsThisHost(u.Host, r) {
 					writeAPIError(w, r, http.StatusForbidden, "cross-origin",
 						"This request came from another site's page.", "")
 					return
@@ -43,4 +43,19 @@ func refuseCrossOrigin(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// originIsThisHost reports whether host is the one the browser asked for:
+// the request's Host, or the host a proxy in front says it forwarded
+// (X-Forwarded-Host), since a proxy that sets its own upstream as the Host
+// (CI's screenshot proxy does) would otherwise make every write look like
+// another origin's. The header cannot forge a match: a page cannot put it on
+// a request the browser sends to another origin without a CORS preflight,
+// which this site does not grant.
+func originIsThisHost(host string, r *http.Request) bool {
+	if strings.EqualFold(host, r.Host) {
+		return true
+	}
+	fwd, _, _ := strings.Cut(r.Header.Get("X-Forwarded-Host"), ",")
+	return fwd != "" && strings.EqualFold(host, strings.TrimSpace(fwd))
 }
