@@ -34,11 +34,15 @@
 package main
 
 import (
+	"net/http"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/users"
 )
 
 // swrRefresher performs bounded, de-duplicated background re-renders of stale
@@ -116,4 +120,21 @@ func swrConcurrency() int {
 func swrRefresh(key string, fn func()) {
 	swrOnce.Do(func() { swrInst = newSWRRefresher(swrConcurrency()) })
 	swrInst.refresh(key, fn)
+}
+
+// rendersStaleFor reports whether a stale page is rendered for this request
+// rather than served: for an administrator signed in to the console, and for
+// nobody else. A theme or settings save marks every page stale; served stale
+// once more, the save read to the person who made it as "nothing changed"
+// (3bl, the shape of 3bf's "the blog does not change"), while readers lose
+// nothing by seeing the old page for one more request. The lookup runs only
+// for a stale page and a request carrying a session cookie, and one
+// operator's renders are not a herd. The page rendered is the reader's, and is
+// cached for them.
+func (a *App) rendersStaleFor(r *http.Request) bool {
+	if auth.SessionTokenFromRequest(r) == "" {
+		return false
+	}
+	u := a.resolveConsoleUser(r)
+	return u != nil && u.Role == users.RoleAdmin
 }

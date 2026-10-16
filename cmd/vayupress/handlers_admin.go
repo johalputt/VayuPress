@@ -337,7 +337,8 @@ func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
 			// Stale-while-revalidate (see handleArticlePage): serve the stale
 			// homepage immediately and refresh it off the request path so a
 			// global invalidation never blocks the busiest page on a re-render.
-			if fresh || !warm {
+			// The operator who made it stale is the exception (rendersStaleFor).
+			if fresh || (!warm && !a.rendersStaleFor(r)) {
 				if !warm {
 					atomic.AddInt64(&metrics.MetricCacheHits, 1)
 					if !fresh {
@@ -576,8 +577,9 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 			// renderer fingerprint, or a theme/identity save) can never trigger a
 			// synchronous re-render herd. The internal cache-warm probe is the one
 			// caller that must actually re-render a stale entry, so it falls
-			// through to the synchronous render path below.
-			if fresh || !warm {
+			// through to the synchronous render path below, as does the
+			// operator who made it stale (rendersStaleFor).
+			if fresh || (!warm && !a.rendersStaleFor(r)) {
 				if !warm {
 					atomic.AddInt64(&metrics.MetricCacheHits, 1)
 					if !fresh {
