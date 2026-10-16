@@ -10,6 +10,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
+- **Mail: Mailboxes puts new mail first, and follows it live.** The
+  mailboxes with unread mail are listed at the top, the most unread first,
+  across every domain; each domain's full list folds under its name and
+  counts, its unread mailboxes first when opened. The page redraws itself
+  every 20 seconds while it is in view, and at once when it comes back into
+  view, keeping open the domains that were opened.
+- **Tag pages: listing cards are built ahead of the visitor.** A post's card
+  (title, excerpt, picture) was built the first time a listing showed it, by
+  reading its whole body, so a crawler walking tag pages of a large archive
+  paid for up to 200 bodies on each page: on 235,000 posts a cold tag page
+  took 125 ms with its cards missing and 17 ms with them stored. The cache
+  warmer now builds every published post's missing card, paced by the host,
+  before it rebuilds pages, and an edited post's card on its next pass.
+
 - **Dependencies brought up to date.** chi 5.5.0, go-pkcs12 0.7.4, pkcs7,
   go-ical, lyrebird and iploc are at their latest; the weekly freshness check
   was red since 12 October. pkcs7 requires Go 1.27, so go.mod's go line is

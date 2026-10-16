@@ -88,3 +88,46 @@ func TestOutboxChip(t *testing.T) {
 		t.Errorf("inactive chip should not be --on: %s", off)
 	}
 }
+
+// The directory puts what needs reading first: "New mail" lists the mailboxes
+// with unread mail, the most unread first, and a mailbox with none is not in
+// it; each domain's full list is folded away (a closed <details>), and opened
+// it shows the unread ones first.
+func TestTheMailboxDirectoryPutsNewMailFirst(t *testing.T) {
+	a := &App{}
+	dir, boxes, unseen := a.vayuMailboxDirectory("example.test", []vmail.MailboxSummary{
+		{Username: "quiet", Domain: "example.test", Total: 9},
+		{Username: "some", Domain: "example.test", Total: 4, Unseen: 2},
+		{Username: "most", Domain: "example.test", Total: 8, Unseen: 5},
+	}, nil)
+	html := string(dir)
+	if boxes != 3 || unseen != 7 {
+		t.Fatalf("counted %d mailboxes, %d unseen; want 3, 7", boxes, unseen)
+	}
+	newMail := html[strings.Index(html, "New mail"):strings.Index(html, "All mailboxes")]
+	most, some := strings.Index(newMail, "most@example.test"), strings.Index(newMail, "some@example.test")
+	if most < 0 || some < 0 || most > some {
+		t.Errorf("New mail does not list the most unread first:\n%s", newMail)
+	}
+	if strings.Contains(newMail, "quiet@example.test") {
+		t.Errorf("a mailbox with nothing unread is under New mail:\n%s", newMail)
+	}
+	if !strings.Contains(newMail, "7 unseen in 2 mailboxes") {
+		t.Errorf("New mail does not say how much is waiting:\n%s", newMail)
+	}
+	domain := html[strings.Index(html, "All mailboxes"):]
+	if !strings.Contains(domain, `<details class="mon-acc"><summary`) {
+		t.Errorf("the domain's list is not folded away:\n%s", domain)
+	}
+	if q, s := strings.Index(domain, "quiet@"), strings.Index(domain, "some@"); q < s {
+		t.Errorf("opened, the domain does not list its unread mailboxes first:\n%s", domain)
+	}
+	if !strings.Contains(html, "data-mbx-live") {
+		t.Error("the directory is not marked for the live refresh")
+	}
+
+	none, _, _ := a.vayuMailboxDirectory("example.test", []vmail.MailboxSummary{{Username: "quiet", Domain: "example.test", Total: 9}}, nil)
+	if !strings.Contains(string(none), "No unread mail") {
+		t.Errorf("with nothing unread, New mail does not say so:\n%s", none)
+	}
+}

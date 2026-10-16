@@ -1142,3 +1142,44 @@ test("an app password is made in its sheet and shown once", async ({ page }) => 
   const [file] = await Promise.all([page.waitForEvent("download"), list.getByRole("button", { name: "Download .txt" }).click()]);
   expect(file.suggestedFilename()).toBe("vayumail-app-password.txt");
 });
+
+// Mailboxes puts what needs reading first, folds each domain's full list away,
+// and follows the mailboxes without a reload: a message read elsewhere leaves
+// New mail, and a domain the operator opened stays open across the redraw.
+test("Mailboxes puts new mail first and follows it live", async ({ page }) => {
+  await newestUnread(page);
+  await page.goto("/os/vayumail/inbox?all=1");
+  const live = page.locator("[data-mbx-live]");
+  const fresh = live.locator("section").first();
+  await expect(fresh.locator(".section-head__title")).toHaveText("New mail");
+  const row = fresh.locator("tr", { hasText: "ankush@mail.test" });
+  const before = Number(await row.locator("strong").innerText());
+  expect(before, "ankush has unread mail").toBeGreaterThan(0);
+
+  const domain = live.locator("details.mon-acc", { hasText: "mail.test" });
+  await expect(domain, "a domain's list starts folded").not.toHaveAttribute("open", "");
+  await domain.locator("summary").click();
+  await expect(domain).toHaveAttribute("open", "");
+
+  // One message read in another tab: marked at once and the tab closed, so the
+  // inbox's own read-after-two-seconds marks nothing more.
+  const other = await page.context().newPage();
+  await other.setViewportSize({ width: 1440, height: 900 });
+  await other.goto(inbox);
+  const id = await other.locator("#vm-readpane [data-mx-reader]").evaluate((r) => new URL(r.getAttribute("data-mx-href"), location.href).searchParams.get("id"));
+  const csrf = (await page.context().cookies()).find((c) => c.name === "vp_csrf");
+  await other.close();
+  await page.request.post("/os/vayumail/inbox/action", {
+    headers: { "X-CSRF-Token": csrf ? decodeURIComponent(csrf.value) : "" },
+    form: { action: "mark", mark: "read", user: "ankush", folder: "Inbox", id },
+  });
+
+  // The page redraws on its own every 20 s, and at once when it comes back
+  // into view; the test asks for the second rather than wait for the first.
+  await expect(async () => {
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    const now = await row.count() ? Number(await row.locator("strong").innerText({ timeout: 500 })) : 0;
+    expect(now, "ankush's unread count after one was read").toBe(before - 1);
+  }).toPass({ timeout: 15000, intervals: [500, 1000] });
+  await expect(domain, "the open domain was folded by the redraw").toHaveAttribute("open", "");
+});

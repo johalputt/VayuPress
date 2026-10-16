@@ -2039,45 +2039,86 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 // the counts the page's title carries. The radio-button tabs this replaced
 // shown one domain at a time and only as many as the stylesheet had rules for.
 func (a *App) vayuMailboxDirectory(primaryDom string, primary []vmail.MailboxSummary, secHosts []string) (sections ui.HTML, boxes, unseen int) {
-	add := func(dom string, list []vmail.MailboxSummary, isPrimary bool) {
-		sections += a.vayuMailboxDomainSection(dom, primaryDom, list, isPrimary)
-		boxes += len(list)
-		for _, b := range list {
-			unseen += b.Unseen
-		}
+	type domain struct {
+		name    string
+		list    []vmail.MailboxSummary
+		primary bool
 	}
-	add(primaryDom, primary, true)
+	doms := []domain{{primaryDom, primary, true}}
 	for _, sh := range secHosts {
-		sb, err := a.vayuMail.MailboxesForDomain(sh)
-		if err != nil {
-			continue
+		if sb, err := a.vayuMail.MailboxesForDomain(sh); err == nil {
+			doms = append(doms, domain{sh, sb, false})
 		}
-		add(sh, sb, false)
 	}
-	return sections, boxes, unseen
+	avSet := a.mailboxAvatarSet()
+	type fresh struct {
+		addr string
+		n    int
+		row  []ui.HTML
+	}
+	var news []fresh
+	var directory ui.HTML
+	for _, d := range doms {
+		directory += a.vayuMailboxDomainSection(d.name, primaryDom, d.list, d.primary)
+		boxes += len(d.list)
+		for _, bx := range d.list {
+			unseen += bx.Unseen
+			if bx.Unseen > 0 {
+				_, addr := mailboxRef(bx, d.name, primaryDom)
+				news = append(news, fresh{addr, bx.Unseen, []ui.HTML{mailboxCell(bx, d.name, primaryDom, avSet),
+					ui.HTML(`<strong>` + itoaSafe(bx.Unseen) + `</strong>`), ui.Text(itoaSafe(bx.Total))}})
+			}
+		}
+	}
+	// What needs reading comes first, the most unread first, across every
+	// domain; the directory of all mailboxes folds away beneath it.
+	sort.SliceStable(news, func(i, j int) bool {
+		if news[i].n != news[j].n {
+			return news[i].n > news[j].n
+		}
+		return news[i].addr < news[j].addr
+	})
+	var top ui.HTML
+	if len(news) == 0 {
+		top = ui.Section("New mail", "", ui.Empty("mail", "No unread mail", "Every mailbox is read.", ""))
+	} else {
+		rows := make([][]ui.HTML, len(news))
+		for i, f := range news {
+			rows[i] = f.row
+		}
+		top = ui.Section("New mail", itoaSafe(unseen)+" unseen in "+itoaSafe(len(news))+" "+map[bool]string{true: "mailbox", false: "mailboxes"}[len(news) == 1],
+			ui.Table([]string{"Mailbox", "Unseen", "Inbox"}, rows, ""))
+	}
+	// data-mbx-live: admin-os.js refreshes this part in place while the page is
+	// in view, keeping whichever domains are open.
+	return ui.HTML(`<div data-mbx-live>`) + top + ui.Section("All mailboxes", "", directory) + ui.HTML(`</div>`), boxes, unseen
 }
 
-// vayuMailboxDomainSection is one mail domain's mailboxes, a flush table under
-// the domain's name. dom is the section's domain; primaryDomain is the
-// install's primary, so the primary's ?user= link stays the bare local part
-// while a secondary links the full address and the read path resolves its own
-// Maildir.
+// mailboxCell is a mailbox's link into its inbox, with its picture.
+func mailboxCell(bx vmail.MailboxSummary, dom, primaryDomain string, avSet map[string]bool) ui.HTML {
+	key, addr := mailboxRef(bx, dom, primaryDomain)
+	return ui.HTML(`<a class="vm-from" href="/os/vayumail/inbox?user=` + qparam(key) + `">` + mailAvatarImg(addr, avSet) + `<span class="vm-name">` + html.EscapeString(addr) + `</span></a>`)
+}
+
+// vayuMailboxDomainSection is one mail domain's mailboxes, folded under the
+// domain's name and its counts; opened, those with unread mail come first. dom
+// is the section's domain; primaryDomain is the install's primary, so the
+// primary's ?user= link stays the bare local part while a secondary links the
+// full address and the read path resolves its own Maildir.
 func (a *App) vayuMailboxDomainSection(dom, primaryDomain string, boxes []vmail.MailboxSummary, isPrimary bool) ui.HTML {
 	avSet := a.mailboxAvatarSet()
+	sorted := append([]vmail.MailboxSummary(nil), boxes...)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Unseen > 0 && sorted[j].Unseen == 0 })
 	unseenTotal := 0
 	var rows [][]ui.HTML
-	for _, bx := range boxes {
-		key, addr := mailboxRef(bx, dom, primaryDomain)
+	for _, bx := range sorted {
 		// A count is a number, said only when it is not zero.
 		unseen := ui.HTML("")
 		if bx.Unseen > 0 {
 			unseen = ui.HTML(`<strong>` + itoaSafe(bx.Unseen) + `</strong>`)
 			unseenTotal += bx.Unseen
 		}
-		rows = append(rows, []ui.HTML{
-			ui.HTML(`<a class="vm-from" href="/os/vayumail/inbox?user=` + qparam(key) + `">` + mailAvatarImg(addr, avSet) + `<span class="vm-name">` + html.EscapeString(addr) + `</span></a>`),
-			ui.Text(itoaSafe(bx.Total)), unseen,
-		})
+		rows = append(rows, []ui.HTML{mailboxCell(bx, dom, primaryDomain, avSet), ui.Text(itoaSafe(bx.Total)), unseen})
 	}
 	hint := []string{"Secondary"}
 	if isPrimary {
@@ -2087,7 +2128,7 @@ func (a *App) vayuMailboxDomainSection(dom, primaryDomain string, boxes []vmail.
 	if unseenTotal > 0 {
 		hint = append(hint, itoaSafe(unseenTotal)+" unseen")
 	}
-	return ui.Section(dom, strings.Join(hint, " · "),
+	return ui.Disclosure(ui.Icon("mail"), dom, strings.Join(hint, " · "), "", false,
 		ui.Table([]string{"Mailbox", "Inbox", "Unseen"}, rows, "No mailboxes on this domain yet. Make one under Accounts."))
 }
 
