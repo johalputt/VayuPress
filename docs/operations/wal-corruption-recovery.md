@@ -1,86 +1,102 @@
-# WAL Corruption Recovery — VayuPress Operations
+# Database Corruption Recovery — VayuPress Operations
 
 **Severity:** P0  
-**Last reviewed:** 2026-06-13
+**Last reviewed:** 2026-10-16
+
+The database is one SQLite file in WAL mode, `/var/lib/vayupress/vayupress.db`
+by default (`DB_PATH`), with its `-wal` and `-shm` beside it.
 
 ---
 
 ## Detection
 
-SQLite WAL corruption typically manifests as:
+Corruption shows as one of:
 
-```
+```text
 SQLITE_CORRUPT: database disk image is malformed
 SQLITE_IOERR_READ: disk I/O error
-PRAGMA integrity_check → returns rows (not "ok")
 ```
 
-VayuPress runs `PRAGMA integrity_check` at startup (in `internal/db/config.go`).  
-A failed check will cause the process to log `level=error, component=db` and may prevent startup.
+in `journalctl -u vayupress`, as the service failing to start with a database
+error, or as the install entering **read-only** mode (writes refused), which the
+console's system bar shows on every page.
+
+The server does **not** run `PRAGMA integrity_check` when it opens the database:
+on a large database that would hold the listener for minutes. The check runs on
+every staged update before it is applied, and in every VayuKeep restore drill.
+To check the live file yourself, stop the service first.
 
 ---
 
-## Immediate Actions (P0 — < 1 hour)
+## Immediate actions (P0 — under an hour)
 
 ```bash
-# 1. Stop the service immediately to prevent further writes
-systemctl stop vayupress
+DB=/var/lib/vayupress/vayupress.db
 
-# 2. Preserve the corrupt DB for forensics
-BACKUP_TS=$(date +%Y%m%d-%H%M%S)
-cp -a /data/vayupress.db      /tmp/corrupt-db-${BACKUP_TS}.db
-cp -a /data/vayupress.db-wal  /tmp/corrupt-db-${BACKUP_TS}.db-wal
-cp -a /data/vayupress.db-shm  /tmp/corrupt-db-${BACKUP_TS}.db-shm
+# 1. Stop the service so nothing writes while you work
+sudo systemctl stop vayupress
 
-# 3. Attempt WAL checkpoint recovery
-sqlite3 /data/vayupress.db "PRAGMA wal_checkpoint(TRUNCATE);"
-sqlite3 /data/vayupress.db "PRAGMA integrity_check;" | head -20
-# If "ok" → WAL recovered; proceed to step 5
-# If still errors → proceed to step 4
+# 2. Preserve the damaged files for forensics
+TS=$(date +%Y%m%d-%H%M%S)
+sudo cp -a "$DB" "/root/corrupt-$TS.db"
+sudo cp -a "$DB-wal" "/root/corrupt-$TS.db-wal" 2>/dev/null || true
+
+# 3. Check, and try folding the WAL back in
+sqlite3 "$DB" "PRAGMA integrity_check;" | head -20
+sqlite3 "$DB" "PRAGMA wal_checkpoint(TRUNCATE);"
+sqlite3 "$DB" "PRAGMA integrity_check;" | head -20
+# "ok" → recovered: start the service (step 5 below).
 ```
 
-## Recovery from Backup (if WAL recovery fails)
+`sqlite3` is not part of VayuPress; install it with `apt install sqlite3` if
+the host lacks it.
+
+## Restore from a backup (if the checkpoint does not recover it)
+
+Restore the newest generation that **verifies** — see
+[backup-restore.md](backup-restore.md):
 
 ```bash
-# 4a. Identify most recent clean backup
-ls -lt /backup/vayupress/ | head -10
+vayupress restore -in /mnt/backup/vayupress/vk-YYYYMMDD-HHMMSS.vpbk -verify
+sudo systemctl stop vayupress
+sudo vayupress restore -in /mnt/backup/vayupress/vk-YYYYMMDD-HHMMSS.vpbk -dest /var/lib/vayupress
+sudo chown -R www-data:www-data /var/lib/vayupress   # the service runs as www-data
 
-# 4b. Restore from backup
-CLEAN_BACKUP=$(ls -t /backup/vayupress/*.db | head -1)
-cp "${CLEAN_BACKUP}" /data/vayupress.db
-rm -f /data/vayupress.db-wal /data/vayupress.db-shm
-
-# 4c. Verify restored DB
-sqlite3 /data/vayupress.db "PRAGMA integrity_check;"
-sqlite3 /data/vayupress.db "SELECT COUNT(*) FROM articles;"
-
-# 5. Restart service
-systemctl start vayupress
-journalctl -u vayupress -f  # watch for errors
+# 5. Start and confirm
+sudo systemctl start vayupress
+curl -s http://localhost:8080/health
+journalctl -u vayupress -f
 ```
 
-## If No Clean Backup Exists
+## If no backup verifies
+
+Salvage what SQLite can still read into a fresh file:
 
 ```bash
-# Attempt salvage: dump all recoverable data
-sqlite3 /data/vayupress.db ".recover" > /tmp/recovered.sql 2>&1
+sqlite3 "$DB" ".recover" > /root/recovered.sql
+sqlite3 /root/vayupress-new.db < /root/recovered.sql
+sqlite3 /root/vayupress-new.db "PRAGMA integrity_check;"
 
-# Create fresh DB and replay
-sqlite3 /data/vayupress-new.db < /tmp/recovered.sql
-sqlite3 /data/vayupress-new.db "PRAGMA integrity_check;"
-
-# If clean, replace:
-mv /data/vayupress.db /tmp/corrupt-final.db
-mv /data/vayupress-new.db /data/vayupress.db
-systemctl start vayupress
+# If it reports ok, put it in place
+sudo mv "$DB" "/root/corrupt-final-$TS.db"
+sudo rm -f "$DB-wal" "$DB-shm"
+sudo install -o www-data -g www-data -m 600 /root/vayupress-new.db "$DB"
+sudo systemctl start vayupress
 ```
+
+On start the server runs its migrations and verifies their checksums; a
+salvaged file missing schema it needs will say so in the log rather than serve
+from it.
 
 ---
 
-## Post-Incident
+## Afterwards
 
-1. Determine data loss window (compare `MAX(created_at)` in restored DB vs backup timestamp).
-2. Re-apply missing events from outbox if any were in-flight.
-3. Run `vayupress verify-all-articles` to check signing integrity.
-4. File P0 incident report per [`docs/security/incident-response.md`](../security/incident-response.md).
-5. Review backup frequency — consider reducing from daily to hourly WAL shipping.
+1. Work out the loss window: the newest `created_at` in the restored database
+   against the generation's time.
+2. Check VayuOS → System › Backups: if no generation verified, fix the
+   recovery path before anything else (DR-06 in
+   [disaster-recovery.md](disaster-recovery.md)).
+3. File the incident per [incident-response.md](../security/incident-response.md).
+4. Look at the disk: corruption without a power loss is most often a failing
+   volume or a full disk.

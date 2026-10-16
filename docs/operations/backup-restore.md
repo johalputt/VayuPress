@@ -1,117 +1,110 @@
 # Backup & Restore — VayuPress Operations
 
-**Last reviewed:** 2026-06-13
+**Last reviewed:** 2026-10-16
+
+An install keeps everything in one data directory, `/var/lib/vayupress` by
+default: the SQLite database, settings, media, VayuMail's mailboxes and the PGP
+key store. A backup is that directory, encrypted. There are two ways to take
+one, and they write the same archive format.
 
 ---
 
-## What Must Be Backed Up
+## What a backup holds
 
-| Item | Location | Frequency | Method |
-|------|----------|-----------|--------|
-| SQLite DB | `/data/vayupress.db` | Daily + WAL shipping | SQLite Online Backup API |
-| Signing private key | `/etc/vayupress/signing.key` | On creation/rotation | Encrypted cold storage |
-| Plugin binaries | `/opt/vayupress/plugins/` | On install/update | File copy |
-| Nginx config | `/etc/nginx/conf.d/vayupress.conf` | On change | Git-tracked |
-| Systemd unit | `/etc/systemd/system/vayupress.service` | On change | Git-tracked |
-| TLS certificate | Managed by certbot | Auto-renewed | certbot backup |
-| Archive objects | `/data/archives/` | Continuous | Content-addressed; immutable |
+| Item | Where on an install | In a backup |
+|------|---------------------|-------------|
+| Database (posts, members, settings, orders, audit log …) | `/var/lib/vayupress/vayupress.db` | Yes — a consistent snapshot, taken without stopping the service |
+| Media library | `/var/lib/vayupress/media` | Yes |
+| VayuMail mailboxes | `/var/lib/vayupress/vayudata/mail` | Yes |
+| PGP key store (private keys encrypted at rest) | `/var/lib/vayupress/vayudata/pgp` | Yes |
+| The page cache | `/var/cache/vayupress` | No — it is rebuilt from the database |
+| Nginx, the systemd unit, `/etc/vayupress/env` | system files | No — the installer writes them; keep `/etc/vayupress/env` yourself |
+| TLS certificates | certbot's store | No — certbot issues them again |
+
+VayuOS → System › Backups lists anything the install keeps data in that a
+backup would leave out, so a restore that "works" is never silently partial.
 
 ---
 
-## Automated Backup (Daily)
+## Automatic: VayuKeep
 
-The `deploy/backup.sh` script (or systemd timer) performs:
+**VayuKeep** takes backups inside the binary — no cron, no timer, no `sqlite3`
+CLI. Set a target and a passphrase in VayuOS → System › Backups (or in
+`/etc/vayupress/env`), and it runs.
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-DEST="/backup/vayupress/$(date +%Y%m%d-%H%M%S)"
-mkdir -p "${DEST}"
-
-# SQLite online backup (safe while DB is live)
-sqlite3 /data/vayupress.db ".backup '${DEST}/vayupress.db'"
-
-# Plugin binaries
-cp -a /opt/vayupress/plugins/ "${DEST}/plugins/"
-
-# Verify backup integrity
-sqlite3 "${DEST}/vayupress.db" "PRAGMA integrity_check;" | grep -q "^ok$"
-
-# Rotate: keep last 30 days
-find /backup/vayupress -maxdepth 1 -type d -mtime +30 -exec rm -rf {} +
-
-echo "Backup complete: ${DEST}"
+VAYUKEEP_TARGET=/mnt/backup/vayupress   # anywhere outside the data directory
+VAYU_BACKUP_PASSPHRASE=…                # the same passphrase `vayupress backup` uses
 ```
 
-Schedule via systemd timer:
+| What | How often | Kept |
+|------|-----------|------|
+| A generation of everything above | From every 5 minutes while the site is being written to, backing off to every 6 hours when idle | 24 generations **or** 30 days, whichever keeps more |
+| A restore drill | Every 12 hours, and on demand | The last result |
 
-```ini
-# /etc/systemd/system/vayupress-backup.timer
-[Timer]
-OnCalendar=*-*-* 02:00:00
-Persistent=true
-```
+- **Consistent without stopping.** Each generation's database is copied with
+  SQLite's backup API over one pinned read transaction, so it is one moment's
+  data. The copy, the encryption and the test restore go in paced steps and
+  slow down while visitors need the disk (`internal/sqlitecopy`,
+  `internal/vayukeep`).
+- **Encrypted, with no other option.** AES-256-GCM under an Argon2id-wrapped
+  key, each frame chained to the last, ending in an authenticated final
+  marker. Nothing is written unencrypted.
+- **Proven by reading back.** The drill restores the newest generation into a
+  scratch directory and checks every table. The figure to watch on System ›
+  Backups is *last verified restore*, not *enabled*.
+
+Setting a target is the intent to replicate, so there is no second switch to
+forget. `VAYUKEEP_OFF=true` turns it off explicitly. Design: ADR-0145.
 
 ---
 
-## Restore Procedure
+## By hand: `vayupress backup`
 
 ```bash
-# 1. Stop service
-systemctl stop vayupress
+# A whole-install backup, taken while the service runs
+sudo vayupress backup -out /root/vayupress-$(date +%F).vpbk
 
-# 2. Choose backup
-BACKUP_DIR=$(ls -td /backup/vayupress/*/ | head -1)
-echo "Restoring from: ${BACKUP_DIR}"
-
-# 3. Verify backup before restore
-sqlite3 "${BACKUP_DIR}/vayupress.db" "PRAGMA integrity_check;" | grep -q "^ok$"
-
-# 4. Restore DB
-cp "${BACKUP_DIR}/vayupress.db" /data/vayupress.db
-rm -f /data/vayupress.db-wal /data/vayupress.db-shm
-
-# 5. Restore plugins if needed
-cp -a "${BACKUP_DIR}/plugins/" /opt/vayupress/plugins/
-
-# 6. Verify signing key is present (not backed up here — comes from cold storage)
-test -f /etc/vayupress/signing.key || echo "WARNING: signing key missing — restore from cold storage"
-
-# 7. Start service
-systemctl start vayupress
-journalctl -u vayupress -f
-
-# 8. Smoke test
-curl -sf http://localhost:8080/healthz | jq .
+# Read the passphrase from a file instead of the prompt
+sudo vayupress backup -out site.vpbk -passphrase-file /root/backup.pass
 ```
 
----
-
-## Restore Verification Checklist
-
-After every restore (planned or emergency):
-
-- [ ] `PRAGMA integrity_check` returns `ok`
-- [ ] Article count matches expected (compare with monitoring baseline)
-- [ ] `/healthz` returns 200
-- [ ] At least one article renders correctly with valid signature
-- [ ] Plugin subprocess starts (check logs for `started plugin subprocess`)
-- [ ] Metrics endpoint responds: `curl http://localhost:8080/metrics`
-- [ ] No `level=error` entries in first 5 minutes of logs
+The passphrase is never read from the command line, so it does not land in
+shell history or `ps`. Without it the file cannot be read by any tool — store
+the two apart.
 
 ---
 
-## Signing Key — Cold Storage Procedure
+## Restore
 
-The Ed25519 signing key is **not** stored in the automated backup.  
-It must be stored separately in encrypted cold storage (e.g., age-encrypted file on offline media).
+Always verify an archive before trusting it. `-verify` checks the passphrase,
+every authentication tag, the chain between frames and the final marker, and
+writes nothing:
 
 ```bash
-# Encrypt key for cold storage (requires age)
-age -r <recipient-public-key> /etc/vayupress/signing.key > signing.key.age
-
-# Decrypt for restore
-age -d -i <recipient-private-key> signing.key.age > /etc/vayupress/signing.key
-chmod 600 /etc/vayupress/signing.key
-chown vayupress: /etc/vayupress/signing.key
+vayupress restore -in /mnt/backup/vayupress/vk-20261016-104500.vpbk -verify
 ```
+
+Then restore:
+
+```bash
+sudo systemctl stop vayupress
+sudo vayupress restore -in /mnt/backup/vayupress/vk-20261016-104500.vpbk -dest /var/lib/vayupress
+sudo chown -R www-data:www-data /var/lib/vayupress   # the service runs as www-data
+sudo systemctl start vayupress
+curl -s http://localhost:8080/health
+```
+
+- **Nothing is deleted.** The directory you replaced is moved aside, and the
+  restore prints where (`/var/lib/vayupress.replaced-<timestamp>`). Keep it
+  until you have confirmed the restored generation is the one you wanted.
+- **A failed restore changes nothing.** Entries are staged in a sibling
+  directory and moved into place only after the archive reaches its
+  authenticated final marker; a truncated or tampered archive is refused
+  before the live directory is touched.
+- **From the console.** VayuOS → System › Backups can also import an archive;
+  the restore is staged and applied atomically on the next start, with a
+  safety copy of the current database taken first.
+
+Choosing a generation by time, and what to do when a drill fails, are
+DR-06 and DR-07 in [disaster-recovery.md](disaster-recovery.md).

@@ -13,7 +13,7 @@ VayuPress follows [Semantic Versioning 2.0.0](https://semver.org/):
 - **MINOR** — new backwards-compatible functionality
 - **PATCH** — backwards-compatible bug fixes
 
-Current version: tracked in `internal/config/version.go`.
+Current version: `.release-version` at the repository root, compiled into the binary as `Version` in `cmd/vayupress/main.go` (reported by `/health`).
 
 ---
 

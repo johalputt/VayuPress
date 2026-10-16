@@ -1,7 +1,7 @@
 # System Modes — VayuPress
 
 **Status:** Authoritative  
-**Date:** 2026-06-13  
+**Date:** 2026-06-13 (reviewed against the code 2026-10-16)  
 **Package:** `internal/mode`
 
 VayuPress operates in one of six system modes. The current mode is held by
@@ -15,11 +15,11 @@ validated against the allowed graph and logged as structured JSON.
 | Mode | Value | Description |
 |------|-------|-------------|
 | **Normal** | `normal` | All subsystems fully operational |
-| **Degraded** | `degraded` | Partial capability — SLO error budget low; feature work paused |
-| **ReadOnly** | `read-only` | Writes refused — WAL corruption or migration drift detected |
-| **Recovery** | `recovery` | Active recovery operation in progress |
+| **Degraded** | `degraded` | Entered when outbox commits keep failing (`internal/fault`), or when an error budget is exhausted and the operator has turned on the budget actuator (`internal/budget`, off by default) |
+| **ReadOnly** | `read-only` | Entered on repeated WAL write faults or any migration fault (`internal/fault`) |
+| **Recovery** | `recovery` | An operator-driven recovery in progress |
 | **Maintenance** | `maintenance` | Operator-initiated planned downtime |
-| **Quarantined** | `quarantined` | Plugin/federation isolation active |
+| **Quarantined** | `quarantined` | Entered when plugin invocations keep faulting; plugins are not run |
 
 ---
 
@@ -43,19 +43,25 @@ Normal ──→ Degraded ──→ Normal
 
 ---
 
-## Subsystem Behaviour by Mode
+## What each mode gates
 
-| Subsystem | Normal | Degraded | ReadOnly | Recovery | Maintenance | Quarantined |
-|-----------|--------|----------|----------|----------|-------------|-------------|
-| Article writes | ✓ | ✓ | ✗ | ✗ | ✗ | ✓ |
-| Federation send | ✓ | throttled | ✗ | ✗ | ✗ | ✗ |
-| Plugin invocation | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ |
-| Search indexing | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ |
-| Migration apply | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ |
-| Signing | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+Read from the code that consults the mode; a behaviour not listed here does not
+change with the mode.
 
-Signing is **always active** — it is a kernel invariant and cannot be
-suspended by any mode.
+| Behaviour | Refused in | Where |
+|-----------|-----------|-------|
+| Running a plugin | Quarantined | `internal/sandbox/subprocess.go` |
+| Applying an update | ReadOnly, Quarantined, Maintenance | `update.PreflightMode` |
+| IndexNow submissions | ReadOnly, Quarantined, Maintenance | `cmd/vayupress/app.go` |
+| Importing media, unfurling an embed (editor and the connector) | ReadOnly, Quarantined | `handlers_media_import.go`, `handlers_embed_unfurl.go`, `mcp_server.go` |
+| Saving or resetting the theme, changing branding | ReadOnly, Quarantined | `handlers_theme.go`, `handlers_theme_assets.go` |
+
+**Not gated today:** post and page writes through the editor, the API and the
+connector do not consult the mode, so ReadOnly does not yet refuse them. That
+is tracked as a defect, not a design.
+
+The current mode is shown in the console's system bar on every page, and on
+Home's *This install*.
 
 ---
 

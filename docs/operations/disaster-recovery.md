@@ -20,87 +20,75 @@
 
 **Trigger**: Server unreachable, disk failure, or provider incident.
 
+What you need: a VayuKeep generation (or a `vayupress backup` archive) from
+somewhere other than the lost server, its passphrase, and a copy of
+`/etc/vayupress/env`.
+
 ```bash
-# 1. Provision new Ubuntu 24.04 LTS server (8 GB RAM min)
+# 1. Provision a new Ubuntu 24.04 LTS server (8 GB RAM, 4 vCPU, 50 GB)
 
-# 2. Copy backup from offsite storage to new server
-scp /path/to/vayupress-backup-YYYYMMDD.tar.gz root@new-server:/tmp/
+# 2. Install VayuPress on it, for the same domain
+curl -sSL https://raw.githubusercontent.com/johalputt/vayupress/main/scripts/deploy-vayupress.sh | bash
 
-# 3. Extract backup
-tar -xzf /tmp/vayupress-backup-YYYYMMDD.tar.gz -C /var/backups/vayupress/
+# 3. Copy the archive across, verify it, and restore over the fresh install
+scp vk-YYYYMMDD-HHMMSS.vpbk root@new-server:/root/
+vayupress restore -in /root/vk-YYYYMMDD-HHMMSS.vpbk -verify
+sudo systemctl stop vayupress
+sudo vayupress restore -in /root/vk-YYYYMMDD-HHMMSS.vpbk -dest /var/lib/vayupress
+sudo chown -R www-data:www-data /var/lib/vayupress
 
-# 4. Run fresh deploy (restores DB from backup automatically)
-git clone https://github.com/johalputt/vayupress.git
-cd vayupress
-sudo VAYU_RESTORE_FROM=/var/backups/vayupress/vayupress-YYYYMMDD.db \
-     ./scripts/deploy-vayupress.sh
+# 4. Put back /etc/vayupress/env (secrets, VayuKeep target, Cloudflare token)
+sudo systemctl start vayupress
 
-# 5. Update DNS A record to new server IP
+# 5. Point the A/AAAA records at the new server; certbot issues certificates
+#    again on the next installer run or renewal
 
-# 6. Verify health endpoints
-curl -sf https://yourdomain.com/health | jq .
-curl -sf https://yourdomain.com/health/ethics | jq .
+# 6. Verify
+curl -s http://localhost:8080/health
 ```
 
-**Expected recovery time**: 45–60 minutes.
+**Expected recovery time**: 45–60 minutes, most of it DNS.
 
 ---
 
 ## DR-02: Database Corruption
 
-**Trigger**: `PRAGMA integrity_check` returns errors, application refuses to start.
+**Trigger**: `SQLITE_CORRUPT` or disk I/O errors in the log, the service
+failing to start on a database error, or the install in **read-only** mode.
 
-```bash
-# 1. Stop the service
-sudo systemctl stop vayupress
-
-# 2. Verify corruption
-sqlite3 /var/www/vayupress/vayupress.db "PRAGMA integrity_check;"
-
-# 3. Attempt WAL recovery first
-sqlite3 /var/www/vayupress/vayupress.db "PRAGMA wal_checkpoint(TRUNCATE);"
-sqlite3 /var/www/vayupress/vayupress.db "PRAGMA integrity_check;"
-
-# 4. If still corrupt — restore from last nightly backup
-LATEST=$(ls -t /var/backups/vayupress/*.db | head -1)
-sudo cp /var/www/vayupress/vayupress.db /var/www/vayupress/vayupress.db.corrupt
-sudo cp "$LATEST" /var/www/vayupress/vayupress.db
-sudo chown vayupress:vayupress /var/www/vayupress/vayupress.db
-
-# 5. Verify restored DB
-sqlite3 /var/www/vayupress/vayupress.db "PRAGMA integrity_check;"
-sqlite3 /var/www/vayupress/vayupress.db "PRAGMA user_version;"
-
-# 6. Restart service
-sudo systemctl start vayupress
-curl -sf http://localhost:8080/health/storage | jq .
-```
+Follow [wal-corruption-recovery.md](wal-corruption-recovery.md): stop the
+service, preserve the damaged files, try a WAL checkpoint, and otherwise
+restore the newest generation that verifies (DR-07).
 
 ---
 
 ## DR-03: Migration Checksum Drift (Tamper Detected)
 
-**Trigger**: Service refuses to start with "migration checksum drift" in logs.
+**Trigger**: The service refuses to start with `migration drift` in the log.
+At every start the server compares each applied migration's recorded SHA-256
+with the migration shipped in the binary (`internal/db`), and stops if one
+differs.
 
 ```bash
-# 1. Check which migration is flagged
-sudo journalctl -u vayupress -n 50 | grep "checksum"
+# 1. See which migrations drifted
+sudo journalctl -u vayupress -n 50 | grep -i drift
 
-# 2. Export current checksums
-sqlite3 /var/www/vayupress/vayupress.db \
-  "SELECT version, checksum FROM schema_migrations ORDER BY version;"
-
-# 3. Compare against known-good checksums from CHANGELOG.md or release notes
-
-# 4. If legitimate drift (intentional schema edit) — reset migration state:
-#    WARNING: only do this if you authored the schema change
-sqlite3 /var/www/vayupress/vayupress.db \
-  "UPDATE schema_migrations SET checksum='<new-checksum>' WHERE version='<version>';"
-
-# 5. If unauthorized drift — treat as security incident; rotate all credentials:
-sudo /usr/local/bin/vayupress-rotate-keys.sh
-# Then restore DB from last known-good backup (see DR-02)
+# 2. Read what the database recorded for them
+sqlite3 /var/lib/vayupress/vayupress.db \
+  "SELECT version, checksum, applied_at FROM schema_migrations ORDER BY version;"
 ```
+
+A shipped migration is never edited after release, so drift means the
+database's record was changed, or the binary is not the one released. Treat it
+as a security incident:
+
+1. Check the binary: `go version -m /usr/local/bin/vayupress` names the module
+   and version it was built from; compare it with the release's signature.
+2. Change every administrator's password and revoke API keys and connector
+   grants (VayuOS → Settings › Team, › API keys).
+3. Restore the newest generation from **before** the drift appeared (DR-07),
+   and file the incident per
+   [incident-response.md](../security/incident-response.md).
 
 ---
 
@@ -195,7 +183,8 @@ vayupress restore -in "$VAYUKEEP_TARGET/vk-20260727-104500.vpbk" -verify
 
 # 3. Stop the service, then restore
 sudo systemctl stop vayupress
-vayupress restore -in "$VAYUKEEP_TARGET/vk-20260727-104500.vpbk" -dest /var/lib/vayupress
+sudo vayupress restore -in "$VAYUKEEP_TARGET/vk-20260727-104500.vpbk" -dest /var/lib/vayupress
+sudo chown -R www-data:www-data /var/lib/vayupress
 
 # 4. Start, and confirm
 sudo systemctl start vayupress
