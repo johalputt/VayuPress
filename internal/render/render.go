@@ -103,6 +103,11 @@ var (
 func Init(staticDir string) {
 	policy = bluemonday.UGCPolicy()
 	allowBlockComponents(policy)
+	// UGCPolicy marks every link nofollow, the site's own included: a preset
+	// for text written by strangers, which a post is not. Whether a post's
+	// links to other sites are marked is the operator's switch, applied by
+	// nofollowElsewhere; a link within the site is never marked.
+	policy.RequireNoFollowOnLinks(false)
 	WriteCSSAssets(staticDir)
 	initPortalCSSVersion(staticDir)
 }
@@ -257,11 +262,14 @@ type SiteSettings struct {
 	AuthorBio   string // short author bio for the article author box
 	// ShowMembership renders the public Sign in / Sign up buttons in the nav.
 	ShowMembership bool
-	PrimaryLight   string // --pico-primary for light mode (hex)
-	PrimaryDark    string // --pico-primary for dark mode (hex)
-	AccentLight    string // --vayu-accent for light mode (hex)
-	AccentDark     string // --vayu-accent for dark mode (hex)
-	CustomCSS      string // operator-supplied CSS, served via /theme.css
+	// NoFollowLinks marks a post's links to other sites rel=nofollow
+	// (settings.KeyNoFollowLinks; nofollowElsewhere).
+	NoFollowLinks bool
+	PrimaryLight  string // --pico-primary for light mode (hex)
+	PrimaryDark   string // --pico-primary for dark mode (hex)
+	AccentLight   string // --vayu-accent for light mode (hex)
+	AccentDark    string // --vayu-accent for dark mode (hex)
+	CustomCSS     string // operator-supplied CSS, served via /theme.css
 
 	// Declarative <head> capabilities (validated on write, escaped on render).
 	// These replace raw head HTML so no arbitrary markup — meta-refresh
@@ -766,10 +774,14 @@ const CommentsJS = `(function(){
   // parse stays text too. Built with createElement and
   // textContent, so nothing a commenter types can become markup. rel=ugc and
   // nofollow tell search engines a visitor posted it, so a spam link earns
-  // nothing; there is no noreferrer, so the linked site still sees the visit
+  // nothing, when the operator's switch for the site's links says so
+  // (links_nofollow in the list's answer; comments are approved before they
+  // appear, so it is off unless turned on);
+  // there is no noreferrer, so the linked site still sees the visit
   // came from here (the site's Referrer-Policy sends the origin, never the page).
   // Sentence punctuation after an address, and an unbalanced closing
   // parenthesis, belong to the sentence, not the link.
+  var linksNoFollow=true;
   function fillBody(el,text){
     while(el.firstChild)el.removeChild(el.firstChild);
     var s=esc(text),re=/https?:\/\/[^\s<>"']+/g,last=0,m;
@@ -787,7 +799,7 @@ const CommentsJS = `(function(){
         var a=document.createElement('a');a.href=u.href;a.textContent=raw;
         // A link to this site is an internal link: same tab, and no nofollow,
         // which would throw away the site's own internal linking.
-        if(u.host!==location.host){a.rel='ugc nofollow noopener';a.target='_blank';}
+        if(u.host!==location.host){a.rel=linksNoFollow?'ugc nofollow noopener':'noopener';a.target='_blank';}
         el.appendChild(a);
       }else{el.appendChild(document.createTextNode(raw));}
       if(trail)el.appendChild(document.createTextNode(trail));
@@ -952,7 +964,7 @@ const CommentsJS = `(function(){
       listEl.appendChild(el);});
   }
   function load(){fetch('/api/v1/articles/'+encodeURIComponent(slug)+'/comments',{headers:{'Accept':'application/json'}})
-    .then(function(r){return r.ok?r.json():{comments:[]};}).then(function(d){render(d.comments||[]);}).catch(function(){render([]);});}
+    .then(function(r){return r.ok?r.json():{comments:[]};}).then(function(d){linksNoFollow=d.links_nofollow!==false;render(d.comments||[]);}).catch(function(){render([]);});}
   var h=document.createElement('h2');h.className='vayu-comment-heading';h.textContent='Comments';
   root.appendChild(h);root.appendChild(listEl);
   var compose=document.createElement('div');compose.className='vayu-comment-compose';root.appendChild(compose);
@@ -1686,6 +1698,9 @@ func renderContentHTML(raw string) string {
 	}
 	for token, svg := range drawings {
 		safe = strings.ReplaceAll(safe, token, svg)
+	}
+	if getActiveSettings().NoFollowLinks {
+		safe = nofollowElsewhere(safe, config.Cfg.Domain)
 	}
 	return safe
 }
@@ -2878,7 +2893,12 @@ func WaitForPurges() { purgeWG.Wait() }
 // an older binary kept serving HTML without them. Bumping the schema forces
 // every cached post to re-render (lazily, one per request) on the next deploy
 // so the trending/related sections finally appear under existing posts.
-const cacheSchema = "4"
+//
+// v5: the article sanitiser changed what every post's HTML says without a
+// template or stylesheet change: inline diagrams are drawn (svg_content.go)
+// and links lost the nofollow bluemonday's preset gave them (the site's links
+// switch, nofollowElsewhere). A post cached before kept its old links.
+const cacheSchema = "5"
 
 // cacheFingerprint summarises everything baked into the running binary that
 // affects pre-rendered public HTML: the release version, the manual cache

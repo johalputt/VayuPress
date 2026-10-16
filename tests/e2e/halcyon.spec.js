@@ -136,6 +136,54 @@ test.describe("Halcyon", () => {
     }
   }
 
+  // One switch in Settings › Writing, saved in one click, asks search engines
+  // not to follow links to other sites in every post and every comment, and
+  // switched back off they are followed again: off is the default, where
+  // bluemonday's preset had marked every link, the site's own included. The
+  // comment list is the server's own answer, with one comment carrying a link
+  // added to it, so the comment's rel is the server's switch read by the widget.
+  test("one switch marks the site's links to other sites nofollow, in posts and comments", async ({ page }) => {
+    await page.route("**/api/v1/articles/halcyon-long/comments", async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      const real = await (await route.fetch()).json();
+      real.comments = [{ id: "c1", parent_id: "", author: "Asha", body: "See https://example.org/notes for more.", created_at: new Date().toISOString(), status: "approved" }];
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify(real) });
+    });
+    const sw = page.locator("#s-links-nofollow");
+    const postLink = page.locator('.h .content a[href="https://vayupress.com"]');
+    const commentLink = page.locator('.vayu-comment-body a[href="https://example.org/notes"]');
+    const expectLinks = async (on) => {
+      await expect(async () => {
+        await page.goto("/halcyon-long");
+        if (on) await expect(postLink).toHaveAttribute("rel", "nofollow", { timeout: 1000 });
+        else await expect(postLink).not.toHaveAttribute("rel", /nofollow/, { timeout: 1000 });
+      }).toPass({ timeout: 15000, intervals: [1000, 2000] });
+      await expect(commentLink).toHaveAttribute("rel", on ? "ugc nofollow noopener" : "noopener");
+    };
+
+    await page.goto("/os/settings/writing");
+    await expect(sw, "off by default").not.toBeChecked();
+    await expectLinks(false);
+    try {
+      await page.goto("/os/settings/writing");
+      await sw.click();
+      await expect(page.locator("[data-settings-bar]"), "one click, no Save").toBeHidden();
+      await expect(sw).toBeEnabled();
+      await page.reload();
+      await expect(sw, "the click was saved").toBeChecked();
+      await expectLinks(true);
+    } finally {
+      await page.goto("/os/settings/writing");
+      if (await sw.isChecked()) {
+        await sw.click();
+        await expect(sw).toBeEnabled();
+      }
+      await page.reload();
+      await expect(sw).not.toBeChecked();
+    }
+    await expectLinks(false);
+  });
+
   // A diagram the author drew in the post is drawn: the technical-debt
   // guide's capacity chart, as johal.in stores it, as wide as the column at
   // every width, in its own proportions (its viewBox, written in lower case

@@ -3901,29 +3901,10 @@ func (a *App) applyRenderSettings(ctx context.Context) {
 	// An invalid name is ignored (the previous zone is kept) rather than leaving
 	// every timestamp unrenderable; the settings form validates before saving.
 	_ = config.SetSiteTimeZone(sv[settings.KeySiteTimezone])
-	render.SetActiveSettings(render.SiteSettings{
-		Name:            sv[settings.KeySiteName],
-		Tagline:         sv[settings.KeySiteTagline],
-		Description:     sv[settings.KeySiteDescription],
-		Author:          sv[settings.KeySiteAuthor],
-		AuthorBio:       sv[settings.KeyAuthorBio],
-		ShowMembership:  sv[settings.KeyMembershipButtons] == "true",
-		PrimaryLight:    sv[settings.KeyThemePrimaryLight],
-		PrimaryDark:     sv[settings.KeyThemePrimaryDark],
-		AccentLight:     sv[settings.KeyThemeAccentLight],
-		AccentDark:      sv[settings.KeyThemeAccentDark],
-		CustomCSS:       sv[settings.KeyThemeCustomCSS],
-		Keywords:        sv[settings.KeyHeadKeywords],
-		ThemeColor:      sv[settings.KeyHeadThemeColor],
-		Robots:          sv[settings.KeyHeadRobots],
-		VerifyGoogle:    sv[settings.KeyHeadVerifyGoogle],
-		VerifyBing:      sv[settings.KeyHeadVerifyBing],
-		NavJSON:         sv[settings.KeyNavItems],
-		FooterJSON:      sv[settings.KeyFooterConfig],
-		OGImage:         render.OGImagePath(sv[settings.KeyThemeOGImage]),
-		ShowHero:        sv[settings.KeyHomeHero] == "true",
-		CommentsEnabled: sv[settings.KeyFeatureComments] != "off",
-	})
+	// The one settings→render mapping (siteSettingsFromValues). A copy of it
+	// here missed a field added there, so a save of that setting reached the
+	// pages only at the next restart.
+	render.SetActiveSettings(siteSettingsFromValues(sv))
 }
 
 // handleOSQuickCreatePost creates a draft post from the dashboard quick-compose.

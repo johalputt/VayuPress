@@ -94,11 +94,13 @@ func TestWriteLegacyGolden(t *testing.T) {
 // it from these inputs (TestWriteLegacyGolden, run there); this build must
 // match it byte for byte, the three widget script versions aside.
 //
-// Two changes were made to every theme on purpose, and article.html was
+// Three changes were made to every theme on purpose, and article.html was
 // re-recorded for each alone: a post's head (its description cut at a word,
 // the robots and author meta, the structured data built by
-// seo.ArticleJSONLD), and its inline diagram, drawn where its labels had
-// leaked as loose text (svg_content.go; the word count no longer counts them).
+// seo.ArticleJSONLD); its inline diagram, drawn where its labels had leaked
+// as loose text (svg_content.go; the word count no longer counts them); and
+// its links, which lost the rel=nofollow bluemonday's preset put on every one
+// (the site's links switch, off by default).
 // Every other page is still the pre-Halcyon recording.
 func TestSharedTemplatesUnchangedByHalcyon(t *testing.T) {
 	Init(t.TempDir())

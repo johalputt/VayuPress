@@ -296,7 +296,10 @@ func (a *App) handleCommentList(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, pc)
 	}
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"comments": out})
+	// links_nofollow is the operator's switch for the site's links
+	// (settings.KeyNoFollowLinks), read by the widget as it draws a comment's.
+	nofollow := a.siteSettings != nil && a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyNoFollowLinks) == "true"
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"comments": out, "links_nofollow": nofollow})
 }
 
 // PATCH /api/v1/articles/{slug}/comments/{id}

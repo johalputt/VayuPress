@@ -32,6 +32,9 @@ type settingField struct {
 	// Kind picks the control: text, email, textarea, toggle, color, timezone,
 	// scheme (light / dark / match system).
 	Kind, Placeholder, Default string
+	// Instant is a toggle that saves as it is switched, outside the page's
+	// Save bar: one click, for a switch whose whole meaning is on or off.
+	Instant bool
 }
 
 // settingsGroup is one band of rows under a heading. Custom draws a band whose
@@ -100,6 +103,9 @@ var settingsCategories = []settingsCategory{
 			{Title: "Contact form", Hint: "On any page made from the Contact template", Fields: []settingField{
 				{ID: "s-contact-email", Key: settings.KeyContactEmail, Label: "Send messages to", Hint: "Each message from a page's contact form is emailed here through VayuMail. To add the form to a page, type [[contact-form]] in it; [[contact-form: your thank-you]] sets that page's own confirmation.", Kind: "email", Placeholder: "you@example.com"},
 				{ID: "s-contact-autoreply", Key: settings.KeyContactAutoReply, Label: "Reply to the sender", Hint: "Sends the visitor a note that their message arrived.", Kind: "toggle", Default: "true"},
+			}},
+			{Title: "Links", Hint: "In every post and every comment", Fields: []settingField{
+				{ID: "s-links-nofollow", Key: settings.KeyNoFollowLinks, Label: "Ask search engines not to follow links to other sites", Hint: "On, each link to another site carries rel=\"nofollow\" (in a comment, rel=\"ugc nofollow\"). Off, search engines follow them as links you chose. A link within this site is never marked. Saved as you switch it.", Kind: "toggle", Default: "false", Instant: true},
 			}},
 		}},
 	{Slug: "members", Label: "Members", Icon: "audience",
@@ -170,6 +176,9 @@ func settingControl(f settingField, value string) ui.HTML {
 	}
 	id, key, v := html.EscapeString(f.ID), html.EscapeString(f.Key), html.EscapeString(value)
 	attrs := `id="` + id + `" data-setting-key="` + key + `"`
+	if f.Instant {
+		attrs += ` data-setting-instant`
+	}
 	switch f.Kind {
 	case "textarea":
 		return ui.HTML(`<textarea class="textarea" rows="3" ` + attrs + `>` + v + `</textarea>`)
@@ -405,7 +414,7 @@ function fields(){return Array.prototype.slice.call(document.querySelectorAll('[
 function valueOf(el){return el.type==='checkbox'?(el.checked?'true':'false'):el.value;}
 fields().forEach(function(el){el.dataset.initial=valueOf(el);});
 function rowOf(el){return el.closest('.settings-row, .settings-panel');}
-function changed(){return fields().filter(function(el){return valueOf(el)!==el.dataset.initial;});}
+function changed(){return fields().filter(function(el){return !('settingInstant' in el.dataset)&&valueOf(el)!==el.dataset.initial;});}
 function refresh(){
   var c=changed();
   fields().forEach(function(el){var row=rowOf(el);if(row)row.classList.toggle('is-changed',c.indexOf(el)>=0);});
@@ -435,6 +444,15 @@ function saveOne(el){
     });
   });
 }
+// An instant switch saves as it is switched, and goes back if refused.
+document.querySelectorAll('[data-setting-instant]').forEach(function(el){
+  el.addEventListener('change',function(){
+    el.disabled=true;
+    saveOne(el).then(function(){el.dataset.initial=valueOf(el);vpToast('Saved','ok');})
+    .catch(function(e){el.checked=el.dataset.initial==='true';vpToast(e.message,'error');})
+    .then(function(){el.disabled=false;});
+  });
+});
 var saveBtn=document.querySelector('[data-settings-save]');
 var discardBtn=document.querySelector('[data-settings-discard]');
 if(saveBtn)saveBtn.addEventListener('click',function(){

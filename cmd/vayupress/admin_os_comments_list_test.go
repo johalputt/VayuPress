@@ -137,3 +137,29 @@ func TestACommentIsAnsweredOnlyOnceApproved(t *testing.T) {
 		t.Errorf("the reply is %s <%s>, %s, under %s; want the signed-in operator, live, under the comment", author, email, status, parent)
 	}
 }
+
+// A post's comment list says whether its links are nofollow: the site's one
+// links switch (settings.KeyNoFollowLinks), off unless the operator turns it
+// on, since a comment appears only once it is approved.
+func TestTheCommentListCarriesTheSitesLinksSwitch(t *testing.T) {
+	openMigratedDB(t)
+	seedListPost(t, "on-a-post", "On a post", "published", 0, 0, "2026-09-20 10:00:00")
+	a := &App{siteSettings: settings.New(dbpkg.DB), commentStore: comments.New(dbpkg.DB)}
+	list := func() string {
+		req := httptest.NewRequest("GET", "/api/v1/articles/on-a-post/comments", nil)
+		rc := chi.NewRouteContext()
+		rc.URLParams.Add("slug", "on-a-post")
+		rec := httptest.NewRecorder()
+		a.handleCommentList(rec, req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rc)))
+		return rec.Body.String()
+	}
+	if got := list(); !strings.Contains(got, `"links_nofollow": false`) {
+		t.Errorf("by default: %s", got)
+	}
+	if err := a.siteSettings.SetMany(context.Background(), settings.ForPrimary(), map[string]string{settings.KeyNoFollowLinks: "true"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := list(); !strings.Contains(got, `"links_nofollow": true`) {
+		t.Errorf("switched on: %s", got)
+	}
+}

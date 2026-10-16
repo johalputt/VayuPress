@@ -153,6 +153,14 @@ const (
 	// moved the "on"/"off" the Pages surface used to store onto these.
 	KeyContactAutoReply = "contact.autoreply"
 
+	// KeyNoFollowLinks asks search engines not to follow links to other
+	// sites, in every post and every comment: one switch for the site, stored
+	// "true" or "false". "true" marks a post's links rel=nofollow and a
+	// comment's rel="ugc nofollow". A link within the site is never marked.
+	// Off by default: what a post says is written by the site's own writers,
+	// and a comment appears only once it is approved.
+	KeyNoFollowLinks = "links.nofollow"
+
 	// KeyMediaAlt stores a JSON object mapping a content-addressed media filename
 	// to its operator-authored alt text, edited in the Media library. Used as the
 	// default alt when inserting that image. Absent keys simply have no default.
@@ -472,6 +480,7 @@ var RobotsOptions = map[string]bool{
 // editor round-trips it. Anything else is configuration, credentials, network
 // policy or measurements about this specific machine.
 var NotPortable = map[string]bool{
+	KeyNoFollowLinks:              true,
 	KeyThemeStudioDraft:           true,
 	KeyBrandFavicon:               true,
 	KeySiteTimezone:               true,
@@ -576,6 +585,7 @@ var NotPortable = map[string]bool{
 
 // AllKeys is the canonical set of settings keys accepted by Set/SetMany.
 var AllKeys = map[string]bool{
+	KeyNoFollowLinks:    true,
 	KeyThemeStudioDraft: true,
 	KeyTalkHost:         true,
 	// The startup-duration ring (ADR-0155 P4). Written by the process itself on
@@ -704,6 +714,7 @@ var AllKeys = map[string]bool{
 
 // Defaults are returned when no DB value exists for a key.
 var Defaults = map[string]string{
+	KeyNoFollowLinks:           "false",
 	KeySiteName:                "VayuPress",
 	KeySiteTagline:             "Publishing as an adaptive runtime.",
 	KeySiteDescription:         "Durable by design, observable end to end.",
