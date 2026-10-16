@@ -361,3 +361,26 @@ func TestVerifySecretArgon2idEmptyHashConstantTime(t *testing.T) {
 		t.Error("wrong password must not verify")
 	}
 }
+
+// Every method that can change state is checked, not a list of the three in
+// use: a PATCH (or any method a route adds later) without a token is refused,
+// as a POST is. Only GET, HEAD and OPTIONS pass unchecked.
+func TestCSRFMiddlewareChecksEveryWritingMethod(t *testing.T) {
+	handler := CSRFTokenMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+	for _, m := range []string{"POST", "PUT", "DELETE", "PATCH", "PROPPATCH", "MKCOL"} {
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, httptest.NewRequest(m, "/os/api/x", nil))
+		if rr.Code != 403 {
+			t.Errorf("%s without a token: %d, want 403", m, rr.Code)
+		}
+	}
+	for _, m := range []string{"HEAD", "OPTIONS"} {
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, httptest.NewRequest(m, "/os/api/x", nil))
+		if rr.Code != 200 {
+			t.Errorf("%s: %d, want it to pass", m, rr.Code)
+		}
+	}
+}

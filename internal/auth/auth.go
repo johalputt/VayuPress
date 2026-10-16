@@ -879,7 +879,10 @@ func CSRFTokenMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete {
+		// Every method but the three that change nothing is checked. The list
+		// was POST, PUT and DELETE, so a PATCH, or any method a route added
+		// later, passed with no token at all (the 3.18.3 audit).
+		if r.Method != http.MethodHead && r.Method != http.MethodOptions {
 			// API-key / bearer requests are not cookie-authenticated, so CSRF (which
 			// only defends cookie auth against cross-site forgery) does not apply — a
 			// third-party site cannot obtain the bearer token. This lets trusted
