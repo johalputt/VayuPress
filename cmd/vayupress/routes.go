@@ -274,9 +274,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/api/v1/articles/{slug}", a.handleGetArticle)
 	r.Get("/api/v1/articles/{slug}/comments", a.handleCommentList)
 	r.Get("/api/v1/articles/{slug}/toc", a.handleArticleTOC)
-	r.Post("/api/v1/articles/{slug}/comments", a.handleCommentSubmit)
-	r.Patch("/api/v1/articles/{slug}/comments/{id}", a.handleCommentEdit)    // edit your own comment
-	r.Delete("/api/v1/articles/{slug}/comments/{id}", a.handleCommentDelete) // delete own (member) / any (operator)
+	r.With(refuseCrossOrigin).Post("/api/v1/articles/{slug}/comments", a.handleCommentSubmit)
+	r.With(refuseCrossOrigin).Patch("/api/v1/articles/{slug}/comments/{id}", a.handleCommentEdit)    // edit your own comment
+	r.With(refuseCrossOrigin).Delete("/api/v1/articles/{slug}/comments/{id}", a.handleCommentDelete) // delete own (member) / any (operator)
 	r.Post("/api/v1/contact", a.handleContactSubmit)
 	r.Get("/api/v1/search", a.handleSearch)
 	r.Get("/api/v1/tags", a.handleListTags)
@@ -386,12 +386,12 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Post("/api/v1/members/login", a.handleMemberLogin)
 	r.Post("/members/login", a.handleMemberLogin) // HTML form variant from the paywall
 	r.Get("/members/verify", a.handleMemberVerify)
-	r.Post("/members/logout", a.handleMemberLogout)
+	r.With(refuseCrossOrigin).Post("/members/logout", a.handleMemberLogout)
 	// Premium membership: sign-in page, member portal/account, and the public
 	// pricing page + tier catalogue.
 	r.Get("/members", a.handleMemberSigninPage)
 	r.Get("/members/account", a.handleMemberAccount)
-	r.Post("/members/account", a.handleMemberAccountUpdate)
+	r.With(refuseCrossOrigin).Post("/members/account", a.handleMemberAccountUpdate)
 	// VayuPortal overlay backend — capability snapshot + VayuMail credential login.
 	r.Get("/api/v1/members/me", a.handleMemberMe)
 	r.Get("/api/v1/members/comments", a.handleMemberComments)
@@ -399,17 +399,17 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// member-authed upload / choose. The member cookie is SameSite=Lax, so a
 	// cross-site POST never carries it (CSRF-safe), matching the account endpoints.
 	r.Get("/api/v1/members/avatar/{id}", a.handleMemberAvatarServe)
-	r.Post("/api/v1/members/avatar", a.handleMemberAvatarUpload)
-	r.Post("/api/v1/members/avatar/choose", a.handleMemberAvatarChoose)
+	r.With(refuseCrossOrigin).Post("/api/v1/members/avatar", a.handleMemberAvatarUpload)
+	r.With(refuseCrossOrigin).Post("/api/v1/members/avatar/choose", a.handleMemberAvatarChoose)
 	// Paid-member mailbox: entitlement/status, availability check, and claim
 	// (provisions a real VayuMail mailbox with PGP + quota; reserved names refused).
 	r.Get("/api/v1/members/mailbox", a.handleMemberMailboxStatus)
 	r.Get("/api/v1/members/mailbox/available", a.handleMemberMailboxAvailable)
-	r.Post("/api/v1/members/mailbox/claim", a.handleMemberMailboxClaim)
-	r.Post("/api/v1/members/mailbox/premium/checkout", a.handleMemberMailIDCheckout)
-	r.Post("/api/v1/members/mailbox/premium/activate", a.handleMemberMailIDActivate)
+	r.With(refuseCrossOrigin).Post("/api/v1/members/mailbox/claim", a.handleMemberMailboxClaim)
+	r.With(refuseCrossOrigin).Post("/api/v1/members/mailbox/premium/checkout", a.handleMemberMailIDCheckout)
+	r.With(refuseCrossOrigin).Post("/api/v1/members/mailbox/premium/activate", a.handleMemberMailIDActivate)
 	r.Get("/api/v1/members/ads", a.handleMemberAdsStatus)
-	r.Post("/api/v1/members/ads", a.handleMemberAdSubmit)
+	r.With(refuseCrossOrigin).Post("/api/v1/members/ads", a.handleMemberAdSubmit)
 	// PublicDiscoveryRateLimit is the outermost of three controls on this route
 	// (the handler adds a per-IP lockout and a per-mailbox throttle). It was
 	// registered bare, outside every limiter group, and /api is in
@@ -420,9 +420,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// Lax + same-origin JSON — same protection model as the sibling member POSTs).
 	// begin returns {secret,uri,qr}; the QR + otpauth label auto-fill the account
 	// name when scanned into an authenticator app.
-	r.Post("/api/v1/members/totp/begin", a.handleMemberTOTPBegin)
-	r.Post("/api/v1/members/totp/verify", a.handleMemberTOTPVerify)
-	r.Post("/api/v1/members/totp/disable", a.handleMemberTOTPDisable)
+	r.With(refuseCrossOrigin).Post("/api/v1/members/totp/begin", a.handleMemberTOTPBegin)
+	r.With(refuseCrossOrigin).Post("/api/v1/members/totp/verify", a.handleMemberTOTPVerify)
+	r.With(refuseCrossOrigin).Post("/api/v1/members/totp/disable", a.handleMemberTOTPDisable)
 	// VayuMail-Mobile private-key sync — returns the authenticated caller's OWN
 	// mailbox PGP private key (armored) so the app can import it and decrypt
 	// received mail on-device (WKD only serves public keys). Same credential
@@ -480,12 +480,12 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// signed webhook any connected third-party payment processor can call. Both
 	// are no-ops until the Payments module is enabled / a gateway is configured.
 	r.Get("/checkout", a.handleCheckoutPage)
-	r.Post("/checkout", a.handleCheckoutPage)
-	r.Get("/checkout/success", a.handleCheckoutSuccess)              // Stripe return: verify + fulfil server-side
-	r.Get("/checkout/paypal/return", a.handleCheckoutPayPalReturn)   // PayPal return: verify + fulfil server-side
-	r.Get("/checkout/crypto/return", a.handleCheckoutCryptoReturn)   // BTCPay return: show status (webhook fulfils)
-	r.Post("/api/v1/payments/btcpay/webhook", a.handleBTCPayWebhook) // BTCPay settlement webhook (HMAC-verified)
-	r.Post("/checkout/post/{slug}", a.handlePostCheckout)            // buy one-time access to a single paid post
+	r.With(refuseCrossOrigin).Post("/checkout", a.handleCheckoutPage)
+	r.Get("/checkout/success", a.handleCheckoutSuccess)                           // Stripe return: verify + fulfil server-side
+	r.Get("/checkout/paypal/return", a.handleCheckoutPayPalReturn)                // PayPal return: verify + fulfil server-side
+	r.Get("/checkout/crypto/return", a.handleCheckoutCryptoReturn)                // BTCPay return: show status (webhook fulfils)
+	r.Post("/api/v1/payments/btcpay/webhook", a.handleBTCPayWebhook)              // BTCPay settlement webhook (HMAC-verified)
+	r.With(refuseCrossOrigin).Post("/checkout/post/{slug}", a.handlePostCheckout) // buy one-time access to a single paid post
 	r.Post("/api/v1/payments/webhook/{gateway}", a.handlePaymentWebhook)
 
 	// VayuMCP (ADR-0139): the Model Context Protocol connector at POST /mcp, so an
