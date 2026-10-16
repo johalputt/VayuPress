@@ -155,6 +155,17 @@ func (a *App) handleWorldSwitch(w http.ResponseWriter, r *http.Request) {
 // its loopback port, authenticating with the child's own API key. It never leaks a
 // clearnet session: the child checks the API key before any cookie.
 func (a *App) proxyToTorWorld(w http.ResponseWriter, r *http.Request) {
+	// A write forwarded from here never meets the parent's CSRF check (this
+	// answers before the route's own middleware runs), and the Tor world waives
+	// its check for the key injected below. The browser's Origin is the check
+	// that remains: a write from another origin of the same site, such as a
+	// hosted subdomain the operator opens while in Tor view, is refused.
+	refuseCrossOrigin(http.HandlerFunc(a.forwardToTorWorld)).ServeHTTP(w, r)
+}
+
+// forwardToTorWorld proxies the request into the Tor-world instance as its own
+// administrator.
+func (a *App) forwardToTorWorld(w http.ResponseWriter, r *http.Request) {
 	port := a.torSpace.Port()
 	key := a.torSpace.APIKey()
 	if port == 0 || key == "" {

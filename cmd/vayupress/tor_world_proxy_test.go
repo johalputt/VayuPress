@@ -138,3 +138,40 @@ func TestTorWorldMiddlewarePassthrough(t *testing.T) {
 		t.Error("/os/world must always reach the parent handler so the operator can flip back")
 	}
 }
+
+// A write proxied into the Tor world skips the parent's CSRF check (the proxy
+// answers before the route's middleware runs) and the Tor world waives its own
+// for the key the proxy injects. So a page from another origin of the same
+// site could change the Tor world as its signed-in operator. The proxy refuses
+// a write a browser sent from another origin; the console's own writes, and a
+// request with no Origin, pass.
+func TestTheTorWorldRefusesAWriteFromAnotherOrigin(t *testing.T) {
+	var forwarded int
+	child := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		forwarded++
+		_, _ = io.WriteString(w, "done")
+	}))
+	defer child.Close()
+	port := child.Listener.Addr().(*net.TCPAddr).Port
+	a := &App{torSpace: torspace.New("", t.TempDir()+"/vayupress.db", "child-secret-key", port)}
+	send := func(origin string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", "http://example.com/os/api/users", strings.NewReader("role=admin"))
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		rec := httptest.NewRecorder()
+		a.proxyToTorWorld(rec, req)
+		return rec
+	}
+	if rec := send("https://shop.example.com"); rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "cross-origin") || forwarded != 0 {
+		t.Errorf("a write from another origin: %d %q, forwarded %d", rec.Code, rec.Body.String(), forwarded)
+	}
+	for _, origin := range []string{"https://example.com", ""} {
+		if rec := send(origin); rec.Code != http.StatusOK {
+			t.Errorf("the console's own write (Origin %q): %d", origin, rec.Code)
+		}
+	}
+	if forwarded != 2 {
+		t.Errorf("forwarded %d of the console's two writes", forwarded)
+	}
+}

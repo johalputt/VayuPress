@@ -24,6 +24,9 @@ import (
 // a browser's cross-origin write (an app, a server, an old client) and goes
 // on, as it did. The host is compared without the scheme: behind a proxy
 // that ends TLS, the request arrives as http for a page served over https.
+//
+// The Tor-world proxy uses it too (proxyToTorWorld): no token is checked on
+// that path either.
 func refuseCrossOrigin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
