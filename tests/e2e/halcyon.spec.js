@@ -30,7 +30,11 @@ test.beforeAll(async ({ request }) => {
     const r = await request.post("/api/v1/articles", {
       data: { title: p.title, slug, content: fs.readFileSync(path.join(FIX, p.file), "utf8"), tags: p.tags },
     });
-    expect(r.ok(), `seeding ${slug}: ${r.status()}`).toBeTruthy();
+    // fullyParallel: each worker runs this, and a post another worker has
+    // just asked for is still in the write queue when this one looks, so its
+    // create answers 409 (slug already exists). That is the post being made;
+    // the wait below is what says it was.
+    expect(r.ok() || r.status() === 409, `seeding ${slug}: ${r.status()}`).toBeTruthy();
   }
   for (const slug of Object.keys(POSTS)) {
     await expect.poll(async () => (await request.get(`/api/v1/articles/${slug}`)).status(), { timeout: 30000 }).toBe(200);
