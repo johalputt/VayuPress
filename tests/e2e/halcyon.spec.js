@@ -136,6 +136,37 @@ test.describe("Halcyon", () => {
     }
   }
 
+  // A diagram the author drew in the post is drawn: the technical-debt
+  // guide's capacity chart, as johal.in stores it, as wide as the column at
+  // every width, in its own proportions (its viewBox, written in lower case
+  // by the sanitiser, is the browser's viewBox), its labels inside it and on
+  // its own dark ground.
+  test("a post's own diagram is drawn, in the column, with its labels", async ({ page }) => {
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/halcyon-long");
+      const d = await page.evaluate(() => {
+        const svg = document.querySelector(".h .content svg.vp-svg");
+        if (!svg) return null;
+        const box = svg.getBoundingClientRect(), col = document.querySelector(".h .content").getBoundingClientRect();
+        const label = [...svg.querySelectorAll("text")].find((t) => t.textContent.startsWith("STANDING ALLOCATION"));
+        const lb = label && label.getBoundingClientRect();
+        return {
+          viewBox: svg.viewBox.baseVal && svg.viewBox.baseVal.width,
+          ratio: box.width / box.height, fits: box.left >= col.left - 1 && box.right <= col.right + 1,
+          label: !!lb && lb.width > 0 && lb.left >= box.left && lb.right <= box.right && lb.top >= box.top && lb.bottom <= box.bottom,
+          ground: getComputedStyle(svg.querySelector("rect")).fill,
+        };
+      });
+      expect(d, `${width}: the diagram is not on the page`).not.toBeNull();
+      expect(d.viewBox, `${width}: the browser did not read its viewBox`).toBe(720);
+      expect(d.ratio, `${width}: drawn out of its proportions`).toBeCloseTo(720 / 150, 1);
+      expect(d.fits, `${width}: wider than the column`).toBe(true);
+      expect(d.label, `${width}: a label is not drawn inside it`).toBe(true);
+      expect(d.ground, `${width}: its dark ground`).toBe("rgb(11, 18, 32)");
+    }
+  });
+
   // Most read's range tabs sit on the heading's line when the ranks come
   // first, and on a row of their own after pinned posts: the one pull put
   // them on the last pinned title (operator's screenshot, 1446 px). The

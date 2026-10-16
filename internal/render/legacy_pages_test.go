@@ -66,7 +66,13 @@ func legacyPages(t *testing.T) map[string]string {
 // difference the shared pages may show.
 var scriptVersions = regexp.MustCompile(`/static/js/(trending|comments|search|portal)\.js\?v=[0-9a-f]+`)
 
+// articleCSSVersion is the shared article stylesheet's content hash. It
+// changed on purpose once: a post's inline diagram (svg_content.go) is sized
+// to the column on every theme, so every theme's stylesheet carries the rule.
+var articleCSSVersion = regexp.MustCompile(`/static/css/article\.css\?v=[0-9a-f]+`)
+
 func normaliseLegacy(s string) string {
+	s = articleCSSVersion.ReplaceAllString(s, "/static/css/article.css?v=")
 	return scriptVersions.ReplaceAllString(s, "/static/js/$1.js?v=")
 }
 
@@ -88,9 +94,11 @@ func TestWriteLegacyGolden(t *testing.T) {
 // it from these inputs (TestWriteLegacyGolden, run there); this build must
 // match it byte for byte, the three widget script versions aside.
 //
-// One change was made to every theme on purpose, and article.html was
-// re-recorded for it alone: a post's head (its description cut at a word, the
-// robots and author meta, the structured data built by seo.ArticleJSONLD).
+// Two changes were made to every theme on purpose, and article.html was
+// re-recorded for each alone: a post's head (its description cut at a word,
+// the robots and author meta, the structured data built by
+// seo.ArticleJSONLD), and its inline diagram, drawn where its labels had
+// leaked as loose text (svg_content.go; the word count no longer counts them).
 // Every other page is still the pre-Halcyon recording.
 func TestSharedTemplatesUnchangedByHalcyon(t *testing.T) {
 	Init(t.TempDir())

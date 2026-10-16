@@ -344,6 +344,9 @@
 .h .content figure { margin: 1.6em 0; }
 .h .content figcaption { margin-top: 10px; font: italic 400 16px/1.5 var(--h-serif); color: var(--h-t3); text-align: center; }
 .h .content video, .h .content iframe, .h .content audio { max-width: 100%; }
+/* A diagram drawn in the post (svg_content.go) is as wide as the column and
+   as tall as its viewBox makes it, set as a figure is. */
+.h .content svg.vp-svg { display: block; width: 100%; height: auto; margin: 1.6em 0; }
 .h .content code { font: 400 0.78em/1 var(--h-mono); background: var(--h-sunken); padding: 0.16em 0.36em; border-radius: 4px; overflow-wrap: anywhere; font-variant-numeric: normal; }
 /* break-spaces, not pre-wrap: pre-wrap lets the spaces where a line wraps
    hang past the edge, and on a phone, where code runs to the screen's

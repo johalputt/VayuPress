@@ -51,11 +51,12 @@ var capsRe = regexp.MustCompile(`\b[A-Z][A-Z0-9]*[A-Z]\b`)
 
 // capsSkip are the elements whose text keeps its capitals as written: code and
 // its kin, where case is meaning; links and headings, which have their own
-// voice; tables, where capitals are usually labels; and abbr, which already
-// says what the capitals are.
+// voice; tables, where capitals are usually labels; abbr, which already
+// says what the capitals are; and a diagram, whose labels are drawn, and a
+// span inside its <text> would not be.
 var capsSkip = map[atom.Atom]bool{
 	atom.Pre: true, atom.Code: true, atom.Kbd: true, atom.Samp: true, atom.Var: true,
-	atom.A: true, atom.Abbr: true, atom.Table: true,
+	atom.A: true, atom.Abbr: true, atom.Table: true, atom.Svg: true,
 	atom.H1: true, atom.H2: true, atom.H3: true, atom.H4: true, atom.H5: true, atom.H6: true,
 }
 
