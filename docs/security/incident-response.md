@@ -1,7 +1,7 @@
 # Incident Response — VayuPress
 
 **Status:** Authoritative  
-**Last reviewed:** 2026-06-13
+**Last reviewed:** 2026-10-16
 
 ---
 
@@ -16,101 +16,102 @@
 
 ---
 
-## Incident Detection Sources
+## Where an incident shows first
 
-1. **Structured logs** — `level=error` or `level=warn` entries with `component=sandbox`, `component=signing`, `component=federation`
-2. **Metrics** — `vp_plugin_crashes_total`, `vp_plugin_quarantined_total`, `vp_signing_failures_total`
-3. **Health endpoint** — `GET /healthz` returns `503` on critical subsystem failure
-4. **External report** — via `SECURITY.md` responsible disclosure process
+1. **The console.** The system bar shows the install's mode on every page — a
+   move to **read-only**, **quarantined** or **degraded** is the install
+   reporting a fault it escalated (`internal/fault`). The bell carries backup
+   failures, VayuShield events and new sign-ins.
+2. **The log.** `journalctl -u vayupress` is JSON, one object per line; look
+   for `"level":"error"` and the component: `auth-lockout`, `sandbox`,
+   `vayushield`, `db`, `vayukeep`, `update`.
+3. **Metrics** (`/metrics`, locally or with the API key):
+   `vayupress_auth_lockouts_total`, `vayupress_plugin_panics_total`,
+   `vayupress_migration_drift_detected_total`, `vayupress_csp_violations_total`,
+   `vayupress_dead_letter_total`.
+4. **VayuShield's posture report** (VayuOS → Shield), which judges every
+   control by what is enforcing now.
+5. **An external report**, through [SECURITY.md](../../SECURITY.md).
 
 ---
 
 ## Playbooks
 
-### PB-1: Plugin Quarantine Storm
+### PB-1: An account is being attacked, or was taken over
 
-**Symptom:** Multiple plugins quarantined within short window; `vp_plugin_quarantined_total` spike.
+**Symptom:** `vayupress_auth_lockouts_total` rising; `auth-lockout` lines in the
+log; a sign-in the owner does not recognise.
 
-```bash
-# 1. Identify quarantined plugins
-journalctl -u vayupress --since "10 minutes ago" | grep quarantined
+1. Lockout is automatic: 5 failed sign-ins from one address in 15 minutes
+   locks that address out for an hour (`internal/auth`).
+2. If an account was used: change its password, and the owner's second factor
+   (VayuOS → Profile); sign-in sessions end with the password change.
+3. Revoke what the account could have minted: scoped API keys (VayuOS → API
+   keys) and connector grants (VayuOS → Connector).
+4. Read the audit log (VayuOS → Governance) for what was done in its name; it
+   is append-only, so it was not edited.
+5. A mailbox account: VayuOS → Mail › Accounts; a reset through the recovery
+   pipeline revokes every app password and session and holds queued outbound
+   mail ([MAIL-RECOVERY.md](../MAIL-RECOVERY.md)).
 
-# 2. Check if binary hash changed (supply chain compromise?)
-sha256sum /opt/vayupress/plugins/*.bin
+### PB-2: A key or secret leaked
 
-# 3. If hash mismatch: take plugin offline immediately
-systemctl stop vayupress
-# Restore plugin from verified backup
-cp /backup/plugins/known-good/<name>.bin /opt/vayupress/plugins/
-systemctl start vayupress
+- **The install API key** (`API_KEY`): rotate it — RB-09 in
+  [OPERATIONS.md](../OPERATIONS.md).
+- **A scoped key or a connector grant:** revoke it in VayuOS; nothing else is
+  affected.
+- **A payment, AI or DNS provider's key:** rotate it at the provider first,
+  then store the new one in VayuOS → API Keys (encrypted at rest).
+- **The backup passphrase:** set a new one; generations already written stay
+  under the old one, so treat them as exposed and keep them only until new
+  generations under the new passphrase have passed a drill.
 
-# 4. If runtime crash: collect coredump and plugin logs
-coredumpctl dump > /tmp/plugin-coredump.$(date +%s)
-```
+### PB-3: Database corruption
 
-### PB-2: Article Signature Verification Failure
+**Symptom:** `SQLITE_CORRUPT`, the install in read-only mode, or the service not
+starting on a database error.
 
-**Symptom:** `signing: verify failed` in logs; `vp_signing_failures_total` > 0.
+Follow [wal-corruption-recovery.md](../operations/wal-corruption-recovery.md).
 
-```bash
-# 1. Identify affected article IDs
-journalctl -u vayupress | grep "signing: verify" | grep -o "id=[^ ]*"
+### PB-4: Abusive traffic
 
-# 2. Quarantine affected articles (mark as unverified in DB)
-sqlite3 /data/vayupress.db \
-  "UPDATE articles SET verified=0 WHERE id IN (...)"
+**Symptom:** p95 rising (`vayupress_http_request_duration_seconds`), the
+console slowing, the shield's counters climbing.
 
-# 3. Determine cause: key rotation vs tamper
-# Compare stored public key with current signing key public component
-vayupress keydump --key /etc/vayupress/signing.key
+1. VayuOS → Shield shows each layer's counters, who is jailed and why, and
+   releases a jail.
+2. VayuShield sheds and challenges on its own; check it is **protecting**, not
+   observing.
+3. A single source nginx should refuse outright:
+   ```bash
+   echo "deny <ip>;" | sudo tee -a /etc/nginx/conf.d/blocked.conf
+   sudo nginx -t && sudo systemctl reload nginx
+   ```
+4. A flood that fills the uplink is beyond any host
+   ([THREAT-MODEL.md](../THREAT-MODEL.md), RR-04): it needs capacity in front.
 
-# 4. If tamper: preserve evidence, restore from archive
-vayupress archive restore --id <article-id> --target /tmp/restore/
+### PB-5: A plugin misbehaving
 
-# 5. Re-sign from restored canonical source
-vayupress resign --article-id <id> --key /etc/vayupress/signing.key
-```
+Plugins run only when `VAYU_PLUGINS_ENABLED=true`. Five plugin faults within two
+minutes move the install to **quarantined**, where no plugin is run.
 
-### PB-3: WAL Corruption
+1. `journalctl -u vayupress | grep '"component":"sandbox"'`
+2. To stop all plugins now: remove `VAYU_PLUGINS_ENABLED` from
+   `/etc/vayupress/env` and restart.
+3. A syscall refused (`EPERM`): `sudo ausearch -m SECCOMP --start recent`
+   names it. If the plugin legitimately needs it, the allowlist is
+   `allowedSyscalls` in `internal/sandbox/confinement_linux.go`; if not, the
+   plugin is attempting something it was not granted — investigate its source.
 
-**Symptom:** `SQLITE_CORRUPT` errors; `integrity_check` fails on startup.
+### PB-6: A suspected tampered binary or database
 
-See full runbook: [`docs/operations/wal-corruption-recovery.md`](../operations/wal-corruption-recovery.md).
+**Symptom:** `migration drift` at start; a binary that does not match a
+release.
 
-### PB-4: Federation Inbox Flood
-
-**Symptom:** Queue depth > 10,000; inbox goroutines saturated; memory pressure.
-
-```bash
-# 1. Identify flooding actor
-journalctl -u vayupress | grep "inbox" | awk '{print $NF}' | sort | uniq -c | sort -rn | head
-
-# 2. Block actor at Nginx level immediately
-echo "deny <actor-ip>;" >> /etc/nginx/conf.d/blocked.conf
-nginx -s reload
-
-# 3. Drain queue safely
-vayupress queue drain --actor <actor-id> --reason "flood-block"
-
-# 4. Add to permanent blocklist
-sqlite3 /data/vayupress.db \
-  "INSERT INTO federation_blocks(actor_id, reason, blocked_at) VALUES('<actor>', 'flood', datetime('now'))"
-```
-
-### PB-5: Seccomp Violation (Unexpected Syscall)
-
-**Symptom:** Plugin process receives `EPERM` on a syscall that should succeed; plugin behaviour degraded.
-
-```bash
-# 1. Enable strace on plugin process (dev/staging only)
-strace -p <plugin-pid> -e trace=all 2>&1 | head -100
-
-# 2. Identify blocked syscall number from audit log
-ausearch -m SECCOMP --start recent
-
-# 3. If legitimate: update allowedSyscalls in confinement_linux.go
-# 4. If illegitimate: plugin is attempting restricted operations — investigate plugin source
-```
+Follow DR-03 in [disaster-recovery.md](../operations/disaster-recovery.md). The
+in-app updater installs only releases whose Ed25519 signature verifies against
+your pinned key; a binary that did not arrive that way, or from a cosign-verified
+release, is suspect.
 
 ---
 

@@ -138,19 +138,19 @@ sudo chmod -R 755 /var/cache/vayupress
 ### High memory usage
 
 ```bash
-curl http://localhost:8080/metrics | grep vayu_memory
+curl -s http://localhost:8080/metrics | grep vayupress_memory_alloc_bytes
 ```
 
 If idle RAM >800 MB, check for goroutine leaks:
 
 ```bash
-curl http://localhost:6060/debug/pprof/goroutine?debug=1
+curl -s -H "X-API-Key: $API_KEY" "http://localhost:8080/debug/pprof/goroutine?debug=1"
 ```
 
 ### High TTFB
 
 ```bash
-curl http://localhost:8080/metrics | grep vayu_http_request_duration
+curl -s http://localhost:8080/metrics | grep vayupress_http_request_duration_seconds
 ```
 
 Check if Nginx is serving static files (should be, for cached pages):

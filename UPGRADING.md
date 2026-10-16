@@ -128,10 +128,13 @@ gofmt -l . && go vet ./... && go test ./...
 
 VayuPress does not support automatic rollback of database migrations. To roll back:
 
-1. Restore from the pre-upgrade backup:
+1. Restore the last generation taken before the upgrade (VayuKeep, or a
+   `vayupress backup` archive):
    ```bash
+   vayupress restore -in /path/to/generation.vpbk -verify
    sudo systemctl stop vayupress
-   sudo cp /var/backups/vayupress/vayupress-YYYYMMDD.db /var/www/vayupress/vayupress.db
+   sudo vayupress restore -in /path/to/generation.vpbk -dest /var/lib/vayupress
+   sudo chown -R www-data:www-data /var/lib/vayupress
    ```
 2. Reinstall the previous binary version from the prior release tag.
 3. Start the service: `sudo systemctl start vayupress`

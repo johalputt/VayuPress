@@ -674,15 +674,16 @@ latter is regenerable.
 
 ### Backup (Docker)
 
+Take the backup with the binary inside the container: it snapshots the
+database consistently while the site runs and encrypts the whole data
+directory. A plain `tar` of a running SQLite database can capture a torn file.
+
 ```bash
-# Hot backup of the SQLite DB + media to a tarball on the host:
-docker run --rm -v vayupress-data:/data -v "$PWD":/backup debian:bookworm-slim \
-  tar czf /backup/vayupress-$(date +%F).tar.gz -C /data .
+docker exec -it <container> vayupress backup -out /data/vayupress-$(date +%F).vpbk
 ```
 
-For online, WAL-safe backups and restore, the bundled `vayu-backup` tool and
-[docs/operations/backup-restore.md](operations/backup-restore.md) remain the
-recommended path.
+Restoring, and VayuKeep's automatic generations, are in
+[docs/operations/backup-restore.md](operations/backup-restore.md).
 
 ## Upgrade
 

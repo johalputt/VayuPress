@@ -85,7 +85,7 @@ as a security incident:
 1. Check the binary: `go version -m /usr/local/bin/vayupress` names the module
    and version it was built from; compare it with the release's signature.
 2. Change every administrator's password and revoke API keys and connector
-   grants (VayuOS → Settings › Team, › API keys).
+   grants (VayuOS → Settings › Team, and VayuOS → API keys).
 3. Restore the newest generation from **before** the drift appeared (DR-07),
    and file the incident per
    [incident-response.md](../security/incident-response.md).

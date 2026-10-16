@@ -93,19 +93,22 @@ environment variable or request field that turns it off.
 
 ---
 
-## Admin UI (`/admin/v2`)
+## The console (`/os`)
 
-See [ADR-0065](adr/ADR-0065-admin-ui-csp-compliant-stack.md).
+VayuOS is the one administrative interface ([ADR-0068](adr/ADR-0068-admin-v3-next-gen-ui.md),
+[ADR-0069](adr/ADR-0069-admin-v2-retirement-plan.md)); the old `/admin/v2` URLs
+redirect into it.
 
-- **CSP preserved.** No `unsafe-eval`, no `unsafe-inline`, no third-party
-  origins. Tailwind is precompiled; Alpine uses its CSP build; inline scripts
-  carry a per-request nonce.
-- **No new write surface.** The editor reuses the existing `/api/v1/articles`
-  endpoints and the established CSRF cookie/header handshake. `/admin/v2` adds no
-  privileged mutation route.
-- **Non-breaking.** The legacy `/admin` is untouched, limiting the blast radius
-  of any bug in the new UI to the new UI.
-- **`noindex`.** All admin pages set `X-Robots-Tag: noindex`.
+- **CSP preserved.** No `unsafe-eval`, no inline script, no third-party
+  origins: a script runs only with the request's nonce or a known hash.
+  Stylesheets come only from the origin; inline style *attributes* are
+  allowed (`style-src-attr 'unsafe-inline'`), and style cannot run code.
+  Alpine uses its CSP build.
+- **Every write is checked twice.** A session (with TOTP when enrolled) and
+  the double-submit CSRF token on every writing method; each path has a
+  minimum role (`osPathMinLevel`), and any `/os/api/*` path not named for
+  authors is administrator-only by default.
+- **`noindex`.** Console pages tell search engines not to index them.
 
 ---
 

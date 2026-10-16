@@ -30,9 +30,10 @@ sudo ./scripts/deploy-vayupress.sh --upgrade
 4. VayuPress Go application (`main.go`, ~2,500 lines)
 5. Systemd services (vayupress)
 6. Nginx with TLS (Let's Encrypt via Certbot)
-7. UFW firewall (ports 22, 80, 443)
-8. Logrotate configuration
-9. Cron jobs: nightly backup, orphan cleanup, restore validation
+7. UFW firewall (ports 22, 80, 443 and the mail ports)
+8. Logrotate and fail2ban configuration
+9. The daily provisioning timer (DNS and certificates for every domain);
+   backups are VayuKeep's, inside the binary, once a target is set
 10. Smoke tests + admin credential printout
 
 **Governance compliance** (v1.0.0-p13):
@@ -58,7 +59,7 @@ sudo ./scripts/deploy-vayupress.sh --upgrade
 - Argon2id credential hashing with constant-time comparison
 - Magic-number file type verification (JPEG/PNG/GIF/WebP/PDF)
 - WORM audit log: SQLite `BEFORE UPDATE`/`BEFORE DELETE` triggers raise ABORT
-- CSP: `style-src 'self'` only — no `unsafe-inline`
+- CSP: scripts by nonce or hash only; stylesheets from the origin only (`style-src 'self'`); inline style attributes allowed
 - Bounded memory: TTL sweeper evicts stale auth/rate-limit buckets every 10 minutes
 
 **Shutdown lifecycle** (6 phases):
