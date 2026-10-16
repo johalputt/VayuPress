@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.7] — 2026-10-16
+
+Mail's Mailboxes puts new mail first and follows it live; tag pages read stored cards, not bodies; the page cache has a switch, and browsers revalidate pages.
+
 ### Added
 
 - **A switch for the page cache.** Settings › Advanced › Page cache: on (the
