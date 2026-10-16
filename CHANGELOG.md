@@ -8,6 +8,37 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.4] — 2026-10-16
+
+The security audit of everything since 3.17.78: five things fixed, each
+with a test that failed before it.
+
+### Security
+
+- **A reader's writes refuse a page from another origin.** A reader's
+  cookie stops another site's page, but not a page on another origin of the
+  same site: a hosted domain such as `shop.example.com`, whose owner uploads
+  its own scripts, could rename the readers of `example.com`, sign them
+  out, claim them a mailbox, submit an ad, or post and delete comments as
+  them. Those writes now refuse a browser request from another host. Apps,
+  which send no `Origin`, are unaffected.
+- **Writes into the Tor world refuse a page from another origin.** While the
+  operator viewed the Tor world, a write was passed to it with its own
+  administrator key and no token checked on the way, so such a page could
+  change the Tor world as its operator.
+- **Exports never hand a stranger's formula to a spreadsheet.** Contact
+  messages, members, newsletter subscribers and analytics exports wrote what
+  outsiders typed as it was; a cell beginning with `=`, `+`, `-` or `@` runs
+  as a formula in Excel, LibreOffice and Sheets. Such a cell is now written
+  as text.
+- **A contact message's page is linked only as a path on this site.** The
+  page a message came from is the sender's to write, and the console made it
+  a link: another site's address could stand there as "the page this was
+  sent from".
+- **The CSRF check covers every writing method.** It checked POST, PUT and
+  DELETE only, so any other method on a console route would have passed
+  without a token. No route used one.
+
 ## [3.18.3] — 2026-10-16
 
 The member panel is redesigned in Halcyon's manner.
