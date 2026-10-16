@@ -335,7 +335,10 @@
 .h .content figcaption { margin-top: 10px; font: italic 400 16px/1.5 var(--h-serif); color: var(--h-t3); text-align: center; }
 .h .content video, .h .content iframe, .h .content audio { max-width: 100%; }
 .h .content code { font: 400 0.78em/1 var(--h-mono); background: var(--h-sunken); padding: 0.16em 0.36em; border-radius: 4px; overflow-wrap: anywhere; font-variant-numeric: normal; }
-.h .content pre { font: 400 0.675em/1.7 var(--h-mono); background: var(--h-sunken); border-radius: 12px; padding: 20px 22px; margin-top: 1.5em; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; font-variant-numeric: normal; }
+/* break-spaces, not pre-wrap: pre-wrap lets the spaces where a line wraps
+   hang past the edge, and on a phone, where code runs to the screen's
+   edges, the newer Chromium counts them as width past the screen. */
+.h .content pre { font: 400 0.675em/1.7 var(--h-mono); background: var(--h-sunken); border-radius: 12px; padding: 20px 22px; margin-top: 1.5em; white-space: break-spaces; overflow-wrap: anywhere; tab-size: 4; font-variant-numeric: normal; }
 .h .content pre code { font: inherit; background: none; padding: 0; color: var(--h-t1); white-space: inherit; border-radius: 0; }
 /* Highlighted code keeps an ink surface in both schemes, because its
    colours are drawn for one. */

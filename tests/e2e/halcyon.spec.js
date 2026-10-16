@@ -40,17 +40,23 @@ test.beforeAll(async ({ request }) => {
 // What in a post's body would make a reader scroll sideways: an element that
 // reaches past the column (code may run to the screen's edges on a phone, by
 // design, but never past them), an element that scrolls inside itself, and
-// how far the page itself scrolls sideways.
+// how far the page itself scrolls sideways. What is inside a code block is
+// held to the block's own text edge, not the screen's: spaces left hanging at
+// a wrap sit in its padding here and past the screen on CI's newer Chromium,
+// so "within the screen" passed or failed by browser version.
 async function overflow(page) {
   return page.evaluate(() => {
     const body = document.querySelector(".h .content");
     const column = body.getBoundingClientRect().right + 1;
     const screen = document.documentElement.clientWidth + 1;
     const name = (e) => e.tagName.toLowerCase() + (e.className ? "." + e.className : "");
+    const textEdge = (pre) => pre.getBoundingClientRect().right - parseFloat(getComputedStyle(pre).paddingRight) + 1;
     const all = [...body.querySelectorAll("*")].filter((e) => e.getBoundingClientRect().width > 0);
     const over = all
-      .filter((e) => e.getBoundingClientRect().right > (e.tagName === "PRE" ? screen : column))
-      .filter((e) => !(e.closest("pre") && e.tagName !== "PRE" && e.getBoundingClientRect().right <= screen))
+      .filter((e) => {
+        const pre = e.tagName === "PRE" ? null : e.closest("pre");
+        return e.getBoundingClientRect().right > (pre ? textEdge(pre) : e.tagName === "PRE" ? screen : column);
+      })
       .map(name);
     const scrolls = all.filter((e) => e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflowX !== "visible").map(name);
     return { over, scrolls, scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth };
