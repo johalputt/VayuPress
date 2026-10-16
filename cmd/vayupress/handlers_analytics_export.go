@@ -22,6 +22,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/csvsafe"
 	"github.com/johalputt/vayupress/internal/logging"
 )
 
@@ -111,7 +112,7 @@ func (a *App) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
 	cw := csv.NewWriter(w)
 	_ = cw.Write(header)
 	for _, row := range rows {
-		_ = cw.Write(row)
+		_ = csvsafe.Write(cw, row)
 	}
 	cw.Flush()
 }

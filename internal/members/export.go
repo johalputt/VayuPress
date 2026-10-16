@@ -15,6 +15,8 @@ import (
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/johalputt/vayupress/internal/csvsafe"
 )
 
 // ExportCSV writes every member as a CSV document to w. Columns:
@@ -44,7 +46,7 @@ func (s *Store) ExportCSV(ctx context.Context, w io.Writer) error {
 		if m.LastSeenAt != nil {
 			lastSeen = m.LastSeenAt.UTC().Format("2006-01-02")
 		}
-		if err := cw.Write([]string{
+		if err := csvsafe.Write(cw, []string{
 			m.Email,
 			m.Name,
 			m.Tier,

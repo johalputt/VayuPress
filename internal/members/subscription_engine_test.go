@@ -232,3 +232,19 @@ func TestExportCSV(t *testing.T) {
 		t.Errorf("CSV missing expected member data:\n%s", out)
 	}
 }
+
+// A member's name is written as text, never a formula the operator's
+// spreadsheet would run (csvsafe).
+func TestExportCSVWritesNoFormula(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	m, _ := s.Upsert(ctx, "f@x.com")
+	_ = s.UpdateProfile(ctx, m.Email, `=HYPERLINK("https://evil.example","Click")`, "")
+	var buf bytes.Buffer
+	if err := s.ExportCSV(ctx, &buf); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), `'=HYPERLINK(`) {
+		t.Errorf("the name was exported as a formula:\n%s", buf.String())
+	}
+}

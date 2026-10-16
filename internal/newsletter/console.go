@@ -18,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/csvsafe"
 )
 
 // Stats is a snapshot of newsletter audience health.
@@ -194,7 +196,7 @@ func (s *Store) ExportCSV(ctx context.Context, w io.Writer) error {
 		if sub.UnsubscribedAt != nil {
 			unsub = sub.UnsubscribedAt.UTC().Format("2006-01-02")
 		}
-		if err := cw.Write([]string{
+		if err := csvsafe.Write(cw, []string{
 			sub.Email, sub.Status, confirmed,
 			sub.SubscribedAt.UTC().Format("2006-01-02"), unsub,
 		}); err != nil {

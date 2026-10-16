@@ -176,3 +176,17 @@ func TestBroadcastHistory(t *testing.T) {
 		t.Fatalf("broadcast not finished correctly: %+v", list[0])
 	}
 }
+
+// An address is written as text, never a formula (csvsafe): a local part may
+// begin with = or +.
+func TestExportCSVWritesNoFormula(t *testing.T) {
+	s := newTestStore(t)
+	confirmSub(t, s, "=1+1@x.com")
+	var buf bytes.Buffer
+	if err := s.ExportCSV(context.Background(), &buf); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "'=1+1@x.com") {
+		t.Errorf("the address was exported as a formula:\n%s", buf.String())
+	}
+}

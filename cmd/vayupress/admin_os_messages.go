@@ -27,6 +27,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/csvsafe"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/seo"
@@ -450,7 +451,7 @@ func (a *App) handleOSMessagesExportCSV(w http.ResponseWriter, r *http.Request) 
 		if read != 0 {
 			readStr = "yes"
 		}
-		_ = cw.Write([]string{created.UTC().Format(time.RFC3339), name, eml, page, country, region, city, readStr, msg})
+		_ = csvsafe.Write(cw, []string{created.UTC().Format(time.RFC3339), name, eml, page, country, region, city, readStr, msg})
 	}
 	_ = rows.Err()
 }

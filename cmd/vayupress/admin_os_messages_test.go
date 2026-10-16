@@ -187,3 +187,20 @@ func TestMessagesCSVExportHeader(t *testing.T) {
 		t.Errorf("CSV header row missing, got: %q", rec.Body.String())
 	}
 }
+
+// What a stranger wrote in the contact form is exported as text, never a
+// formula the operator's spreadsheet would run (csvsafe).
+func TestMessagesCSVExportWritesNoFormula(t *testing.T) {
+	openMigratedDB(t)
+	if _, err := dbpkg.DB.Exec(`INSERT INTO contact_messages(id,name,email,message,page,country,region,city,is_read,created_at,domain_id) VALUES('m1',?,?,?,'/contact','','','',0,CURRENT_TIMESTAMP,'')`,
+		`=HYPERLINK("https://evil.example","Click")`, "a@x.com", "@SUM(1+1)*cmd|' /C calc'!A0"); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	(&App{}).handleOSMessagesExportCSV(rec, httptest.NewRequest("GET", "/os/api/messages/export.csv", nil))
+	for _, want := range []string{`'=HYPERLINK(`, `'@SUM(1+1)`} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Errorf("export lacks %q (a formula was written):\n%s", want, rec.Body.String())
+		}
+	}
+}
