@@ -136,6 +136,35 @@ test.describe("Halcyon", () => {
     }
   }
 
+  // Most read's range tabs sit on the heading's line when the ranks come
+  // first, and on a row of their own after pinned posts: the one pull put
+  // them on the last pinned title (operator's screenshot, 1446 px). The
+  // widget's feed is stubbed, so the pinned rows exist on this install.
+  test("Most read's range tabs never sit on a post, with pinned posts or without", async ({ page }) => {
+    await page.setViewportSize({ width: 1446, height: 900 });
+    const item = (n) => ({ slug: "halcyon-long", title: `A ranked post with a title of an ordinary length, number ${n}` });
+    let feed;
+    await page.route("**/api/trending*", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(feed) }));
+    const measure = () => page.evaluate(() => {
+      const box = (e) => e.getBoundingClientRect();
+      const tabs = box(document.querySelector(".h-trend .vayu-trending-tabs"));
+      const head = box(document.querySelector(".h-trend > h2"));
+      const hit = [...document.querySelectorAll(".h-trend .vayu-trending-card")].map(box)
+        .filter((c) => tabs.left < c.right && c.left < tabs.right && tabs.top < c.bottom && c.top < tabs.bottom).length;
+      return { hit, onHeadLine: tabs.top < head.bottom && head.top < tabs.bottom };
+    });
+    const ranked = { "7": [1, 2, 3, 4].map(item), "30": [5, 6].map(item) };
+    const long = "VayuPress: My Sovereign Publishing & Personal Infrastructure Platform – Built for Real Needs";
+    for (const [name, pinned, onHeadLine] of [["with pinned posts", [item(7), item(8), { slug: "halcyon-long", title: long }], false], ["without", [], true]]) {
+      feed = { enabled: true, pinned, windows: ranked };
+      await page.goto("/");
+      await expect(page.locator(".h-trend .vayu-trending-tab").first()).toBeVisible();
+      const m = await measure();
+      expect(m.hit, `${name}: the range tabs overlap a post`).toBe(0);
+      expect(m.onHeadLine, `${name}: the range tabs on the heading's line`).toBe(onHeadLine);
+    }
+  });
+
   // A signed-in reader is named where Sign in and Subscribe were: in the bar,
   // in the phone menu, and no newsletter form asks them to join. The page is
   // cached for everyone, so it is drawn signed out and turned by the portal

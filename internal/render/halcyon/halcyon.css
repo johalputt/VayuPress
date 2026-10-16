@@ -416,7 +416,11 @@
 .h .h-end .h-trend { margin-top: 40px; }
 .h .vayu-trending-head { display: flex; justify-content: flex-end; }
 .h .vayu-trending-label { display: none; }
-.h .vayu-trending-tabs { display: flex; gap: 6px; margin-top: -30px; }
+/* The range tabs share the section heading's line only when theirs is the
+   first group: after the pinned posts, the same pull put them on the last
+   pinned title, so there they take a row of their own above the ranks. */
+.h .vayu-trending-tabs { display: flex; gap: 6px; margin-top: 20px; }
+.h .vayu-trending-group:first-child .vayu-trending-tabs { margin-top: -30px; }
 .h .vayu-trending-tab { min-height: 32px; padding: 0 8px; font: 400 13px/1 var(--h-sans); color: var(--h-t3); }
 .h .vayu-trending-tab[aria-selected="true"] { color: var(--h-t1); text-decoration: underline; text-underline-offset: 6px; text-decoration-thickness: 1px; }
 .h .vayu-trending-tab:disabled { display: none; }
@@ -569,7 +573,7 @@
   .h .h-row .h-x { grid-column: 2; }
   .h .h-row b { font-size: 19px; }
   .h .vayu-trending-list { grid-template-columns: minmax(0, 1fr); }
-  .h .vayu-trending-tabs { margin-top: 8px; }
+  .h .vayu-trending-tabs, .h .vayu-trending-group:first-child .vayu-trending-tabs { margin-top: 8px; }
   .h .vayu-trending-head { justify-content: flex-start; }
   .h .h-post, .h .h-post--margin { padding-top: 28px; }
   .h .h-post h1, .h .h-post--margin h1 { font-size: 33px; line-height: 1.15; }
