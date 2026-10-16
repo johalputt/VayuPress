@@ -247,3 +247,26 @@ func TagPageCacheRel(tag string) (string, bool) {
 	}
 	return "tags/" + tag + ".html", true
 }
+
+// OfferedTopics are the first n topics, in the order given, whose pages the
+// site offers to search engines: not thin (thinTagPosts), not on most of the
+// site (Ubiquitous). /llms.txt lists these, so it never points a reader at a
+// page the site itself keeps out of search.
+func OfferedTopics(topics []TagInfo, total, n int) []TagInfo {
+	var out []TagInfo
+	for _, t := range topics {
+		if strings.TrimSpace(t.Name) == "" || t.Count < thinTagPosts || Ubiquitous(t.Count, total) {
+			continue
+		}
+		if out = append(out, t); len(out) == n {
+			break
+		}
+	}
+	return out
+}
+
+// TopicPath is a topic's page, as the themes link it.
+func TopicPath(tag string) string { return "/tags/" + tagURL(tag) }
+
+// TopicName is a topic as the themes show it.
+func TopicName(tag string) string { return topicName(tag) }

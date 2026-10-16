@@ -37,7 +37,13 @@ type LLMsDoc struct {
 	Origin      string // "https://example.com", no trailing slash
 	Tagline     string
 	Description string
-	Posts       []LLMsPost
+	Author      string
+	// Pinned are the posts the operator chose to put first, the closest thing
+	// the site has to "read these first", which is what the format is for.
+	Pinned []LLMsPost
+	// Topics are the topic pages the site offers to search engines.
+	Topics []LLMsLink
+	Posts  []LLMsPost
 	// Generated is stamped into the file so a consumer can tell a fresh copy
 	// from one a cache has been holding for a month.
 	Generated time.Time
@@ -51,6 +57,11 @@ type LLMsPost struct {
 	Published time.Time
 }
 
+// LLMsLink is a link with a note, as the format's sections are lists of.
+type LLMsLink struct {
+	Name, URL, Note string
+}
+
 // llmsSummaryMax keeps each line to roughly one sentence. The format's value is
 // that the whole file fits comfortably in a context window beside the question
 // being asked; pasting full posts in defeats it, and /llms-full.txt is the
@@ -59,6 +70,12 @@ const llmsSummaryMax = 200
 
 // Render returns the body of /llms.txt, or "" when there is nothing truthful to
 // say (no origin).
+//
+// The shape is the convention's (llmstxt.org): an H1 naming the site, a
+// blockquote saying what it is, a paragraph of detail, then H2 sections that
+// are lists of [name](url): notes, the last one "Optional", which a reader
+// short of room may skip. Every reference is a link a crawler can follow; a
+// bare "Feed: https://…" line is text to it, not a link.
 func Render(d LLMsDoc) string {
 	origin := strings.TrimRight(d.Origin, "/")
 	if origin == "" {
@@ -72,39 +89,73 @@ func Render(d LLMsDoc) string {
 	var b strings.Builder
 	b.WriteString("# " + oneLine(name) + "\n\n")
 
-	if s := oneLine(firstNonEmpty(d.Description, d.Tagline)); s != "" {
-		b.WriteString("> " + s + "\n\n")
+	summary := oneLine(firstNonEmpty(d.Description, d.Tagline))
+	if summary != "" {
+		b.WriteString("> " + summary + "\n\n")
 	}
-
-	b.WriteString("- Site: " + origin + "/\n")
-	b.WriteString("- Feed: " + origin + "/feed.xml\n")
-	b.WriteString("- Sitemap: " + origin + "/sitemap.xml\n")
+	var detail []string
+	if t := oneLine(d.Tagline); t != "" && t != summary {
+		detail = append(detail, strings.TrimRight(t, ".")+".")
+	}
+	if a := oneLine(d.Author); a != "" {
+		detail = append(detail, "Written by "+a+".")
+	}
+	detail = append(detail, "Posts are listed newest first, each with its date.")
 	if !d.Generated.IsZero() {
-		b.WriteString("- Generated: " + d.Generated.UTC().Format(time.RFC3339) + "\n")
+		detail = append(detail, "This list was made "+d.Generated.UTC().Format("2006-01-02")+".")
 	}
-	b.WriteString("\n")
+	b.WriteString(strings.Join(detail, " ") + "\n\n")
 
-	if len(d.Posts) == 0 {
-		// Saying so beats an empty heading that reads like a truncated file.
-		b.WriteString("No posts have been published yet.\n")
-		return b.String()
-	}
-
-	b.WriteString("## Posts\n\n")
-	for _, p := range d.Posts {
-		if p.URL == "" || p.Title == "" {
-			continue
-		}
-		b.WriteString("- [" + oneLine(p.Title) + "](" + p.URL + ")")
-		if s := clip(oneLine(p.Summary), llmsSummaryMax); s != "" {
-			b.WriteString(": " + s)
-		}
-		if !p.Published.IsZero() {
-			b.WriteString(" (" + p.Published.UTC().Format("2006-01-02") + ")")
+	writePosts := func(posts []LLMsPost, dated bool) {
+		for _, p := range posts {
+			if p.URL == "" || p.Title == "" {
+				continue
+			}
+			b.WriteString("- [" + linkText(p.Title) + "](" + p.URL + ")")
+			if s := clip(oneLine(p.Summary), llmsSummaryMax); s != "" {
+				b.WriteString(": " + s)
+			}
+			if dated && !p.Published.IsZero() {
+				b.WriteString(" (" + p.Published.UTC().Format("2006-01-02") + ")")
+			}
+			b.WriteString("\n")
 		}
 		b.WriteString("\n")
 	}
+	if len(d.Pinned) > 0 {
+		b.WriteString("## Start here\n\n")
+		writePosts(d.Pinned, false)
+	}
+	if len(d.Topics) > 0 {
+		b.WriteString("## Topics\n\n")
+		for _, t := range d.Topics {
+			b.WriteString("- [" + linkText(t.Name) + "](" + t.URL + ")")
+			if t.Note != "" {
+				b.WriteString(": " + oneLine(t.Note))
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+	}
+	if len(d.Posts) == 0 {
+		// Saying so beats an empty heading that reads like a truncated file.
+		b.WriteString("No posts have been published yet.\n\n")
+	} else {
+		b.WriteString("## Posts\n\n")
+		writePosts(d.Posts, true)
+	}
+	b.WriteString("## Optional\n\n")
+	b.WriteString("- [Home](" + origin + "/): the newest writing\n")
+	b.WriteString("- [Feed](" + origin + "/feed.xml): the newest posts, as RSS\n")
+	b.WriteString("- [Sitemap](" + origin + "/sitemap.xml): every page on the site\n")
 	return b.String()
+}
+
+// linkText is a title fit for a Markdown link's text: one line, and its
+// square brackets escaped, since "[Go] Generics" would otherwise end the link
+// text at its first "]".
+func linkText(s string) string {
+	return strings.NewReplacer(`[`, `\[`, `]`, `\]`).Replace(oneLine(s))
 }
 
 // oneLine flattens whitespace. A newline inside a title would otherwise break

@@ -22,6 +22,18 @@ var (
 	// blockEndRe ends a block: its text and the next block's are two
 	// sentences, not one word ("…end.Next").
 	blockEndRe = regexp.MustCompile(`(?i)</(?:p|h[1-6]|li|blockquote|div|td|th|dt|dd|figcaption)>|<br\s*/?>`)
+	// unreadOpenRe is an unread block still open once the closed ones are
+	// gone: a post's opening cut inside its <style> (an imported post's runs
+	// for pages), whose CSS was read as its first sentence.
+	unreadOpenRe = regexp.MustCompile(`(?i)<(?:svg|pre|script|style|template|noscript)\b`)
+	// notSummaryRes are what a post may open with that is not its prose: a
+	// table's cells, a figure, a heading. They count as its words; they do
+	// not say what it is about. (RE2 has no backreferences: one per kind.)
+	notSummaryRes = []*regexp.Regexp{
+		regexp.MustCompile(`(?is)<table\b.*?</table>`),
+		regexp.MustCompile(`(?is)<figure\b.*?</figure>`),
+		regexp.MustCompile(`(?is)<h[1-6]\b.*?</h[1-6]>`),
+	}
 )
 
 // descriptionMax is the length a search result shows of a description before
@@ -32,6 +44,9 @@ const descriptionMax = 160
 // markup, no code, no diagram labels, entities decoded.
 func PlainText(htmlContent string) string {
 	plain := unreadRe.ReplaceAllString(htmlContent, " ")
+	if loc := unreadOpenRe.FindStringIndex(plain); loc != nil {
+		plain = plain[:loc[0]]
+	}
 	plain = blockEndRe.ReplaceAllString(plain, " ")
 	plain = tagRe.ReplaceAllString(plain, "")
 	return oneLine(html.UnescapeString(plain))
@@ -41,7 +56,17 @@ func PlainText(htmlContent string) string {
 // descriptionMax bytes and marked as cut. It was the first 160 bytes, which
 // ended mid-word and could end mid-character: an invalid description is one a
 // search engine replaces with text of its own choosing.
+//
+// A post that opens with a table, a figure or a heading is described by the
+// prose after it; one with no prose but those is described by them.
 func ExtractDescription(htmlContent string) string {
+	prose := htmlContent
+	for _, re := range notSummaryRes {
+		prose = re.ReplaceAllString(prose, " ")
+	}
+	if d := clip(PlainText(prose), descriptionMax); d != "" {
+		return d
+	}
 	return clip(PlainText(htmlContent), descriptionMax)
 }
 
