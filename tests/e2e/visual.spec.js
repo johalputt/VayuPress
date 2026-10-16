@@ -85,6 +85,13 @@ const shot = { threshold: 0.05, maxDiffPixelRatio: 0.001, animations: "disabled"
 // design does not need it.
 test.use({ serviceWorkers: "block" });
 
+// The site's pages are photographed too, and a visit counts: once one had,
+// Home's Visitors turned from "No visitors" into figures and a line, and every
+// Home picture taken after the first site picture differed from its baseline.
+// A picture is not a reader, so it asks not to be measured (Sec-GPC), which
+// the collector honours (dntHonored, handlers_analytics.go).
+test.use({ extraHTTPHeaders: { "Sec-GPC": "1" } });
+
 for (const scheme of ["light", "dark"]) {
   test.describe(`desktop, ${scheme}`, () => {
     test.use({ colorScheme: scheme, viewport: { width: 1280, height: 900 }, reducedMotion: "reduce" });
