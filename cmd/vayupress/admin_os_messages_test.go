@@ -204,3 +204,23 @@ func TestMessagesCSVExportWritesNoFormula(t *testing.T) {
 		}
 	}
 }
+
+// The page a message was sent from is whatever the sender's request said. It
+// is linked only when it is a path on this site: a javascript: URL or another
+// host (//evil.example) a stranger typed is shown as text, never a link the
+// operator follows from the console.
+func TestAMessagesPageIsLinkedOnlyAsAPathOnThisSite(t *testing.T) {
+	for page, linked := range map[string]bool{
+		"/contact":                          true,
+		"javascript:alert(document.cookie)": false,
+		"//evil.example/login":              false,
+		"/\\evil.example/login":             false,
+		"https://evil.example/login":        false,
+		"/\t/evil.example/login":            false, // a browser drops the tab: //evil.example
+	} {
+		html := osMessageInspector(contactMessage{ID: "m1", Name: "A", Email: "a@x.com", Page: page}, nil)
+		if got := strings.Contains(html, `<dt>Page</dt><dd><a href=`); got != linked {
+			t.Errorf("page %q linked %v, want %v:\n%s", page, got, linked, html)
+		}
+	}
+}

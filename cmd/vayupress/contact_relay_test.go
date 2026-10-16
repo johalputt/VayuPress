@@ -235,3 +235,33 @@ func TestTheAutoReplyFollowsItsSettingAndItsOldSpelling(t *testing.T) {
 		})
 	}
 }
+
+// The form keeps the page a message came from only as a path on this site:
+// the page field and the Referer are the sender's to write.
+func TestTheContactFormStoresOnlyAPathOnThisSite(t *testing.T) {
+	openMigratedDB(t)
+	a := &App{siteSettings: settings.New(dbpkg.DB)}
+	for i, tc := range []struct{ page, referer, want string }{
+		{"javascript:alert(1)", "", ""},
+		{"", "https://site.example//evil.example/login", ""},
+		{"/contact", "", "/contact"},
+		{"", "https://site.example/about", "/about"},
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/contact", strings.NewReader(
+			`{"name":"A","email":"a@x.com","message":"hello","page":"`+tc.page+`"}`))
+		req.Header.Set("Content-Type", "application/json")
+		if tc.referer != "" {
+			req.Header.Set("Referer", tc.referer)
+		}
+		req.RemoteAddr = "203.0.113.2" + string(rune('0'+i)) + ":4000"
+		rec := httptest.NewRecorder()
+		a.handleContactSubmit(rec, req)
+		var page string
+		if err := dbpkg.DB.QueryRow(`SELECT page FROM contact_messages ORDER BY rowid DESC LIMIT 1`).Scan(&page); err != nil {
+			t.Fatalf("%d: no message stored (%d %s): %v", i, rec.Code, rec.Body, err)
+		}
+		if page != tc.want {
+			t.Errorf("page %q, Referer %q: stored %q, want %q", tc.page, tc.referer, page, tc.want)
+		}
+	}
+}

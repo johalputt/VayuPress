@@ -99,7 +99,10 @@ func osMessageInspector(m contactMessage, hosts map[string]string) string {
 	b.WriteString(`<button type="button" class="btn btn--sm btn--danger" data-msg-delete data-id="` + idEsc + `">Delete</button></div>`)
 	b.WriteString(`<dl class="sa-insp__facts"><dt>State</dt><dd>` + osMessageState(idEsc, m.Read, "i", false) + `</dd>`)
 	host := hosts[m.DomainID]
-	if m.Page != "" {
+	// A message stored before sitePath checked it keeps its page as text.
+	if sitePath(m.Page) == "" && m.Page != "" {
+		b.WriteString(`<dt>Page</dt><dd>` + html.EscapeString(m.Page) + `</dd>`)
+	} else if m.Page != "" {
 		href := m.Page
 		// A message from a hosted site links to the page on that site, not on the
 		// console's own host.

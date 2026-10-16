@@ -95,7 +95,7 @@ func (a *App) handleContactSubmit(w http.ResponseWriter, r *http.Request) {
 	if dbpkg.DB != nil {
 		if _, err := dbpkg.WDB.ExecContext(r.Context(),
 			`INSERT INTO contact_messages(id,name,email,message,page,country,region,city,is_read,created_at,domain_id) VALUES(?,?,?,?,?,?,?,?,0,?,?)`,
-			newUUID(), name, from, message, firstNonEmptyContact(body.Page, contactPageRef(r)), geo.Country, geo.Region, geo.City, time.Now().UTC(), scope); err != nil {
+			newUUID(), name, from, message, firstNonEmptyContact(sitePath(body.Page), sitePath(contactPageRef(r))), geo.Country, geo.Region, geo.City, time.Now().UTC(), scope); err != nil {
 			logging.LogError("contact", "persist failed", err.Error())
 		} else {
 			persisted = true
@@ -275,6 +275,19 @@ func contactPageRef(r *http.Request) string {
 		}
 	}
 	return ""
+}
+
+// sitePath is p when it is a path on this site, else "". The page a message
+// came from is what the sender's request said, and the console links it: a
+// javascript: URL, another host, or "//evil.example" (which a browser reads as
+// another host, as it does "/\evil.example") is not a page of this site.
+func sitePath(p string) string {
+	p = strings.TrimSpace(p)
+	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.HasPrefix(p, "/\\") ||
+		strings.ContainsFunc(p, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+		return ""
+	}
+	return p
 }
 
 // firstNonEmptyContact returns the first non-blank trimmed string.
