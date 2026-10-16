@@ -622,3 +622,48 @@
 .h .vp-portal-title { font: 400 30px/1.15 var(--h-serif); letter-spacing: -0.01em; }
 .h .vp-portal-input:focus { border-color: var(--h-t2); box-shadow: 0 0 0 3px var(--h-line-2); }
 .h .vp-portal-avatar { color: var(--h-on-ink); background: var(--h-ink); }
+
+/* The member panel as Halcyon draws a page: no cards, icon tiles or pills,
+   but a serif title, hairline rules between sections, state as a word, and
+   Halcyon's own buttons. portal.css's boxes read as a stock dashboard beside
+   a reading page. */
+.h .vp-portal-overlay { -webkit-backdrop-filter: none; backdrop-filter: none; }
+.h .vp-portal-panel .vp-portal-head { background: none; border-bottom: 1px solid var(--h-line); box-shadow: none; }
+.h .vp-portal-panel .vp-portal-brand span { font: 400 22px/1.2 var(--h-serif); letter-spacing: -0.01em; color: var(--h-t1); }
+.h .vp-portal-panel .vp-portal-brand img { width: 24px; height: 24px; border-radius: 6px; }
+.h .vp-portal-panel .vp-portal-account-id,
+.h .vp-portal-panel .vp-acc,
+.h .vp-portal-panel .vp-portal-plan,
+.h .vp-portal-panel .vp-portal-activity {
+  background: none; border: 0; border-radius: 0; box-shadow: none;
+}
+.h .vp-portal-panel .vp-portal-account-id { padding: 4px 0 24px; margin: 0; border-bottom: 1px solid var(--h-line); }
+.h .vp-portal-panel .vp-portal-acc-name { font: 400 22px/1.25 var(--h-serif); color: var(--h-t1); }
+.h .vp-portal-panel .vp-portal-acc-mail { font: 400 14px/1.4 var(--h-sans); color: var(--h-t3); }
+.h .vp-portal-panel .vp-acc-stack { gap: 0; }
+.h .vp-portal-panel .vp-acc { border-bottom: 1px solid var(--h-line); }
+.h .vp-portal-panel .vp-acc__sum { padding: 18px 0; gap: 12px; background: none; }
+.h .vp-portal-panel .vp-acc__ic { display: none; }
+.h .vp-portal-panel .vp-acc__title { font: 400 19px/1.3 var(--h-serif); color: var(--h-t1); }
+.h .vp-portal-panel .vp-acc__sub { font: 400 13px/1.4 var(--h-sans); color: var(--h-t3); }
+.h .vp-portal-panel .vp-acc__chev { color: var(--h-t3); }
+.h .vp-portal-panel .vp-acc__body { padding: 0 0 20px; border: 0; background: none; font: 400 16px/1.55 var(--h-serif); color: var(--h-t2); }
+.h .vp-portal-panel .vp-chip,
+.h .vp-portal-panel .vp-portal-badge {
+  padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none;
+  font: 500 12px/1.2 var(--h-sans); letter-spacing: 0.01em; color: var(--h-t3);
+}
+.h .vp-portal-panel .vp-chip--on, .h .vp-portal-panel .vp-portal-badge--ok { color: var(--h-accent); }
+.h .vp-portal-panel .vp-portal-btn {
+  height: 44px; padding: 0 20px; border: 0; border-radius: 22px;
+  font: 500 14px/1 var(--h-sans); background: var(--h-ink); color: var(--h-on-ink);
+  box-shadow: none; transform: none; filter: none;
+}
+.h .vp-portal-panel .vp-portal-btn--ghost,
+.h .vp-portal-panel .vp-portal-signout .vp-portal-btn {
+  background: none; color: var(--h-t1); box-shadow: inset 0 0 0 1px var(--h-line-2);
+}
+.h .vp-portal-panel .vp-portal-btn:hover { opacity: 0.88; transform: none; box-shadow: none; }
+.h .vp-portal-panel .vp-portal-btn--ghost:hover,
+.h .vp-portal-panel .vp-portal-signout .vp-portal-btn:hover { background: var(--h-hover); box-shadow: inset 0 0 0 1px var(--h-line-2); }
+.h .vp-portal-panel .vp-portal-input { border-radius: 10px; border: 1px solid var(--h-line-2); background: var(--h-canvas); color: var(--h-t1); font: 400 15px/1.4 var(--h-sans); }
