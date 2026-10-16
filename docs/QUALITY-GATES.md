@@ -1,6 +1,6 @@
 # What every change passes before it ships
 
-There is no separate QA step. A commit reaches `main` only by passing fifteen
+There is no separate QA step. A commit reaches `main` only by passing sixteen
 required CI jobs — one of which, the cross-compile matrix, is itself seven
 parallel builds — and `ci-pass` re-checks every one by name. A job that ran
 without being listed there would be a job that cannot fail the build.
@@ -33,10 +33,47 @@ without being listed there would be a job that cannot fail the build.
 | SPDX + license check | A source file with no licence header |
 | ADR completeness, required docs | A design decision that shipped unrecorded |
 | Governance / ethics / security-policy / community checks | Drift between the Constitution and the repository |
-| source-sync | `cmd/vayupress/main.go` diverging from the deploy script's copy |
+| source-sync | A missing entry point or required package, or a module that does not build |
 | **release-metadata consistency** | **`.release-version` and the top `CHANGELOG.md` section disagreeing** |
 
-The last one exists because of how releases work here: pushing `.release-version`
+## In the browser
+
+Playwright drives the real console and the real public site, on a fresh install
+in CI's order (`e2e.yml`):
+
+| Gate | What it catches |
+|---|---|
+| The design lint | Any console value off the token scale, on every console page |
+| Screenshot baselines | A change to any of sixteen surfaces, console and public site, against approved pictures |
+| Contrast | A text colour below WCAG AA against its surface, in both schemes |
+| Halcyon's checks | Sideways scrolling, overlays, reflow at 320 px, keyboard focus and control names, on every page type |
+| The specs | The behaviour itself: mail, chat, the editor, settings, members, the Mailboxes page, the page cache |
+| Lighthouse (`lighthouse.yml`) | Home, a post and four console pages against their budgets |
+
+A pull request's screenshots are compared with the baselines on `main`; a
+baseline changes only when a commit names the surface it moved, and CI records
+the new picture after the run is green.
+
+## Every gate is mutation-tested
+
+A gate that has not been seen to fail on the thing it forbids has proved
+nothing. Each new check is run once against a deliberately broken copy of the
+code it guards and must fail **at its own assertion**. Three false greens this
+has caught:
+
+- **A test that judges output by calling the function under test** compares
+  the code with itself: loosening the validator loosened the assertion in the
+  same edit. The unacceptable is stated independently.
+- **A seed that trips several rules kills a mutant of none of them**: the
+  hostile input carrying one forbidden character carried another too, so no
+  single rule was ever deciding. One seed per rule.
+- **Two guards for one outcome** are each unkillable by an outcome-only
+  assertion: either alone failed the run, so "it failed" never said which
+  fired. The specific reason is asserted.
+
+## Why some gates exist
+
+The release-metadata check exists because of how releases work here: pushing `.release-version`
 *is* the release. Nothing downstream re-derives the version. Without that check a
 version can be bumped and announced while the notes describe a different release
 — or a changelog can claim fixes shipped when no build was ever cut.
@@ -57,7 +94,7 @@ bug and still shipped two more.
 
 ## What these gates do not prove
 
- They run on `linux/amd64`; the cross-compile
+They run on `linux/amd64`; the cross-compile
 matrix proves the other six architectures *compile*, not that they were tested,
 and releases remain a single native build.
 

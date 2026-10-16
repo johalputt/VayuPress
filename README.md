@@ -447,7 +447,7 @@ There is no separate QA step. A commit reaches `main` only by passing **sixteen 
 | SPDX + license check | A source file with no licence header |
 | ADR completeness, required docs | A design decision that shipped unrecorded |
 | Governance, ethics, security-policy and community checks | Drift between the Constitution and the repository |
-| source-sync | `cmd/vayupress/main.go` diverging from the deploy script's copy |
+| source-sync | A missing entry point or required package, or a module that does not build |
 | **release-metadata consistency** | **`.release-version` and the top `CHANGELOG.md` section disagreeing** |
 
 **In the browser.** Playwright drives the real console and the real public site on a fresh install: every console page is walked by a design lint that fails on any value off the token scale; sixteen surfaces, console and public site, are compared with approved pictures; every text colour is held to WCAG AA against its surface; and Halcyon is checked on every page type for sideways scrolling, overlays, reflow at 320 px, contrast and keyboard focus. Lighthouse holds the home page, a post and four console pages to their budgets.

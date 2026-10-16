@@ -19,8 +19,8 @@ help: ## Show this help
 
 dev: ## Run the server locally (requires env vars)
 	@echo "Starting VayuPress dev server..."
-	@[ -n "$$VAYU_API_KEY" ] || (echo "ERROR: VAYU_API_KEY not set"; exit 1)
-	@mkdir -p $${VAYU_CACHE_DIR:-/tmp/vayupress-cache}
+	@[ -n "$$API_KEY" ] || (echo "ERROR: API_KEY not set (the server will not start without it)"; exit 1)
+	@mkdir -p $${CACHE_DIR:-/tmp/vayupress-cache}
 	go run $(PKG)
 
 build: sync-check ## Build the binary
