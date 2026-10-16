@@ -1,8 +1,13 @@
 # Attack Surfaces — VayuPress
 
 **Status:** Authoritative  
-**Last reviewed:** 2026-06-13  
+**Last reviewed:** 2026-10-16  
 **Review cycle:** Every architectural change or quarterly
+
+Each mitigation names the mechanism that enforces it. A surface the product
+does not have is not listed: federation, the AI runtime, article signing,
+Merkle proofs, archives and DID login were described here and removed from
+the code on 2026-09-25 (ADR-0061's status says which).
 
 ---
 
@@ -10,13 +15,13 @@
 
 | Vector | Mechanism | Mitigation |
 |--------|-----------|------------|
-| Path traversal | URL-encoded `../` sequences | Nginx normalises before forwarding; Go `path.Clean` in router |
-| Header injection | Malformed `Host`, `X-Forwarded-For` | Nginx strips non-allowlisted headers; Go ignores hop-by-hop |
-| Request smuggling | `Content-Length` / `Transfer-Encoding` conflict | Nginx configured `keepalive_requests 0` on backend |
-| Slow-loris DoS | Incomplete headers held open | Nginx `client_header_timeout 10s`, `client_body_timeout 10s` |
-| Large body amplification | Unbounded POST body | `client_max_body_size 8m` in Nginx; Go handler reads limited `io.LimitReader` |
-| TLS downgrade | SSLv3 / TLS 1.0 | Nginx `ssl_protocols TLSv1.2 TLSv1.3` only |
-| CSP bypass | Inline script injection | Nonce-based CSP (ADR-0036), no `unsafe-inline` |
+| Path traversal | URL-encoded `../` sequences | Nginx normalises the path before forwarding; every cache, media and theme path is confined to its directory after cleaning (`render.CacheWrite`, `unsafePathComponent`, the media name pattern) |
+| Client IP spoofing | Forged `X-Forwarded-For` / `X-Real-IP` | `realIPMiddleware` honours forwarding headers only from a configured trusted proxy (`auth.ClientIP`); chi's `RealIP`, which trusts them from anyone, is not used |
+| Request smuggling | `Content-Length` / `Transfer-Encoding` conflict | Nginx parses each request and forwards it to the backend on its own connection |
+| Slow-loris DoS | Incomplete headers held open | Nginx `client_header_timeout 10s`, `client_body_timeout 10s` (`scripts/deploy-vayupress.sh`) |
+| Large body amplification | Unbounded POST body | Nginx `client_max_body_size 50M`; handlers read through `http.MaxBytesReader` / `io.LimitReader` |
+| TLS downgrade | SSLv3 / TLS 1.0 | Nginx `ssl_protocols TLSv1.2 TLSv1.3` |
+| Script injection | Inline script in a page | CSP admits scripts by per-request nonce and by hash only (ADR-0036); inline style attributes are allowed (`style-src-attr 'unsafe-inline'`), styles cannot run script |
 
 ---
 
@@ -25,7 +30,7 @@
 | Vector | Mechanism | Mitigation |
 |--------|-----------|------------|
 | JSON injection over stdin | Malformed plugin response escapes scanner | `bufio.Scanner` with hard byte cap; response parsed into typed struct |
-| Stdout flooding | Plugin emits unbounded bytes | `io.LimitReader(stdoutPipe, maxBytes)` before scanner |
+| Stdout flooding | Plugin emits unbounded bytes | `io.LimitReader` on the plugin's stdout before the scanner (`internal/sandbox/subprocess.go`) |
 | Symlink escalation | Plugin creates symlink pointing outside scratch | `CLONE_NEWNS` + `MS_NODEV/NOSUID` on tmpfs scratch |
 | Syscall escalation | Plugin calls `open("/etc/shadow")` | Seccomp-BPF allowlist; `EPERM` returned, not crash |
 | Capability abuse | Plugin tries `setuid(0)` | `capset(2)` zeros all caps before plugin exec |
@@ -39,55 +44,10 @@
 
 | Vector | Mechanism | Mitigation |
 |--------|-----------|------------|
-| SQL injection | Dynamic query construction | All queries use `?` placeholders; no `fmt.Sprintf` into SQL |
-| WAL corruption | Crash mid-checkpoint | WAL mode; `PRAGMA integrity_check` on open; automated repair runbook |
-| Migration replay | Re-running migrations | SHA-256 checksum per file; idempotent `schema_migrations` table |
-| Directory traversal via DB path | `../../../etc/passwd` as DB path | Path validated against allowed prefix at startup |
-| Read of stale snapshot | Dirty read under concurrent write | `BEGIN IMMEDIATE` for write transactions; reader gets consistent snapshot |
-
----
-
-## Surface 4 — Federation (ActivityPub)
-
-| Vector | Mechanism | Mitigation |
-|--------|-----------|------------|
-| Forged `Actor` payloads | Remote posts activity as another actor | HTTP Signature verification on all inbox payloads (planned Ω2) |
-| SSRF via `object.url` | `url` field points to internal service | URL allowlist validator; private IP ranges rejected |
-| Inbox flooding | High-volume `Create` activity spam | Per-actor rate limit (planned Ω2); queue depth cap |
-| Content injection via `content` | ActivityPub `content` rendered as HTML | Server-side HTML sanitisation before storage |
-| Key rotation attacks | Attacker rotates actor key mid-session | Key binding to DID document; rotation requires new DID |
-
----
-
-## Surface 5 — AI Runtime
-
-| Vector | Mechanism | Mitigation |
-|--------|-----------|------------|
-| Prompt injection via article body | Malicious content alters agent behaviour | Input sanitised before agent context; policy.Apply blocks key patterns |
-| PII leakage in embeddings | Embedding encodes email/phone numbers | `DefaultPolicy` redacts PII before embedding |
-| Unbounded inference time | Embedding call blocks goroutine | Context with timeout wraps all inference calls |
-| Model poisoning | Local model file replaced | Executable hash verification (same mechanism as plugin binary) |
-
----
-
-## Surface 6 — Signing & Archives
-
-| Vector | Mechanism | Mitigation |
-|--------|-----------|------------|
-| Key compromise | Ed25519 private key stolen | Key stored outside web root; rotation via new key + re-signing |
-| Signature bypass | Attacker strips `Signature` field | `Verify` called before any signed article is served |
-| Hash collision | SHA-256 Merkle root collision | No known practical attack; SHA-512 upgrade path documented |
-| Archive tampering | Object in archive mutated | Content-addressed storage (SHA-256 key); read-only after write |
-
----
-
-## Surface 7 — DID Authentication
-
-| Vector | Mechanism | Mitigation |
-|--------|-----------|------------|
-| Challenge replay | Old challenge accepted | Challenge has 5-minute TTL; one-time use enforced |
-| Key substitution | Different key presented for DID | DID document binds key via `verificationMethod` |
-| DID spoofing | `did:key:zAbc` crafted to match another | Ed25519 public key is the DID; no registry can be poisoned |
+| SQL injection | Dynamic query construction | Values bound with `?` placeholders |
+| Concurrent writes | Interleaved writers corrupt a transaction | One writer connection (`DB.SetMaxOpenConns(1)`, `internal/db`); readers use a separate read-only pool |
+| Migration tampering | An applied migration's file changed | SHA-256 of each applied migration recorded in `schema_migrations` and checked at start-up (`checksumSQL`) |
+| Corrupt restore or update | A damaged database file put in place | `PRAGMA integrity_check` on a staged update before it is applied (`internal/update/snapshot.go`) and in each VayuKeep restore drill |
 
 ---
 
@@ -95,7 +55,6 @@
 
 | Risk | Current Status | Planned Mitigation |
 |------|---------------|-------------------|
-| Seccomp filter x86-64 only | Non-Linux and non-x86 get no syscall filter | Architecture check in `buildSeccompFilter`; arm64 planned Ω2 |
-| ActivityPub HTTP Signature verification | Not yet implemented | Ω2 hardening phase |
-| Per-actor federation rate limits | Not yet implemented | Ω2 hardening phase |
-| Mutual TLS for plugin IPC | Not implemented | Ω3 (when plugin SDK is external) |
+| Seccomp on an unlisted architecture | The filter covers amd64, arm64, riscv64, ppc64le, s390x, arm and 386 (`internal/sandbox/seccomp_arch_linux.go`); elsewhere none is installed, never one built for another architecture | Add an architecture when a build targets it |
+| Mutual TLS for plugin IPC | Not implemented | When the plugin SDK is external |
+| `PRAGMA integrity_check` at start-up | Not run when the database is opened | Run on each staged update and in each restore drill |

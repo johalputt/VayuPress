@@ -1,6 +1,6 @@
 # ADR-0061 — Sovereign Platform: P2/P3 Systems
 
-**Status:** Accepted  
+**Status:** Accepted (in part: the signed articles, Merkle trees, search sharding, immutable archives and constitutional voting below were removed on 2026-09-25, imported by nothing in the product; what remains is the plugin registry and bundles, and the event stream. The consequences that name the removed systems no longer hold: no article is signed and no Merkle proof is made)  
 **Date:** 2026-06-13
 
 ## Context

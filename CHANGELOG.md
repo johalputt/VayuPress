@@ -8,6 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **Docs: the attack-surface document describes the product as it is.** It
+  listed federation, an AI runtime, signed articles ("`Verify` called before
+  any signed article is served"), Merkle proofs, archives and DID login, all
+  removed on 2026-09-25, and several mitigations nothing performs: an
+  integrity check on open, `BEGIN IMMEDIATE`, a database path checked
+  against a prefix, an 8 MB body limit, seccomp on x86-64 alone. Each row now
+  names its mechanism; ADR-0061 says which of its systems are gone.
+
 ## [3.18.7] — 2026-10-16
 
 Mail's Mailboxes puts new mail first and follows it live; tag pages read stored cards, not bodies; the page cache has a switch, and browsers revalidate pages.
