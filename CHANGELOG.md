@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.3] — 2026-10-16
+
+The member panel is redesigned in Halcyon's manner.
+
+### Changed
+
+- **Halcyon's member panel reads as part of the site.** It had Halcyon's
+  colours but kept its cards, icon tiles and pill badges. It is now drawn as
+  a Halcyon page is: a serif title and names, hairline rules between
+  sections, a plan's state as a word, and Halcyon's own buttons. Other
+  themes keep their panel.
+
 ## [3.18.2] — 2026-10-11
 
 Halcyon fits a 14-inch laptop, shows the site's logo and the author's
