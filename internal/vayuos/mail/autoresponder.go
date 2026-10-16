@@ -3,12 +3,9 @@
 package mail
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	netmail "net/mail"
-	"net/textproto"
 	"strings"
 	"time"
 )
@@ -154,9 +151,32 @@ func (s *AccountStore) autoreplyRecently(ctx context.Context, mailbox, sender st
 // that the address and token headers it served are never folded; filters
 // then used it for Subject, which a long or encoded subject folds over
 // several lines, so a filter saw only its first fragment.
+//
+// A line scan rather than net/textproto: textproto stops at the first
+// malformed line, so one line without a colon would hide every header after
+// it, and the autoresponder's loop guard (Auto-Submitted, Precedence,
+// List-Id) would answer a machine.
 func headerValue(raw []byte, name string) string {
-	h, _ := textproto.NewReader(bufio.NewReader(bytes.NewReader(raw))).ReadMIMEHeader()
-	return strings.TrimSpace(h.Get(name))
+	head := string(raw)
+	if i := strings.Index(head, "\r\n\r\n"); i >= 0 {
+		head = head[:i]
+	} else if i := strings.Index(head, "\n\n"); i >= 0 {
+		head = head[:i]
+	}
+	prefix := strings.ToLower(name) + ":"
+	var val []string
+	for _, line := range strings.Split(head, "\n") {
+		l := strings.TrimRight(line, "\r")
+		switch {
+		case val != nil && (strings.HasPrefix(l, " ") || strings.HasPrefix(l, "\t")):
+			val = append(val, strings.TrimSpace(l))
+		case val != nil:
+			return strings.Join(val, " ")
+		case strings.HasPrefix(strings.ToLower(l), prefix):
+			val = []string{strings.TrimSpace(l[len(prefix):])}
+		}
+	}
+	return strings.Join(val, " ")
 }
 
 // noAutoReplySenderRe matches machine senders we must never answer.

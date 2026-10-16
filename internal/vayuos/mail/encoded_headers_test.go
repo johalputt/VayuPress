@@ -53,3 +53,29 @@ func TestAReplyQuotesTheMessageAsTheReaderShowsIt(t *testing.T) {
 		t.Errorf("an HTML-only message was quoted as %q", text)
 	}
 }
+
+// Release audit (3.18.6): a malformed line in the header block hides nothing
+// after it. net/textproto stopped there, and the autoresponder's loop guard
+// then missed Auto-Submitted and answered a machine.
+func TestAMalformedHeaderLineHidesNothingAfterIt(t *testing.T) {
+	raw := []byte("From: bot@x.example\r\nnot a header line\r\nAuto-Submitted: auto-replied\r\nSubject: a\r\n b\r\n\r\nBody.\r\n")
+	if got := headerValue(raw, "Auto-Submitted"); got != "auto-replied" {
+		t.Errorf("Auto-Submitted read as %q after a malformed line", got)
+	}
+	if got := headerValue(raw, "Subject"); got != "a b" {
+		t.Errorf("a folded subject read as %q", got)
+	}
+}
+
+// Release audit (3.18.6): an encoded-word can carry a line break, which a
+// reply would put back into its Subject header as a header of the sender's
+// choosing. Decoded, it is a space, in the listing and in the reply alike.
+func TestAnEncodedLineBreakStartsNoHeader(t *testing.T) {
+	raw := "From: x@evil.example\r\nSubject: =?UTF-8?Q?hi=0D=0ABcc=3A_victim=40x=2Eexample?=\r\n\r\nBody.\r\n"
+	if _, subject, _, _ := ReplySource([]byte(raw)); strings.ContainsAny(subject, "\r\n") {
+		t.Errorf("a reply's subject carries a line break: %q", subject)
+	}
+	if h := summary(t, raw); strings.ContainsAny(h.subject, "\r\n") {
+		t.Errorf("the listing's subject carries a line break: %q", h.subject)
+	}
+}

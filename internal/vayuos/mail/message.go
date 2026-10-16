@@ -59,20 +59,10 @@ func ParseMessage(raw []byte) ParsedMessage {
 		pm.Text = string(raw)
 		return pm
 	}
-	dec := &mime.WordDecoder{}
-	decodeHdr := func(s string) string {
-		if s == "" {
-			return ""
-		}
-		if d, derr := dec.DecodeHeader(s); derr == nil {
-			return d
-		}
-		return s
-	}
-	pm.From = decodeHdr(msg.Header.Get("From"))
-	pm.To = decodeHdr(msg.Header.Get("To"))
-	pm.Cc = decodeHdr(msg.Header.Get("Cc"))
-	pm.Subject = decodeHdr(msg.Header.Get("Subject"))
+	pm.From = decodeMIMEWord(msg.Header.Get("From"))
+	pm.To = decodeMIMEWord(msg.Header.Get("To"))
+	pm.Cc = decodeMIMEWord(msg.Header.Get("Cc"))
+	pm.Subject = decodeMIMEWord(msg.Header.Get("Subject"))
 	pm.Date = msg.Header.Get("Date")
 
 	collectPart(msg.Header.Get("Content-Type"), msg.Header.Get("Content-Transfer-Encoding"), msg.Header.Get("Content-Disposition"), msg.Body, &pm, 0)
@@ -192,12 +182,17 @@ func ReplySource(raw []byte) (from, subject, text, date string) {
 	return pm.From, pm.Subject, text, pm.Date
 }
 
+// decodeMIMEWord decodes a header's RFC 2047 encoded-words, or returns it as
+// it came when they do not decode. A line break an encoded-word carries
+// becomes a space: the decoded value is shown on one line, and a reply puts
+// "Re: "+subject back into a header, where an encoded CRLF would start a
+// header of the sender's choosing.
 func decodeMIMEWord(s string) string {
 	dec := &mime.WordDecoder{}
 	if d, err := dec.DecodeHeader(s); err == nil {
-		return d
+		s = d
 	}
-	return s
+	return strings.NewReplacer("\r\n", " ", "\r", " ", "\n", " ").Replace(s)
 }
 
 // maxAttachmentBytes bounds a single attachment download so a crafted message
