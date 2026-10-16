@@ -82,7 +82,8 @@ STORAGE_QUOTA_GB=200          # alert threshold in GB for data directory
 
 # Go toolchain — minimum acceptable major.minor (patch is irrelevant)
 GO_MIN_MAJOR=1
-GO_MIN_MINOR=22   # VayuPress requires Go 1.22+; any patch release is fine
+GO_MIN_MINOR=27   # go.mod's go line (digitorus/pkcs7 needs 1.27); keep the two equal, or an
+                  # older Go installed here skips the install and the build fails
 
 # =============================================================================
 # ── HELPERS ───────────────────────────────────────────────────────────────────

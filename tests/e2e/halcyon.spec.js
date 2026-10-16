@@ -271,7 +271,7 @@ test.describe("Halcyon", () => {
       const about = page.locator(".h-author p + p");
       await expect(async () => {
         await page.goto("/halcyon-long");
-        await expect(about).toHaveText(bio.replace("\n", " "), { timeout: 1000, useInnerText: false });
+        await expect(about).toHaveText(bio.replaceAll("\n", " "), { timeout: 1000, useInnerText: false });
       }).toPass({ timeout: 15000, intervals: [1000, 2000] });
       expect(await about.evaluate((e) => e.innerText), "the bio's line break").toContain("platform.\n");
 

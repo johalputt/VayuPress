@@ -8,6 +8,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+
+- **Dependencies brought up to date.** chi 5.5.0, go-pkcs12 0.7.4, pkcs7,
+  go-ical, lyrebird and iploc are at their latest; the weekly freshness check
+  was red since 12 October. pkcs7 requires Go 1.27, so go.mod's go line is
+  1.27 (the release toolchain was already 1.27.2), and the deploy script
+  installs Go when a host's is older than that: it accepted 1.22, below what
+  go.mod already required. A test now holds the two equal.
+
 ## [3.18.6] — 2026-10-16
 
 Mail reads encoded subjects and names everywhere, not only in the open message.
