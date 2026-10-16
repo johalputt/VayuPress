@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.6] — 2026-10-16
+
+Mail reads encoded subjects and names everywhere, not only in the open message.
+
 ### Fixed
 
 - **Mail: subjects and names beyond ASCII read as written.** A subject or
@@ -17,6 +21,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   also quoted a quoted-printable body as its codes (`=E2=80=94`), and a
   filter on a long subject saw only its first line. All of them now read
   the message as the reader shows it.
+
+### Security
+
+- **Mail: an encoded line break in a subject is a space.** Decoded, it would
+  have reached a reply's subject and started a header of the sender's
+  choosing. A malformed header line no longer hides the headers after it
+  from the auto-reply's loop guard.
 
 ## [3.18.5] — 2026-10-16
 
