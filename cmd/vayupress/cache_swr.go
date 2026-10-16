@@ -42,6 +42,7 @@ import (
 	"sync"
 
 	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/users"
 )
 
@@ -137,4 +138,25 @@ func (a *App) rendersStaleFor(r *http.Request) bool {
 	}
 	u := a.resolveConsoleUser(r)
 	return u != nil && u.Role == users.RoleAdmin
+}
+
+// revalidateEachVisit lets a browser keep a public page but ask before each
+// reuse. Without a Cache-Control a page served from the cache carried only
+// Last-Modified, from which a browser may guess its own lifetime (commonly a
+// tenth of the page's age) and show it unasked: a post cached ten hours earlier
+// could be shown for an hour after an edit. Asked each time, an unchanged page
+// answers 304 with no body (http.ServeFile, from Last-Modified). The cached
+// HTML carries no per-request nonce (inline scripts are allowed by hash), so a
+// stored copy stays valid under a later response's policy.
+func revalidateEachVisit(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-cache")
+}
+
+// queueCacheWrite stores the page the write queue renders on publish, unless
+// the page cache is off: then the post is drawn when it is asked for.
+func queueCacheWrite(relPath, content string) {
+	if !render.PageCacheOn() {
+		return
+	}
+	render.CacheWrite(relPath, content) //nolint:errcheck
 }

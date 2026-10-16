@@ -1225,7 +1225,7 @@ func main() {
 	// Wire queue injections.
 	queue.RenderFn = render.RenderArticle
 	queue.SetCacheWriteFn(func(relPath, content string) {
-		render.CacheWrite(relPath, content) //nolint:errcheck
+		queueCacheWrite(relPath, content)
 	})
 	queue.EventBus = a.eventBus
 

@@ -265,11 +265,14 @@ type SiteSettings struct {
 	// NoFollowLinks marks a post's links to other sites rel=nofollow
 	// (settings.KeyNoFollowLinks; nofollowElsewhere).
 	NoFollowLinks bool
-	PrimaryLight  string // --pico-primary for light mode (hex)
-	PrimaryDark   string // --pico-primary for dark mode (hex)
-	AccentLight   string // --vayu-accent for light mode (hex)
-	AccentDark    string // --vayu-accent for dark mode (hex)
-	CustomCSS     string // operator-supplied CSS, served via /theme.css
+	// NoPageCache is the operator's page cache switch turned off
+	// (settings.KeyPageCache); the zero value keeps the cache on.
+	NoPageCache  bool
+	PrimaryLight string // --pico-primary for light mode (hex)
+	PrimaryDark  string // --pico-primary for dark mode (hex)
+	AccentLight  string // --vayu-accent for light mode (hex)
+	AccentDark   string // --vayu-accent for dark mode (hex)
+	CustomCSS    string // operator-supplied CSS, served via /theme.css
 
 	// Declarative <head> capabilities (validated on write, escaped on render).
 	// These replace raw head HTML so no arbitrary markup — meta-refresh
@@ -2609,6 +2612,11 @@ func DetectLayout(a db.Article, r *http.Request, isAdmin bool) ArticleLayoutType
 func unsafePathComponent(s string) bool {
 	return strings.Contains(s, "..") || strings.ContainsAny(s, `/\`+"\x00")
 }
+
+// PageCacheOn reports whether rendered public pages are kept and served from
+// the cache (settings.KeyPageCache). Feeds, sitemaps and robots.txt are files
+// the cache directory holds, not pages, and are written either way.
+func PageCacheOn() bool { return !getActiveSettings().NoPageCache }
 
 // CacheWrite writes content to a path under the configured cache directory. The
 // relative path is cleaned and confined to the cache tree before any write.

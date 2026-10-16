@@ -289,6 +289,7 @@ func (a *App) handleBlogPaged(w http.ResponseWriter, r *http.Request) {
 // one 30-row indexed query — which keeps them cheap and sidesteps paged-cache
 // invalidation. Out-of-range pages return the branded 404.
 func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
+	revalidateEachVisit(w)
 	if page < 1 {
 		page = 1
 	}
@@ -307,7 +308,7 @@ func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
 			homeRel = filepath.Join("home", "d_"+domCacheDir(scope), "index.html")
 		}
 	}
-	useCache := page == 1
+	useCache := page == 1 && render.PageCacheOn()
 	warm := isCacheWarm(r)
 	// Privacy-first analytics: count the homepage view (cookieless, no PII) before
 	// the cache early-return so cached hits are tallied too. Crucially this is the
@@ -513,6 +514,7 @@ func excerptFromHTML(s string, n int) string {
 }
 
 func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
+	revalidateEachVisit(w)
 	slug := chi.URLParam(r, "slug")
 	// IndexNow key verification file at the site ROOT (https://<host>/<key>.txt).
 	// IndexNow only trusts a key to vouch for URLs at or below the key file's own
@@ -567,7 +569,7 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 	gated := accessLevel != members.AccessPublic && !isAdmin
 
 	cachePath := filepath.Join(config.Cfg.CacheDir, "posts", slug+".html")
-	if !gated && (!isAdmin || r.URL.Query().Get("layout") == "") {
+	if !gated && render.PageCacheOn() && (!isAdmin || r.URL.Query().Get("layout") == "") {
 		if fi, err := os.Stat(cachePath); err == nil { //nosec G703 -- slug validated by api.IsValidSlug; path confined to CacheDir/posts
 			fresh := render.CacheEntryFresh(fi)
 			// Stale-while-revalidate: a real visitor never blocks on a stale page.
@@ -677,7 +679,7 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 	// extend frame-src for this page only (admin/non-embed pages stay locked).
 	embedOrigins := render.FrameOriginsInHTML(art.Content)
 	// Never cache gated articles to disk — access must be re-checked each request.
-	if layout == render.ArticleLayoutDefault && !gated && !usesAdSense {
+	if layout == render.ArticleLayoutDefault && !gated && !usesAdSense && render.PageCacheOn() {
 		render.CacheWrite(filepath.Join("posts", slug+".html"), htmlOut) //nolint:errcheck
 		render.CacheWriteCSPSidecar(slug, embedOrigins)
 	}

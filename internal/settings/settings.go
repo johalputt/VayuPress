@@ -163,6 +163,13 @@ const (
 	// and a comment appears only once it is approved.
 	KeyNoFollowLinks = "links.nofollow"
 
+	// KeyPageCache keeps rendered public pages (home, posts, topics) on disk
+	// and serves them from there, stored "true" or "false"; unset is on. Off,
+	// every visit renders its page: for checking a change as it is drawn, at
+	// the cost of speed. Edits still clear their pages while it is off, so
+	// turning it back on serves nothing older than the content.
+	KeyPageCache = "cache.pages"
+
 	// KeyMediaAlt stores a JSON object mapping a content-addressed media filename
 	// to its operator-authored alt text, edited in the Media library. Used as the
 	// default alt when inserting that image. Absent keys simply have no default.
@@ -483,6 +490,7 @@ var RobotsOptions = map[string]bool{
 // policy or measurements about this specific machine.
 var NotPortable = map[string]bool{
 	KeyNoFollowLinks:              true,
+	KeyPageCache:                  true,
 	KeyThemeStudioDraft:           true,
 	KeyBrandFavicon:               true,
 	KeySiteTimezone:               true,
@@ -588,6 +596,7 @@ var NotPortable = map[string]bool{
 // AllKeys is the canonical set of settings keys accepted by Set/SetMany.
 var AllKeys = map[string]bool{
 	KeyNoFollowLinks:    true,
+	KeyPageCache:        true,
 	KeyThemeStudioDraft: true,
 	KeyTalkHost:         true,
 	// The startup-duration ring (ADR-0155 P4). Written by the process itself on
@@ -717,6 +726,7 @@ var AllKeys = map[string]bool{
 // Defaults are returned when no DB value exists for a key.
 var Defaults = map[string]string{
 	KeyNoFollowLinks:           "false",
+	KeyPageCache:               "true",
 	KeySiteName:                "VayuPress",
 	KeySiteTagline:             "Publishing as an adaptive runtime.",
 	KeySiteDescription:         "Durable by design, observable end to end.",

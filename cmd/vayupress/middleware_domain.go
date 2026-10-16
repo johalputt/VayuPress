@@ -151,6 +151,7 @@ func siteSettingsFromValues(v map[string]string) render.SiteSettings {
 		AuthorBio:       v[settings.KeyAuthorBio],
 		ShowMembership:  v[settings.KeyMembershipButtons] == "true",
 		NoFollowLinks:   v[settings.KeyNoFollowLinks] == "true",
+		NoPageCache:     v[settings.KeyPageCache] == "false",
 		PrimaryLight:    v[settings.KeyThemePrimaryLight],
 		PrimaryDark:     v[settings.KeyThemePrimaryDark],
 		AccentLight:     v[settings.KeyThemeAccentLight],

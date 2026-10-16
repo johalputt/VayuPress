@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -206,5 +207,133 @@ func TestAStalePageIsRenderedForTheOperatorAlone(t *testing.T) {
 		swrInst.mu.Lock()
 		delete(swrInst.inflight, pg.key)
 		swrInst.mu.Unlock()
+	}
+}
+
+// The page cache switch (settings.KeyPageCache): off, a post, Home and a topic
+// are drawn for each visit, the copy on disk is neither served nor rewritten,
+// and a page not yet cached is not stored; on, the copy is served. Every page
+// asks the browser to revalidate, and an unchanged cached page answers 304.
+func TestThePageCacheSwitchDecidesWhetherPagesAreKept(t *testing.T) {
+	openMigratedDB(t)
+	render.Init(t.TempDir())
+	t.Cleanup(func() { render.SetActiveSettings(render.SiteSettings{}) })
+	now := time.Now()
+	if _, err := dbpkg.DB.Exec(`INSERT INTO articles(id,title,slug,content,excerpt,tags,status,created_at,updated_at) VALUES('1','Post','the-post','<p>The page as it is now.</p>','','go','published',?,?)`, now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dbpkg.DB.Exec(`INSERT INTO article_tags(article_id,tag,tag_norm,created_at) VALUES('1','go','go',?)`, now); err != nil {
+		t.Fatal(err)
+	}
+	a := &App{}
+	const copy = "the copy kept on disk"
+	for _, pg := range []struct {
+		name, file, url, param, value string
+		serve                         func(http.ResponseWriter, *http.Request)
+	}{
+		{"a post", filepath.Join("posts", "the-post.html"), "/the-post", "slug", "the-post", a.handleArticlePage},
+		{"Home", filepath.Join("home", "index.html"), "/", "", "", a.handleHome},
+		{"a topic", filepath.Join("tags", "go.html"), "/tags/go", "tag", "go", a.handleTagPage},
+	} {
+		cached := filepath.Join(config.Cfg.CacheDir, pg.file)
+		get := func(header ...string) *httptest.ResponseRecorder {
+			req := httptest.NewRequest("GET", pg.url, nil)
+			if len(header) == 2 {
+				req.Header.Set(header[0], header[1])
+			}
+			rc := chi.NewRouteContext()
+			if pg.param != "" {
+				rc.URLParams.Add(pg.param, pg.value)
+			}
+			req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rc))
+			rec := httptest.NewRecorder()
+			pg.serve(rec, req)
+			return rec
+		}
+		keep := func() time.Time {
+			if err := os.MkdirAll(filepath.Dir(cached), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(cached, []byte(copy), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			fi, _ := os.Stat(cached)
+			return fi.ModTime()
+		}
+
+		render.SetActiveSettings(render.SiteSettings{})
+		at := keep()
+		on := get()
+		if on.Body.String() != copy {
+			t.Errorf("%s, cache on: the kept copy was not served (%.60q)", pg.name, on.Body.String())
+		}
+		if cc := on.Header().Get("Cache-Control"); cc != "no-cache" {
+			t.Errorf("%s: Cache-Control %q; a browser may show it unasked after an edit", pg.name, cc)
+		}
+		if again := get("If-Modified-Since", at.UTC().Format(http.TimeFormat)); again.Code != http.StatusNotModified {
+			t.Errorf("%s: an unchanged kept page answered %d to a revalidation, want 304", pg.name, again.Code)
+		}
+
+		render.SetActiveSettings(render.SiteSettings{NoPageCache: true})
+		off := get()
+		if off.Code != http.StatusOK || off.Body.String() == copy {
+			t.Errorf("%s, cache off: answered %d with the kept copy; want the page drawn", pg.name, off.Code)
+		}
+		if b, _ := os.ReadFile(cached); string(b) != copy {
+			t.Errorf("%s, cache off: the copy on disk was rewritten", pg.name)
+		}
+		if err := os.Remove(cached); err != nil {
+			t.Fatal(err)
+		}
+		get()
+		if _, err := os.Stat(cached); err == nil {
+			t.Errorf("%s, cache off: a page was stored", pg.name)
+		}
+	}
+}
+
+// The page the write queue renders on publish is stored only while the page
+// cache is on.
+func TestThePublishQueueStoresAPageOnlyWithTheCacheOn(t *testing.T) {
+	render.Init(t.TempDir())
+	t.Cleanup(func() { render.SetActiveSettings(render.SiteSettings{}) })
+	page := filepath.Join(config.Cfg.CacheDir, "posts", "published.html")
+	render.SetActiveSettings(render.SiteSettings{NoPageCache: true})
+	queueCacheWrite("posts/published.html", "drawn on publish")
+	if _, err := os.Stat(page); err == nil {
+		t.Error("with the cache off, the publish queue stored the page")
+	}
+	render.SetActiveSettings(render.SiteSettings{})
+	queueCacheWrite("posts/published.html", "drawn on publish")
+	if b, _ := os.ReadFile(page); string(b) != "drawn on publish" {
+		t.Error("with the cache on, the publish queue did not store the page")
+	}
+}
+
+// A kept page carries no per-request nonce: a browser revalidating it is
+// answered 304 and reuses its copy under the new response's policy, whose nonce
+// differs, so a nonce in the page would block its scripts (revalidateEachVisit).
+func TestAKeptPageCarriesNoPerRequestNonce(t *testing.T) {
+	openMigratedDB(t)
+	render.Init(t.TempDir())
+	now := time.Now()
+	if _, err := dbpkg.DB.Exec(`INSERT INTO articles(id,title,slug,content,excerpt,tags,status,created_at,updated_at) VALUES('1','Post','kept','<p>Body.</p>','','','published',?,?)`, now, now); err != nil {
+		t.Fatal(err)
+	}
+	a := &App{}
+	req := httptest.NewRequest("GET", "/kept", nil)
+	rc := chi.NewRouteContext()
+	rc.URLParams.Add("slug", "kept")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rc))
+	a.handleArticlePage(httptest.NewRecorder(), req)
+	b, err := os.ReadFile(filepath.Join(config.Cfg.CacheDir, "posts", "kept.html"))
+	if err != nil {
+		t.Fatalf("the post was not kept: %v", err)
+	}
+	if strings.Contains(string(b), "nonce=") {
+		t.Error("a kept page carries a nonce, which a revalidated copy would no longer match")
+	}
+	if !strings.Contains(string(b), "<script") {
+		t.Fatal("the kept page has no script: this test checks nothing")
 	}
 }

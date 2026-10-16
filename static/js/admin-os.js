@@ -1474,43 +1474,6 @@ window.vpRelTime = relativeTime;
   setInterval(poll, POLL_MS);
 })();
 
-/* ── Mailboxes, live ─────────────────────────────────────────────────────────
-   The Mailboxes directory ([data-mbx-live]) is redrawn from the server every
-   20 s while the page is in view, and at once when it comes back into view, so
-   new mail rises into "New mail" without a reload. The server draws it, as on
-   load; only the domains the operator opened are kept open across the swap. */
-(function initMailboxesLive() {
-  var live = document.querySelector('[data-mbx-live]');
-  if (!live) return;
-  var EVERY_MS = 20000;
-  function openDomains() {
-    var open = Object.create(null);
-    live.querySelectorAll('details[open] .mon-acc__title').forEach(function (t) { open[t.textContent] = true; });
-    return open;
-  }
-  function refresh() {
-    if (document.visibilityState !== 'visible') return;
-    fetch(location.href, { credentials: 'same-origin', headers: { 'Accept': 'text/html' } })
-      .then(function (r) { return r.ok ? r.text() : null; })
-      .then(function (html) {
-        if (!html) return;
-        var doc = new DOMParser().parseFromString(html, 'text/html');
-        var next = doc.querySelector('[data-mbx-live]');
-        if (!next) return;
-        var open = openDomains();
-        live.innerHTML = next.innerHTML;
-        live.querySelectorAll('details .mon-acc__title').forEach(function (t) {
-          if (open[t.textContent]) t.closest('details').open = true;
-        });
-        var count = document.querySelector('.sa-list__count'), nextCount = doc.querySelector('.sa-list__count');
-        if (count && nextCount) count.textContent = nextCount.textContent;
-      })
-      .catch(function () { /* offline / transient — next tick */ });
-  }
-  setInterval(refresh, EVERY_MS);
-  document.addEventListener('visibilitychange', refresh);
-})();
-
 /* ── Keyboard layer (Wave 3.7) ────────────────────────────────
    j/k move through the post rows, x toggles the highlighted row's bulk select,
    n starts a new post (or focuses quick compose on the dashboard). Only fires

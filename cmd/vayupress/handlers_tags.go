@@ -210,6 +210,7 @@ const tagCountSQL = `SELECT COUNT(1) FROM article_tags t WHERE t.tag_norm=? AND 
 // whenever an article carrying that tag is created, updated, or deleted. A tag
 // with no published posts is treated as not-found so empty pages are never indexed.
 func (a *App) handleTagPage(w http.ResponseWriter, r *http.Request) {
+	revalidateEachVisit(w)
 	tag := strings.TrimSpace(chi.URLParam(r, "tag"))
 	// chi hands over the path as sent when it holds an escape Go would not
 	// write ("c%2B%2B"); the key is of the tag, not of its escaping.
@@ -255,7 +256,7 @@ func (a *App) handleTagPage(w http.ResponseWriter, r *http.Request) {
 	mostRead := halcyon && r.URL.Query().Get("sort") == "read"
 
 	cacheRel, cacheable := render.TagPageCacheRel(tag)
-	cacheable = cacheable && !mostRead
+	cacheable = cacheable && !mostRead && render.PageCacheOn()
 	if cacheable && scope != "" {
 		cacheRel = "d_" + domCacheDir(scope) + "/" + cacheRel
 	}

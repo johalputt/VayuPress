@@ -237,6 +237,11 @@ func (a *App) startRefresh() (joined bool) {
 // pass stops early at a run of fresh pages; a refresh goes through every post
 // and then removes cached pages whose post no longer exists.
 func (a *App) warmPass(ctx context.Context, run *warmRun) {
+	if !render.PageCacheOn() {
+		// Nothing is kept: a pass would render every post and store none.
+		run.update(func(w *warmRun) { w.Finished = time.Now() })
+		return
+	}
 	job := newWarmJob()
 	run.update(func(w *warmRun) { w.job = job })
 	defer func() {

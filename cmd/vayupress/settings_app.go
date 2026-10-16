@@ -129,6 +129,9 @@ var settingsCategories = []settingsCategory{
 	{Slug: "advanced", Label: "Advanced", Icon: "wrench", Group: "Install",
 		Sub: "Where this install keeps its working files.",
 		Groups: []settingsGroup{
+			{Title: "Page cache", Hint: "Home, posts and topics", Fields: []settingField{
+				{ID: "s-page-cache", Key: settings.KeyPageCache, Label: "Keep rendered pages", Hint: "On, each page is drawn once and served from the cache until its content changes. Off, every visit draws its page: use it to check a change as it is drawn, then turn it back on, since pages are slower and under heavy traffic some visitors are asked to try again. Saved as you switch it.", Kind: "toggle", Default: "true", Instant: true},
+			}},
 			{Title: "Files", Custom: settingsAdvancedFacts, Terms: "cache directory export restore backup storage"},
 		}},
 }

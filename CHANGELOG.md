@@ -8,7 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **A switch for the page cache.** Settings › Advanced › Page cache: on (the
+  default), each public page is drawn once and served from the cache until
+  its content changes; off, every visit draws its page, for checking a change
+  as it is drawn. Feeds, sitemaps and robots.txt are kept either way, edits
+  clear their pages while it is off, and the warmer rests.
+
 ### Changed
+
+- **Public pages are revalidated by the browser.** Home, posts and topics are
+  sent with `Cache-Control: no-cache`. A cached page carried only
+  Last-Modified, from which a browser may guess its own lifetime and show a
+  page unasked for an hour after an edit; now it asks each time, and an
+  unchanged page answers 304 with no body.
 
 - **Mail: Mailboxes puts new mail first, and follows it live.** The
   mailboxes with unread mail are listed at the top, the most unread first,
