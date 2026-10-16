@@ -9,8 +9,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // errNoScope is returned when a write arrives without a scope.
@@ -122,8 +124,8 @@ const (
 	// the hero (tagline headline + description), styled by the Hero options.
 	KeyHomeHero = "home.hero"
 
-	// KeyAuthorBio is a short author bio shown in the article author box (with
-	// the site author name). Plain text, optional.
+	// KeyAuthorBio is the author bio shown in the article author box (with
+	// the site author name). Plain text, optional, at most MaxAuthorBioLen.
 	KeyAuthorBio = "site.author_bio"
 
 	// Navigation menu. A JSON array of {"label","href"} objects defining the
@@ -953,6 +955,19 @@ func (s *Store) Get(ctx context.Context, sc Scope, key string) string {
 
 // SetMany upserts multiple settings in one transaction and invalidates the cache.
 // Unknown keys are silently ignored.
+// MaxAuthorBioLen bounds an author's About, the site's (KeyAuthorBio) and
+// each writer's own (users.MaxBioLen): five hundred characters, a paragraph,
+// at the operator's word (2026-10-16), where 250 and 280 cut it to a line.
+const MaxAuthorBioLen = 500
+
+// maxRunes caps the free text a setting may hold where a page shows it whole,
+// with the name the refusal gives it. A form's maxlength is advice to a
+// browser; this is the limit.
+var maxRunes = map[string]struct {
+	name string
+	n    int
+}{KeyAuthorBio: {"The author bio", MaxAuthorBioLen}}
+
 func (s *Store) SetMany(ctx context.Context, sc Scope, kv map[string]string) error {
 	// A write with no scope is REFUSED, where a read merely gets defaults. The
 	// asymmetry is deliberate: an unscoped read serves one wrong page, an
@@ -961,6 +976,11 @@ func (s *Store) SetMany(ctx context.Context, sc Scope, kv map[string]string) err
 	// an intentional change.
 	if !sc.Valid() {
 		return errNoScope
+	}
+	for k, v := range kv {
+		if m, ok := maxRunes[k]; ok && utf8.RuneCountInString(v) > m.n {
+			return fmt.Errorf("%s must be at most %d characters", m.name, m.n)
+		}
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

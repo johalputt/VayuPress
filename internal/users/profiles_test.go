@@ -102,6 +102,14 @@ func TestUpdateProfileValidation(t *testing.T) {
 	if err := s.UpdateProfile(ctx, u.ID, "Name", strings.Repeat("x", MaxBioLen+1), "", nil); err == nil {
 		t.Error("over-long bio should be rejected")
 	}
+	// Five hundred characters, stated here rather than read from MaxBioLen,
+	// and counted as characters: 500 two-byte letters are 1,000 bytes.
+	if err := s.UpdateProfile(ctx, u.ID, "Name", strings.Repeat("é", 500), "", nil); err != nil {
+		t.Errorf("a 500-character bio was refused: %v", err)
+	}
+	if err := s.UpdateProfile(ctx, u.ID, "Name", strings.Repeat("é", 501), "", nil); err == nil {
+		t.Error("a 501-character bio was accepted")
+	}
 	if err := s.UpdateProfile(ctx, u.ID, "Name", "bio", "ftp://nope", nil); err == nil {
 		t.Error("non-http avatar URL should be rejected")
 	}

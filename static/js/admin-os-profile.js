@@ -2,7 +2,7 @@
  *
  * Gathers the profile form (name, bio, avatar, social links), posts it as JSON
  * with the CSRF token from the vp_csrf cookie, and shows a live character count
- * for the 250-char bio. No inline handlers (strict CSP). */
+ * for the bio, against its field's maxlength. No inline handlers (strict CSP). */
 (function () {
   'use strict';
 
@@ -25,7 +25,7 @@
   var counter = form.querySelector('[data-bio-count]');
   function updateCount() {
     if (bio && counter) {
-      counter.textContent = bio.value.length + ' / 250';
+      counter.textContent = bio.value.length + ' / ' + bio.maxLength;
     }
   }
   if (bio) { bio.addEventListener('input', updateCount); updateCount(); }

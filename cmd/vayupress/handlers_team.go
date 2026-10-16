@@ -9,7 +9,7 @@ package main
 // change roles, delete) from the Members console; creating an account also
 // auto-provisions a sovereign VayuMail mailbox + PGP keypair (publishUserCreated).
 // Every staff member can edit their own public profile — display name, a short
-// bio (<=250 chars), an avatar, and social links — which renders at
+// bio (<= users.MaxBioLen characters), an avatar, and social links — which renders at
 // /author/{id} for readers.
 
 import (
@@ -424,8 +424,8 @@ func (a *App) handleOSProfile(w http.ResponseWriter, r *http.Request) {
     </div></div>
     <label class="field mt-4"><span class="field-label">Display name</span>
       <input class="input" type="text" data-p-name value="` + esc(u.Name) + `" maxlength="250" required></label>
-    <label class="field mt-3"><span class="field-label">About you <span class="muted">(max 250 characters)</span></span>
-      <textarea class="input" rows="3" data-p-bio maxlength="250" placeholder="A short bio shown on your public profile.">` + esc(u.Bio) + `</textarea>
+    <label class="field mt-3"><span class="field-label">About you <span class="muted">(max ` + strconv.Itoa(users.MaxBioLen) + ` characters)</span></span>
+      <textarea class="input" rows="5" data-p-bio maxlength="` + strconv.Itoa(users.MaxBioLen) + `" placeholder="A short bio shown on your public profile.">` + esc(u.Bio) + `</textarea>
       <span class="field-hint" data-bio-count></span></label>
     <label class="field mt-3"><span class="field-label">Avatar image URL <span class="muted">(shown cropped to a circular thumbnail)</span></span>
       <input class="input" type="url" data-p-avatar value="` + esc(u.AvatarURL) + `" placeholder="https://…/photo.jpg"></label>

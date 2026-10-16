@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/settings"
 )
 
 // Roles recognised by the authorization layer.
@@ -44,9 +45,10 @@ const (
 	RoleClient = "client"
 )
 
-// MaxBioLen / MaxNameLen bound the free-text profile fields.
+// MaxBioLen / MaxNameLen bound the free-text profile fields. A writer's About
+// is held to the same limit as the site's author bio.
 const (
-	MaxBioLen  = 250
+	MaxBioLen  = settings.MaxAuthorBioLen
 	MaxNameLen = 250
 )
 

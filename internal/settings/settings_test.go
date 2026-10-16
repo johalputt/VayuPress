@@ -160,3 +160,25 @@ func applyShippedSchema(t *testing.T, db *sql.DB) {
 		}
 	}
 }
+
+// The author bio holds 500 characters, counted as characters and not bytes,
+// and a longer one is refused whole: the refusal names the field, and the
+// other value sent with it is not saved either.
+func TestTheAuthorBioHoldsFiveHundredCharacters(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	full := strings.Repeat("é", 500) // 1,000 bytes
+	if err := s.SetMany(ctx, ForPrimary(), map[string]string{KeyAuthorBio: full}); err != nil {
+		t.Fatalf("a 500-character bio was refused: %v", err)
+	}
+	if got := s.Get(ctx, ForPrimary(), KeyAuthorBio); got != full {
+		t.Fatalf("the bio was not kept whole: %d characters", len([]rune(got)))
+	}
+	err := s.SetMany(ctx, ForPrimary(), map[string]string{KeyAuthorBio: full + "x", KeySiteName: "Changed"})
+	if err == nil || err.Error() != "The author bio must be at most 500 characters" {
+		t.Fatalf("a 501-character bio: %v, want the bio's own refusal", err)
+	}
+	if s.Get(ctx, ForPrimary(), KeySiteName) == "Changed" {
+		t.Error("the value sent beside a refused bio was saved")
+	}
+}

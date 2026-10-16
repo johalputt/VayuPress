@@ -165,6 +165,62 @@ test.describe("Halcyon", () => {
     }
   });
 
+  // The author's About holds 500 characters, shown whole with its line
+  // breaks, and the server refuses a 501st, whatever the form allows. The
+  // author's picture, hovered, is large enough to see a face (about 160 px),
+  // in front of what it covers. This install's author has no picture, so one
+  // is put where the initial is; that the page draws the picture is
+  // TestHalcyonDrawsTheAuthorsPictureAndWholeBio's.
+  test("the author's About holds 500 characters, and their picture grows on hover", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/os");
+    await page.waitForFunction(() => /(?:^|;\s*)vp_csrf=/.test(document.cookie));
+    const setBio = (v) => page.evaluate(async (v) => {
+      const csrf = decodeURIComponent(document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/)[1]);
+      const r = await fetch("/os/api/settings", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify({ key: "site.author_bio", value: v }) });
+      return { status: r.status, text: await r.text() };
+    }, v);
+    const head = "Writes about the systems under a small publishing platform.\n";
+    const bio = head + "x".repeat(500 - head.length);
+    expect(bio.length).toBe(500);
+    expect((await setBio(bio)).status, "a 500-character bio").toBe(200);
+    try {
+      const over = await setBio(bio + "y");
+      expect(over.status, "a 501-character bio").toBe(400);
+      expect(over.text).toContain("The author bio must be at most 500 characters");
+
+      const about = page.locator(".h-author p + p");
+      await expect(async () => {
+        await page.goto("/halcyon-long");
+        await expect(about).toHaveText(bio.replace("\n", " "), { timeout: 1000, useInnerText: false });
+      }).toPass({ timeout: 15000, intervals: [1000, 2000] });
+      expect(await about.evaluate((e) => e.innerText), "the bio's line break").toContain("platform.\n");
+
+      await page.evaluate(() => document.querySelectorAll(".h-av--i").forEach((s) => {
+        const img = document.createElement("img");
+        img.className = "h-av"; img.src = "/static/brand-48.png"; img.width = 40; img.height = 40; img.alt = "";
+        s.replaceWith(img);
+      }));
+      for (const where of [".h-who", ".h-author"]) {
+        const pic = page.locator(`${where} img.h-av`);
+        await pic.scrollIntoViewIfNeeded();
+        const before = await pic.boundingBox();
+        await pic.hover();
+        await page.waitForTimeout(400);
+        const after = await pic.evaluate((e) => {
+          const r = e.getBoundingClientRect();
+          return { w: r.width, front: document.elementFromPoint(r.right - 12, r.top + r.height / 2) === e };
+        });
+        expect(before.width, `${where}: the picture before hovering`).toBeLessThan(60);
+        expect(after.w, `${where}: the picture hovered is too small to see`).toBeGreaterThanOrEqual(150);
+        expect(after.front, `${where}: the hovered picture is behind the page`).toBe(true);
+        await page.mouse.move(0, 0);
+      }
+    } finally {
+      expect((await setBio("")).status).toBe(200);
+    }
+  });
+
   // A signed-in reader is named where Sign in and Subscribe were: in the bar,
   // in the phone menu, and no newsletter form asks them to join. The page is
   // cached for everyone, so it is drawn signed out and turned by the portal
@@ -187,17 +243,19 @@ test.describe("Halcyon", () => {
 
       // A settings change marks the cached pages stale, and the first request
       // after it is still answered from the old page while it re-renders
-      // (stale-while-revalidate, cache_swr.go): read until the new one comes.
+      // (stale-while-revalidate, cache_swr.go): read until the new one comes,
+      // a second apart, since the Shield refuses a page asked for over and
+      // over in the same instant.
       await expect(async () => {
         await page.goto("/halcyon-long");
         await expect(bar.locator("[data-vp-signin]")).toHaveText("Sign in", { timeout: 1000 });
-      }).toPass({ timeout: 15000 });
+      }).toPass({ timeout: 15000, intervals: [1000, 2000] });
       await expect(bar.locator("[data-vp-signup]")).toHaveText("Subscribe");
       await expect(page.locator(".vp-portal-trigger"), "a second way in, floating over the page").toHaveCount(0);
       await expect(async () => {
         await page.goto("/");
         await expect(page.locator(".h-letter"), "Home's newsletter form, signed out").toHaveCount(1, { timeout: 1000 });
-      }).toPass({ timeout: 15000 });
+      }).toPass({ timeout: 15000, intervals: [1000, 2000] });
 
       me.authenticated = true;
       me.member = { name: "Asha Rao", email: "asha@example.com", paid: false };

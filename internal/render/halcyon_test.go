@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/base64"
+	"html"
 	"image"
 	pngenc "image/png"
 	"os"
@@ -814,5 +815,24 @@ func TestABodyClassIsNoStyledClass(t *testing.T) {
 		if regexp.MustCompile(`\.` + regexp.QuoteMeta(m[1]) + `\b[^-]`).Match(css) {
 			t.Errorf("%s: the body's class %q is styled by halcyon.css", name, m[1])
 		}
+	}
+}
+
+// The author's picture is drawn as a picture in the byline and the author
+// box (the hover that enlarges it is halcyon.css's, held by halcyon.spec.js),
+// and a bio of several lines reaches the page whole.
+func TestHalcyonDrawsTheAuthorsPictureAndWholeBio(t *testing.T) {
+	withHalcyon(t, nil)
+	bio := strings.Repeat("Writes about systems. ", 20) + "\nSecond line."
+	SetActiveSettings(SiteSettings{Author: "Jane Roe", AuthorBio: bio})
+	prev := AuthorInfoFn
+	AuthorInfoFn = func(string) (string, string) { return "jane", "https://example.com/jane.jpg" }
+	t.Cleanup(func() { SetActiveSettings(SiteSettings{}); AuthorInfoFn = prev })
+	out := halcyonArticle(t, "<p>Body.</p>")
+	if n := strings.Count(out, `<img class="h-av" src="https://example.com/jane.jpg"`); n != 2 {
+		t.Errorf("the author's picture appears %d times, want 2 (byline and author box)", n)
+	}
+	if !strings.Contains(out, html.EscapeString(bio)) {
+		t.Error("the author box does not carry the whole bio")
 	}
 }

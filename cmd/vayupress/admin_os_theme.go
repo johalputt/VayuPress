@@ -441,8 +441,8 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 		sec("Type", fontPairSelectHTML()+`<div class="theme-fields theme-fields--text">`+optionRowsByKeys("headingcase", "headingscale", "dropcap")+typoRows+`</div>`) +
 		sec("Posts", `<div class="theme-fields theme-fields--text">`+optionRowsByKeys("articlealign", "articlemeta", "relatedposts", "trendingposts", "authorbox", "linkstyle", "readingprogress")+`</div>
         <label class="theme-field theme-field--text"><span class="theme-field__label">Author bio</span>
-          <input type="text" class="input" id="author-bio" maxlength="280" value="`+html.EscapeString(val(settings.KeyAuthorBio))+`" placeholder="One line about the author">
-          <span class="theme-field__hint" id="author-bio-status">In the author box, beside the author's name. Saved as you leave the field.</span></label>`)
+          <textarea class="input" id="author-bio" rows="4" maxlength="`+strconv.Itoa(settings.MaxAuthorBioLen)+`" placeholder="A few lines about the author">`+html.EscapeString(val(settings.KeyAuthorBio))+`</textarea>
+          <span class="theme-field__hint" id="author-bio-status">In the author box, beside the author's name; up to `+strconv.Itoa(settings.MaxAuthorBioLen)+` characters. Saved as you leave the field.</span></label>`)
 
 	advanced := sec("Menu", `<p class="sa-insp__text">Saved straight to the live site; the preview shows a sample menu.</p>
         <div id="cz-nav-rows" data-nav-editor></div>
