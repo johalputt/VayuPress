@@ -452,6 +452,32 @@ test("a template is saved from compose and put into the next message", async ({ 
   await expect(row).toHaveCount(0);
 });
 
+// The panel reads its list on "toggle", which the browser fires a task after
+// the panel opens. On CI's loaded runner a save had already gone by then, and
+// the late read emptied the save's note and outranked its answer. Here the
+// panel is opened and the save sent in one task, so toggle always comes last.
+test("a template saved as its panel opens keeps the save's note", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/os/vayumail/compose?user=priya");
+  const c = page.locator(".mx-compose--page");
+  const name = "Quick " + Date.now();
+  await c.locator("[data-c-body]").fill("Saved before the list was read.");
+  await c.evaluate((el, n) => {
+    el.querySelector("[data-c-tpl] summary").click();
+    el.querySelector("[data-c-tpl-name]").value = n;
+    el.querySelector("[data-c-tpl-save]").click();
+  }, name);
+  await expect(c.locator("[data-c-tpl-note]")).toHaveText("Saved as “" + name + "”.");
+  await page.waitForTimeout(1000);
+  await expect(c.locator("[data-c-tpl-note]"), "the read on opening took the save's note").toHaveText("Saved as “" + name + "”.");
+  await expect(c.locator("[data-c-tpl-use]", { hasText: name })).toHaveCount(1);
+
+  const row = c.locator(".mx-compose__tpl-row", { hasText: name });
+  await row.locator("[data-c-tpl-del]").click();
+  await page.locator(".vp-confirm button", { hasText: "Delete" }).click();
+  await expect(row).toHaveCount(0);
+});
+
 // A folder of your own: made from the sidebar, it opens; renamed and deleted
 // from its header's menu, and deleting it opens Inbox. Priya's mailbox, so
 // no other spec's sidebar shows it.

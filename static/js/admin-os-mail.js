@@ -1233,7 +1233,13 @@
           .then(function (ans) { return mine === tplAsked ? paintTpl(ans, said) : !ans.error; })
           .catch(function () { if (mine === tplAsked) tplNote.textContent = 'Templates could not be reached.'; return false; });
       };
+      // Writes made since the panel last closed. "toggle" is fired a task
+      // after the panel opens, and a save can go before it; its answer
+      // carries the list, so the read on opening would only empty the save's
+      // note and outrank its answer.
+      var tplWrote = 0;
       var tplPost = function (form, said) {
+        tplWrote++;
         form.user = tplUser;
         return tplAsk(fetch('/os/vayumail/templates/action', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrfToken(), 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(form) }), said);
       };
@@ -1245,7 +1251,8 @@
         tpl.querySelector('[data-c-tpl-save]').click();
       });
       tpl.addEventListener('toggle', function () {
-        if (!tpl.open) return;
+        if (!tpl.open) { tplWrote = 0; return; }
+        if (tplWrote) return;
         tplNote.textContent = '';
         tplAsk(fetch('/os/vayumail/templates?user=' + encodeURIComponent(tplUser), { credentials: 'same-origin' }));
       });

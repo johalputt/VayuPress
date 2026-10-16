@@ -8,6 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **Halcyon: a code block's wrapped lines stay inside it on a phone.** The
+  spaces where a long line wrapped were left hanging past the block's edge
+  (`white-space: pre-wrap`), and on a 390 px screen, where code runs to the
+  screen's edges, past the screen. Code blocks wrap with `break-spaces`.
+- **Mail: a template saved as its panel opens keeps "Saved as …".** The
+  panel reads its list when it opens, and that read could arrive after a
+  save and empty the save's note.
+
 ## [3.18.4] — 2026-10-16
 
 The security audit of everything since 3.17.78: five things fixed, each
