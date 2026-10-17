@@ -278,6 +278,12 @@ test.describe("Halcyon", () => {
         await expect(about).toHaveText(bio.replaceAll("\n", " "), { timeout: 1000, useInnerText: false });
       }).toPass({ timeout: 15000, intervals: [1000, 2000] });
       expect(await about.evaluate((e) => e.innerText), "the bio's line break").toContain("platform.\n");
+      // On a phone the author block is a column sized to its content, and
+      // break-word leaves a long run's width in that size: an About of one
+      // unbroken word pushed the page 3269 px wide at 320 px.
+      await page.setViewportSize({ width: 320, height: 800 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), "a long About at 320 px").toBeLessThanOrEqual(0);
+      await page.setViewportSize({ width: 1440, height: 900 });
 
       await page.evaluate(() => document.querySelectorAll(".h-av--i").forEach((s) => {
         const img = document.createElement("img");

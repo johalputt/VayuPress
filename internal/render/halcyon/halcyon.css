@@ -375,7 +375,7 @@
 .h .h-filed a:hover { color: var(--h-accent); }
 .h .h-author { margin-top: 28px; padding: 24px 0; border-top: 1px solid var(--h-line); border-bottom: 1px solid var(--h-line); display: flex; justify-content: space-between; gap: 24px; align-items: center; }
 .h .h-author-name { font: 500 19px/1.3 var(--h-serif); }
-.h .h-author p + p { margin-top: 4px; font: 400 16px/1.5 var(--h-serif); color: var(--h-t2); white-space: pre-line; overflow-wrap: break-word; }
+.h .h-author p + p { margin-top: 4px; font: 400 16px/1.5 var(--h-serif); color: var(--h-t2); white-space: pre-line; overflow-wrap: anywhere; }
 .h .h-follow { font: 500 14px/44px var(--h-sans); color: var(--h-accent); white-space: nowrap; }
 .h .h-next { padding: 64px 0 24px; }
 .h .h-rel { margin-top: 14px; }

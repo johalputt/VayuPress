@@ -145,6 +145,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   integrity check on open, `BEGIN IMMEDIATE`, a database path checked
   against a prefix, an 8 MB body limit, seccomp on x86-64 alone. Each row now
   names its mechanism; ADR-0061 says which of its systems are gone.
+- **A long author's About fits a phone.** On a phone the author block under
+  a post is a column sized to its content, and the About's wrapping rule left
+  the width of a long unbroken run in that size: an About holding one 440
+  character word pushed the post 3,269 px wide at 320 px. The run now breaks
+  at the column's edge.
 
 ### Security
 
