@@ -179,3 +179,22 @@ func TestBootstrapKeyResolvesSuperuser(t *testing.T) {
 		}
 	}
 }
+
+// A key bound to one site cannot read the install-wide analytics, whatever it
+// was granted: those figures add up every site on the install. The same
+// grant on an install key still reads them.
+func TestASiteBoundKeyNeverReadsTheInstallsAnalytics(t *testing.T) {
+	perms := apikeys.NewPermissions()
+	perms.Grant(apikeys.SectionAnalytics, apikeys.ActionRead)
+	perms.Grant(apikeys.SectionAnalytics, apikeys.ActionExport)
+	site := apikeys.KeyInfo{ID: "k1", DomainID: "d1", Perms: perms}
+	install := apikeys.KeyInfo{ID: "k2", Perms: perms}
+	for _, p := range []string{"/api/v1/analytics/overview", "/api/v1/analytics/referrers", "/os/api/analytics/realtime", "/api/v1/admin/analytics"} {
+		if keyMayCall(site, "GET", p) {
+			t.Errorf("a site-bound key reads %s", p)
+		}
+		if !keyMayCall(install, "GET", p) {
+			t.Errorf("an install key with the grant is refused %s", p)
+		}
+	}
+}

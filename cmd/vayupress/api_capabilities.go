@@ -236,6 +236,15 @@ func (a *App) requireAPIPermission(next http.Handler) http.Handler {
 // and the /os session-or-key gate: mapped routes require the route's capability;
 // unmapped routes require a superuser key (fail-closed).
 func keyMayCall(ki apikeys.KeyInfo, method, path string) bool {
+	// A key bound to one site (migration 092) never reads the install-wide
+	// analytics, whatever it was granted: those figures add up every site, so
+	// a client's key would read every other client's traffic. The exports said
+	// so in their own handlers; the rest of the family did not, and this is
+	// the door every key passes.
+	if ki.DomainID != "" && (strings.HasPrefix(path, "/api/v1/analytics") || strings.HasPrefix(path, "/os/api/analytics") ||
+		strings.HasPrefix(path, "/api/v1/admin/analytics")) {
+		return false
+	}
 	sec, act, mapped := capabilityFor(method, path)
 	if !mapped {
 		return ki.IsSuperuser()
