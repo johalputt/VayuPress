@@ -52,7 +52,7 @@ The Constitution defines 7 maintainer roles. One person may hold multiple roles;
 ### Performance Lead
 
 **Responsibilities**:
-- Owns binary size < 45 MB, memory < 800 MB idle, JS < 50 KB gz budgets
+- Owns the binary-size budget (45 MB gzipped, `make check-size`) and the Halcyon and console byte budgets
 - Runs benchmarks on every release candidate
 - Proposes and reviews Prompt 2 compliance
 - Maintains `docs/PERFORMANCE.md` (when created)

@@ -59,7 +59,7 @@ stays the page people see. The official page's source is in
 | The mirror is not an open GitHub relay | `Mirror.ServeHTTP` answers only from `state.json`; no request reaches an outbound call |
 | The updater is never shown a browser challenge | `shieldBypass` exempts the mirror paths on a mirror domain; the operator's country and address refusals still apply first |
 | One client cannot take the uplink | per-client download budget (20 files an hour, IPv6 grouped by /64) and 8 concurrent transfers |
-| A slow host can finish a 56 MB download | the mirror lifts the 30-second write deadline to 30 minutes for file transfers |
+| A slow host can finish a 60 MB download | the mirror lifts the 30-second write deadline to 30 minutes for file transfers |
 | A Tor Space leaks nothing | the mirror neither syncs nor answers in onion mode |
 
 ## Pointing an install elsewhere

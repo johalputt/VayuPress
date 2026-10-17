@@ -191,7 +191,7 @@ Entry points, assets and every mitigation's mechanism are in the
 
 | What | Budget | Where it is enforced |
 |------|--------|----------------------|
-| Binary size | 45 MB | `make check-size` |
+| Binary size | 45 MB gzipped (60 MB as shipped at 3.18.7) | `make check-size` |
 | Halcyon stylesheet, script | 9.4 KB, 3.8 KB gzipped (recorded at 3.18.0) | Halcyon's byte budget tests |
 | Lighthouse | Home, a post and four console pages | `lighthouse.yml` |
 | Console design | Every value on the token scale | The design lint in the browser tests |

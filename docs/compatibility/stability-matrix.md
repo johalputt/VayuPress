@@ -1,7 +1,6 @@
 # Stability Matrix — VayuPress
 
-**Version:** 1.0.0-omega  
-**Date:** 2026-09-25  
+**Last reviewed:** 2026-10-17, against VayuPress 3.18.7  
 **Applies to:** All interfaces, APIs, schemas, and protocols in VayuPress
 
 ---
@@ -36,7 +35,13 @@ of it may change in any commit. The contracts are the surfaces below.
 | `POST /api/v1/articles` | **Stable** | Request/response schema stable |
 | `GET /api/v1/articles/{slug}` | **Stable** | |
 | `PUT /api/v1/articles/{slug}` | **Stable** | |
+| `DELETE /api/v1/articles/{slug}` | **Stable** | |
+| `POST /api/v1/articles/bulk` | **Stable** | Up to 1,000 per request |
+| `GET /api/v1/openapi.json` | **Stable** | OpenAPI 3.0.3 description of the above |
 | `GET /api/v1/search` | **Beta** | Query params may grow |
+| `GET\|POST /api/v1/graphql` | **Beta** | Query-only |
+| `/mcp` | **Beta** | Tools are added; a tool's inputs do not change incompatibly ([mcp.md](mcp.md)) |
+| `/os/api/*` | **Internal** | The console's own calls; accept a key, promise nothing |
 | `GET /debug/pprof/` | **Internal** | Rate-limited; not a public API |
 
 ---
@@ -88,4 +93,5 @@ by `internal/compat/golden_test.go`.
 2. RFC must pass constitutional vote (≥ 2/3 supermajority).
 3. Deprecation notice in next minor release.
 4. Breaking change only in next major release.
-5. Migration guide in `docs/migrations/` before breaking release.
+5. An upgrade guide in [UPGRADING.md](../UPGRADING.md) and the release's
+   **Upgrade Notes** before the breaking release.

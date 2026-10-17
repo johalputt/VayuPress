@@ -2,7 +2,7 @@
 
 **Status:** Authoritative  
 **Applies to:** `internal/sandbox/`  
-**Last reviewed:** 2026-06-13
+**Last reviewed:** 2026-10-17, against VayuPress 3.18.7
 
 ---
 
@@ -15,15 +15,15 @@
 │                                                                  │
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │  cgroup v2 slice  (P27 — ADR-0058)                       │  │
-│  │  memory.max = Manifest.MemoryLimitMB                      │  │
-│  │  cpu.max    = Manifest.CPUQuota                           │  │
-│  │  pids.max   = 32                                          │  │
+│  │  memory.max = ResourceLimits.MemoryMaxBytes               │  │
+│  │  cpu.max    = ResourceLimits.CPUQuotaPercent              │  │
+│  │  pids.max   = ResourceLimits.MaxPIDs (0 = unset)          │  │
 │  │                                                           │  │
 │  │  ┌─────────────────────────────────────────────────────┐  │  │
 │  │  │  Linux Namespaces (P27)                            │  │  │
-│  │  │  CLONE_NEWPID  — private PID tree                  │  │  │
-│  │  │  CLONE_NEWIPC  — private SysV IPC / shared memory  │  │  │
-│  │  │  CLONE_NEWNET  — no network access                 │  │  │
+│  │  │  CLONE_NEWPID  — private PID tree  (IsolatePID)    │  │  │
+│  │  │  CLONE_NEWIPC  — private SysV IPC  (IsolateIPC)    │  │  │
+│  │  │  CLONE_NEWNET  — no network  (unless AllowNetwork) │  │  │
 │  │  │  CLONE_NEWNS   — private mount tree (P28)          │  │  │
 │  │  │                                                    │  │  │
 │  │  │  ┌───────────────────────────────────────────────┐ │  │  │
@@ -91,7 +91,7 @@ binaries, on the ABIs that still define them; arm64 and riscv64 never did.
 
 | Condition | Behaviour |
 |-----------|-----------|
-| `CLONE_NEWNS` rejected (EPERM, unprivileged runner) | Retry without namespace flags; log warning |
+| The kernel refuses the namespaces (EPERM, an unprivileged runner) | The plugin does not start (`subprocess.go`). Only `VAYUSANDBOX_ALLOW_NO_NAMESPACES=1` makes it retry without namespaces, logged as a warning: an operator's explicit choice, never a silent fallback |
 | `mount tmpfs` fails | Scratch dir exists as regular directory; log warning; no abort |
 | `applyProcMask` bind-mount fails | Logged as warn; sandbox continues |
 | `capset` fails | Returns error; plugin does not start |
@@ -103,14 +103,15 @@ binaries, on the ABIs that still define them; arm64 and riscv64 never did.
 
 ## What Plugins Cannot Do
 
-- Access the network (CLONE_NEWNET; no `connect`, `socket` syscalls not in allowlist)
+- Access the network, unless its manifest sets `AllowNetwork` (CLONE_NEWNET; and
+  `socket` and `connect` are not in the seccomp allowlist either way)
 - Read host filesystem beyond explicitly allowed paths
 - Execute arbitrary binaries (MS_NOEXEC on scratch)
 - Escalate privileges (all caps dropped; NO_NEW_PRIVS set)
-- See host PID tree (CLONE_NEWPID)
-- Communicate via SysV IPC (CLONE_NEWIPC)
-- Fork unboundedly (pids.max = 32)
-- Consume unbounded memory (memory.max cgroup)
+- See the host PID tree, when the manifest sets `IsolatePID` (CLONE_NEWPID)
+- Communicate via SysV IPC, when the manifest sets `IsolateIPC` (CLONE_NEWIPC)
+- Fork beyond its manifest's `MaxPIDs`, or use more memory than
+  `MemoryMaxBytes` (cgroup v2), when those are set
 - Run indefinitely (Manifest.Timeout; parent kills after deadline)
 - Inherit parent file descriptors (CLOEXEC sweep)
 

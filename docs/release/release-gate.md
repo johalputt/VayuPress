@@ -1,103 +1,79 @@
-# Release Gate — VayuPress Stable Release
+# The release gate
 
-**Version:** 1.0  
-**Last reviewed:** 2026-06-13  
-**Authority:** VayuPress Maintainers (requires RFC + 2/3 vote to modify)
+**Last reviewed:** 2026-10-17, against VayuPress 3.18.7
 
-This document is the **mandatory checklist** for any release tagged as `Stable`.  
-Beta and Experimental releases follow a lighter process documented in [`RELEASES.md`](../RELEASES.md).
+Every release is cut from a tree that has passed everything below, on that
+tree, before `.release-version` is bumped. There is one kind of release: a
+version is either published, and gated, or it is not published.
+[RELEASES.md](../RELEASES.md) covers what the workflow then does.
 
----
+## 1. The code gates
 
-## Pre-Release Gate (all items required for Stable)
+On the release tree, locally, and again in CI on the pushed commit:
 
-### 1. CI Checks
+- [ ] `gofmt -l .` prints nothing; `go vet ./...` is clean
+- [ ] `go build ./...`, unit tests, `go test -race ./...`, integration tests
+      (`-tags integration`), and the suite in shuffled order
+- [ ] staticcheck and golangci-lint: zero findings; gosec at high severity:
+      none
+- [ ] govulncheck: nothing reachable
+- [ ] `go mod tidy` leaves no diff; `go mod verify` passes
+- [ ] The layer rules hold (`internal/archcheck`)
+- [ ] The compatibility goldens match (`internal/compat`), with no
+      `GOLDEN_UPDATE`
+- [ ] `make check-size`: the binary under 45 MB gzipped
+- [ ] TruffleHog finds nothing in the tree
 
-All must pass on the release commit before tagging:
+## 2. The browser suite
 
-- [ ] `P16 · Native Go Build/Vet/Test/Staticcheck` — zero failures
-- [ ] `gofmt -l .` — returns empty output (no unformatted files)
-- [ ] `staticcheck ./...` — zero warnings
-- [ ] `go test -race ./...` — zero failures and zero data races
-- [ ] `govulncheck ./...` — zero known vulnerabilities in direct dependencies
-- [ ] `Race & Deadlock Detection` workflow — passes
-- [ ] `Supply Chain — SBOM & Vulnerability Scan` — passes
-- [ ] `Security — Prompt 9 Enforcement` — passes
-- [ ] Architecture validator (`internal/archcheck/`) — zero layer violations
-- [ ] Golden tests (`internal/compat/`) — all goldens match (no `GOLDEN_UPDATE` required)
+- [ ] The Playwright suite passes against a binary built from the release
+      tree, in Chromium (`tests/e2e`), including the design lint and the
+      visual baselines it checks
 
-### 2. Compatibility Validation
+## 3. The attacker's read
 
-- [ ] All packages marked **Stable** in [`docs/compatibility/stability-matrix.md`](../compatibility/stability-matrix.md) have no breaking API changes vs. previous release
-- [ ] If any Stable API changed: RFC accepted, deprecation window observed, migration guide present in `docs/migrations/`
-- [ ] Plugin manifest format backwards-compatible with previous release
-- [ ] Event schema: no fields removed from Stable event types
-- [ ] Database migrations: only additive (new tables/columns); no column renames or drops without migration pair
+- [ ] Everything under `## [Unreleased]` has been read as an attacker would
+      read it: each new route, input, file write and privilege boundary. Each
+      finding is fixed in this release or recorded with its reason, before the
+      version is bumped.
 
-### 3. Migration Verification
+## 4. Compatibility
 
-- [ ] `go test ./internal/db/ -run TestAllMigrationsApplyCleanly` passes: every embedded migration applies to a fresh database
-- [ ] No released file under `internal/db/migrations/` was edited (start-up halts on checksum drift, ADR-0034)
-- [ ] No migration modifies data in irreversible ways without explicit documentation
+- [ ] No route marked stable in
+      [stability-matrix.md](../compatibility/stability-matrix.md) changed
+      incompatibly ([api-contracts.md](../compatibility/api-contracts.md))
+- [ ] Migrations only add. No released migration file was edited (start-up
+      refuses a changed checksum, ADR-0034).
+      `go test ./internal/db/ -run TestAllMigrationsApplyCleanly` passes.
+- [ ] The previous release's binary still starts on the migrated database, so
+      a rollback from System › Updates works
+- [ ] The VCB contract and plugin manifests stay readable by the previous
+      release ([vcb.md](../compatibility/vcb.md))
 
-### 4. Security Checklist
+## 5. The release commit
 
-- [ ] `docs/security/attack-surfaces.md` reviewed; no new surfaces left unmitigated
-- [ ] `docs/security/incident-response.md` playbooks tested against staging
-- [ ] All plugin manifests in examples use `ExecutableHash`
-- [ ] No private keys, tokens, or credentials appear in `git log --diff-filter=A` for release branch
-- [ ] TruffleHog scan: zero findings
-- [ ] SBOM generated for release artifacts
+- [ ] `.release-version`, `var Version` and the CHANGELOG section agree
+      (`scripts/release-consistency.sh`)
+- [ ] The CHANGELOG section says what changed in the reader's words, and an
+      **Upgrade Notes** paragraph says whether an operator must act
+- [ ] Docs the release makes untrue are corrected in the same release
 
-### 5. Operational Readiness
+## After publishing
 
-- [ ] `docs/operations/backup-restore.md` restore procedure verified on staging
-- [ ] `docs/operations/wal-corruption-recovery.md` recovery tested (inject corruption in staging)
-- [ ] `/health/ready` endpoint responds correctly after clean startup
-- [ ] Graceful shutdown: all in-flight requests complete before process exits
-- [ ] Systemd unit restarts correctly after SIGKILL
+- [ ] The release carries the binary, `.sha256`, `.cosign.bundle`, `.sig` and
+      the signed SBOM
+- [ ] CI is green on the release commit. If it goes red, fixing it is the next
+      thing done.
 
-### 6. Release Artifacts
+## If a published release is bad
 
-- [ ] Binary built with `CGO_ENABLED=1` and verified against `go.sum`
-- [ ] SBOM attached as release asset (`vayupress-<version>.cdx.json`)
-- [ ] CHANGELOG entry present for all user-visible changes
-- [ ] Git tag is signed: `git tag -s v<version>`
-- [ ] Release notes include: what changed, migration steps (if any), known issues
+Releases are immutable once published, and installs verify what they
+download, so a bad release is replaced, not edited:
 
-### 7. Rollback Verification
-
-- [ ] Previous release binary confirmed to work against current DB (backwards schema compat)
-- [ ] Rollback procedure documented in CHANGELOG for this release
-- [ ] Time-to-rollback estimated and under 5 minutes for operator following `docs/operations/backup-restore.md`
-
----
-
-## Stability Gate: Promoting an Interface to Stable
-
-Before marking any interface **Stable** in the compatibility matrix:
-
-1. **ADR required**: Document the interface design decision.
-2. **Tests required**: Golden tests (see `internal/compat/`) covering the serialised form.
-3. **Deprecation window**: Any previous version of the interface must have been deprecated for ≥ 1 minor release.
-4. **Changelog entry**: Explicitly note the promotion.
-5. **RFC vote**: If the interface is externally visible (HTTP API, plugin IPC, event schema), an RFC with 2/3 vote is required.
-
----
-
-## Who Can Approve a Stable Release
-
-Any maintainer listed in [`MAINTAINERS.md`](../MAINTAINERS.md) may approve after all gate items pass.  
-No release may be tagged by the author of the majority of commits in that release (self-merge prevention).
-
----
-
-## Gate Failure Protocol
-
-If any gate item fails after a release tag is created:
-
-1. Immediately yank the release (mark pre-release on GitHub, add `[YANKED]` to CHANGELOG).
-2. File a P1 or P2 incident per [`docs/security/incident-response.md`](../security/incident-response.md).
-3. Fix the failing item.
-4. Re-run the full gate on the fixed commit.
-5. Issue a new patch release: `v<major>.<minor>.<patch+1>`.
+1. Fix the cause on `main`, through this gate.
+2. Release the next micro version. Installs take it as they took the last.
+3. An install already on the bad release can roll back from **System ›
+   Updates** while the fix is cut.
+4. If the defect is a vulnerability, follow
+   [incident-response.md](../security/incident-response.md) and
+   [SECURITY.md](../../SECURITY.md).

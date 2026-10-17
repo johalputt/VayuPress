@@ -209,7 +209,7 @@ dashboard built on these names.
 
 A single **8 GB RAM / 4 vCPU / 50 GB NVMe** VPS runs everything; johal.in runs
 234,727 posts, fourteen sites and the mail server on one Contabo VPS 10. The
-binary is held under 45 MB (`make check-size`). Background work — backups, the
+binary is held under 45 MB gzipped (`make check-size`). Background work — backups, the
 warmer, card building — asks the host pacer (`internal/pace`) before each step,
 so it slows down while visitors need the machine.
 

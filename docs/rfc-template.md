@@ -38,7 +38,7 @@ What other components are affected?
 
 ### Performance Impact
 
-Does this change affect the binary size budget (< 45 MB)?  
+Does this change affect the binary size budget (< 45 MB gzipped)?  
 Does this change affect memory usage (< 800 MB idle)?  
 Include benchmark data if available.
 
