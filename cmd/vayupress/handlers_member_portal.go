@@ -482,8 +482,10 @@ func (a *App) handleMemberAccountUpdate(w http.ResponseWriter, r *http.Request) 
 	if len(name) > 120 {
 		name = name[:120]
 	}
-	// Preserve any operator note (members cannot edit it).
-	if err := a.members.UpdateProfile(r.Context(), m.Email, name, m.Note); err != nil {
+	// One name for the person: their mailbox at this address, when they hold
+	// one, sends under it too (3cs). setPersonName keeps the operator's note,
+	// which members cannot edit.
+	if err := a.setPersonName(r.Context(), m.Email, name); err != nil {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}

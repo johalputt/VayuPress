@@ -74,6 +74,13 @@ func halcyonMemberPage(page string, kind MemberPage, cfg theme.HalcyonConfig) st
 
 	page = articleCSSLinkRe.ReplaceAllString(page, "")
 	head := HalcyonMembersHead() + `<script defer src="` + c.JSHref + `"></script>`
+	if kind == MemberSite {
+		// The site's bar is drawn signed out, for every reader alike, and the
+		// portal script turns it once /api/v1/members/me answers. Without it
+		// a signed-in reader's own account page offered Sign in and Subscribe
+		// under "Hello, <their name>" (3ct).
+		head += string(PortalJSLink())
+	}
 	if loc := signupCSSLinkRe.FindStringIndex(page); loc != nil {
 		page = page[:loc[1]] + head + page[loc[1]:]
 	} else {

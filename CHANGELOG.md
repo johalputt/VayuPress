@@ -8,6 +8,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **A person has one name, on the site and on their mail.** A mailbox's name
+  was set when the mailbox was created and nothing could change it: someone
+  who changed their name on their site account still sent mail under the old
+  one. Changing the name on the site account now changes the name on their
+  mail, and the mailbox settings have a "Name on mail you send" field, for
+  the holder and an administrator, that changes both. Line breaks and other
+  control characters are dropped, as the name goes into the From line.
+  Signed in, the console and the site's bar show that name too.
+- **A picture chosen once shows everywhere.** The site account and the
+  mailbox each kept their own picture, so a cartoon chosen in one showed as
+  initials in the other, and the console's account menu never showed the
+  mailbox's picture at all. A picture chosen in either place (a cartoon, a
+  photo, or none) is now the picture in both, and the menu and the site's
+  bar show it.
+- **A mail-only account is named for its role.** The console's account menu
+  called a mailbox with the "Mailbox: mail only" role an Author, the console
+  role it stands in for. It now reads "Mailbox: mail only" (or "Reviewer:
+  read-only mail").
+- **The site's bar knows a signed-in reader on their own account page.** On
+  Halcyon, the account page drew the site's bar with Sign in and Subscribe
+  under "Hello, <name>": its pages never loaded the script that turns the
+  bar for a signed-in reader. They do now.
+
 ## [3.18.9] — 2026-10-17
 
 Mailbox settings opens settings.

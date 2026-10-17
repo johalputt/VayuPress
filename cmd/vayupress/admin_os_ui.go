@@ -1492,6 +1492,9 @@ type osSettings struct {
 	UserName   string
 	UserRole   string
 	UserAvatar string
+	// RoleLabel is the role the account menu names: the console role, or for a
+	// mail-only session the mailbox's own role (3cu).
+	RoleLabel string
 	// MailOnly / AccessLevel drive role-scoped sidebar visibility and match the
 	// route guard in requireSessionOrAPIKey (hidden == unreachable).
 	MailOnly    bool
@@ -1622,9 +1625,19 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 			}
 			s.UserRole = u.Role
 			s.UserAvatar = u.AvatarURL
+			s.RoleLabel = roleDisplay(u.Role)
 			if mo, ok := ctx.Value(ctxMailOnlyKey).(bool); ok && mo {
 				s.MailOnly = true
 				s.MailReadOnly = a.vayuMail != nil && u.MailAddress != "" && a.vayuMail.MailboxReadOnly(u.MailAddress)
+				if a.vayuMail != nil && a.vayuMail.Accounts() != nil {
+					s.RoleLabel = mailRoleLabel(a.vayuMail.Accounts().RoleFor(ctx, u.MailAddress))
+				}
+			}
+			// A mailbox's holder chose its picture in the mail settings; an
+			// account with no photo of its own shows that one, not initials
+			// (3cv).
+			if s.UserAvatar == "" && u.MailAddress != "" && a.mailboxAvatarSet()[strings.ToLower(strings.TrimSpace(u.MailAddress))] {
+				s.UserAvatar = "/os/vayumail/accounts/avatar?email=" + qparam(strings.ToLower(strings.TrimSpace(u.MailAddress)))
 			}
 			s.AccessLevel = accessLevelFor(u.Role, s.MailOnly)
 		}

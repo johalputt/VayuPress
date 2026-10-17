@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 // Mail account roles. A role decides which console the holder may open, and one
@@ -335,6 +336,37 @@ func (s *AccountStore) SetSignature(ctx context.Context, email, sig string) erro
 	}
 	return nil
 }
+
+// SetFullName changes an account's display name, the name on the mail it
+// sends. It goes into a From header, so control characters (a line break
+// would start a header of its own) are dropped, and it is bounded like the
+// site's display names.
+func (s *AccountStore) SetFullName(ctx context.Context, email, name string) error {
+	if s.db == nil {
+		return errors.New("vayumail: no storage")
+	}
+	name = strings.TrimSpace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, name))
+	if r := []rune(name); len(r) > maxFullNameRunes {
+		name = string(r[:maxFullNameRunes])
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE vayumail_accounts SET full_name=? WHERE email=?`, name, normEmail(email))
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errors.New("no such account")
+	}
+	return nil
+}
+
+// maxFullNameRunes bounds a display name: the site's display names stop at
+// 120, and one person's name is one value in both places.
+const maxFullNameRunes = 120
 
 // SetSignByDefault sets whether compose signs the account's messages unless
 // the message says otherwise.

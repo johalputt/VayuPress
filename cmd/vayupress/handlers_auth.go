@@ -503,10 +503,14 @@ func (a *App) resolveMailSessionUser(ctx context.Context, email string) (u *user
 		}
 	}
 
+	name := a.vayuMail.Accounts().FullNameFor(ctx, email)
+	if name == "" {
+		name = authorFallbackName(email)
+	}
 	su := &users.User{
 		ID:          "vmail:" + email,
 		Email:       email,
-		Name:        authorFallbackName(email),
+		Name:        name, // the mailbox's own name, the one its mail is sent under (3cs)
 		MailAddress: email,
 		Role:        cmsRole,
 	}
@@ -553,10 +557,14 @@ func (a *App) resolveMailMember(r *http.Request) (u *users.User, mailOnly bool, 
 			return cu, false, true
 		}
 	}
+	name := a.vayuMail.Accounts().FullNameFor(r.Context(), m.Email)
+	if name == "" {
+		name = m.DisplayName()
+	}
 	su := &users.User{
 		ID:          "vmail:" + m.Email,
 		Email:       m.Email,
-		Name:        m.DisplayName(),
+		Name:        name, // the mailbox's own name, the one its mail is sent under (3cs)
 		MailAddress: m.Email,
 		Role:        cmsRole,
 	}

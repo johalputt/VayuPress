@@ -637,6 +637,26 @@ func TestALibraryImageCarriesItsSize(t *testing.T) {
 
 // The member pages' <html> tag is assembled as a string, outside
 // html/template; whatever a config value holds stays inside its attribute.
+// The bar a site page carries is drawn signed out and turned by the portal
+// script, so a member page with the bar must load it: without it a signed-in
+// reader's own account page offered Sign in and Subscribe (3ct). A task page
+// has no bar and gets none; with membership off no page does.
+func TestAMemberPageWithTheBarLoadsThePortal(t *testing.T) {
+	withHalcyon(t, nil)
+	SetMembershipEnabled(true)
+	t.Cleanup(func() { SetMembershipEnabled(false) })
+	if got := HalcyonMemberPage(memberPageFixture, MemberSite); !strings.Contains(got, `src="/static/js/portal.js?v=`) {
+		t.Error("a member page with the site's bar does not load the portal script")
+	}
+	if got := HalcyonMemberPage(memberPageFixture, MemberTask); strings.Contains(got, "/static/js/portal.js") {
+		t.Error("a task page, which has no bar, loads the portal script")
+	}
+	SetMembershipEnabled(false)
+	if got := HalcyonMemberPage(memberPageFixture, MemberSite); strings.Contains(got, "/static/js/portal.js") {
+		t.Error("with membership off, a member page loads the portal script")
+	}
+}
+
 func TestAMemberPageKeepsConfigValuesInTheirAttributes(t *testing.T) {
 	cfg := theme.ResolveHalcyon(nil)
 	cfg.Face, cfg.Appearance = `serif" onload="x`, `dark" data-x="y`

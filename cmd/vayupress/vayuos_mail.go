@@ -1169,9 +1169,10 @@ func (a *App) handleVayuOSAliasAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = r.ParseForm()
-	// A holder may set where their own mail is forwarded; aliases are addresses
-	// on the operator's domain, and only an administrator gives them out (3cl).
-	if !a.isAdminRequest(r) && (r.FormValue("op") != "forward-set" || !a.isMailboxHolder(r, r.FormValue("email"))) {
+	// A holder may set where their own mail is forwarded and the name it goes
+	// out under; aliases are addresses on the operator's domain, and only an
+	// administrator gives them out (3cl, 3cs).
+	if op := r.FormValue("op"); !a.isAdminRequest(r) && (op != "forward-set" && op != "name-set" || !a.isMailboxHolder(r, r.FormValue("email"))) {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
 		return
 	}
@@ -1232,6 +1233,11 @@ func (a *App) handleVayuOSAliasAction(w http.ResponseWriter, r *http.Request) {
 			if opErr == nil {
 				dbpkg.AuditLog("vayumail.forward.set", dbpkg.AuditActor(r), r.FormValue("email"), fwd)
 			}
+		}
+	case "name-set":
+		mailbox = strings.TrimSpace(r.FormValue("email"))
+		if opErr = a.setPersonName(r.Context(), mailbox, r.FormValue("name")); opErr == nil {
+			dbpkg.AuditLog("vayumail.name.set", dbpkg.AuditActor(r), mailbox, accts.FullNameFor(r.Context(), mailbox))
 		}
 	default:
 		opErr = errors.New("unknown operation")

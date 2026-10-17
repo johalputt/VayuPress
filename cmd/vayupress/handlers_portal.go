@@ -129,6 +129,11 @@ func (a *App) memberSnapshot(r *http.Request, m *members.Member) map[string]inte
 			mem["avatar"] = cu.AvatarURL
 		}
 	}
+	// Otherwise the picture the member chose (a photo or a cartoon), which is
+	// also their mailbox's (3cv); the automatic one stays the initial.
+	if _, has := mem["avatar"]; !has && m.AvatarChoice != "" {
+		mem["avatar"] = "/api/v1/members/avatar/" + m.ID + "?v=" + avatarVer(m.AvatarChoice, m.Gender)
+	}
 	if a.vayuMailLoginEnabled() {
 		if role := a.vayuMail.Accounts().RoleFor(r.Context(), m.Email); role != "" {
 			_, console := mailConsoleAccess(role)

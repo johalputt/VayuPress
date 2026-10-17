@@ -50,6 +50,7 @@ func (a *App) mailboxSettingsSections(ctx context.Context, email string, forHold
 		return "", false
 	}
 	var b strings.Builder
+	b.WriteString(`<div class="vm-acct__sub"><span class="field-label">Name on mail you send</span>` + vayuCardName(ac) + `</div>`)
 	b.WriteString(`<div class="vm-acct__sub"><span class="field-label">Auto-forward a copy to</span>` + vayuCardForwarding(ac) + `</div>`)
 	b.WriteString(a.vayuCardVacation(ctx, ac))
 	if !forHolder {

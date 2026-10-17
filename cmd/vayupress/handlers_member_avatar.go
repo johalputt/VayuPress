@@ -122,6 +122,7 @@ func (a *App) handleMemberAvatarUpload(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "save-failed", "Could not save your avatar", "")
 		return
 	}
+	a.mirrorPictureToMailbox(r.Context(), m.Email, members.AvatarPhoto, blob, mime)
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok", "choice": members.AvatarPhoto})
 }
 
@@ -160,5 +161,13 @@ func (a *App) handleMemberAvatarChoose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = a.members.SetGender(r.Context(), m.Email, gender)
+	var blob []byte
+	var mime string
+	if choice == members.AvatarPhoto {
+		if info, err := a.members.AvatarByID(r.Context(), m.ID); err == nil && info != nil {
+			blob, mime = info.Blob, info.Mime
+		}
+	}
+	a.mirrorPictureToMailbox(r.Context(), m.Email, choice, blob, mime)
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok", "choice": choice, "gender": gender})
 }

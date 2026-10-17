@@ -581,9 +581,9 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 	if s.UserAvatar != "" {
 		avatar = `<img class="sa-avatar" src="` + html.EscapeString(s.UserAvatar) + `" alt="">`
 	}
-	role := s.UserRole
+	role := s.RoleLabel
 	if role == "" {
-		role = "administrator"
+		role = "Administrator"
 	}
 	account := `<details class="sa-pop"><summary class="sa-account__btn" aria-label="Account and preferences">` + avatar + `</summary>
 <div class="sa-pop__panel sa-menu" role="menu">

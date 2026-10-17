@@ -4598,7 +4598,7 @@
 .vp-os[data-ui="still-air"] .sa-menu { width: 260px; padding: 4px; }
 .vp-os[data-ui="still-air"] .sa-menu__who { padding: 8px 8px 10px; border-bottom: 1px solid var(--border-1); margin-bottom: 4px; }
 .vp-os[data-ui="still-air"] .sa-menu__name { font: var(--type-strong); color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.vp-os[data-ui="still-air"] .sa-menu__role { font: var(--type-meta); color: var(--text-3); text-transform: capitalize; }
+.vp-os[data-ui="still-air"] .sa-menu__role { font: var(--type-meta); color: var(--text-3); }
 .vp-os[data-ui="still-air"] .sa-menu__item {
   display: flex; align-items: center; gap: 10px; width: 100%;
   height: 32px; padding: 0 8px; border-radius: var(--radius-control);

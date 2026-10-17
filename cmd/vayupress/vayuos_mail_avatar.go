@@ -96,6 +96,7 @@ func (a *App) handleVayuOSAvatarUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.invalidateAvatarCache() // show the new picture across the mailbox at once
+	a.mirrorPictureToMember(r.Context(), email, -1, blob, mime)
 	writeOSHTML(w, r, a.acctRefresh(r, email))
 }
 
@@ -119,6 +120,7 @@ func (a *App) handleVayuOSAvatarRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.invalidateAvatarCache() // drop the removed picture across the mailbox at once
+	a.mirrorPictureToMember(r.Context(), email, -1, nil, "")
 	writeOSHTML(w, r, a.acctRefresh(r, email))
 }
 
@@ -210,12 +212,14 @@ func (a *App) handleVayuOSAvatarCartoon(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "only this mailbox's holder or an administrator", "")
 		return
 	}
-	svg := avatar.Cartoon(cartoonIndexParam(r.FormValue("n")), email)
+	n := cartoonIndexParam(r.FormValue("n"))
+	svg := avatar.Cartoon(n, email)
 	if err := a.vayuMail.Accounts().SetAvatar(r.Context(), email, []byte(svg), "image/svg+xml"); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "save-failed", err.Error(), "")
 		return
 	}
 	a.invalidateAvatarCache() // show the chosen cartoon across the mailbox at once
+	a.mirrorPictureToMember(r.Context(), email, n, nil, "")
 	writeOSHTML(w, r, a.acctRefresh(r, email))
 }
 

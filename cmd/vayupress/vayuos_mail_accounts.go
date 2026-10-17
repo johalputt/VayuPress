@@ -151,6 +151,16 @@ func vayuCardForwarding(ac vmail.Account) string {
 		`<button class="btn btn--sm" type="submit">Save</button></form>`
 }
 
+// vayuCardName is the name the mailbox's mail goes out under. It is the
+// holder's name on the site too: setPersonName writes both (3cs).
+func vayuCardName(ac vmail.Account) string {
+	he := html.EscapeString(ac.Email)
+	return `<form class="vm-row vm-card-fwd" hx-post="/os/vayumail/aliases/action" hx-target="#vm-accounts-list" hx-swap="innerHTML">` +
+		`<input type="hidden" name="op" value="name-set"><input type="hidden" name="email" value="` + he + `">` +
+		`<input class="input input--sm vm-grow" type="text" name="name" maxlength="120" value="` + html.EscapeString(ac.FullName) + `" placeholder="Your name" aria-label="Name on mail sent from ` + he + `">` +
+		`<button class="btn btn--sm" type="submit">Save</button></form>`
+}
+
 // vayuCardVacation renders a mailbox's vacation autoresponder inside its card (a
 // collapsible form), posting to the autoreply endpoint and refreshing the list.
 func (a *App) vayuCardVacation(ctx context.Context, ac vmail.Account) string {
