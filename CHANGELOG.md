@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.8] — 2026-10-17
+
+VayuOS opens fast on a large site; every website counts its visitors; mailbox holders manage their own settings; signing in with a mailbox asks for the second factor of its address; placed ads can be edited, and the cartoon pictures are redrawn.
+
 ### Added
 
 - **New cartoon pictures.** The prebuilt pictures offered for a mailbox or
@@ -160,6 +164,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   mailbox's console session). Both now ask for a code when either account has
   two-factor on, whichever password is given. A mailbox handed over to its
   client is the client's alone, and only its own two-factor applies.
+
+### Upgrade Notes
+
+- Migration 112 replaces two analytics indexes on first start: a few seconds
+  on a large install (2 s here with 532,000 page views). Nothing to do.
+- A website that serves its own files or a template counts its visitors from
+  this version on; visits before it were never recorded.
+- Where a mailbox and a VayuOS account share an address and the account has
+  two-factor on, signing in with the mailbox password now asks for a code, on
+  the site and at `/os/login`.
 
 ## [3.18.7] — 2026-10-16
 
