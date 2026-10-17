@@ -10,6 +10,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **New cartoon pictures.** The prebuilt pictures offered for a mailbox or
+  a member's profile are redrawn: a softer, rounder face, quiet pastel
+  backgrounds in place of saturated gradients, collars, and twelve looks in
+  place of eight (a top bun, curls, a beanie, a ponytail, a headscarf, a
+  beard, round glasses, earrings). Each look now carries its own skin tone,
+  fair to deep, so whoever is choosing has the whole range; before, every
+  look took one tone from the person's address. The automatic picture is
+  drawn the same way.
 - **A mailbox holder manages their own mailbox's settings.** Someone given a
   mailbox could change none of it: forwarding, the vacation reply, filters,
   the S/MIME certificate and the picture all answered "administrators only",
