@@ -117,11 +117,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ### Security
 
 - **The mailbox password no longer skips the VayuOS account's two-factor.**
-  Where a mail-only mailbox and a VayuOS account share an address, Sign in
-  with VayuMail on the site accepted the mailbox password with no code, even
-  with two-factor on for the VayuOS account. It now asks for the code when
-  either account has two-factor on, whichever password is given. The session
-  it opened was a reader's, not VayuOS's.
+  Where a mail-only mailbox and a VayuOS account share an address, the
+  mailbox password signed in with no code, even with two-factor on for the
+  VayuOS account: on the site (a reader's session) and at `/os/login` (the
+  mailbox's console session). Both now ask for a code when either account has
+  two-factor on, whichever password is given. A mailbox handed over to its
+  client is the client's alone, and only its own two-factor applies.
 
 ## [3.18.7] — 2026-10-16
 

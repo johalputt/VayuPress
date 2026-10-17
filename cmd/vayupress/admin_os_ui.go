@@ -1986,6 +1986,19 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		// Fall back to a VayuMail account login (mailbox / author / editor / etc.),
 		// so those email accounts can sign in from the same website login button.
 		if addr, mok, totpMissing := a.authMailAccount(r.Context(), email, pass, r.FormValue("totp")); mok {
+			// The second factor belongs to the address, as on the site's
+			// sign-in (3ck): a mailbox with no two-factor of its own does not
+			// let its password past the VayuOS account's at the same address.
+			// A handed-over mailbox is its client's, and that account no
+			// longer has a say (3cn).
+			if _, mailOn := a.vayuMail.Accounts().TOTPStatus(r.Context(), addr); !mailOn && !a.vayuMail.IsHandedOver(addr) {
+				if ok, required := a.verifyTOTPForLogin(r.Context(), addr, r.FormValue("totp")); required && !ok {
+					auth.RecordAuthFailure(ip)
+					w.Header().Set("Content-Type", "text/html; charset=utf-8")
+					_, _ = w.Write([]byte(osLoginPage(email, "Enter the 6-digit code from your authenticator app, then re-enter your password.", next)))
+					return
+				}
+			}
 			token, terr := a.sessions.Create(r.Context(), "vmail:"+addr)
 			if terr != nil {
 				http.Error(w, "could not start session", http.StatusInternalServerError)
