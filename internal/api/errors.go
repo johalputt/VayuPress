@@ -37,6 +37,8 @@ func HTTPStatus(err error) int {
 		return http.StatusBadRequest
 	case errors.Is(err, queue.ErrQueueSaturated):
 		return http.StatusTooManyRequests
+	case errors.Is(err, queue.ErrWritesRefused):
+		return http.StatusServiceUnavailable
 	default:
 		return http.StatusInternalServerError
 	}
@@ -59,6 +61,8 @@ func ErrorCode(err error) string {
 		return "too_many_articles"
 	case errors.Is(err, queue.ErrQueueSaturated):
 		return "queue_saturated"
+	case errors.Is(err, queue.ErrWritesRefused):
+		return "writes_refused"
 	default:
 		return "internal_error"
 	}

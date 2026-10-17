@@ -325,6 +325,11 @@ func (a *App) startScheduler(done <-chan struct{}) {
 
 // publishDuePosts promotes every post whose publish_at has arrived.
 func (a *App) publishDuePosts() {
+	// Held, not failed: MarkFailed would end a schedule the operator still
+	// wants, for a refusal that lifts with the mode.
+	if mode.Global.Current().RefusesContentWrites() {
+		return
+	}
 	ctx := context.Background()
 	due, err := a.scheduler.Due(ctx, time.Now(), 50)
 	if err != nil {

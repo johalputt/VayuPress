@@ -23,6 +23,7 @@ import (
 	"github.com/johalputt/vayupress/internal/events"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
+	"github.com/johalputt/vayupress/internal/mode"
 )
 
 // WriteJob is a pending DB mutation stored in the write_jobs table.
@@ -74,7 +75,10 @@ func StartWorkerPool(wg *sync.WaitGroup) {
 }
 
 func processOneJob(workerID int) (empty bool) {
-	if config.Cfg.MaintenanceMode {
+	// A job queued before the mode changed waits rather than applies: the
+	// mode's reason (a failing WAL, a faulting migration) is a reason not to
+	// write, whoever asked first.
+	if config.Cfg.MaintenanceMode || mode.Global.Current().RefusesContentWrites() {
 		return true
 	}
 	var job WriteJob

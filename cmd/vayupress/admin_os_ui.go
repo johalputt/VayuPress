@@ -329,7 +329,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		a.registerSiteDocRoutes(pr, auth.CSRFTokenMiddleware, "/os/api/site-doc", primarySiteDocTarget)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/custom-rollback", a.handleOSWebsiteCustomRollback)
 		pr.Get("/os/api/website/custom-guide", a.handleOSWebsiteCustomGuide)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/pages/quick-create", a.handleOSQuickCreatePage)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/pages/quick-create", refuseContentWrites(a.handleOSQuickCreatePage))
 		// Contact-form inbox — durable record of public contact submissions.
 		pr.Get("/os/messages", a.handleOSMessages)
 		pr.Get("/os/messages/inspector/{id}", a.handleOSMessageInspector)
@@ -764,16 +764,16 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/settings", a.handleOSSettingsAPI)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/notifications/seen", a.handleOSNotificationsSeen)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/notifications/clear", a.handleOSNotificationsClear)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/quick-create", a.handleOSQuickCreatePost)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/status", a.handleOSPostStatus)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/quick-create", refuseContentWrites(a.handleOSQuickCreatePost))
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/status", refuseContentWrites(a.handleOSPostStatus))
 		// One-request bulk apply for the Posts manager (Wave 4): per-slug outcomes,
 		// in-place row updates and honest tab counts instead of N parallel fetches
 		// and a blind full-page reload.
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/bulk", a.handleOSPostsBulk)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/bulk", refuseContentWrites(a.handleOSPostsBulk))
 		// HTMX in-place publish/unpublish toggle: returns an HTML row fragment
 		// (flipped button + out-of-band status pill) instead of JSON, so the
 		// Posts manager updates the row without a full-page reload.
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/{slug}/status-fragment", a.handleOSPostToggleFragment)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/{slug}/status-fragment", refuseContentWrites(a.handleOSPostToggleFragment))
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/{slug}/indexnow-fragment", a.handleOSPostIndexNowFragment)
 		// Signed draft-share link (Wave 4.4): the editor's Share button mints a
 		// 48h preview token through the same signer the API uses, so a draft
@@ -781,19 +781,19 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/{slug}/share", a.handleOSPostShare)
 		// HTMX in-place pin/unpin: returns the flipped pin button + an out-of-band
 		// "Pinned" badge, so the row updates without a full-page reload.
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/{slug}/pin-fragment", a.handleOSPostPinFragment)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/{slug}/text-fragment", a.handleOSPostTextFragment)
-		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/posts/{slug}", a.handleOSPostDelete)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/{slug}/pin-fragment", refuseContentWrites(a.handleOSPostPinFragment))
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/{slug}/text-fragment", refuseContentWrites(a.handleOSPostTextFragment))
+		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/posts/{slug}", refuseContentWrites(a.handleOSPostDelete))
 		// Session-friendly branding (favicon) upload — the /admin/theme/favicon
 		// original is in the API-key-only group, so a browser operator can't reach
 		// it. This mirror is gated by requireSessionOrAPIKey + CSRF.
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/branding/favicon", a.handleFaviconUpload)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/branding/hero", a.handleHeroUpload)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/branding/og", a.handleOGUpload)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/save", a.handleOSEditorSave)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/save", refuseContentWrites(a.handleOSEditorSave))
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/preview", a.handleOSEditorPreview)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/import", a.handleOSEditorImport)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/slug", a.handleOSEditorSlug)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/import", refuseContentWrites(a.handleOSEditorImport))
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/slug", refuseContentWrites(a.handleOSEditorSlug))
 		// Session-friendly mirrors of the editor's block tools (the /api/v1/admin
 		// originals require an API key; os operators hold a session cookie).
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/embed/unfurl", a.handleEmbedUnfurl)
@@ -810,7 +810,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/api/editor/versions/{slug}/{id}", a.handleOSEditorVersionGet)
 		// Restore rewinds the article to a snapshot — a write, so CSRF-gated like
 		// the save it mirrors.
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/versions/{slug}/{id}/restore", a.handleOSEditorVersionRestore)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/versions/{slug}/{id}/restore", refuseContentWrites(a.handleOSEditorVersionRestore))
 
 		// Read-only APIs (no CSRF needed)
 		pr.Get("/os/api/activity", a.handleOSActivity)

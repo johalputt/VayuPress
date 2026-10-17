@@ -42,7 +42,7 @@ var (
 )
 
 var saModeEffects = []saModeEffect{
-	{What: "Deleting posts", Modes: roQ, Guards: []string{"cmd/vayupress/admin_os_editor.go"}},
+	{What: "Writing, publishing and deleting posts and pages", Modes: roQ, Guards: []string{"internal/queue/writer.go", "internal/queue/queue.go", "cmd/vayupress/admin_os_editor.go", "cmd/vayupress/app.go"}},
 	{What: "Saving a post's Markdown source", Modes: roQ, Guards: []string{"cmd/vayupress/handlers_sources.go"}},
 	{What: "Uploading and importing media", Modes: roQ, Guards: []string{"cmd/vayupress/handlers_media.go", "cmd/vayupress/handlers_media_import.go", "cmd/vayupress/admin_os_media.go"}},
 	{What: "Changing the theme and the site icon", Modes: roQ, Guards: []string{"cmd/vayupress/handlers_theme.go", "cmd/vayupress/handlers_theme_assets.go", "cmd/vayupress/admin_os_theme.go", "cmd/vayupress/handlers_favicon.go"}},

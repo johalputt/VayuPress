@@ -29,6 +29,15 @@ const (
 	ModeQuarantined Mode = "quarantined" // isolation active; plugins/federation suspended
 )
 
+// RefusesContentWrites reports whether m refuses writes to posts and pages.
+// ReadOnly is entered on repeated WAL write faults and on migration faults, so
+// a write then is a write to a disk that is failing; Quarantined is the set the
+// console's delete, media and theme paths already refused in. One rule, read by
+// the write queue (enqueue and apply) and the console's post routes.
+func (m Mode) RefusesContentWrites() bool {
+	return m == ModeReadOnly || m == ModeQuarantined
+}
+
 // Transition records a mode change with its cause and timestamp.
 type Transition struct {
 	From       Mode

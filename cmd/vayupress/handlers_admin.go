@@ -493,6 +493,10 @@ func (a *App) handleNotFound(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet && a.serveSitePageIfActive(w, r) {
 		return
 	}
+	if target := ghostURLTarget(r); target != "" {
+		http.Redirect(w, r, target, http.StatusMovedPermanently)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusNotFound)
 	fmt.Fprint(w, render.Render404(config.Cfg.Domain, Version))
@@ -960,6 +964,10 @@ func (a *App) handleSmokeTest(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if cur := mode.Global.Current(); cur.RefusesContentWrites() {
+		http.Error(w, "smoke-test: writes are refused in "+string(cur)+" mode", http.StatusServiceUnavailable)
+		return
+	}
 	if !a.smokeTestMutex.TryLock() {
 		http.Error(w, "smoke-test already running", http.StatusServiceUnavailable)
 		return
@@ -1271,6 +1279,10 @@ func (a *App) handleHealthBenchmarks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
+	if cur := mode.Global.Current(); cur.RefusesContentWrites() {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "writes-refused", "the benchmark writes posts, which "+string(cur)+" mode refuses", "")
+		return
+	}
 	if !atomic.CompareAndSwapInt32(&a.benchmarkRunning, 0, 1) {
 		writeAPIError(w, r, 409, "benchmark_running", "benchmark already in progress", "/docs/operations/benchmarks")
 		return

@@ -50,15 +50,17 @@ change with the mode.
 
 | Behaviour | Refused in | Where |
 |-----------|-----------|-------|
+| Writing a post or page: the API, the connector, the editor, scheduled publishing, imports from the console | ReadOnly, Quarantined | `mode.RefusesContentWrites`, read by `queue.Enqueue` (503 `writes_refused`), the worker, `publishDuePosts` and the console's `refuseContentWrites` |
+| Applying a job already queued | ReadOnly, Quarantined | The worker leaves it pending and applies it when the mode is back |
 | Running a plugin | Quarantined | `internal/sandbox/subprocess.go` |
 | Applying an update | ReadOnly, Quarantined, Maintenance | `update.PreflightMode` |
 | IndexNow submissions | ReadOnly, Quarantined, Maintenance | `cmd/vayupress/app.go` |
 | Importing media, unfurling an embed (editor and the connector) | ReadOnly, Quarantined | `handlers_media_import.go`, `handlers_embed_unfurl.go`, `mcp_server.go` |
 | Saving or resetting the theme, changing branding | ReadOnly, Quarantined | `handlers_theme.go`, `handlers_theme_assets.go` |
 
-**Not gated today:** post and page writes through the editor, the API and the
-connector do not consult the mode, so ReadOnly does not yet refuse them. That
-is tracked as a defect, not a design.
+A refused write is refused, not lost: a scheduled post that falls due stays
+scheduled, and a queued job stays queued, until the mode returns. The CLI
+importers run in their own process and do not see the server's mode.
 
 The current mode is shown in the console's system bar on every page, and on
 Home's *This install*.

@@ -10,12 +10,18 @@ import (
 	"fmt"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/trace"
 )
 
 // ErrQueueSaturated is returned when the write queue has reached the configured
 // hard limit and cannot accept new jobs. Callers should respond with HTTP 429.
 var ErrQueueSaturated = errors.New("queue: at capacity — try again later")
+
+// ErrWritesRefused is returned while the install's mode refuses content writes
+// (mode.RefusesContentWrites). Callers should respond with HTTP 503: the write
+// is refused, not lost, and is accepted again once the mode is back.
+var ErrWritesRefused = errors.New("posts and pages cannot be changed in this mode")
 
 // Writer is the enqueue contract. ArticleService depends on this interface
 // rather than on a concrete DB function, enabling test doubles and future
@@ -41,6 +47,9 @@ func NewSQLiteWriter(db *sql.DB, hardLimit int) Writer {
 }
 
 func (w *SQLiteWriter) Enqueue(ctx context.Context, art dbpkg.Article, op string) error {
+	if m := mode.Global.Current(); m.RefusesContentWrites() {
+		return fmt.Errorf("%w (%s)", ErrWritesRefused, m)
+	}
 	if w.hardLimit > 0 {
 		var depth int
 		if err := w.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM write_jobs WHERE status='pending'`).Scan(&depth); err == nil {

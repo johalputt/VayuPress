@@ -101,6 +101,23 @@ func persistBlocksJSON(ctx context.Context, slug, blocksJSON string) error {
 // handleOSEditorSave persists a block document for an existing article. It
 // renders blocks → HTML, updates the article content+title via the service,
 // then stores the raw blocks for re-hydration.
+// refuseContentWrites answers 503 for a post or page write while the mode
+// refuses them (mode.RefusesContentWrites). The write queue refuses the same
+// writes at enqueue; this covers the console routes that also write the row
+// directly (blocks, meta, slug, status, pin), before any of it starts, so a
+// save is never half-applied.
+func refuseContentWrites(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if cur := mode.Global.Current(); cur.RefusesContentWrites() {
+			writeAPIError(w, r, http.StatusServiceUnavailable, "writes-refused",
+				"Posts and pages cannot be changed while the install is in "+string(cur)+
+					" mode. Nothing was saved; System › System state says why the mode was entered.", "")
+			return
+		}
+		next(w, r)
+	}
+}
+
 func (a *App) handleOSEditorSave(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Slug        string            `json:"slug"`
@@ -465,7 +482,7 @@ func (a *App) handleOSPostPinFragment(w http.ResponseWriter, r *http.Request) {
 // (article page, home, tags, sitemap, feed) are purged so the post disappears
 // from the live site at once. Refused in read-only / quarantined mode.
 func (a *App) handleOSPostDelete(w http.ResponseWriter, r *http.Request) {
-	if cur := mode.Global.Current(); cur == mode.ModeReadOnly || cur == mode.ModeQuarantined {
+	if cur := mode.Global.Current(); cur.RefusesContentWrites() {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "read-only", "posts cannot be deleted in "+string(cur)+" mode", "")
 		return
 	}
@@ -503,7 +520,7 @@ func (e *refusedWriteError) Error() string { return e.reason }
 // the irreversible half: there is no snapshot to restore from, and the comments
 // go with it.
 func (a *App) deletePostBySlug(ctx context.Context, r *http.Request, slug string) error {
-	if cur := mode.Global.Current(); cur == mode.ModeReadOnly || cur == mode.ModeQuarantined {
+	if cur := mode.Global.Current(); cur.RefusesContentWrites() {
 		return errors.New("posts cannot be deleted in " + string(cur) + " mode")
 	}
 	var id, tagsCSV string

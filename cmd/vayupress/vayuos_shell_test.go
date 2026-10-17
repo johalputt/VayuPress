@@ -498,7 +498,9 @@ func TestEveryModeRefusalNamesItsGuard(t *testing.T) {
 					want = "!= mode." + constName[m]
 				}
 				is := "Is(mode." + constName[m] + ")"
-				if !strings.Contains(code, want) && !strings.Contains(code, `case "`+string(m)+`"`) && (e.AllBut || !strings.Contains(code, is)) {
+				// The shared rule counts as a guard for exactly the modes it refuses.
+				shared := !e.AllBut && strings.Contains(code, ".RefusesContentWrites()") && m.RefusesContentWrites()
+				if !shared && !strings.Contains(code, want) && !strings.Contains(code, `case "`+string(m)+`"`) && (e.AllBut || !strings.Contains(code, is)) {
 					t.Errorf("%q claims a %s check in %s, but it has no %q", e.What, m, g, want)
 				}
 			}

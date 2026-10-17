@@ -188,7 +188,7 @@ payment providers, AI providers, Cloudflare's API, IndexNow and webmentions.
 | ID | Risk | Severity | Accepted By | Rationale |
 |----|------|----------|-------------|-----------|
 | RR-01 | One SQLite writer | Low | Architecture Lead | A design choice; 234,727 posts on one host serve without it binding (`docs/BENCHMARKS.md`) |
-| RR-02 | ReadOnly mode does not refuse post writes | Medium | — (open) | The mode is entered on WAL write faults, but post and page writes do not consult it (`docs/architecture/system-modes.md`); tracked for a fix |
+| RR-02 | ReadOnly mode did not refuse post writes | Medium | — (closed, 3.18.8) | Closed: post and page writes are refused at enqueue, in the worker, by the scheduler and on the console routes (`mode.RefusesContentWrites`, `docs/architecture/system-modes.md`) |
 | RR-03 | SSH is outside VayuPress | Low | Operator | fail2ban's jails cover nginx, not SSH; key-only SSH is the operator's to configure |
 | RR-04 | Volumetric floods | High | Security Lead | Every host layer runs after a completed handshake on the uplink; only anycast capacity in front absorbs one. VayuShield's posture report keeps it as a permanent fail |
 | RR-05 | Mutual TLS for plugin IPC | Low | Security Lead | Plugins are local subprocesses; revisit when the plugin SDK is external |

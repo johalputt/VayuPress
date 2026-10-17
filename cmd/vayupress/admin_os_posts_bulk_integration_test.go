@@ -170,7 +170,7 @@ func TestOSBulkRouteIsRegisteredBehindCSRF(t *testing.T) {
 	// Source-level pin: the route must exist with the same CSRF wrapper as its
 	// single-post siblings, so a bulk apply can never bypass the token check.
 	src := readSourceFile(t, "admin_os_ui.go")
-	want := `Post("/os/api/posts/bulk", a.handleOSPostsBulk)`
+	want := `Post("/os/api/posts/bulk", refuseContentWrites(a.handleOSPostsBulk))`
 	if !strings.Contains(src, want) {
 		t.Fatalf("bulk route missing: %s", want)
 	}
