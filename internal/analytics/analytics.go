@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
+	vasession "github.com/johalputt/vayupress/internal/vayuanalytics/session"
 )
 
 // Store aggregates page views in SQLite.
@@ -31,6 +32,14 @@ type Store struct {
 	// exclude internal navigation on ALL of them. Nil is the single-domain
 	// shape; see UseSelfHosts.
 	selfHosts func() []string
+	// visits decides each event's visitor, visit and entry (30 minutes of
+	// inactivity; see the session package). The install gives it the keyring's
+	// salt through UseVisits; New's random salt serves tests and a keyring
+	// failure.
+	visits *vasession.Hasher
+	// now is the ingest clock: the server's, always. The beacon carries no
+	// time, so an event cannot claim a moment it was not received in.
+	now func() time.Time
 }
 
 // New creates a Store.
@@ -41,7 +50,16 @@ type Store struct {
 // was never started reports Running:false on the panel rather than losing views
 // in silence.
 func New(db *sql.DB) *Store {
-	return &Store{db: db, reader: db, coll: newCollector(), evq: &evCollector{}}
+	return &Store{db: db, reader: db, coll: newCollector(), evq: &evCollector{}, visits: vasession.NewHasher(), now: time.Now}
+}
+
+// UseVisits gives the store the install's sessionizer, whose daily salt is
+// derived from the service keyring, so a restart keeps every visitor who is
+// mid-visit the same visitor. A nil hasher is ignored.
+func (s *Store) UseVisits(h *vasession.Hasher) {
+	if h != nil {
+		s.visits = h
+	}
 }
 
 // UseReader routes the report/dashboard read queries at a dedicated read pool

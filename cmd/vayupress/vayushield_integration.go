@@ -126,6 +126,13 @@ func (a *App) bootVayuShield() {
 	if a.secrets != nil {
 		if master, err := a.secrets.Derive("vayuanalytics-session-salt"); err == nil && len(master) > 0 {
 			a.vaSessions = vasession.NewMasterHasher(master)
+			// The event log decides visits with its own activity table under
+			// the same salt: one visitor hash in both stores, and the
+			// engagement beacon's hits cannot open or extend a page view's
+			// visit.
+			if a.analytics != nil {
+				a.analytics.UseVisits(vasession.NewMasterHasher(master))
+			}
 			logging.LogInfo("vayuanalytics", "session/visitor salts bound to the service keyring — restart-stable within the day")
 		}
 	}
@@ -564,6 +571,11 @@ func (a *App) handleVAEnter(w http.ResponseWriter, r *http.Request) {
 
 	sess := a.vaSessions.Session(realIP, ua, lang, now)
 	visitor := a.vaSessions.Visitor(realIP, ua, lang, now)
+	if sess == "" || visitor == "" {
+		// No salt (entropy unavailable): no identity may be derived.
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	// Enqueue for batched, off-request-path persistence so a page view never
 	// blocks on — or saturates — the single SQLite writer (see store.StartIngest).
 	a.vaEngagement.QueueEnter(vastore.EnterInput{
@@ -614,6 +626,10 @@ func (a *App) handleVAEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now().UTC()
 	sess := a.vaSessions.Session(auth.ClientIP(r), r.UserAgent(), r.Header.Get("Accept-Language"), now)
+	if sess == "" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	a.vaEngagement.QueueBeacon(vastore.BeaconInput{
 		SessionHash:  sess,
 		PagePath:     path,

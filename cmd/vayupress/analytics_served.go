@@ -62,6 +62,7 @@ func (a *App) recordServedPage(r *http.Request) {
 		UTMTerm:     q.Get("utm_term"),
 		EventType:   1,
 		Geo:         geo,
+		Lang:        r.Header.Get("Accept-Language"),
 	}
 	// The beacon's per-address budget, shared: a view counted here is one the
 	// beacon would have sent, so one address gets one budget for both.

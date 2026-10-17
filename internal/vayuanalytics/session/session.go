@@ -44,6 +44,11 @@ import (
 const (
 	// sessionWindow is the inactivity gap that closes a reading session.
 	sessionWindow = 30 * time.Minute
+	// repeatWindow is how close the same page view, from the same visitor in
+	// the same visit, must come to be the one view delivered twice: a beacon
+	// retry, or a page counted both where it was served and by a script the
+	// page carries. A reader reloading inside it is counted once.
+	repeatWindow = 2 * time.Second
 	// shardCount spreads the activity table to keep per-shard locks tiny.
 	shardCount = 16
 	// shardCap bounds each shard's live identities (~32k visitors tracked
@@ -57,28 +62,51 @@ const (
 // Safe for concurrent use.
 type Hasher struct {
 	mu     sync.Mutex
-	salt   []byte
+	salt   []byte // nil = entropy unavailable: no identifier is derived
 	day    string
 	master []byte // nil = random-salt mode
 
+	// key addresses the activity table. It is random per process and never
+	// stored, so an entry can follow a visit across midnight, when the
+	// visitor hash rotates, without the table holding anything an inspector
+	// of memory could link to a reader on another day.
+	key [32]byte
+
 	shards [shardCount]struct {
 		sync.Mutex
-		m map[string]activeSession
+		m map[[16]byte]activeSession
 	}
 }
 
-// activeSession remembers where a visitor's current reading session began and
-// when they were last seen.
+// activeSession is one open visit. visitor and token are kept, not
+// recomputed, because both derive from the day's salt: recomputed after
+// midnight they would split the visit in two.
 type activeSession struct {
-	start int64 // unix seconds, 30-min aligned, when this session opened
-	seen  int64 // unix seconds of the last hit
+	visitor  string
+	token    string
+	seen     int64  // unix seconds of the last hit
+	lastView uint64 // FNV-1a of the last page view's path
+	viewAt   int64  // unix milliseconds of the last page view
+}
+
+// Hit is what one event resolves to.
+type Hit struct {
+	// Visitor is the visitor hash of the day the visit began.
+	Visitor string
+	Session string
+	// Entry marks the first event of a visit: visits, landing pages and the
+	// day a visit belongs to are counted from these.
+	Entry bool
+	// Repeat is the visit's last page view again, within repeatWindow: the
+	// same view delivered twice, to be counted once.
+	Repeat bool
 }
 
 // NewHasher returns a Hasher with a freshly seeded random salt for the current
 // UTC day (historic behaviour; use NewMasterHasher when a service secret exists).
 func NewHasher() *Hasher {
 	h := &Hasher{}
-	h.rotateLocked(time.Now().UTC())
+	h.init()
 	return h
 }
 
@@ -89,31 +117,38 @@ func NewHasher() *Hasher {
 // secret and still rotates daily).
 func NewMasterHasher(master []byte) *Hasher {
 	h := &Hasher{master: master}
-	h.rotateLocked(time.Now().UTC())
+	h.init()
 	return h
 }
 
+func (h *Hasher) init() {
+	if _, err := rand.Read(h.key[:]); err != nil {
+		h.master, h.salt = nil, nil
+		h.day = "unavailable"
+		return
+	}
+	h.rotateLocked(time.Now().UTC())
+}
+
 // rotateLocked regenerates the salt and records the day. Caller holds h.mu.
+// Without entropy the salt is nil and nothing is derived until it returns: a
+// time-seeded fallback would be a salt anyone reading this source could
+// reproduce, making every "anonymous" hash linkable across installs.
 func (h *Hasher) rotateLocked(now time.Time) {
 	day := now.UTC().Format("2006-01-02")
+	h.day = day
 	if len(h.master) > 0 {
 		mac := hmac.New(sha256.New, h.master)
 		mac.Write([]byte("vayuanalytics:salt:" + day))
 		h.salt = mac.Sum(nil)
-		h.day = day
 		return
 	}
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		// Extremely unlikely; fall back to a time-seeded salt so the server
-		// keeps functioning (still non-reversible, still rotates daily).
-		ts := now.UnixNano()
-		for i := range b {
-			b[i] = byte(ts >> (uint(i%8) * 8))
-		}
+		h.salt = nil
+		return
 	}
 	h.salt = b
-	h.day = day
 }
 
 func (h *Hasher) saltFor(now time.Time) []byte {
@@ -144,40 +179,67 @@ func identityHash(salt []byte, day, ip, ua, lang string) []byte {
 // Visitor returns the stable anonymous visitor hash for the UTC day of now:
 // the same human browsing all day resolves to ONE visitor hash, while the
 // same inputs tomorrow hash differently (salt rotation). This is the key
-// daily uniques, new-vs-returning and retention cohorts count.
+// daily uniques, new-vs-returning and retention cohorts count. Empty when
+// no salt exists.
 func (h *Hasher) Visitor(ip, ua, lang string, now time.Time) string {
-	sum := identityHash(h.saltFor(now), now.UTC().Format("2006-01-02"), ip, ua, lang)
+	salt := h.saltFor(now)
+	if len(salt) == 0 {
+		return ""
+	}
+	sum := identityHash(salt, now.UTC().Format("2006-01-02"), ip, ua, lang)
 	return hex.EncodeToString(sum[:])
 }
 
-// Session returns the anonymous session token for a visitor observed at now.
-// Hits fewer than 30 minutes apart continue the same reading session (the
-// token survives hour boundaries); a longer gap opens a new one. Falls back to
-// the visitor hash itself when the activity table has evicted this visitor
-// under extreme load — the metric degrades to per-hit granularity rather than
-// growing memory without bound.
+// Session returns the anonymous session token for a visitor observed at now:
+// Observe without a site or a page.
 func (h *Hasher) Session(ip, ua, lang string, now time.Time) string {
+	return h.Observe("", ip, ua, lang, "", false, now).Session
+}
+
+// Observe resolves one event on site at now. Hits fewer than 30 minutes apart
+// continue the same visit, across a half-hour, an hour or midnight; a longer
+// gap opens a new one. A visit belongs to one site: the same reader on two
+// sites makes two visits. view marks a page view of path, which is a Repeat
+// when the visit's last view was the same path within repeatWindow. The zero
+// Hit (no Session) means no salt exists and the event must be dropped.
+func (h *Hasher) Observe(site, ip, ua, lang, path string, view bool, now time.Time) Hit {
 	now = now.UTC()
-	visitor := h.Visitor(ip, ua, lang, now)
-	id := sha256.Sum256([]byte(visitor))
-	key := string(id[:16]) // raw 16-byte identity key, never stored anywhere
-	shard := &h.shards[id[0]%shardCount]
-	seen := now.Unix()
+	salt := h.saltFor(now)
+	if len(salt) == 0 {
+		return Hit{}
+	}
+	mac := hmac.New(sha256.New, h.key[:])
+	for _, s := range []string{site, ip, ua, lang} {
+		mac.Write([]byte(s))
+		mac.Write([]byte{0})
+	}
+	var key [16]byte
+	copy(key[:], mac.Sum(nil))
+	shard := &h.shards[key[0]%shardCount]
+	seen, ms := now.Unix(), now.UnixMilli()
+	pathSum := fnv1a(path)
 
 	shard.Lock()
 	defer shard.Unlock()
 
 	if shard.m == nil {
-		shard.m = make(map[string]activeSession, 64)
+		shard.m = make(map[[16]byte]activeSession, 64)
 	}
 	cur, ok := shard.m[key]
 	if ok && seen-cur.seen <= int64(sessionWindow/time.Second) {
+		hit := Hit{Visitor: cur.visitor, Session: cur.token}
+		if view {
+			hit.Repeat = cur.lastView == pathSum && ms-cur.viewAt <= repeatWindow.Milliseconds()
+			cur.lastView, cur.viewAt = pathSum, ms
+		}
 		cur.seen = seen
 		shard.m[key] = cur
-		return sessionToken(h.saltFor(now), visitor, cur.start)
+		return hit
 	}
-	// New reading session: open it at the current half-hour bucket.
-	start := seen - seen%1800
+	// New visit, its token bound to the half-hour it opened in, so a restart
+	// (which empties this table) inside that half-hour gives the same token.
+	visitor := hex.EncodeToString(identityHash(salt, now.Format("2006-01-02"), ip, ua, lang))
+	token := sessionToken(salt, visitor, site, seen-seen%1800)
 	// Eviction before growth: drop long-expired entries; if the shard is
 	// still at capacity, drop its oldest half (a flood costs coarse session
 	// grouping, never unbounded memory).
@@ -189,13 +251,28 @@ func (h *Hasher) Session(ip, ua, lang string, now time.Time) string {
 			}
 		}
 	}
-	shard.m[key] = activeSession{start: start, seen: seen}
-	return sessionToken(h.saltFor(now), visitor, start)
+	next := activeSession{visitor: visitor, token: token, seen: seen}
+	if view {
+		next.lastView, next.viewAt = pathSum, ms
+	}
+	shard.m[key] = next
+	return Hit{Visitor: visitor, Session: token, Entry: true}
 }
 
-// sessionToken binds a reading session to (visitor, its opening bucket) so the
-// same token covers every hit of one sitting and differs between sittings.
-func sessionToken(salt []byte, visitorHex string, start int64) string {
+func fnv1a(s string) uint64 {
+	h := uint64(14695981039346656037)
+	for i := 0; i < len(s); i++ {
+		h ^= uint64(s[i])
+		h *= 1099511628211
+	}
+	return h
+}
+
+// sessionToken binds a visit to (visitor, site, its opening bucket) so the
+// same token covers every hit of one sitting and differs between sittings
+// and between sites. The site is written only when there is one, so the
+// engagement store's tokens are what they were.
+func sessionToken(salt []byte, visitorHex, site string, start int64) string {
 	mac := sha256.New()
 	mac.Write(salt)
 	mac.Write([]byte("sess"))
@@ -203,6 +280,10 @@ func sessionToken(salt []byte, visitorHex string, start int64) string {
 	binary.BigEndian.PutUint64(b[:], uint64(start))
 	mac.Write(b[:])
 	mac.Write([]byte(visitorHex))
+	if site != "" {
+		mac.Write([]byte{0})
+		mac.Write([]byte(site))
+	}
 	sum := mac.Sum(nil)
 	return hex.EncodeToString(sum[:])
 }

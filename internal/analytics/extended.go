@@ -9,96 +9,26 @@
 // Privacy by architecture (VayuPress Constitution):
 //   - NO cookies and NO localStorage identifiers are ever set on the visitor.
 //   - NO IP address and NO User-Agent string is ever persisted.
-//   - The visitor identifier is a one-way hash of (rotating-daily-salt + IP +
-//     User-Agent + hostname). The salt is generated with crypto/rand, kept only
-//     in memory, and rotated every UTC day, so a visitor is unlinkable across
-//     days and nothing in the database can re-identify a reader even on a full
-//     database compromise. This is the Plausible/Umami "no-PII" model.
+//   - The visitor identifier is a one-way hash of (rotating daily salt + IP +
+//     User-Agent + Accept-Language), from the session package the engagement
+//     store also uses. The salt is derived from the service keyring (or
+//     crypto/rand without one) and rotated every UTC day, so a visitor is
+//     unlinkable across days and nothing in the database can re-identify a
+//     reader even on a full database compromise. This is the Plausible/Umami
+//     "no-PII" model.
 //   - Browser / OS / device are coarse buckets derived server-side from the
 //     User-Agent and immediately discarded; the raw UA is never stored.
 package analytics
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 )
-
-// ── Visitor identity (privacy-preserving, non-persistent) ────────────────────
-
-// dailySalt holds the in-memory, daily-rotating salt used to derive
-// non-reversible visitor identifiers. It is never written to disk.
-var dailySalt = &saltRotator{}
-
-type saltRotator struct {
-	mu   sync.Mutex
-	day  string
-	salt []byte
-}
-
-// current returns today's salt, rotating (and discarding yesterday's) on day change.
-// A nil result means entropy is unavailable and NO identifier may be derived:
-// the previous fallback (a time-derived constant anyone reading this source
-// could reproduce) would have made every "pseudonymous" ID constant across all
-// installs and trivially linkable — so this now fails closed instead.
-func (s *saltRotator) current() []byte {
-	day := time.Now().UTC().Format("2006-01-02")
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.day != day || len(s.salt) == 0 {
-		buf := make([]byte, 32)
-		if _, err := rand.Read(buf); err != nil {
-			saltUnavailable.Store(true)
-			s.salt = nil
-			s.day = day
-			return nil
-		}
-		saltUnavailable.Store(false)
-		s.salt = buf
-		s.day = day
-	}
-	return s.salt
-}
-
-// saltUnavailable records a crypto/rand failure. While set, visitor/session
-// derivation refuses to run: events are dropped rather than written under a
-// predictable pseudonym.
-var saltUnavailable atomic.Bool
-
-// visitorID derives a stable-for-today, unlinkable-across-days visitor hash.
-// ip and ua are used only to compute the hash and are never stored. Returns ""
-// when no safe salt exists (entropy failure) — callers must not fabricate one.
-func visitorID(ip, ua, host string) string {
-	salt := dailySalt.current()
-	if len(salt) == 0 {
-		return ""
-	}
-	h := sha256.New()
-	h.Write(salt)
-	h.Write([]byte{0})
-	h.Write([]byte(ip))
-	h.Write([]byte{0})
-	h.Write([]byte(ua))
-	h.Write([]byte{0})
-	h.Write([]byte(host))
-	return "v" + base64.RawURLEncoding.EncodeToString(h.Sum(nil))[:21]
-}
-
-// sessionID buckets a visitor into a 30-minute session window without storing
-// any additional identifier.
-func sessionID(vid string) string {
-	bucket := time.Now().UTC().Unix() / (30 * 60)
-	h := sha256.Sum256([]byte(vid + fmt.Sprintf(":%d", bucket)))
-	return "s" + base64.RawURLEncoding.EncodeToString(h[:])[:21]
-}
 
 // coarseBrowser, coarseOS and coarseDevice reduce a User-Agent to a privacy-safe
 // bucket. The raw UA is discarded immediately after this call.
@@ -178,6 +108,9 @@ type CollectRequest struct {
 	// Cloudflare) supplies country/region/city headers they are recorded,
 	// otherwise these stay empty. No IP is ever persisted.
 	Geo GeoInfo `json:"-"`
+	// Lang is the request's Accept-Language, server-side like Geo: one input
+	// of the visitor hash, never stored.
+	Lang string `json:"-"`
 }
 
 // GeoInfo carries coarse, proxy-supplied location for a visit.
@@ -191,10 +124,9 @@ type GeoInfo struct {
 // persist, preventing storage-exhaustion abuse via the public ingest endpoint.
 const maxEventDataProps = 24
 
-// Collect stores a pageview or custom event. Visitor and session identity is
-// derived server-side from (ip, ua) which are NEVER persisted. It creates the
-// session row on first sight within the 30-minute window.
-// Collect records one beacon event.
+// Collect records one beacon event synchronously, through the same
+// normalisation as CollectAsync (buildCollectEvent): one path decides every
+// event's visit, so the two cannot count differently.
 //
 // domainID is the domain THIS INSTALL RESOLVED for the request, passed by the
 // handler. It is never read from req: /api/v1/analytics/collect is public and
@@ -203,74 +135,11 @@ const maxEventDataProps = 24
 // client's report on the install. req.Hostname exists for the session record and
 // is client-supplied by construction — it must not be used for attribution.
 func (s *Store) Collect(ctx context.Context, req CollectRequest, ip, ua, domainID string) error {
-	path := normalizePathExtended(req.URL)
-	query := ""
-	if i := strings.IndexAny(req.URL, "?#"); i >= 0 && i+1 < len(req.URL) {
-		query = req.URL[i+1:]
-		if len(query) > 512 {
-			query = query[:512]
-		}
-	}
-	host := strings.TrimSpace(req.Hostname)
-	vid := visitorID(ip, ua, host)
-	if vid == "" {
-		// Fail closed: entropy is unavailable, so no safe pseudonym exists.
-		// Drop the event rather than merge all visitors into one predictable
-		// session or invent an identity we cannot stand behind.
+	ev := s.buildCollectEvent(req, ip, ua, domainID)
+	if ev == nil {
 		return nil
 	}
-	sid := sessionID(vid)
-
-	browser := coarseBrowser(ua)
-	os := coarseOS(ua)
-	device := coarseDevice(ua)
-
-	// Upsert the session. country/region/city are populated only from trusted
-	// reverse-proxy headers (see CollectRequest.Geo); VayuPress itself performs
-	// no GeoIP lookups and retains no IP.
-	var exists string
-	_ = s.readDB().QueryRowContext(ctx, `SELECT id FROM analytics_sessions WHERE id=?`, sid).Scan(&exists)
-	if exists == "" {
-		if _, err := s.db.ExecContext(ctx,
-			`INSERT OR IGNORE INTO analytics_sessions(id,visitor_id,browser,os,device,screen,language,country,region,city,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-			sid, vid, browser, os, device, "", "",
-			trunc(req.Geo.Country, 2), trunc(req.Geo.Region, 80), trunc(req.Geo.City, 120),
-			time.Now().UTC()); err != nil {
-			return err
-		}
-	}
-
-	eventType := req.EventType
-	if eventType != 2 {
-		eventType = 1
-	}
-	eventName := req.EventName
-	if len(eventName) > 200 {
-		eventName = eventName[:200]
-	}
-
-	eventID := fmt.Sprintf("e%d", time.Now().UnixNano())
-	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO analytics_pageviews(id,session_id,url_path,url_query,page_title,referrer,hostname,utm_source,utm_medium,utm_campaign,utm_content,utm_term,event_type,event_name,created_at,domain_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		eventID, sid, path, query, trunc(req.PageTitle, 300), referrerHostExtended(req.Referrer), trunc(host, 200),
-		trunc(req.UTMSource, 100), trunc(req.UTMMedium, 100), trunc(req.UTMCampaign, 100), trunc(req.UTMContent, 100), trunc(req.UTMTerm, 100),
-		eventType, eventName, time.Now().UTC(), domainID); err != nil {
-		return err
-	}
-
-	if eventType == 2 && len(req.EventData) > 0 {
-		n := 0
-		for k, v := range req.EventData {
-			if n >= maxEventDataProps {
-				break
-			}
-			n++
-			_, _ = s.db.ExecContext(ctx,
-				`INSERT INTO analytics_event_data(event_id,property_key,property_value,created_at) VALUES(?,?,?,?)`,
-				eventID, trunc(k, 100), trunc(v, 500), time.Now().UTC())
-		}
-	}
-	return nil
+	return s.applyCollectBatch(ctx, []collectEvent{*ev})
 }
 
 func trunc(s string, n int) string {
@@ -282,58 +151,77 @@ func trunc(s string, n int) string {
 
 // ── Overview ─────────────────────────────────────────────────────────────────
 
-// avgSessionSecondsSQL computes average visit duration in seconds: per session,
-// the span from its first pageview to its last, averaged across sessions.
-//
-// This field was declared, returned in JSON, and written to the CSV export
-// WITHOUT EVER BEING ASSIGNED — every install has always reported an average
-// visit duration of exactly 0. That is worse than omitting it: 0 reads as a
-// measurement ("everyone leaves instantly") rather than as "not measured", and
-// there is no way to tell the two apart from the outside. The data to compute it
-// was already being recorded the whole time; nothing ever queried it.
-//
-// Known limit, stated rather than hidden: with no exit beacon, the time spent on
-// the LAST page of a visit is unmeasurable, so a single-pageview visit scores 0
-// and every visit is undercounted by its final dwell. That is the same
-// approximation the mainstream analytics products make, and single-pageview
-// visits counting as 0 is also what makes this consistent with BounceRate above.
-const avgSessionSecondsSQL = `(julianday(MAX(created_at))-julianday(MIN(created_at)))*86400.0`
-
-// Overview holds aggregate stats for a date range.
+// Overview holds aggregate stats for a date range. Every figure is defined in
+// docs/ANALYTICS.md and computed by overviewWindow alone, for every caller.
 type Overview struct {
-	TotalPageviews int     `json:"total_pageviews"`
-	UniqueVisitors int     `json:"unique_visitors"`
-	TotalVisits    int     `json:"total_visits"`
-	BounceRate     float64 `json:"bounce_rate"`
-	// AvgDuration is the mean visit length in seconds. See avgSessionSecondsSQL
-	// for what it can and cannot measure.
+	TotalPageviews int `json:"total_pageviews"`
+	// UniqueVisitors counts distinct same-day visitor hashes among the
+	// window's events: a reader who came on three days is three.
+	UniqueVisitors int `json:"unique_visitors"`
+	// TotalVisits counts the visits that began in the window.
+	TotalVisits int `json:"total_visits"`
+	// BounceRate is the percentage of those visits with one event, a page
+	// view, and nothing else.
+	BounceRate float64 `json:"bounce_rate"`
+	// AvgDuration is the mean length, first event to last, of the visits with
+	// two or more events, in seconds. A visit of one event has no measured
+	// length (nothing reports when its reader left), so it is left out rather
+	// than averaged in as 0; those visits are the bounces.
 	AvgDuration float64 `json:"avg_duration"`
 }
 
-// OverviewSince returns aggregate analytics for the trailing N days.
+// overviewWindow computes the overview of [from, to) ("YYYY-MM-DD" or any
+// later-sorting timestamp string; to "" is open-ended) for one site, or for
+// every site when scope is ScopeAllDomains.
+func (s *Store) overviewWindow(ctx context.Context, scope, from, to string) (*Overview, error) {
+	where := "created_at>=?"
+	args := []any{from}
+	if to != "" {
+		where += " AND created_at<?"
+		args = append(args, to)
+	}
+	clause, carg := domainClause(scope)
+	where += clause
+	args = append(args, carg...)
+	o := &Overview{}
+	db := s.readDB()
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(1) FROM analytics_pageviews WHERE `+where+` AND event_type=1`, args...).
+		Scan(&o.TotalPageviews); err != nil {
+		return nil, err
+	}
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(DISTINCT +visitor_id) FROM analytics_pageviews WHERE `+where, args...).
+		Scan(&o.UniqueVisitors); err != nil {
+		return nil, err
+	}
+	// Each visit begun in the window, with all of its events wherever they
+	// fall: a visit crossing the window's end is measured whole, and counted
+	// once, in the window it began.
+	var bounces int
+	var avg sql.NullFloat64
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(1),COALESCE(SUM(v.n=1 AND v.views=1),0),AVG(CASE WHEN v.n>1 THEN v.d END) FROM (
+		   SELECT COUNT(1) n, SUM(x.event_type=1) views, (julianday(MAX(x.created_at))-julianday(MIN(x.created_at)))*86400.0 d
+		   FROM (SELECT DISTINCT +session_id AS session_id FROM analytics_pageviews WHERE entry=1 AND `+where+`) e
+		   JOIN analytics_pageviews x ON x.session_id=e.session_id GROUP BY e.session_id) v`, args...).
+		Scan(&o.TotalVisits, &bounces, &avg); err != nil {
+		return nil, err
+	}
+	if o.TotalVisits > 0 {
+		o.BounceRate = 100 * float64(bounces) / float64(o.TotalVisits)
+	}
+	o.AvgDuration = avg.Float64
+	return o, nil
+}
+
+// OverviewSince returns aggregate analytics for the trailing N days, every
+// site together.
 func (s *Store) OverviewSince(ctx context.Context, days int) (*Overview, error) {
 	if days <= 0 {
 		days = 14
 	}
-	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
-	o := &Overview{}
-	// Pageviews and visits (sessions).
-	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COUNT(1),COUNT(DISTINCT session_id) FROM analytics_pageviews WHERE created_at>=? AND event_type=1`, from).
-		Scan(&o.TotalPageviews, &o.TotalVisits)
-	// Unique visitors counts distinct visitor_id (NOT sessions).
-	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT +visitor_id) FROM analytics_sessions WHERE created_at>=?`, from).
-		Scan(&o.UniqueVisitors)
-	// Bounce rate: share of sessions with exactly one pageview.
-	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COALESCE(AVG(CASE WHEN v.cnt=1 THEN 100.0 ELSE 0.0 END),0) FROM (SELECT session_id,COUNT(1) cnt FROM analytics_pageviews WHERE created_at>=? GROUP BY +session_id) v`, from).
-		Scan(&o.BounceRate)
-	// Average visit duration.
-	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COALESCE(AVG(v.dur),0) FROM (SELECT `+avgSessionSecondsSQL+` dur FROM analytics_pageviews WHERE created_at>=? GROUP BY +session_id) v`, from).
-		Scan(&o.AvgDuration)
-	return o, nil
+	return s.overviewWindow(ctx, ScopeAllDomains, s.now().UTC().AddDate(0, 0, -(days-1)).Format("2006-01-02"), "")
 }
 
 // OverviewBetween returns aggregate analytics for the half-open date window
@@ -341,20 +229,7 @@ func (s *Store) OverviewSince(ctx context.Context, days int) (*Overview, error) 
 // powers the dashboard's period-over-period percentage deltas by letting the
 // caller fetch the immediately-preceding window of equal length.
 func (s *Store) OverviewBetween(ctx context.Context, fromInclusive, toExclusive string) (*Overview, error) {
-	o := &Overview{}
-	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COUNT(1),COUNT(DISTINCT session_id) FROM analytics_pageviews WHERE created_at>=? AND created_at<? AND event_type=1`, fromInclusive, toExclusive).
-		Scan(&o.TotalPageviews, &o.TotalVisits)
-	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT visitor_id) FROM analytics_sessions WHERE created_at>=? AND created_at<?`, fromInclusive, toExclusive).
-		Scan(&o.UniqueVisitors)
-	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COALESCE(AVG(CASE WHEN v.cnt=1 THEN 100.0 ELSE 0.0 END),0) FROM (SELECT session_id,COUNT(1) cnt FROM analytics_pageviews WHERE created_at>=? AND created_at<? AND event_type=1 GROUP BY +session_id) v`, fromInclusive, toExclusive).
-		Scan(&o.BounceRate)
-	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COALESCE(AVG(v.dur),0) FROM (SELECT `+avgSessionSecondsSQL+` dur FROM analytics_pageviews WHERE created_at>=? AND created_at<? GROUP BY +session_id) v`, fromInclusive, toExclusive).
-		Scan(&o.AvgDuration)
-	return o, nil
+	return s.overviewWindow(ctx, ScopeAllDomains, fromInclusive, toExclusive)
 }
 
 // ── Pageview time series ─────────────────────────────────────────────────────
@@ -1249,26 +1124,7 @@ func (s *Store) OverviewSinceScoped(ctx context.Context, scope string, days int)
 	if days <= 0 {
 		days = 14
 	}
-	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
-	clause, arg := domainClause(scope)
-	o := &Overview{}
-
-	args := append([]any{from}, arg...)
-	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COUNT(1),COUNT(DISTINCT session_id) FROM analytics_pageviews WHERE created_at>=? AND event_type=1`+clause,
-		args...).Scan(&o.TotalPageviews, &o.TotalVisits)
-	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COALESCE(AVG(CASE WHEN v.cnt=1 THEN 100.0 ELSE 0.0 END),0) FROM (SELECT session_id,COUNT(1) cnt FROM analytics_pageviews WHERE created_at>=? AND event_type=1`+clause+` GROUP BY +session_id) v`,
-		args...).Scan(&o.BounceRate)
-	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COALESCE(AVG(v.dur),0) FROM (SELECT `+avgSessionSecondsSQL+` dur FROM analytics_pageviews WHERE created_at>=?`+clause+` GROUP BY +session_id) v`,
-		args...).Scan(&o.AvgDuration)
-	// Unique visitors come from the session table, which carries no domain, so
-	// the distinct-session count above is used instead of an unscoped figure. An
-	// unscoped visitor count beside scoped pageviews would be two different
-	// populations presented as one.
-	o.UniqueVisitors = o.TotalVisits
-	return o, nil
+	return s.overviewWindow(ctx, scope, s.now().UTC().AddDate(0, 0, -(days-1)).Format("2006-01-02"), "")
 }
 
 // TopPagesScoped is TopPages for one domain.

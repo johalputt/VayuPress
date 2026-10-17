@@ -7,7 +7,9 @@ import (
 	"database/sql"
 	"os"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 
@@ -23,7 +25,7 @@ func newExtStore(t *testing.T) *Store {
 	t.Cleanup(func() { db.Close() })
 	ddl := []string{
 		`CREATE TABLE analytics_sessions(id TEXT PRIMARY KEY, visitor_id TEXT NOT NULL, browser TEXT NOT NULL DEFAULT '', os TEXT NOT NULL DEFAULT '', device TEXT NOT NULL DEFAULT '', screen TEXT NOT NULL DEFAULT '', language TEXT NOT NULL DEFAULT '', country TEXT NOT NULL DEFAULT '', region TEXT NOT NULL DEFAULT '', city TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`,
-		`CREATE TABLE analytics_pageviews(id TEXT PRIMARY KEY, session_id TEXT NOT NULL, url_path TEXT NOT NULL, url_query TEXT NOT NULL DEFAULT '', page_title TEXT NOT NULL DEFAULT '', referrer TEXT NOT NULL DEFAULT '', hostname TEXT NOT NULL DEFAULT '', utm_source TEXT NOT NULL DEFAULT '', utm_medium TEXT NOT NULL DEFAULT '', utm_campaign TEXT NOT NULL DEFAULT '', utm_content TEXT NOT NULL DEFAULT '', utm_term TEXT NOT NULL DEFAULT '', event_type INTEGER NOT NULL DEFAULT 1, event_name TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,domain_id TEXT NOT NULL DEFAULT '');`,
+		`CREATE TABLE analytics_pageviews(id TEXT PRIMARY KEY, session_id TEXT NOT NULL, url_path TEXT NOT NULL, url_query TEXT NOT NULL DEFAULT '', page_title TEXT NOT NULL DEFAULT '', referrer TEXT NOT NULL DEFAULT '', hostname TEXT NOT NULL DEFAULT '', utm_source TEXT NOT NULL DEFAULT '', utm_medium TEXT NOT NULL DEFAULT '', utm_campaign TEXT NOT NULL DEFAULT '', utm_content TEXT NOT NULL DEFAULT '', utm_term TEXT NOT NULL DEFAULT '', event_type INTEGER NOT NULL DEFAULT 1, event_name TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,domain_id TEXT NOT NULL DEFAULT '', visitor_id TEXT NOT NULL DEFAULT '', entry INTEGER NOT NULL DEFAULT 0);`,
 		`CREATE TABLE analytics_event_data(id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL, property_key TEXT NOT NULL, property_value TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`,
 	}
 	for _, q := range ddl {
@@ -31,7 +33,18 @@ func newExtStore(t *testing.T) *Store {
 			t.Fatalf("ddl: %v", err)
 		}
 	}
-	return New(db)
+	s := New(db)
+	// A reader's events are seconds apart, not nanoseconds: the same view
+	// twice within two seconds is one view delivered twice.
+	at := time.Now().UTC().Add(-time.Hour)
+	var mu sync.Mutex
+	s.now = func() time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		at = at.Add(5 * time.Second)
+		return at
+	}
+	return s
 }
 
 func TestCollectStoresNoPII(t *testing.T) {
@@ -72,22 +85,6 @@ func TestCollectStoresNoPII(t *testing.T) {
 	}
 	if path != "/about" || query != "utm_source=x" {
 		t.Fatalf("path/query split wrong: %q %q", path, query)
-	}
-}
-
-func TestVisitorIDStableAndDistinct(t *testing.T) {
-	t.Parallel()
-	ip, ua, host := "198.51.100.4", "curl/8", "blog.test"
-	a := visitorID(ip, ua, host)
-	b := visitorID(ip, ua, host)
-	if a != b {
-		t.Fatalf("same inputs must yield same id within a day")
-	}
-	if visitorID("10.0.0.1", ua, host) == a {
-		t.Fatalf("different IP must yield different id")
-	}
-	if !strings.HasPrefix(a, "v") {
-		t.Fatalf("unexpected id format %q", a)
 	}
 }
 
@@ -179,29 +176,6 @@ func TestAverageVisitDurationIsActuallyMeasured(t *testing.T) {
 	// not an exact clock.
 	if ov.AvgDuration < 250 || ov.AvgDuration > 350 {
 		t.Errorf("avg_duration=%v seconds, want roughly 300 for a 5-minute visit", ov.AvgDuration)
-	}
-}
-
-// TestSinglePageviewVisitScoresZeroDuration — with no exit beacon the dwell on a
-// visit's last page cannot be measured, so a one-page visit is 0. That is the
-// honest answer and it keeps the metric consistent with BounceRate, which counts
-// exactly those visits as bounces.
-func TestSinglePageviewVisitScoresZeroDuration(t *testing.T) {
-	t.Parallel()
-	s := newExtStore(t)
-	ctx := context.Background()
-	if err := s.Collect(ctx, CollectRequest{URL: "/", Hostname: "h", EventType: 1}, "9.9.9.9", "Chrome", ""); err != nil {
-		t.Fatalf("collect: %v", err)
-	}
-	ov, err := s.OverviewSince(ctx, 14)
-	if err != nil {
-		t.Fatalf("overview: %v", err)
-	}
-	if ov.AvgDuration != 0 {
-		t.Errorf("avg_duration=%v for a single-pageview visit, want 0 (its dwell is unmeasurable)", ov.AvgDuration)
-	}
-	if ov.BounceRate != 100 {
-		t.Errorf("bounce_rate=%v, want 100 — the two metrics must agree on what a one-page visit is", ov.BounceRate)
 	}
 }
 

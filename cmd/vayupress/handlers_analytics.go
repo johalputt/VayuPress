@@ -171,6 +171,7 @@ func (a *App) handleAnalyticsCollect(w http.ResponseWriter, r *http.Request) {
 	}
 	// Geo is set server-side from trusted proxy headers, never from the beacon.
 	req.Geo = geoFromHeaders(r)
+	req.Lang = r.Header.Get("Accept-Language")
 	// A bad bot must never pollute analytics — same rule as the engagement
 	// ingest beside it. The two dashboards previously disagreed because this
 	// endpoint classified nobody: crawlers executing the page JS wrote

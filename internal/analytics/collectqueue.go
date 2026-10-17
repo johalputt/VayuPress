@@ -44,6 +44,9 @@ const (
 	evFlushChunk = 256
 )
 
+// idLen is the stored length of a visit or visitor ID, in hex characters.
+const idLen = 32
+
 // eventSeq disambiguates event IDs built inside the same nanosecond (Windows
 // coarse clocks make that real). Appended to the monotonic timestamp.
 var eventSeq atomic.Uint64
@@ -75,7 +78,7 @@ func (s *Store) CollectAsync(req CollectRequest, ip, ua, domainID string) {
 	if s == nil || s.evq == nil {
 		return
 	}
-	ev := buildCollectEvent(req, ip, ua, domainID)
+	ev := s.buildCollectEvent(req, ip, ua, domainID)
 	if ev == nil {
 		return
 	}
@@ -89,9 +92,10 @@ func (s *Store) CollectAsync(req CollectRequest, ip, ua, domainID string) {
 	c.mu.Unlock()
 }
 
-// buildCollectEvent mirrors Collect's normalisation step for step. Returns nil
-// when the beacon must be dropped (no usable identity).
-func buildCollectEvent(req CollectRequest, ip, ua, domainID string) *collectEvent {
+// buildCollectEvent normalises one beacon and decides its visit. Returns nil
+// when the event must not be stored: no identity can be derived (no salt), or
+// it is the visit's last page view delivered again.
+func (s *Store) buildCollectEvent(req CollectRequest, ip, ua, domainID string) *collectEvent {
 	path := normalizePathExtended(req.URL)
 	query := ""
 	if i := strings.IndexAny(req.URL, "?#"); i >= 0 && i+1 < len(req.URL) {
@@ -101,26 +105,33 @@ func buildCollectEvent(req CollectRequest, ip, ua, domainID string) *collectEven
 		}
 	}
 	host := strings.TrimSpace(req.Hostname)
-	vid := visitorID(ip, ua, host)
-	if vid == "" {
-		return nil // fail closed: no safe pseudonym exists
-	}
-	sid := sessionID(vid)
-	now := time.Now().UTC()
+	now := s.now().UTC()
 
 	et := req.EventType
 	if et != 2 {
 		et = 1
 	}
+	hit := s.visits.Observe(domainID, ip, ua, req.Lang, path, et == 1, now)
+	if hit.Session == "" || hit.Repeat {
+		return nil
+	}
+	// 128 bits of each hash is stored, not 256: the IDs are on every row and
+	// in three indexes, and on johal.in's volume the other half was ~30 MB a
+	// copy with nothing to gain (a collision needs ~2^64 visits).
+	hit.Session, hit.Visitor = hit.Session[:idLen], hit.Visitor[:idLen]
+	entry := 0
+	if hit.Entry {
+		entry = 1
+	}
 	name := trunc(req.EventName, 200)
 	eventID := "e" + itoa64(now.UnixNano()) + "-" + itoa64(int64(eventSeq.Add(1)))
 
 	ev := &collectEvent{
-		sessionArgs: []any{sid, vid, coarseBrowser(ua), coarseOS(ua), coarseDevice(ua), "", "",
+		sessionArgs: []any{hit.Session, hit.Visitor, coarseBrowser(ua), coarseOS(ua), coarseDevice(ua), "", "",
 			trunc(req.Geo.Country, 2), trunc(req.Geo.Region, 80), trunc(req.Geo.City, 120), now},
-		pvArgs: []any{eventID, sid, path, query, trunc(req.PageTitle, 300), referrerHostExtended(req.Referrer), trunc(host, 200),
+		pvArgs: []any{eventID, hit.Session, path, query, trunc(req.PageTitle, 300), referrerHostExtended(req.Referrer), trunc(host, 200),
 			trunc(req.UTMSource, 100), trunc(req.UTMMedium, 100), trunc(req.UTMCampaign, 100),
-			trunc(req.UTMContent, 100), trunc(req.UTMTerm, 100), et, name, now, domainID},
+			trunc(req.UTMContent, 100), trunc(req.UTMTerm, 100), et, name, now, domainID, hit.Visitor, entry},
 	}
 	if et == 2 && len(req.EventData) > 0 {
 		n := 0
@@ -218,7 +229,7 @@ func (s *Store) applyCollectBatch(ctx context.Context, batch []collectEvent) err
 		return err
 	}
 	defer ss.Close()
-	pv, err := tx.PrepareContext(ctx, `INSERT INTO analytics_pageviews(id,session_id,url_path,url_query,page_title,referrer,hostname,utm_source,utm_medium,utm_campaign,utm_content,utm_term,event_type,event_name,created_at,domain_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+	pv, err := tx.PrepareContext(ctx, `INSERT INTO analytics_pageviews(id,session_id,url_path,url_query,page_title,referrer,hostname,utm_source,utm_medium,utm_campaign,utm_content,utm_term,event_type,event_name,created_at,domain_id,visitor_id,entry) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		_ = tx.Rollback()
 		return err
