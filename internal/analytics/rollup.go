@@ -26,14 +26,16 @@ const RollupRawCutoffDays = 60
 func (s *Store) BuildDailyRollup(ctx context.Context, day time.Time) error {
 	dayKey := day.UTC().Format("2006-01-02")
 
-	// Pass 1 — exact counters per domain.
+	// Pass 1 — exact counters per domain, by the overview's definitions: views
+	// are page views (a custom event is not one), sessions the visits begun
+	// that day, so a visit crossing midnight is counted once (docs/ANALYTICS.md).
 	type totals struct {
 		views    int64
 		sessions int64
 	}
 	tot := map[string]totals{}
 	rows, err := s.readDB().QueryContext(ctx, `
-		SELECT COALESCE(domain_id,''), COUNT(1), COUNT(DISTINCT session_id)
+		SELECT COALESCE(domain_id,''), SUM(event_type=1), SUM(entry)
 		FROM analytics_pageviews
 		WHERE created_at>=? AND created_at<?
 		GROUP BY domain_id`, dayKey, dayKey+"~")

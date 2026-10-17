@@ -248,7 +248,7 @@ func (s *Store) PageviewSeries(ctx context.Context, days int) ([]DayPageviews, e
 	}
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT DATE(created_at) as d,COUNT(1),COUNT(DISTINCT session_id) FROM analytics_pageviews WHERE created_at>=? GROUP BY d ORDER BY d`, from)
+		`SELECT DATE(created_at) as d,SUM(event_type=1),COUNT(DISTINCT visitor_id) FROM analytics_pageviews WHERE created_at>=? GROUP BY d ORDER BY d`, from)
 	if err != nil {
 		return nil, err
 	}
@@ -295,7 +295,7 @@ func (s *Store) TopPages(ctx context.Context, days, limit int) ([]PageStat, erro
 	// the empty string and the busiest page on the site would be listed with no
 	// path at all.
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT '/' || RTRIM(SUBSTR(url_path,2),'/') AS p,COUNT(1) as pv,COUNT(DISTINCT session_id) as uv
+		`SELECT '/' || RTRIM(SUBSTR(url_path,2),'/') AS p,COUNT(1) as pv,COUNT(DISTINCT visitor_id) as uv
 		 FROM analytics_pageviews WHERE created_at>=? AND event_type=1
 		 GROUP BY '/' || RTRIM(SUBSTR(url_path,2),'/') ORDER BY pv DESC LIMIT ?`, from, limit)
 	if err != nil {
@@ -1141,7 +1141,7 @@ func (s *Store) TopPagesScoped(ctx context.Context, scope string, days, limit in
 	args = append(args, limit)
 
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT '/' || RTRIM(SUBSTR(url_path,2),'/') AS p,COUNT(1) as pv,COUNT(DISTINCT session_id) as uv
+		`SELECT '/' || RTRIM(SUBSTR(url_path,2),'/') AS p,COUNT(1) as pv,COUNT(DISTINCT visitor_id) as uv
 		 FROM analytics_pageviews WHERE created_at>=? AND event_type=1`+clause+`
 		 GROUP BY '/' || RTRIM(SUBSTR(url_path,2),'/') ORDER BY pv DESC LIMIT ?`, args...)
 	if err != nil {

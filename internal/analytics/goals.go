@@ -114,15 +114,16 @@ func (s *Store) GoalResults(ctx context.Context, days int) ([]GoalResult, error)
 	// Denominator: distinct visitors active in the window.
 	totalVisitors := 0
 	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT +visitor_id) FROM analytics_sessions WHERE created_at>=?`, from).
+		`SELECT COUNT(DISTINCT +visitor_id) FROM analytics_pageviews WHERE created_at>=?`, from).
 		Scan(&totalVisitors)
 
 	results := make([]GoalResult, 0, len(goals))
 	for _, g := range goals {
 		gr := GoalResult{ID: g.ID, Name: g.Name, Kind: g.Kind, Target: g.Target}
 
-		// Build the matching predicate on analytics_pageviews (aliased p), with a
-		// join to sessions (aliased s) for the visitor_id used in unique counts.
+		// The matching predicate on analytics_pageviews (aliased p), whose rows
+		// carry their visitor (migration 113): the conversion rate's two sides
+		// are counted from the same rows.
 		var where string
 		var arg interface{}
 		switch g.Kind {
@@ -140,8 +141,8 @@ func (s *Store) GoalResults(ctx context.Context, days int) ([]GoalResult, error)
 		}
 
 		_ = s.readDB().QueryRowContext(ctx,
-			`SELECT COUNT(1), COUNT(DISTINCT s.visitor_id)
-			 FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id
+			`SELECT COUNT(1), COUNT(DISTINCT p.visitor_id)
+			 FROM analytics_pageviews p
 			 WHERE p.created_at>=? AND `+where, from, arg).
 			Scan(&gr.Completions, &gr.UniqueVisitors)
 
