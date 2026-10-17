@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.9] — 2026-10-17
+
+Mailbox settings opens settings.
+
+### Fixed
+
+- **Mailbox settings opens a mailbox's settings.** For the owner it opened
+  the list of mailboxes instead, with no setting on it: their mailbox was never
+  "assigned" to their account (it is the address they sign in with), and an
+  administrator without an assigned mailbox was sent to the inbox, which for
+  an administrator is that list. Mailbox settings now opens the full settings
+  of the administrator's own mailbox, the one assigned or the one at the
+  address they sign in with; an administrator with neither picks a mailbox
+  from a list, each opening its settings. Anyone else without a mailbox is
+  told none has been given, instead of being sent to an empty inbox.
+
 ## [3.18.8] — 2026-10-17
 
 VayuOS opens fast on a large site; every website counts its visitors; mailbox holders manage their own settings; signing in with a mailbox asks for the second factor of its address; placed ads can be edited, and the cartoon pictures are redrawn.
