@@ -4,16 +4,16 @@
 
 | Version | Security support |
 |---|---|
-| **3.15.x** (current) | **Full.** Every severity; fixes ship in the next micro release |
-| **3.14.x** (previous minor) | **Critical only** (CVSS ≥ 9.0), until **31 December 2026** |
+| **3.18.x** (current) | **Full.** Every severity; fixes ship in the next micro release |
+| **3.14.x – 3.17.x** | **Critical only** (CVSS ≥ 9.0), until **31 December 2026** |
 | < 3.14 | **None.** Upgrade |
 
 Releases are frequent and micro-version upgrades are drop-in — the supported
 window is deliberately narrow because staying current is cheap here, not because
 older versions are abandoned casually.
 
-**Check your version** with `vayupress version`, or in VayuOS under
-**Settings → About**.
+**Check your version** in VayuOS under **System › Updates**, or with
+`curl -s http://localhost:8080/health` on the server.
 
 ### What this project cannot promise, said plainly
 
@@ -53,7 +53,7 @@ We follow responsible disclosure:
 |-----------------------|------------------------------|
 | Critical (CVSS ≥ 9.0) | Patch within 72 hours        |
 | High (CVSS ≥ 7.0)     | Patch within 1 week          |
-| Medium / Low          | Next MINOR release           |
+| Medium / Low          | A following release          |
 
 **Process**:
 1. Email security@vayupress.com with reproduction steps and impact assessment.

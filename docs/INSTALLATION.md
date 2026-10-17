@@ -92,7 +92,7 @@ Two things gate provisioning for an additional domain, and both are deliberate:
    your back. Nothing is issued for a held domain — no certificate, no key
    discovery.
 
-**VayuOS → Operations → Domains & DNS** lists every hosted domain with its
+**VayuOS → Site › Domains** lists every hosted domain with its
 records and live status, and says plainly when a domain is on hold.
 
 ### Point the records before you run the installer
@@ -296,7 +296,7 @@ It installs the provisioning helper, enables a daily sweep, and runs one pass
 immediately. It does **not** rebuild the binary, restart the site, or touch the
 database, and it is safe to re-run.
 
-After that, **VayuOS → Operations → Domains & DNS** provisions every subdomain on
+After that, **VayuOS → Site › Domains** provisions every subdomain on
 demand, and a record you point later is picked up on its own. No further terminal
 use.
 

@@ -60,7 +60,7 @@ different situation again.
 | Published as open source under Apache-2.0 | Yes |
 | Sold, licensed for a fee, or offered as a paid service | No |
 | Paid support contracts | No |
-| Monetised through the software (ads, data, upsell) | No — telemetry is opt-in, off by default, and transmits nothing about the operator |
+| Monetised through the software (ads, data, upsell) | No — there is no telemetry. The opt-in security-update check fetches public release metadata and sends nothing about the operator |
 | Funded by | Donations |
 | Published by | A natural person, not a company |
 
@@ -85,13 +85,13 @@ downstream commercial user will ask for, since that is the binding constraint ei
 | Coordinated vulnerability disclosure policy | **Have** | [`SECURITY.md`](../SECURITY.md) — contact, SLAs by CVSS band, no-public-issue rule, advisory process |
 | Software bill of materials | **Have** | `.github/workflows/sbom.yml` — CycloneDX via `cyclonedx-gomod`, on every push and weekly |
 | Vulnerability scanning in CI | **Have** | `govulncheck` on every push, weekly schedule, and as a release gate |
-| Signed releases / integrity verification | **Have** | cosign signing in `tag-release.yml` and `release.yml` |
+| Signed releases / integrity verification | **Have** | `tag-release.yml`: cosign keyless with an RFC 3161 timestamp, plus the release key's Ed25519 signature; every install verifies both before installing ([RELEASES.md](RELEASES.md)) |
 | Per-file licence identification | **Have** | SPDX headers on every Go file, gated in CI |
 | Security-by-default configuration | **Have** | Deny-by-default posture recorded in [`GOVERNANCE-CONSTITUTION.md`](../GOVERNANCE-CONSTITUTION.md); no telemetry in core |
 | Documented change history | **Have** | [`CHANGELOG.md`](../CHANGELOG.md), maintained per release |
-| Defined support period | **Have** | [`SECURITY.md`](../SECURITY.md) — current minor in full support, previous minor critical-only with an end date, and an explicit statement that the CRA's five-year default is *not* met, with the reasons it is not claimed |
-| SBOM published with releases | **Have** | `release.yml` and `tag-release.yml` generate a CycloneDX SBOM per release, cosign-sign it, and attach both to the GitHub Release |
-| Machine-readable security contact | **Have** | [`docs/site/.well-known/security.txt`](site/.well-known/security.txt), RFC 9116, with the `Expires` field stamped at deploy time so it cannot go stale |
+| Defined support period | **Have** | [`SECURITY.md`](../SECURITY.md) — the current series in full support, earlier ones critical-only to a stated end date, and an explicit statement that the CRA's five-year default is *not* met, with the reasons it is not claimed |
+| SBOM published with releases | **Have** | `tag-release.yml` generates a CycloneDX SBOM per release, cosign-signs it, and attaches both to the GitHub Release |
+| Machine-readable security contact | **Have** | [`docs/site/.well-known/security.txt`](site/.well-known/security.txt), RFC 9116, with a committed `Expires` (2027-08-08) that `scripts/check-security-txt.py` fails CI on within 45 days of expiry |
 | **Vulnerability reporting route to ENISA/CSIRT** | **Gap, conditional** | Only applies if in scope, which on the assessment above it is not. No process exists for the 24-hour early-warning / 72-hour notification path that would apply from September 2026 |
 
 ---
@@ -109,7 +109,7 @@ downstream commercial user will ask for, since that is the binding constraint ei
    irrevocable Apache-2.0 grant, and an SBOM per release, so anyone needing a longer horizon can
    maintain a fork without asking permission.
 
-2. **SBOM attached to every release**, in both `release.yml` and `tag-release.yml`, and
+2. **SBOM attached to every release** by `tag-release.yml`, and
    cosign-signed — an unsigned inventory beside a signed binary is a gap, because swapping it
    leaves the artefact still verifying.
 

@@ -9,7 +9,7 @@ serves from the same binary, so there is nothing to install on either side. See
 [ADR-0147](../adr/ADR-0147-per-client-connector-pages.md) for why this has its own
 page.
 
-- **Console page:** VayuOS → Optimize → **Claude Code** (`/os/claudecode`),
+- **Console page:** VayuOS → Settings › Integrations › **Claude Code** (`/os/claudecode`),
   admin-only
 - **Endpoint:** `POST https://<your-domain>/mcp`
 - **Extra services required:** none

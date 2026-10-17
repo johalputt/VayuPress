@@ -1,5 +1,7 @@
 # VayuMCP — the built-in MCP connector (Claude, Claude Code & any MCP client)
 
+**Last reviewed:** 2026-10-17, against VayuPress 3.18.7
+
 VayuPress serves a **Model Context Protocol (MCP)** server from the same binary,
 so an AI client can drive your site natively — publish posts, read analytics,
 search content, and more — the same way Claude connects to GitHub. See
@@ -10,11 +12,14 @@ VayuMCP is a standard MCP + OAuth 2.1 endpoint — **any MCP client works the sa
 way** (Claude Desktop, Claude Code, Cursor, or anything that speaks MCP over HTTP).
 Nothing here is Claude-specific except the example screenshots.
 
-**What you can ask a connected client to do** (scoped to the key you grant):
-show a traffic summary, list/search/read posts, create & publish a post, create a
-standalone page, list media, list & apply themes, and read or update your site
-settings (branding, colours, nav, footer, SEO). It cannot touch email, chat,
-VayuShield, or VayuTor — VayuMCP covers the publishing/site/analytics surface only.
+**What a connected client can do** (scoped to the key you grant): write,
+edit and publish posts and pages; upload media and turn links into embeds;
+read traffic, audiences and referrers; switch themes and site settings; build,
+edit, preview and publish the websites of every hosted domain, follow a GitHub
+repository, and diagnose or provision their certificates; and read, never
+change, VayuShield's and VayuVeil's state. It cannot read or send mail, read
+chat, change VayuShield or Tor, or touch accounts and keys: those surfaces
+have no tools.
 
 - **Endpoint:** `POST https://<your-domain>/mcp`
 - **Protocol:** MCP over Streamable HTTP (JSON-RPC 2.0)
@@ -98,30 +103,31 @@ Claude Code: `claude mcp add --transport http vayupress https://your-domain.com/
 
 ## Tools
 
-| Tool | Needs (section:action) | Does |
-|---|---|---|
-| `site_info` | any valid key | Report platform, version, and primary domain. |
-| `create_post` | `posts:write` | Create + publish a post (HTML body, sanitized). |
-| `update_post` | `posts:write` | Update a post by slug (only the fields you pass). |
-| `delete_post` | `posts:delete` | Delete a post by slug. |
-| `list_posts` | `posts:read` | List published posts (pagination, tag filter). |
-| `get_post` | `posts:read` | Fetch one post, including its HTML. |
-| `search_content` | `posts:read` | Full-text search across published posts. |
-| `create_page` | `posts:write` | Create a standalone page (About, Contact, landing) at /<slug>; excluded from the blog feed. |
-| `list_pages` | `posts:read` | List standalone pages (edit/read via update_post/get_post by slug). |
-| `site_settings` | `settings:read` | Read the site's non-secret config (name, tagline, theme, nav, SEO meta). |
-| `analytics_summary` | `analytics:read` | Privacy-first traffic overview + top pages for the last N days. |
-| `update_site_settings` | `settings:write` | Update presentational config (branding, theme colours, nav, footer, custom CSS, SEO); changes apply live. |
-| `list_media` | `media:read` | List media-library files (name, /media/<name> URL, size, type). |
-| `list_themes` | `themes:read` | List built-in theme presets available to apply. |
-| `apply_theme` | `themes:apply` | Apply a built-in theme preset to the whole site (live). |
+Forty-three tools, each visible only to a key holding its capability
+(`a.mcpVisible`, `cmd/vayupress/mcp*.go`):
 
-More tools (themes, plugins, pages, media, domains) land in later stages; a
-full-control key automatically gains each new tool. Write tools for a subsystem
-are added only once they can reuse that subsystem's own validated path, so a tool
-can never bypass a check the REST/admin route enforces. `update_site_settings` is
-bounded to the same presentational allowlist as `site_settings`, so operational
-config (Tor bridges, VayuShield thresholds) is never writable through it.
+| Area | Tools | Needs |
+|------|-------|-------|
+| The connection | `site_info` | any valid key |
+| Posts and pages | `list_posts`, `get_post`, `search_content`, `list_pages` | `posts:read` |
+| | `create_post`, `update_post`, `create_page` | `posts:write` |
+| | `delete_post` | `posts:delete` |
+| Media | `list_media` | `media:read` |
+| | `upload_media`, `embed_url` | `media:write` |
+| Analytics | `analytics_summary`, `analytics_audience`, `analytics_referrers` | `analytics:read` |
+| Themes | `list_themes` | `themes:read` |
+| | `apply_theme` | `themes:apply` |
+| Settings | `site_settings`, `get_performance` | `settings:read` |
+| | `update_site_settings` | `settings:write` |
+| VayuShield, VayuVeil (read-only) | `vayushield_status`, `vayushield_posture`, `vayushield_settings`, `vayushield_history`, `vayuveil_posture`, `vayuveil_unit_controls` | `settings:read` |
+| Hosted sites | `list_sites`, `get_site`, `preview_site`, `list_site_templates`, `get_site_document`, `list_site_files`, `read_site_file`, `diagnose_certificate` | `domains:read` |
+| | `update_site`, `build_site`, `restore_previous_site`, `save_site_draft`, `publish_site_document`, `edit_site_document`, `restore_site_revision`, `edit_site_files`, `follow_repository`, `sync_site`, `set_release_mirror`, `provision_certificates` | `domains:write` |
+
+Each write tool reuses its subsystem's own validated path, so a tool can never
+bypass a check the REST or console route enforces. `update_site_settings` is
+bounded to the presentational allowlist `site_settings` reads, so operational
+configuration (Tor bridges, VayuShield thresholds) is not writable through it.
+The VayuShield tools report allow and deny lists as counts, never as values.
 
 ## Security model
 
@@ -135,16 +141,11 @@ config (Tor bridges, VayuShield thresholds) is never writable through it.
   calling key's label (never the secret).
 - **Rotate the key** in VayuOS to revoke a connector instantly.
 
-## Roadmap
+## History
 
-- **Stage 2 (shipped):** the VayuOS **VayuMCP** page (one-click
-  full-control or scoped key + copy-paste connect steps) and broadened read tools
-  (`site_settings`, `analytics_summary`).
-- **Stage 3 (in progress):** safe write tools for the remaining sections, each
-  reusing its subsystem's validated path. **3a shipped:** `update_site_settings`
-  (branding/theme/nav/SEO writes). **3b shipped:** `create_page` + `list_pages`.
-  **3c shipped:** `list_media`, `list_themes`, `apply_theme`.
-- **Stage 4 (shipped):** **OAuth 2.1** authorization server — a true one-click
-  **Connect** on claude.ai (sign in + approve, no key to copy), exactly like the
-  GitHub connector. See "Connect from claude.ai" above and
-  [ADR-0140](../adr/ADR-0140-vayu-mcp-oauth.md).
+The connector shipped in stages ([ADR-0139](../adr/ADR-0139-vayu-mcp-connector.md)):
+the endpoint and key-scoped tools, then the console page and read tools, then
+write tools section by section, then OAuth 2.1 one-click Connect
+([ADR-0140](../adr/ADR-0140-vayu-mcp-oauth.md)), then hosted sites, the shield
+and the observation tools. A full-control key gains each new tool
+automatically.

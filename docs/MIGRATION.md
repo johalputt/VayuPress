@@ -162,7 +162,7 @@ of the new posts in three steps:
 2. **Rebuild search:** the periodic reconciler finds the new posts on its
    own; to index them now,
    `curl -X POST -H "X-API-Key: $API_KEY" http://localhost:8080/os/api/search/reindex`.
-3. **Redraw pages:** VayuOS → Storage → **Refresh every page**, also in the
+3. **Redraw pages:** VayuOS → System › Storage → **Refresh every page**, also in the
    command palette, or `POST /os/api/storage/refresh-pages`. It rebuilds the
    sitemap, feed and `robots.txt` at once, and the pages in the background at
    the pace the server can spare.

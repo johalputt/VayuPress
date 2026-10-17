@@ -16,7 +16,7 @@ all speak MCP. VayuPress already serves its whole toolset over MCP through
 See [ADR-0146](../adr/ADR-0146-buzz-connector.md) for the design and for why the
 reverse direction is deliberately not built.
 
-- **Console page:** VayuOS → Optimize → **Buzz** (`/os/buzz`), admin-only
+- **Console page:** VayuOS → Settings › Integrations › **Buzz** (`/os/buzz`), admin-only
 - **Endpoint:** the same `POST https://<your-domain>/mcp` VayuMCP serves
 - **Auth:** a VayuPress scoped API key — `Authorization: Bearer <key>`
 - **Extra services required:** none
@@ -35,7 +35,7 @@ publishing, site and analytics surface only.
 
 ### 1. Grant a key
 
-Open **VayuOS → Optimize → Buzz** and pick a grant.
+Open **VayuOS → Settings › Integrations › Buzz** and pick a grant.
 
 Start with **Author** unless you have a reason not to. It lets the agent write
 and organise content but nothing else, and you can grant a wider key later

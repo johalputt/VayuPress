@@ -1,7 +1,7 @@
 # VayuAPI — API Keys, Permissions & Rate Limits
 
 **Status:** Authoritative  
-**Last reviewed:** 2026-07-16
+**Last reviewed:** 2026-10-17, against VayuPress 3.18.7
 
 ---
 
@@ -111,8 +111,11 @@ Each external key has its own fixed-window budget, keyed by the key's identity
 - Default: **600 requests/minute** (operator-tunable via
   `VAYU_API_RATE_PER_MIN`, or per key at mint time).
 - Over budget → `429` with `Retry-After: 60` and this page in the error body.
-- The internal system key is exempt; a coarse per-IP limiter still applies in
-  front of everything.
+- The internal system key is exempt.
+- In front of the keys, the write routes also allow 100 requests an hour from
+  one client address; addresses in `TRUSTED_IPS` are exempt. A CI runner that
+  writes in bulk should use `POST /api/v1/articles/bulk` (up to 1,000 posts a
+  request) or be listed there.
 
 Handle `429` by honouring `Retry-After` — do not retry in a tight loop.
 
@@ -120,16 +123,20 @@ Handle `429` by honouring `Retry-After` — do not retry in a tight loop.
 
 ## Errors
 
-Error bodies are JSON:
+Error bodies are JSON, under one `error` object:
 
 ```json
 {
-  "code": "forbidden",
-  "message": "this API key does not hold the required capability: posts:write",
-  "request_id": "…",
-  "docs": "/docs/compatibility/vayuapi"
+  "error": {
+    "code": "forbidden",
+    "message": "this API key does not hold the required capability: posts:write",
+    "request_id": "c028beea80ee1ebe",
+    "docs": "/docs/compatibility/vayuapi"
+  }
 }
 ```
+
+`request_id` matches the `X-Request-Id` header and the server's log line.
 
 | Status | Code | Meaning |
 |--------|------|---------|
