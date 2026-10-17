@@ -10,6 +10,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Analytics retention covers every table it promises to.** The privacy
+  disclosure publishes one retention window, and two tables were never purged
+  under it: the daily rollups' visitor sketches and revenue rows, which keep
+  their session. Both are now purged with the rest. The purge also ran only
+  24 hours after start, so an install restarted more often than daily never
+  purged at all; it now runs two minutes after start, then daily. An empty
+  table that only held visitor ids (`analytics_funnel_runs`, never written)
+  is dropped.
 - **The performance reading says why an uncached page was slow.** johal.in's
   topic pages read a p95 of 1.5 s while renders read 55 ms, and nothing could
   say where the rest went. `get_performance` (and so the connector) now

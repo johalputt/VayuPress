@@ -1154,6 +1154,8 @@ func (s *Store) PurgeOlderThan(ctx context.Context, retentionDays int) (int64, e
 		`DELETE FROM analytics_event_data WHERE created_at<?`,
 		`DELETE FROM analytics_pageviews WHERE created_at<?`,
 		`DELETE FROM analytics_sessions WHERE created_at<?`,
+		// A revenue row keeps its session_id; it goes with the session.
+		`DELETE FROM analytics_revenue WHERE created_at<?`,
 	} {
 		res, err := s.db.ExecContext(ctx, q, cutoff)
 		if err != nil {

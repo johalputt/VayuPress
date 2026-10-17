@@ -982,13 +982,6 @@ func main() {
 			case <-queue.DoneCh:
 				return
 			case <-ticker.C:
-				if n, err := a.analytics.Purge(context.Background(), config.Cfg.AnalyticsRetainDays); err == nil && n > 0 {
-					logging.LogInfo("analytics", fmt.Sprintf("purged %d aggregate rows older than %dd", n, config.Cfg.AnalyticsRetainDays))
-				}
-				// VayuAnalytics: data-minimisation sweep of detailed session/pageview rows.
-				if n, err := a.analytics.PurgeOlderThan(context.Background(), config.Cfg.AnalyticsRetainDays); err == nil && n > 0 {
-					logging.LogInfo("analytics", fmt.Sprintf("purged %d detailed rows older than %dd", n, config.Cfg.AnalyticsRetainDays))
-				}
 				// Daily DB-backup hygiene (see the boot sweep above).
 				if removed, reclaimed := update.SweepDBBackupsDefault(config.Cfg.DBPath); removed > 0 {
 					logging.LogInfo("update", fmt.Sprintf("pruned %d stale DB backup file%s, reclaimed %d MiB", removed, plural(removed), reclaimed/(1<<20)))

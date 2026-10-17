@@ -385,24 +385,7 @@ func (a *App) bootVayuShield() {
 		}
 	})
 
-	// VayuAnalytics data-retention sweep (daily), mirroring the legacy analytics purge.
-	go func() {
-		ticker := time.NewTicker(24 * time.Hour)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-queue.DoneCh:
-				return
-			case <-ticker.C:
-				if a.vaEngagement == nil {
-					continue
-				}
-				if n, err := a.vaEngagement.Purge(context.Background(), config.Cfg.AnalyticsRetainDays); err == nil && n > 0 {
-					logging.LogInfo("vayuanalytics", fmt.Sprintf("purged %d engagement rows older than %dd", n, config.Cfg.AnalyticsRetainDays))
-				}
-			}
-		}
-	}()
+	a.startAnalyticsRetention(queue.DoneCh)
 }
 
 // shieldChargeAt is the last unix-second the shield charged the governance

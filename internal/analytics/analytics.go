@@ -523,7 +523,9 @@ func (s *Store) Purge(ctx context.Context, retainDays int) (int64, error) {
 	}
 	cutoff := time.Now().UTC().AddDate(0, 0, -retainDays).Format("2006-01-02")
 	var total int64
-	for _, tbl := range []string{"analytics_daily", "analytics_referrers"} {
+	// analytics_rollup_daily holds an HLL sketch of the day's visitor hashes, so
+	// it is personal data under the same cutoff as the rows it was built from.
+	for _, tbl := range []string{"analytics_daily", "analytics_referrers", "analytics_rollup_daily"} {
 		res, err := s.db.ExecContext(ctx, "DELETE FROM "+tbl+" WHERE day<?", cutoff)
 		if err != nil {
 			return total, err
