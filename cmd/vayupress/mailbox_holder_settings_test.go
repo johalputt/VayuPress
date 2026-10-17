@@ -164,3 +164,17 @@ func TestAHolderChangesTheirOwnPassword(t *testing.T) {
 		t.Errorf("a session with no mailbox of its own = %d, want 403", rec.Code)
 	}
 }
+
+// A mailbox-only session's profile is its mailbox's settings: it has no
+// account, so the author profile page offered /author/vmail:<address>, a link
+// to nothing, and a form with nowhere to save.
+func TestAMailboxSessionsProfileIsItsMailboxSettings(t *testing.T) {
+	a := appWithMailAccounts(t)
+	dana := &users.User{ID: "vmail:dana@example.com", Email: "dana@example.com", Role: users.RoleAuthor, MailAddress: "dana@example.com"}
+	req := withUser(httptest.NewRequest(http.MethodGet, "/os/profile", nil), dana)
+	rec := httptest.NewRecorder()
+	a.handleOSProfile(rec, req)
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/os/vayumail/settings" {
+		t.Errorf("a mailbox session's profile = %d → %q, want its mailbox settings", rec.Code, rec.Header().Get("Location"))
+	}
+}

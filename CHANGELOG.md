@@ -29,7 +29,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   can also change their own password there, with the current one: as with
   any reset, every app, device and session on the mailbox is signed out and
   a notice is sent. Two-factor stays on the site's account page, where
-  turning it off asks for a current code.
+  turning it off asks for a current code. A mailbox's Profile opens these
+  settings: it showed an author profile at `/author/vmail:…`, a page that
+  does not exist, with a form that could not save.
 - **An ad already placed can be edited.** Each slot on Advertising now has an
   Edit button, opening a sheet filled with what the slot holds: its name,
   placement, kind, image, link, label and creative. Before, a slot could only

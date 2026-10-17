@@ -390,6 +390,14 @@ func (a *App) handleOSProfile(w http.ResponseWriter, r *http.Request) {
 		writeOSHTML(w, r, adminOSLayout(nonce, "My profile", "profile", cfg, body))
 		return
 	}
+	// A mailbox signed in with its own credential has no account behind it: no
+	// byline, no /author page, nothing this form could save. Its profile is its
+	// mailbox's settings. It was shown this page with /author/vmail:<address>
+	// as its public profile, a link to nothing (3cl).
+	if strings.HasPrefix(u.ID, "vmail:") {
+		http.Redirect(w, r, "/os/vayumail/settings", http.StatusSeeOther)
+		return
+	}
 	// Reload to get the freshest profile fields.
 	if fresh, err := a.userStore.GetByID(r.Context(), u.ID); err == nil {
 		u = fresh
