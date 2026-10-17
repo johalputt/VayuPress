@@ -181,6 +181,12 @@ esac`
 		t.Fatalf("a network failure was reported as a clean major probe, so the summary asserts "+
 			"something it never checked:\n%s", out)
 	}
+	// And it says which module, rather than that nothing at all was checked:
+	// the report used to list a major it had found beside "could not enumerate
+	// direct modules ... nothing is claimed about them" (3co).
+	if !strings.Contains(out, "could not be checked for a newer major") || !strings.Contains(out, "  github.com/go-chi/chi/v5\n") {
+		t.Errorf("the module the probe could not answer for is not named:\n%s", out)
+	}
 }
 
 // The all-clear must still be reachable, or the check has no green state and

@@ -154,6 +154,7 @@ while IFS= read -r line; do
   [ -n "$mpath" ] || continue
   newer="$(probe_majors "$mpath")"
   if [ "$newer" = "?" ]; then
+    major_probe_failed=1
     unprobed+=("$mpath")
     continue
   fi
@@ -277,13 +278,13 @@ fi
   echo "<sub>Green here means: every direct dependency is at the newest version <em>within its current major</em>, and no direct dependency has a newer <em>stable</em> major. A next major that exists only as an alpha or beta is listed above and does not count as being behind. This does not audit vulnerabilities — <code>govulncheck</code> in CI does that — and indirect modules are listed for information only.</sub>"
 } | emit
 
-if [ "${major_probe_failed}" -ne 0 ]; then
-  echo "⚠ could not enumerate direct modules to probe for new majors — nothing is claimed about them."
-  echo "<sub>⚠ The major-version probe could not run, so nothing is claimed either way about newer majors.</sub>" | emit
-elif [ "${#unprobed[@]}" -gt 0 ]; then
+if [ "${#unprobed[@]}" -gt 0 ]; then
   echo "⚠ ${#unprobed[@]} direct module(s) could not be checked for a newer major (no answer from the module proxy or the source); nothing is claimed about:"
   printf '  %s\n' "${unprobed[@]}"
   echo "<sub>⚠ Not checked for a newer major (no answer from the module proxy or the source): $(printf '<code>%s</code> ' "${unprobed[@]}")</sub>" | emit
+elif [ "${major_probe_failed}" -ne 0 ]; then
+  echo "⚠ could not enumerate direct modules to probe for new majors — nothing is claimed about them."
+  echo "<sub>⚠ The major-version probe could not run, so nothing is claimed either way about newer majors.</sub>" | emit
 fi
 
 # RED only when a DIRECT dependency is behind — that is the actionable signal.
