@@ -60,3 +60,34 @@ func TestImportersOfferGarbledTextAndKeepIt(t *testing.T) {
 		}
 	}
 }
+
+// A draft kept with --skip-drafts=false stays a draft, from every built-in
+// importer. articles.status defaults to 'published', so an insert that leaves
+// it out makes a private draft public.
+func TestImportedDraftsStayDrafts(t *testing.T) {
+	openMigratedDB(t)
+	dir := t.TempDir()
+	md := "---\ntitle: Private\nslug: md-private\ndraft: true\n---\nNot yet.\n"
+	if err := os.WriteFile(filepath.Join(dir, "private.md"), []byte(md), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runMigrateMarkdown([]string{"--dir=" + dir, "--skip-drafts=false"}); err != nil {
+		t.Fatal(err)
+	}
+	posts := []importedPost{
+		{Title: "Private", Slug: "ghost-private", HTML: "<p>Not yet.</p>", Draft: true},
+		{Title: "Public", Slug: "ghost-public", HTML: "<p>Out.</p>"},
+	}
+	if err := insertImported(posts, false, false); err != nil {
+		t.Fatal(err)
+	}
+	for slug, want := range map[string]string{"md-private": "draft", "ghost-private": "draft", "ghost-public": "published"} {
+		var status string
+		if err := dbpkg.DB.QueryRow(`SELECT status FROM articles WHERE slug=?`, slug).Scan(&status); err != nil {
+			t.Fatalf("%s: %v", slug, err)
+		}
+		if status != want {
+			t.Errorf("%s stored as %q, want %q", slug, status, want)
+		}
+	}
+}

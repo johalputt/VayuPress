@@ -1,59 +1,85 @@
-# VayuPress Migration Guide
+# Moving to VayuPress
 
-Import content from any major platform into VayuPress.
+**Last reviewed:** 2026-10-17, against VayuPress 3.18.7
 
----
+WordPress, Ghost and Markdown import with the binary you already have. Hugo,
+Jekyll, Medium, Notion and Substack have standalone importers in `tools/`.
+Moving between two VayuPress installs, such as clearnet and a Tor Space, uses a
+content bundle.
 
-## Supported Platforms
+| Coming from | Use | Reads |
+|-------------|-----|-------|
+| WordPress | `vayupress migrate wordpress` | The WXR export (Tools → Export → All content) |
+| WordPress, from its database | `tools/wordpress2vayu` | MySQL directly, in paced batches |
+| Ghost | `vayupress migrate ghost` | The JSON export (Settings → Labs → Export) |
+| Ghost, from its database | `tools/ghost-to-vayu` | MySQL or SQLite directly |
+| A folder of Markdown | `vayupress migrate markdown` | `.md` files with optional front matter |
+| Hugo | `tools/hugo2vayu` | The site's `content/` |
+| Jekyll | `tools/jekyll2vayu` | The site's `_posts/` |
+| Medium | `tools/medium2vayu` | Medium's account export, as a ZIP or a folder |
+| Notion | `tools/notion2vayu` | An HTML export, as a ZIP or a folder |
+| Substack | `tools/substack2vayu` | `posts.csv` from the export |
+| Another VayuPress | `vayupress migrate export` / `import` | A `.vaybundle` |
 
-| Platform | Tool | Method |
-|----------|------|--------|
-| Markdown folder | **built-in** | `vayupress migrate markdown` |
-| WordPress | `tools/wordpress2vayu` | standalone binary |
-| Ghost | `tools/ghost-to-vayu` | standalone binary |
-| Hugo | `tools/hugo2vayu` | standalone binary |
-| Jekyll | `tools/jekyll2vayu` | standalone binary |
-| Medium | `tools/medium2vayu` | standalone binary |
-| Notion | `tools/notion2vayu` | standalone binary |
-| Substack | `tools/substack2vayu` | standalone binary |
+Every importer is safe to run twice. A post whose slug already exists is
+skipped, never overwritten. The standalone tools also keep a checkpoint and
+resume where an interrupted run stopped.
 
----
+## Before you start
 
-## Built-in: Markdown Folder Import
+Take a backup you can restore:
 
-VayuPress v1.1.0+ ships a `migrate` subcommand. It imports any folder of
-Markdown files (with optional YAML frontmatter) directly into your running
-database.
-
-### Quick Start
-
-```sh
-# Preview what would be imported (safe, no DB writes)
-vayupress migrate markdown --dir ./posts --dry-run
-
-# List files without importing
-vayupress migrate list --dir ./posts
-
-# Import
-vayupress migrate markdown --dir ./posts
-
-# Import a specific database file (when not using the default)
-vayupress migrate markdown --dir ./posts --db /var/lib/vayupress/vayu.db
+```bash
+sudo vayupress backup -out /root/before-import.vpbk
 ```
 
-### Flags
+The built-in importer reads the same configuration as the service, `API_KEY`
+and `DB_PATH` included, and writes to that database. Run it as the service user
+with the service's environment, so every file it creates belongs to
+`www-data`:
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--dir` | _(required)_ | Path to the folder containing `.md` files |
-| `--db` | `$VAYU_DB` or `./vayupress.db` | Path to the VayuPress SQLite database |
-| `--recursive` | `true` | Walk subdirectories |
-| `--skip-drafts` | `true` | Skip files with `draft: true` in frontmatter |
-| `--dry-run` | `false` | Print what would be imported, no writes |
+```bash
+vp() {
+  sudo systemd-run --uid=www-data --pipe --wait --quiet \
+    -p EnvironmentFile=/etc/vayupress/env /usr/local/bin/vayupress "$@"
+}
+```
 
-### Frontmatter
+The export file must be readable by `www-data`. `/tmp` works.
 
-Files may include a YAML frontmatter block at the top:
+## WordPress and Ghost, built in
+
+```bash
+vp migrate wordpress --file /tmp/wordpress.xml --dry-run   # what would be imported
+vp migrate wordpress --file /tmp/wordpress.xml
+
+vp migrate ghost --file /tmp/ghost-export.json --dry-run
+vp migrate ghost --file /tmp/ghost-export.json
+```
+
+Titles, slugs, publication dates, tags (WordPress categories too) and draft
+status come across. HTML is sanitised (bluemonday's UGC policy) before it is
+stored. Drafts are skipped unless you pass `--skip-drafts=false`, and are then
+stored as drafts, never published.
+Images stay at their original URLs. Upload them to the media library if the
+old site is going away.
+
+## A folder of Markdown
+
+```bash
+vp migrate list --dir /tmp/posts                 # the files it would read
+vp migrate markdown --dir /tmp/posts --dry-run
+vp migrate markdown --dir /tmp/posts
+```
+
+| Flag | Default | |
+|------|---------|--|
+| `--dir` | (required) | The folder |
+| `--recursive` | `true` | Walk subfolders |
+| `--skip-drafts` | `true` | Skip files with `draft: true` |
+| `--dry-run` | `false` | List what would be imported; write nothing |
+
+Front matter is optional:
 
 ```markdown
 ---
@@ -67,199 +93,94 @@ draft: false
 Content starts here…
 ```
 
-All fields are optional. Missing values are derived automatically:
+| Field | Without it |
+|-------|------------|
+| `slug` | The file name, slugified |
+| `title` | The first level-one heading, then the slug |
+| `date` | The file's modification time |
+| `tags` | None |
 
-| Field | Fallback |
-|-------|----------|
-| `slug` | filename (slugified) |
-| `title` | first `# H1` heading, then the slug |
-| `date` | file modification time |
-| `tags` | empty |
-| `draft` | `false` |
+The Markdown is kept beside the rendered HTML (`article_sources`), so the
+editor opens the post as Markdown.
 
-### What Gets Created
+## The standalone importers
 
-For each file the importer creates:
+Each tool is its own Go module under `tools/`. Build it on any machine with Go
+and a C compiler, then run it on the server as `www-data`, pointing
+`--vayu-db` at the live database. It writes in batches through SQLite's WAL,
+alongside the running service.
 
-1. A row in `articles` (sanitised HTML content, INSERT OR IGNORE — re-runs are safe)
-2. A row in `article_sources` (raw Markdown body, `format = markdown`) — this
-   means the Admin v2 editor opens the post in Markdown mode, not HTML mode
-
-### Notes
-
-- Duplicate slugs are silently skipped (`INSERT OR IGNORE`) — re-running after
-  an interrupted import is always safe.
-- HTML content is sanitised by bluemonday's UGC policy before being stored
-  (same path as the write queue).
-- The importer uses the application database. If you run it while the server is
-  up, VayuPress's WAL mode handles concurrent access safely.
-
----
-
-## WordPress → VayuPress
-
-**Tool**: `tools/wordpress2vayu`
-
-Reads directly from the WordPress MySQL database (does **not** require an XML
-export — avoids lossy intermediate formats).
-
-### Build the tool
-
-```sh
-cd tools/wordpress2vayu
-go build -o wp2vayu ./cmd/wp2vayu
+```bash
+cd tools/wordpress2vayu && go build -o /tmp/wp2vayu ./cmd/wp2vayu
 ```
 
-### Usage
+| Tool | Build | Run |
+|------|-------|-----|
+| WordPress | `./cmd/wp2vayu` | `wp2vayu migrate --wp-dsn='user:pass@tcp(127.0.0.1:3306)/wordpress' --vayu-db=…` |
+| Ghost | `./cmd/ghost2vayu` | `ghost2vayu migrate --ghost-driver=sqlite3 --ghost-dsn=/var/lib/ghost/content/data/ghost.db --vayu-db=…` |
+| Hugo | `./cmd/hugo2vayu` | `hugo2vayu import --site=/srv/hugo --vayu-db=…` |
+| Jekyll | `./cmd/jekyll2vayu` | `jekyll2vayu import --site=/srv/jekyll --vayu-db=…` |
+| Medium | `./cmd/medium2vayu` | `medium2vayu import --input=medium-export.zip --vayu-db=…` |
+| Notion | `./cmd/notion2vayu` | `notion2vayu import --zip=notion-export.zip --vayu-db=…` |
+| Substack | `./cmd/substack2vayu` | `substack2vayu import --csv=posts.csv --vayu-db=…` |
 
-```sh
-# Count posts to import (sanity check, no writes)
-./wp2vayu count \
-  --wp-host=localhost --wp-user=root --wp-pass=secret --wp-db=wordpress
+`--vayu-db` is `/var/lib/vayupress/vayupress.db`. Some tools default to
+another name, so always pass it. Every tool takes `--dry-run`. Hugo, Jekyll,
+Medium and Substack take `--skip-drafts`, and WordPress and Ghost take
+`--status`. The two database readers also take `--batch` (default 50) and
+`--delay` (default 200 ms between batches); lower the batch and raise the
+delay if a large import competes with readers on a small VPS. Each tool's
+`--help` lists the rest. `count` (WordPress, Ghost) and `list` (the others)
+show what would be read.
 
-# Migrate
-./wp2vayu migrate \
-  --wp-host=localhost --wp-user=root --wp-pass=secret --wp-db=wordpress \
-  --vayu-db=/var/lib/vayupress/vayu.db \
-  --dry-run      # remove to write
+```bash
+sudo -u www-data /tmp/wp2vayu migrate --wp-dsn='…' \
+  --vayu-db=/var/lib/vayupress/vayupress.db --dry-run
 ```
 
-Migrated content includes: posts, published pages, tags, publication dates.
-Drafts and private posts are skipped by default (`--include-drafts` to override).
+## Between two VayuPress installs
 
----
-
-## Ghost → VayuPress
-
-**Tool**: `tools/ghost-to-vayu`
-
-Reads from a Ghost MySQL or SQLite database.
-
-```sh
-cd tools/ghost-to-vayu
-go build -o ghost2vayu ./cmd/ghost2vayu
-
-# SQLite Ghost database (common for self-hosted)
-./ghost2vayu migrate \
-  --ghost-db=/var/lib/ghost/content/data/ghost.db \
-  --vayu-db=/var/lib/vayupress/vayu.db \
-  --dry-run
+```bash
+vp migrate export --file /tmp/site.vaybundle                 # posts and pages
+vp migrate import --file /tmp/site.vaybundle --dry-run
+vp migrate import --file /tmp/site.vaybundle --mode=merge    # or add-only
 ```
 
----
+A bundle carries content only: no accounts, mailboxes or keys. It carries a
+SHA-256 of its posts, and an import whose checksum does not match is refused
+before anything is written. `merge` updates posts whose slug
+already exists; `add-only` skips them.
 
-## Hugo → VayuPress
+## After an import
 
-**Tool**: `tools/hugo2vayu`
+The importers write to the database directly, so the running service learns
+of the new posts in three steps:
 
-Reads Hugo content directories (Markdown + YAML/TOML frontmatter).
+1. **Restart it:** `sudo systemctl restart vayupress`. At start it links
+   every post missing from `article_tags` to its topics
+   (`StartArticleTagsBackfill`), which topic pages read.
+2. **Rebuild search:** the periodic reconciler finds the new posts on its
+   own; to index them now,
+   `curl -X POST -H "X-API-Key: $API_KEY" http://localhost:8080/os/api/search/reindex`.
+3. **Redraw pages:** VayuOS → Storage → **Refresh every page**, also in the
+   command palette, or `POST /os/api/storage/refresh-pages`. It rebuilds the
+   sitemap, feed and `robots.txt` at once, and the pages in the background at
+   the pace the server can spare.
 
-```sh
-cd tools/hugo2vayu
-go build -o hugo2vayu ./cmd/hugo2vayu
-
-./hugo2vayu import \
-  --dir=/path/to/hugo/content \
-  --vayu-db=/var/lib/vayupress/vayu.db \
-  --dry-run
-```
-
----
-
-## Jekyll → VayuPress
-
-**Tool**: `tools/jekyll2vayu`
-
-Reads Jekyll `_posts/` and `_drafts/` directories.
-
-```sh
-cd tools/jekyll2vayu
-go build -o jekyll2vayu ./cmd/jekyll2vayu
-
-./jekyll2vayu import \
-  --dir=/path/to/jekyll/_posts \
-  --vayu-db=/var/lib/vayupress/vayu.db
-```
-
----
-
-## Medium → VayuPress
-
-**Tool**: `tools/medium2vayu`
-
-Reads a Medium export ZIP (download from Medium → Account → Export).
-
-```sh
-cd tools/medium2vayu
-go build -o medium2vayu ./cmd/medium2vayu
-
-./medium2vayu import \
-  --zip=/path/to/medium-export.zip \
-  --vayu-db=/var/lib/vayupress/vayu.db
-```
-
----
-
-## Notion → VayuPress
-
-**Tool**: `tools/notion2vayu`
-
-Reads a Notion HTML export ZIP.
-
-```sh
-cd tools/notion2vayu
-go build -o notion2vayu ./cmd/notion2vayu
-
-./notion2vayu import \
-  --zip=/path/to/notion-export.zip \
-  --vayu-db=/var/lib/vayupress/vayu.db
-```
-
----
-
-## Substack → VayuPress
-
-**Tool**: `tools/substack2vayu`
-
-Reads the Substack posts CSV export (Settings → Exports → Download).
-
-```sh
-cd tools/substack2vayu
-go build -o substack2vayu ./cmd/substack2vayu
-
-./substack2vayu import \
-  --csv=/path/to/posts.csv \
-  --vayu-db=/var/lib/vayupress/vayu.db
-```
-
----
-
-## After Importing
-
-1. **Regenerate SEO artefacts** — visit `/admin/v2/seo` and click **Regenerate**.
-   This rebuilds `sitemap.xml`, `feed.xml`, and `robots.txt` from the new
-   content.
-
-2. **Review imported posts** — visit `/admin/v2/posts` to confirm the import
-   looks correct. Use the live search bar to find specific articles.
-
-3. **Check for thin content** — the SEO dashboard reports articles with
-   fewer than 300 words ("thin content"). Imported content is unchanged;
-   the meter just gives you visibility.
-
-4. **Backup** — the database auto-backs-up before any self-update apply, but
-   for a one-off migration it is good practice:
-   ```sh
-   cp /var/lib/vayupress/vayu.db /var/lib/vayupress/vayu.db.pre-migration
-   ```
-
----
+Then open **VayuOS → Posts** to look the import over, and **SEO** for
+redirects from the old URLs if they differ.
 
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `DB init failed` | Wrong `--db` path or DB not initialised | Run `vayupress` once to auto-run migrations, then retry |
-| Slug conflicts silently skipped | Duplicate slug in source | Articles with the same slug already exist — they are not overwritten |
-| Images not migrated | External image URLs | Images stay at their original URL; re-upload manually via the editor |
-| `draft: true` articles missing | `--skip-drafts=true` (default) | Re-run with `--skip-drafts=false` |
+| `required env not set … API_KEY` | Run without the service's environment | Use the `vp` function above |
+| `attempt to write a readonly database` | Run as a user that cannot write the database | Run as `www-data` |
+| The service fails to open the database after an import | An import run as root created a `-wal`/`-shm` owned by root | `sudo chown www-data:www-data /var/lib/vayupress/vayupress.db*` |
+| A post is missing | Its slug was already taken, or it was a draft | Rename the existing post, or pass `--skip-drafts=false` |
+| Topic pages are empty | The service has not restarted since the import | Restart it |
+| Search finds nothing new | The reconciler has not run yet | Rebuild the index (step 2) |
+| Images are broken | They still point at the old site | Upload them and edit the posts |
+
+A Ghost-specific walk-through, from export to redirects, is in
+[GHOST-MIGRATION.md](GHOST-MIGRATION.md).

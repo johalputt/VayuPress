@@ -389,7 +389,7 @@ sudo ./scripts/deploy-vayupress.sh --dry-run  # validate only, no changes
 sudo ./scripts/deploy-vayupress.sh --upgrade  # upgrade an existing install
 ```
 
-### 4. Verify
+### Verify
 
 After deploy, check:
 
@@ -402,18 +402,31 @@ Expected: `{"status":"ok"}` from both endpoints.
 
 ## What the Deploy Script Installs
 
-1. System dependencies (curl, wget, git, nginx, sqlite3, certbot, fail2ban, ufw)
-2. Go 1.22.5
-3. Isso (self-hosted comments)
-4. Self-hosted fonts (Inter, IBM Plex Mono)
-5. VayuPress Go application
-6. Systemd services (vayupress, isso)
-7. Nginx config with TLS (Let's Encrypt via Certbot)
-8. UFW firewall (ports 22, 80, 443)
-9. Logrotate, cron jobs (backup, orphan cleanup, restore validation)
+1. **Packages:** build-essential, git, curl, wget, nginx, sqlite3, certbot
+   with its nginx plugin, fail2ban, ufw, and tor with obfs4proxy.
+2. **Go**, the version `go.mod` names, if the host's is older.
+3. **VayuPress**, built from `/opt/vayupress` into
+   `/var/lib/vayupress/bin/vayupress`, a directory the service owns so the
+   one-click updater can swap it. It is linked at `/usr/local/bin/vayupress`.
+4. **The `vayupress` systemd unit**, running as `www-data` and reading
+   `/etc/vayupress/env` (mode 600, holding the generated API key and secrets).
+   Its only extra privilege is `CAP_NET_BIND_SERVICE`, for the mail ports.
+5. **`vayupress-provision`**, a root-owned path and timer unit with no
+   arguments. When the console asks for a certificate, this unit is what runs
+   certbot and reloads nginx, because the unprivileged service cannot.
+6. **nginx** with TLS from Let's Encrypt, proxying everything to
+   `127.0.0.1:8080`.
+7. **ufw:** deny inbound except 22, 80, 443 and the mail ports 25, 110, 143,
+   465, 587, 993 and 995.
+8. **fail2ban** jails for nginx's auth and rate-limit errors, and
+   **logrotate** for `/var/log/vayupress`.
+9. **Tor**, with its control port on loopback only. It stays dormant until
+   VayuTor is switched on and opens no inbound port.
 
-> Search is built in (VayuFind, ADR-0101) — there is no external search service
-> to install or run.
+There are no cron jobs. Backups (VayuKeep), restore drills, cache warming,
+search reconciliation and retention all run inside the binary, paced by how
+busy the host is. Search (VayuFind), the mail server, chat, analytics and the
+bot shield are part of the binary too; there is no other service to install.
 
 ## Run a Tor Space alongside (VayuOS Spaces)
 
@@ -440,14 +453,18 @@ worlds with the offline bundle: `vayupress migrate export --file bundle.vaybundl
 
 ## Directory Layout
 
-```
-/var/www/vayupress/src/      # Go source
-/var/www/vayupress/static/   # Static assets (CSS, fonts, media)
-/var/cache/vayupress/        # Rendered HTML cache
-/var/lib/vayupress/          # SQLite database
-/var/log/vayupress/          # Application logs
-/tmp/vayupress/              # Ephemeral upload temp (noexec, auto-cleaned)
-/backups/                    # SQLite backups
+```text
+/opt/vayupress/                  # source, the installer and its scripts
+/etc/vayupress/env               # configuration and secrets (root, 600)
+/var/lib/vayupress/              # owned by www-data
+  vayupress.db                   # the database (WAL mode)
+  bin/vayupress                  # the running binary (+ .bak after an update)
+  static/                        # assets, written from the binary at start
+  media/                         # uploads, content-addressed
+  vayudata/mail/, vayudata/pgp/  # mailboxes and the PGP key store
+/var/cache/vayupress/            # rendered pages; safe to delete, rebuilt
+/var/backups/vayupress/          # backup output
+/var/log/vayupress/              # logs, rotated
 ```
 
 ## Environment Variables
@@ -561,12 +578,17 @@ write queue, and dedupe by slug so re-running is safe.
 
 ### Privacy-first analytics (Tier 2)
 
-Cookieless, consent-free page-view counting that stores **no IP addresses, no
-user agents, no cookies, no fingerprints, and no per-visitor rows** — only daily
-aggregate counts per path and per referrer host. There is nothing in the schema
-that can identify a reader. Read the rollup at
-`GET /api/v1/admin/analytics?days=30&limit=20`. Aggregates older than
-`ANALYTICS_RETAIN_DAYS` are pruned daily.
+VayuAnalytics sets no cookie and stores no IP address or user-agent string.
+A visit is recorded under a visitor hash: SHA-256 over a salt that rotates
+every UTC day, the client address, the user agent and the language
+(`internal/vayuanalytics/session`). The same reader counts as one visitor
+within a day and cannot be followed from one day to the next. A session row
+keeps the browser and OS family, device class, language and the country,
+region and city from the embedded table, with no finer location. The console's
+Analytics page reads it, as do the `/api/v1/analytics/*` routes
+([API reference](API-REFERENCE.md#analytics)). The older daily rollup is at
+`GET /api/v1/admin/analytics?days=30&limit=20`. Data older than
+`ANALYTICS_RETAIN_DAYS` is pruned.
 
 ### Outbound webhooks (Tier 2)
 
@@ -604,10 +626,9 @@ vayupress user passwd alice@example.com 'new-password'
 vayupress user delete bob@example.com
 ```
 
-Sign in at `/admin/v2/login`. Admin-role users can also manage accounts over the
-API: `GET/POST /api/v1/admin/users`, `DELETE /api/v1/admin/users/{email}`. The
-existing API-key path keeps working unchanged — admin pages accept **either** a
-valid API key **or** a login session.
+Sign in at `/os`. Admin-role users can also manage accounts in VayuOS, or over
+the API: `GET/POST /api/v1/admin/users`, `DELETE /api/v1/admin/users/{email}`.
+Admin API routes accept **either** an API key **or** a signed-in session.
 
 ### Image optimization (Tier 1)
 
@@ -679,33 +700,39 @@ database consistently while the site runs and encrypts the whole data
 directory. A plain `tar` of a running SQLite database can capture a torn file.
 
 ```bash
-docker exec -it <container> vayupress backup -out /data/vayupress-$(date +%F).vpbk
+docker compose exec vayupress vayupress backup -out /tmp/vayupress-$(date +%F).vpbk
+docker compose cp vayupress:/tmp/vayupress-$(date +%F).vpbk ./
 ```
+
+The backup is written to the container's `/tmp`, then copied out. Writing it
+into `/var/lib/vayupress` would put the backup inside the volume it backs up.
 
 Restoring, and VayuKeep's automatic generations, are in
 [docs/operations/backup-restore.md](operations/backup-restore.md).
 
 ## Upgrade
 
+One click: **VayuOS → System › Updates**. Every release is signature-checked
+before it is installed. From source:
+
 ```bash
-cd vayupress
-git pull origin main
+cd /opt/vayupress && sudo git pull origin main
 sudo ./scripts/deploy-vayupress.sh --upgrade
 ```
 
-The `--upgrade` flag preserves existing secrets and data. For container
-deployments, rebuild and recreate: `docker compose up -d --build`. See
-[docs/UPGRADING.md](UPGRADING.md) for the signed self-update path.
+`--upgrade` keeps your secrets and data. For containers, rebuild and recreate:
+`docker compose up -d --build`. All three paths, and rollback, are in
+[UPGRADING.md](UPGRADING.md).
 
 ## Uninstall
 
 ```bash
-sudo systemctl stop vayupress isso
-sudo systemctl disable vayupress isso
-sudo rm -f /etc/systemd/system/vayupress.service
-sudo rm -f /etc/systemd/system/isso.service
-# Optionally remove data:
-# sudo rm -rf /var/lib/vayupress /var/cache/vayupress /var/log/vayupress
+sudo systemctl disable --now vayupress vayupress-provision.path vayupress-provision.timer
+sudo rm -f /etc/systemd/system/vayupress.service /etc/systemd/system/vayupress-provision.*
+sudo rm -f /etc/nginx/sites-enabled/vayupress /usr/local/bin/vayupress
+sudo systemctl daemon-reload && sudo systemctl reload nginx
+# Take a backup first, then optionally remove the data:
+# sudo rm -rf /var/lib/vayupress /var/cache/vayupress /var/log/vayupress /etc/vayupress
 ```
 
 ## Documentation

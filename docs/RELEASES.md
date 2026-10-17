@@ -1,15 +1,15 @@
-# VayuPress Release Process
+# How VayuPress is released
 
-**Version**: 1.0.0 (Prompt 8 — Release Engineering)  
-**Release cadence**: Feature releases quarterly; patch releases as needed  
-**Release Manager role**: See `docs/MAINTAINERS.md`
+**Last reviewed:** 2026-10-17, against VayuPress 3.18.7
 
----
+A release is one push to `main` that changes `.release-version`. Nobody tags
+by hand and nobody uploads a file. The workflow builds, signs, attaches and
+publishes, and every install's updater takes it from there.
 
-## Versioning policy — micro by default, roll over at 99
+## Version numbers: micro by default, roll over at 99
 
-Every release bumps the third (micro) segment, however large the change:
-`v3.13.96` → `v3.13.97`. Size never decides the bump; only the rollover does.
+Every release bumps the third segment, however large the change:
+`v3.18.6` → `v3.18.7`. Size never decides the bump; only the rollover does.
 Each segment counts 0–99:
 
 - micro at 99 → the next release bumps the minor and resets micro:
@@ -17,202 +17,105 @@ Each segment counts 0–99:
 - minor at 99 as micro rolls over → the next release bumps the major and
   resets both: `v3.99.99` → `v4.0.0`.
 
-A release changes three files in one commit, so they always agree:
-`.release-version` (which starts the tag-release workflow),
-`var Version` in `cmd/vayupress/main.go` (no `v` prefix), and a matching
-section in `CHANGELOG.md`.
+So a version says *when*, not *how much*. What a release changes, and whether
+it changes anything an operator must act on, is in its CHANGELOG section and
+its **Upgrade Notes**. A stable API route never breaks inside a major version
+whatever the number does
+([compatibility/api-contracts.md](compatibility/api-contracts.md)).
 
-## Release Types
+A version with a hyphen (`v3.19.0-rc.1`) is published as a pre-release. The
+console offers it only to an operator who asks for pre-releases.
 
-| Type | Trigger | Examples | Branch |
-|------|---------|---------|--------|
-| Micro | Every release | v3.13.1, v3.13.2 | main |
-| Minor | Micro rolls over from 99 | v3.13.99 → v3.14.0 | main |
-| Major | Minor rolls over from 99 | v3.99.99 → v4.0.0 | main |
+## The release commit
 
-Security patches skip RFC and go directly to release after Security Lead review.
+Three files change in one commit, so they always agree:
 
----
+| File | Holds |
+|------|-------|
+| `.release-version` | `vX.Y.Z`; the push of this file starts the workflow |
+| `cmd/vayupress/main.go` | `var Version = "X.Y.Z"` (no `v`) |
+| `CHANGELOG.md` | A `## [X.Y.Z] — YYYY-MM-DD` section; the `[Unreleased]` notes move into it |
 
-## Pre-Release Checklist
+`scripts/release-consistency.sh` compares the three on every push (CI job
+*Release Metadata Consistency*). A version file ahead of the changelog fails
+the build, so a version is never announced without its notes, or bumped
+without being shipped.
 
-### Code Freeze (T-7 days)
-- [ ] All planned issues closed or deferred
-- [ ] No open P1/P2 bugs
-- [ ] All ADRs for this release accepted (not draft)
-- [ ] `go mod tidy` run, go.sum committed
+## What the workflow does
 
-### CI Gate (must be green)
-- [ ] `ci-pass` job green on release commit
-- [ ] `security-pass` job green
-- [ ] Binary size < 45 MB (`make check-size`)
-- [ ] Memory < 800 MB idle (smoke test)
-- [ ] JS bundle < 50 KB gzip
-- [ ] Race detector: no races (`make test-race`)
-- [ ] `govulncheck`: zero known vulnerabilities
-- [ ] `golangci-lint`: zero errors
-- [ ] `go-licenses check`: all licenses approved
+`.github/workflows/tag-release.yml`, on a push to `main` that touches
+`.release-version`:
 
-### Documentation (T-3 days)
-- [ ] `CHANGELOG.md` entry written (version, date, ADRs, breaking changes)
-- [ ] `docs/API-REFERENCE.md` updated for any new/changed endpoints
-- [ ] `docs/INSTALLATION.md` updated for any new env vars or config
-- [ ] `scripts/README.md` updated with new ADR table entries
-- [ ] Deploy script version string bumped (e.g., `v1.0.0-p9`)
+1. **Reads the version** and refuses one that is not `vX.Y.Z`.
+2. **Skips** if that release is already published, so a re-run is harmless.
+3. **Builds** with the Go version `go.mod` pins: CGO for SQLite, linked
+   statically (`-linkmode external -extldflags '-static'`), `-trimpath`, with
+   `-X main.Version`. One `linux/amd64` binary with libc linked in, so it does
+   not depend on the host's.
+4. **Signs it twice.** Cosign signs keyless, through GitHub's OIDC identity
+   for this workflow, and the bundle is published to the Rekor transparency
+   log. The Ed25519 release key signs it too (`scripts/release-sign`). The
+   workflow refuses to publish a build that pins a key without the key's
+   secret, because every install would refuse that release and no later one
+   could rescue them.
+5. **Writes and signs a CycloneDX SBOM.**
+6. **Packages and signs** the provisioning helpers, the VayuShield helper
+   agent and the self-hosted marketing site.
+7. **Lifts the version's CHANGELOG section** into the release body
+   (`scripts/changelog-section.sh`).
+8. **Checks that no attachment sorts before `vayupress`.** Installs older than
+   the asset-selection fix take the first installable file. A ZIP that sorted
+   first was once written over a running binary.
+9. **Creates the tag and publishes the release.** Releases are immutable once
+   published.
 
-### Security Review (T-2 days)
-- [ ] Security Lead has reviewed any auth/crypto/network changes
-- [ ] `docs/THREAT-MODEL.md` updated if new entry points or assets added
-- [ ] `SECURITY.md` advisory section updated if relevant
-- [ ] Ethical Review Board sign-off (if Prompt 12 applies)
+The assets of every release:
 
----
+| Asset | |
+|-------|--|
+| `vayupress` | The binary |
+| `vayupress.sha256` | Its checksum |
+| `vayupress.cosign.bundle` | The Sigstore signature, certificate and Rekor entry |
+| `vayupress.sig` | The Ed25519 signature |
+| `vayupress-vX.Y.Z.sbom.json` (+ `.cosign.bundle`) | The SBOM |
+| `vayuprovision-helpers.tar.gz`, `vayushield-agent.tar.gz` (+ `.sha256`, `.cosign.bundle`) | The root helper scripts and the shield agent |
+| `vayupress-selfhosted-site.zip` (+ `.sha256`) | The project site |
 
-## Release Steps
+What an install checks before it runs any of this is in
+[UPGRADING.md](UPGRADING.md#what-every-release-must-prove).
 
-### 1. Tag the Release
-
-```bash
-# Ensure main is clean and CI is green
-git checkout main
-git pull origin main
-
-# Create annotated tag
-git tag -a v1.X.Y -m "VayuPress v1.X.Y — <one-line summary>
-
-ADRs: ADR-XXXX
-Constitution: Prompts 1-12 compliant
-"
-
-# Push tag
-git push origin v1.X.Y
-```
-
-### 2. Build Release Artifact
+## Verifying a release yourself
 
 ```bash
-# Reproducible build
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-  go build -ldflags="-s -w -X main.Version=v1.X.Y" \
-  -trimpath -o vayupress-linux-amd64 ./main.go
-
-# Verify size
-ls -lh vayupress-linux-amd64
-
-# Compute checksum
-sha256sum vayupress-linux-amd64 > vayupress-linux-amd64.sha256
-
-# Also hash the deploy script
-sha256sum scripts/deploy-vayupress.sh > deploy-vayupress.sh.sha256
+cosign verify-blob vayupress \
+  --bundle vayupress.cosign.bundle \
+  --certificate-identity https://github.com/johalputt/VayuPress/.github/workflows/tag-release.yml@refs/heads/main \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+sha256sum -c vayupress.sha256
 ```
 
-### 3. Create GitHub Release
+The identity and issuer are the ones the updater pins
+(`update.ReleaseSignerIdentity`, `update.ReleaseSignerIssuer`): a release
+signed from any other workflow, or from any branch but `main`, is refused. A
+test fails if this page and the code disagree.
 
-Create a release on GitHub with:
-- Tag: `v1.X.Y`
-- Title: `VayuPress v1.X.Y — <summary>`
-- Body: copy the CHANGELOG.md entry for this version
-- Attachments: binary + sha256, deploy script + sha256
+## Before the release commit
 
-### 4. Update CHANGELOG.md
+A release is cut only from a tree that has passed, on that tree:
 
-```markdown
-## [v1.X.Y] — YYYY-MM-DD
+- the Go gates: `gofmt`, `go vet`, `go build`, unit, race and integration
+  tests, staticcheck, golangci-lint, gosec, govulncheck, the binary-size
+  budget;
+- the browser suite against a built binary (Playwright, Chromium);
+- a review of everything under `[Unreleased]` as an attacker would read it,
+  with each finding fixed or recorded before the version is bumped.
 
-### Summary
-<brief description>
+Then the version is bumped and the commit is pushed. Every gate CI runs, and
+what each does *not* prove, is in [QUALITY-GATES.md](QUALITY-GATES.md).
 
-### Governance
-- Constitution: v6.0 Prompts 1–12 compliant
-- New ADRs: ADR-XXXX — <title>
+## A fix that cannot wait
 
-### Changes
-- ...
-
-### Security
-- ...
-
-### SHA-256 Checksums
-- `vayupress-linux-amd64`: `<hash>`
-- `deploy-vayupress.sh`: `<hash>`
-```
-
-### 5. Post-Release
-
-- [ ] Announce on community channels (releases@vayupress.com)
-- [ ] Update `scripts/README.md` version reference
-- [ ] Close the GitHub milestone
-- [ ] Open next milestone
-
----
-
-## Hotfix Process
-
-For P1 security or critical bug fixes:
-
-```bash
-# Branch from main (which is already at latest release)
-git checkout main
-git pull origin main
-git checkout -b hotfix/v1.X.Y-description
-
-# Fix the issue
-# ...commit...
-
-# Fast-track review: Security Lead + BDFL (2 person minimum)
-# CI must still be green — no exceptions
-
-# Merge to main
-git checkout main
-git merge --no-ff hotfix/v1.X.Y-description
-
-# Tag immediately
-git tag -a v1.X.Y -m "Hotfix: <description>"
-git push origin main v1.X.Y
-```
-
-Security hotfixes: coordinate via security@vayupress.com before any public disclosure.
-
----
-
-## Semantic Versioning Rules
-
-VayuPress follows [SemVer 2.0](https://semver.org/):
-
-| Change | Version bump |
-|--------|-------------|
-| Backward-compatible bug fix | Patch (0.0.X) |
-| New endpoint (backward compatible) | Minor (0.X.0) |
-| New env var with default | Minor (0.X.0) |
-| Removed endpoint | Major (X.0.0) — RFC required |
-| Changed DB schema (breaking) | Major (X.0.0) — RFC required |
-| New required env var | Major (X.0.0) |
-
-Breaking changes without a major version bump violate the governance contract.
-
----
-
-## Version String Policy
-
-The embedded Go binary version string must match the git tag exactly:
-
-```go
-var Version = "dev" // overridden at build time via -ldflags
-```
-
-Build command must pass: `-X main.Version=v1.X.Y`
-
-The deploy script version string (`v1.0.0-p9`) includes the prompt level suffix for governance traceability.
-
----
-
-## Release Schedule
-
-| Quarter | Target | Focus |
-|---------|--------|-------|
-| Q1 | v1.1.0 | Performance (Prompt 2) |
-| Q2 | v1.2.0 | Platform evolution (Prompt 4) |
-| Q3 | v1.3.0 | Community governance (Prompt 11) |
-| Q4 | v2.0.0 | (if breaking changes needed) |
-
-Patch releases happen outside this schedule as needed.
+There is no separate hotfix branch: the fix is committed to `main`, gated the
+same way, and released with the next micro number. A vulnerability is handled
+privately first, by the process in [SECURITY.md](../SECURITY.md), and
+disclosed with the release that fixes it.

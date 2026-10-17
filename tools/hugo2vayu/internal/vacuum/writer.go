@@ -43,7 +43,8 @@ func Open(dbPath string) (*Writer, error) {
 		content   TEXT NOT NULL,
 		tags      TEXT DEFAULT '',
 		created_at DATETIME NOT NULL,
-		updated_at DATETIME NOT NULL
+		updated_at DATETIME NOT NULL,
+		status     TEXT NOT NULL DEFAULT 'published'
 	)`); err != nil {
 		return nil, fmt.Errorf("vayu schema: %w", err)
 	}
@@ -74,8 +75,8 @@ func (w *Writer) InsertArticle(doc *hugoparse.Document) (bool, error) {
 	dateStr := doc.Date.UTC().Format(time.RFC3339)
 
 	res, err := w.db.Exec(
-		`INSERT OR IGNORE INTO articles(id,title,slug,content,tags,created_at,updated_at)
-		 VALUES(?,?,?,?,?,?,?)`,
+		`INSERT OR IGNORE INTO articles(id,title,slug,content,tags,created_at,updated_at,status)
+		 VALUES(?,?,?,?,?,?,?,?)`,
 		id,
 		doc.Title,
 		doc.Slug,
@@ -83,6 +84,7 @@ func (w *Writer) InsertArticle(doc *hugoparse.Document) (bool, error) {
 		strings.Join(doc.Tags, ","),
 		dateStr,
 		now,
+		articleStatus(doc.Draft),
 	)
 	if err != nil {
 		return false, fmt.Errorf("insert %q: %w", doc.Slug, err)
@@ -117,6 +119,15 @@ func (w *Writer) SetCheckpoint(path string) error {
 		return fmt.Errorf("set checkpoint: %w", err)
 	}
 	return nil
+}
+
+// articleStatus is the articles.status value for a post: a draft stays out of
+// every public read path.
+func articleStatus(draft bool) string {
+	if draft {
+		return "draft"
+	}
+	return "published"
 }
 
 // newID generates a random hex UUID-like identifier using crypto/rand.

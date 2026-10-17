@@ -29,7 +29,7 @@ signing identity.
 - legal@vayupress.com
 
 ## Ethics
-- ethics@vayupress.com   <!-- Ethics review board (VAYU_ETHICS_CONTACT) -->
+- ethics@vayupress.com   <!-- Ethics review board -->
 
 ## Operations & infrastructure
 - ops@vayupress.com

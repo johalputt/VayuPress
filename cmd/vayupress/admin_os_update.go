@@ -23,8 +23,9 @@ package main
 // Security posture: an apply is admin-role gated and CSRF-protected (an
 // authenticated admin clicking Update is the explicit opt-in), and is refused in
 // read-only/quarantined/maintenance modes. The downloaded release is ALWAYS
-// SHA-256 checksum verified; if a release signing key is pinned
-// (VAYU_RELEASE_PUBKEY) the Ed25519 signature is additionally required. Every
+// SHA-256 checksum verified and its Sigstore signature checked against the
+// release workflow's identity; when this build compiles in a release key
+// (update.ReleaseRequiresEd25519) the Ed25519 signature is required too. Every
 // action is recorded in the WORM audit log and the update_history table.
 //
 // CSP posture is identical to the rest of VayuOS: no inline styles, the only
@@ -75,10 +76,13 @@ func restartCleanup() {
 	}
 }
 
-// selfUpdateConfigured reports whether the operator has opted in and pinned a
-// release key, i.e. whether one-click apply can run.
+// selfUpdateConfigured reports whether the CLI apply is opted in, and whether
+// this build requires the release key's signature. hasKey once read
+// VAYU_RELEASE_PUBKEY, which nothing verifies against any more: the key is
+// compiled in (internal/update/releasekey.go), so the variable let the page
+// promise a pin the updater never checked.
 func selfUpdateConfigured() (enabled bool, hasKey bool) {
-	return os.Getenv("VAYU_SELFUPDATE_ENABLED") == "true", strings.TrimSpace(os.Getenv("VAYU_RELEASE_PUBKEY")) != ""
+	return os.Getenv("VAYU_SELFUPDATE_ENABLED") == "true", update.ReleaseRequiresEd25519()
 }
 
 // binaryDirWritable returns an empty string when the directory holding binPath
@@ -187,8 +191,8 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
 	signed := "Only releases signed by this project install."
 	signedTip := "Every release is checked against the signature its build published and installed only if that signature was made by this project's own release workflow, so a binary from anywhere else is refused even if it downloads cleanly. Nothing to configure: this applies to every install."
 	if hasKey {
-		signed = "Only releases signed by this project install, and your pinned key too."
-		signedTip = "Every release is checked against the signature its build published and installed only if that signature was made by this project's own release workflow. Your pinned release key is required on top."
+		signed = "Only releases signed by this project install, twice over."
+		signedTip = "Every release is checked against the signature its build published and installed only if that signature was made by this project's own release workflow. The release key built into this binary must have signed it too."
 	}
 
 	// WHAT A RESTART COSTS, on the page where restarts are decided (ADR-0155
@@ -353,7 +357,7 @@ func (a *App) handleOSUpdateCheck(w http.ResponseWriter, r *http.Request) {
 		// "signed" reported whether an operator had pinned a key, which never had
 		// anything to do with whether the release was signed — and read as though
 		// it did. Every release is signature-verified now, so it says so; hasKey
-		// stays for the separate, optional Ed25519 pin.
+		// says whether this build also requires the release key's signature.
 		"signed":     true,
 		"enabled":    enabled,
 		"hasKey":     hasKey,

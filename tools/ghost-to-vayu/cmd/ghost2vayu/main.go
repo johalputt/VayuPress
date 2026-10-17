@@ -207,6 +207,7 @@ func runMigrate(cmd *cobra.Command, _ []string) error {
 				Tags:      p.Tags,
 				CreatedAt: p.CreatedAt,
 				UpdatedAt: p.UpdatedAt,
+				Draft:     p.Status != "published",
 			})
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "  ERR  %s: %v\n", p.Slug, err)

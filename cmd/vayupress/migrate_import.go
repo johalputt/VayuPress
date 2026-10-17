@@ -33,6 +33,16 @@ type importedPost struct {
 // insertImported writes a batch of normalised posts into the articles table,
 // honouring --dry-run and --skip-drafts. It mirrors the Markdown importer's
 // sanitisation and dedupe-by-slug behaviour.
+// importStatus is the articles.status an imported post is stored with. The
+// column defaults to 'published', and the importers once left it out, so
+// --skip-drafts=false published every draft it was asked to keep.
+func importStatus(draft bool) string {
+	if draft {
+		return "draft"
+	}
+	return "published"
+}
+
 func insertImported(posts []importedPost, dryRun, skipDrafts bool) error {
 	if dryRun {
 		for i, p := range posts {
@@ -70,8 +80,8 @@ func insertImported(posts []importedPost, dryRun, skipDrafts bool) error {
 		title := p.Title
 		sanitised := bluemonday.UGCPolicy().Sanitize(p.HTML)
 		res, err := db.Exec(
-			`INSERT OR IGNORE INTO articles(id,title,slug,content,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`,
-			id, title, p.Slug, sanitised, tags, dateStr, dateStr)
+			`INSERT OR IGNORE INTO articles(id,title,slug,content,tags,created_at,updated_at,status) VALUES(?,?,?,?,?,?,?,?)`,
+			id, title, p.Slug, sanitised, tags, dateStr, dateStr, importStatus(p.Draft))
 		if err != nil {
 			fmt.Printf("%s %q → ERROR: %v\n", prefix, p.Title, err)
 			continue

@@ -24,6 +24,10 @@ type Article struct {
 	Tags      []string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	// Draft stores the post as a draft. The articles.status column defaults to
+	// 'published', so an insert that left it out published every draft the
+	// source marked private.
+	Draft bool
 }
 
 // Writer inserts articles into the VayuPress SQLite database.
@@ -32,7 +36,8 @@ type Writer struct {
 }
 
 // Open opens (or creates) the VayuPress SQLite database at path. It ensures the
-// articles table exists (mirroring VayuPress migration 001-baseline) so the tool
+// articles table exists (mirroring VayuPress migrations 001-baseline and 030, the
+// status column) so the tool
 // also works against a brand-new database file.
 func Open(path string) (*Writer, error) {
 	dsn := path + "?_journal_mode=WAL&_busy_timeout=10000&_foreign_keys=on&_synchronous=NORMAL"
@@ -52,7 +57,8 @@ func Open(path string) (*Writer, error) {
 		content   TEXT NOT NULL,
 		tags      TEXT DEFAULT '',
 		created_at DATETIME NOT NULL,
-		updated_at DATETIME NOT NULL
+		updated_at DATETIME NOT NULL,
+		status     TEXT NOT NULL DEFAULT 'published'
 	)`); err != nil {
 		return nil, fmt.Errorf("vayu schema: %w", err)
 	}
@@ -79,12 +85,13 @@ func (w *Writer) Insert(ctx context.Context, a Article) (bool, error) {
 		a.ID = newID()
 	}
 	res, err := w.db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO articles(id,title,slug,content,tags,created_at,updated_at)
-		 VALUES(?,?,?,?,?,?,?)`,
+		`INSERT OR IGNORE INTO articles(id,title,slug,content,tags,created_at,updated_at,status)
+		 VALUES(?,?,?,?,?,?,?,?)`,
 		a.ID, a.Title, a.Slug, a.Content,
 		strings.Join(a.Tags, ","),
 		a.CreatedAt.UTC().Format(time.RFC3339),
 		a.UpdatedAt.UTC().Format(time.RFC3339),
+		articleStatus(a.Draft),
 	)
 	if err != nil {
 		return false, fmt.Errorf("insert %q: %w", a.Slug, err)
@@ -117,6 +124,15 @@ func (w *Writer) LoadCheckpoint(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return val, nil
+}
+
+// articleStatus is the articles.status value for a post: a draft stays out of
+// every public read path.
+func articleStatus(draft bool) string {
+	if draft {
+		return "draft"
+	}
+	return "published"
 }
 
 func newID() string {

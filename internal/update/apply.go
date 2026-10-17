@@ -79,11 +79,12 @@ func PreflightApply(enabled bool, currentMode string) error {
 	return PreflightMode(currentMode)
 }
 
-// ApplyVerified downloads the release binary plus its .sig and .sha256, verifies
-// the checksum AND the Ed25519 signature against the pinned public key, backs up
-// the database, then atomically replaces the running binary. In DryRun it
-// verifies everything but does NOT replace. It never restarts/execs the process;
-// it returns the new version and prints restart instructions to the operator.
+// ApplyVerified downloads the release binary with its .sha256 and Sigstore
+// bundle (and its .sig when ReleaseRequiresEd25519), verifies the checksum and
+// every required signature, backs up the database, then atomically replaces the
+// running binary. In DryRun it verifies everything but does NOT replace. It
+// never restarts/execs the process; the console's caller may, the CLI prints
+// restart instructions.
 func ApplyVerified(ctx context.Context, client *http.Client, owner, repo string, opt ApplyOptions, st *Store) (string, error) {
 	if client == nil {
 		return "", fmt.Errorf("update: nil http client")

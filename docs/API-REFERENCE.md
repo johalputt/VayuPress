@@ -175,7 +175,9 @@ GET /api/v1/analytics/overview | pageviews | pages | referrers | browsers |
 GET /api/v1/analytics/export     (Parquet)
 ```
 
-Aggregates only: no visitor is identified.
+No cookie is set, and no IP address or user agent is stored. A visit is keyed
+by a hash whose salt rotates daily, so a reader cannot be followed from one day
+to the next.
 
 ## Operations
 

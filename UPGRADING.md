@@ -1,184 +1,84 @@
 # Upgrading VayuPress
 
-This document describes how to upgrade VayuPress between versions safely.
+**How to upgrade an install** (from the console, the CLI or source), what
+every release is verified against, and how to roll back:
+[docs/UPGRADING.md](docs/UPGRADING.md). That guide is also served by every
+install at `/docs`.
+
+In short:
+
+- **VayuOS → System › Updates → Update.** The release's checksum, its
+  Sigstore signature from this project's release workflow, and the release
+  key's Ed25519 signature are all checked before anything is written. Then the
+  database is backed up, the binary is swapped with the old one kept as
+  `<binary>.bak`, and the process restarts. **Roll back** is on the same page.
+- **From source:** `cd /opt/vayupress && sudo git pull origin main && sudo
+  ./scripts/deploy-vayupress.sh --upgrade`. Your env, data and secrets are
+  kept.
+- **What changed:** each version's section in [CHANGELOG.md](CHANGELOG.md).
+
+This file covers the other half: **changing the schema**, for contributors.
 
 ---
 
-## General Upgrade Procedure
+## Schema changes and migration authoring
 
-```bash
-# 1. Back up your data first
-sudo -u vayupress /usr/local/bin/vayupress-backup.sh
+Migrations are numbered up/down pairs in `internal/db/migrations/`, compiled
+into the binary, applied in name order at start, and checksummed:
 
-# 2. Pull the latest release
-cd /opt/vayupress
-sudo git fetch origin main && sudo git merge origin/main
-
-# 3. Run the upgrade (preserves data and secrets)
-sudo ./scripts/deploy-vayupress.sh --upgrade
-
-# 4. Verify the service is healthy
-curl -sf http://localhost:8080/health | jq .
-curl -sf http://localhost:8080/health/ethics | jq .
-```
-
-The `--upgrade` flag:
-- Preserves the SQLite database, API keys, and TLS certificates
-- Rebuilds and reinstalls the Go binary
-- Runs forward-only database migrations
-- Reloads systemd services
-
----
-
-## Version-Specific Notes
-
-### → v1.0.0-p12
-
-**New environment variables** (all optional, have defaults):
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `VAYU_ETHICS_CONTACT` | `ethics@vayupress.com` | Ethics review board contact |
-
-**Database migrations applied automatically:**
-- `005-audit-log-worm` — Adds immutable audit log table with ABORT triggers
-
-**Deprecations:**
-- `QUEUE_MAX_RETRIES` — Renamed to `MAX_REPLAY_COUNT`. Old name still accepted with a warning.
-- `ConfigVersion=1.0` validation active — incompatible config keys log a warning at startup.
-
-**Removed:** None.
-
-### → v1.0.0-p8
-
-**New environment variables:**
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MAX_REPLAY_COUNT` | `100` | Dead-letter queue max replays before quarantine |
-| `CONFIG_VERSION` | `1.0` | Config version for compatibility validation |
-
-**Database migrations applied automatically:**
-- `004-queue-replay-fields` — Adds `replay_count` and `dead_reason` to the write queue
-
----
-
-## Schema Changes & Migration Authoring
-
-Migrations are **forward-only**, embedded into the binary, and content-checksummed.
-Each lives in `internal/db/migrations/` as a numbered up/down pair:
-
-```
+```text
 internal/db/migrations/
-  096-article-summary.up.sql
-  096-article-summary.down.sql
+  110-text-repair-offers.up.sql
+  110-text-repair-offers.down.sql
 ```
 
-### Authoring a new migration
+### Writing one
 
-1. Create the next-numbered `NNN-name.up.sql` and `NNN-name.down.sql`. On
-   start the binary applies each `*.up.sql` not yet in `schema_migrations`, in
-   name order, and records a SHA-256 of its text there.
+1. Create the next-numbered `NNN-name.up.sql` and `NNN-name.down.sql`. At
+   start the binary applies each `*.up.sql` not yet in `schema_migrations`,
+   then records a SHA-256 of its text there.
 
 2. **Keep each statement on one line.** `runMigrations` (`internal/db/db.go`)
-   executes the file line by line, so a statement wrapped across lines is run
-   as fragments and fails.
+   splits the file on newlines and executes each line, so a statement wrapped
+   across lines runs as fragments and fails.
 
    ```sql
-   -- 096-article-summary.up.sql
+   -- 111-article-summary.up.sql
    ALTER TABLE articles ADD COLUMN summary TEXT NOT NULL DEFAULT '';
    ```
 
-3. Keep migrations **additive**. Prefer `ADD COLUMN ... DEFAULT` and
-   `CREATE ... IF NOT EXISTS` over destructive rewrites; SQLite rewrites the
-   whole table for some `ALTER`s, so large tables should be migrated during a
-   maintenance window.
+3. **Keep it additive.** Prefer `ADD COLUMN … DEFAULT` and
+   `CREATE … IF NOT EXISTS` to rewrites. A rolled-back binary then still starts
+   on the migrated database, because the checksum check skips migrations it
+   does not know. SQLite rewrites the whole table for some `ALTER`s, so on a
+   large table that is a long write-lock.
 
-4. **Never edit an already-released migration file.** Its checksum is recorded
-   on every deployed instance, and `verifyMigrationChecksums` halts start-up
-   when an applied migration's text no longer matches (ADR-0034). To change a
-   shipped migration, add a *new* one.
+4. **Never edit a released migration.** Its checksum is recorded on every
+   install, and `verifyMigrationChecksums` halts start-up when an applied
+   migration's text no longer matches (ADR-0034). To change a shipped
+   migration, add a new one.
 
-### Automated validation
+### When a migration drifts
 
-A drift stops the binary at start-up with `migration drift detected: <versions>`
-in the log. The state is also readable while running:
+The binary stops at start-up with `migration drift detected: <versions>` in
+the journal. While the binary runs, the state is readable on the machine
+itself (or with the API key):
 
 ```bash
-# Applied and pending migrations, and the drift counter
-curl -sf http://localhost:8080/health/migrations | jq .
-
-# The vayupress_migration_drift_detected_total metric counts drifted versions
-curl -sf http://localhost:8080/metrics | grep migration_drift
+curl -s http://localhost:8080/health/migrations
+curl -s http://localhost:8080/metrics | grep vayupress_migration_drift_detected
 ```
 
-### Testing a migration locally
+### Testing one
 
 ```bash
-# Apply every embedded migration to a fresh database
-go test ./internal/db/ -run Migrat -v
-
-# Full gate before pushing a schema change
-gofmt -l . && go vet ./... && go test ./...
+go test ./internal/db/ -run Migrat -v     # every migration on a fresh database
+go test ./...                             # then everything that reads the schema
 ```
 
 ---
 
-## Rollback Procedure
+## Getting help
 
-VayuPress does not support automatic rollback of database migrations. To roll back:
-
-1. Restore the last generation taken before the upgrade (VayuKeep, or a
-   `vayupress backup` archive):
-   ```bash
-   vayupress restore -in /path/to/generation.vpbk -verify
-   sudo systemctl stop vayupress
-   sudo vayupress restore -in /path/to/generation.vpbk -dest /var/lib/vayupress
-   sudo chown -R www-data:www-data /var/lib/vayupress
-   ```
-2. Reinstall the previous binary version from the prior release tag.
-3. Start the service: `sudo systemctl start vayupress`
-
-See `docs/operations/disaster-recovery.md` for full restore procedures.
-
----
-
-## Zero-Downtime Upgrades
-
-VayuPress uses a single Go binary + SQLite, so zero-downtime upgrades use the OS swap:
-
-```bash
-# Build new binary alongside running service
-cd /var/www/vayupress/src
-sudo go build -o /usr/local/bin/vayupress.new .
-
-# Atomically replace binary and reload
-sudo mv /usr/local/bin/vayupress.new /usr/local/bin/vayupress
-sudo systemctl reload vayupress   # sends SIGUSR2 for graceful restart
-```
-
-Nginx continues serving traffic during the reload. In-flight requests complete before the old process exits (30-second drain window).
-
----
-
-## Verifying an Upgrade
-
-After any upgrade, run the full health suite:
-
-```bash
-curl -sf https://yourdomain.com/health              | jq .
-curl -sf https://yourdomain.com/health/dependencies | jq .
-curl -sf https://yourdomain.com/health/storage      | jq .
-curl -sf https://yourdomain.com/health/queue        | jq .
-curl -sf https://yourdomain.com/health/search       | jq .
-curl -sf https://yourdomain.com/health/ethics       | jq .
-```
-
-All endpoints must return `"status": "ok"`.
-
----
-
-## Getting Help
-
-- Open a GitHub issue: https://github.com/johalputt/vayupress/issues
-- Security issues: security@vayupress.com (see SECURITY.md)
+- Issues: <https://github.com/johalputt/vayupress/issues>
+- Security: security@vayupress.com ([SECURITY.md](SECURITY.md))

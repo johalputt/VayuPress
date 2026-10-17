@@ -1,8 +1,11 @@
 # Admin UI — the VayuOS console
 
+**Last reviewed:** 2026-10-17, against VayuPress 3.18.7
+
 The operator console lives at **`/os`**. It is server-rendered Go HTML with
-HTMX fragment swaps and a small set of same-origin scripts; there is no client
-framework and no build step.
+HTMX fragment swaps, Alpine.js islands where a page needs local state
+(ADR-0136), and one same-origin script per app. There is no client framework
+and no build step.
 
 The earlier consoles are gone. `/admin`, `/admin/v2[/…]` and `/admin/v3[/…]`
 answer with a permanent redirect to their `/os` equivalent
@@ -19,21 +22,29 @@ Every console page is served under the strict policy built by
 
 ```text
 default-src 'self'; font-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline';
-script-src 'self' 'nonce-<nonce>' <theme-script hash>; img-src 'self' data: https:;
-connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+script-src 'self' 'nonce-<nonce>' <theme-toggle hash> <Halcyon prefs hash>;
+img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none';
+base-uri 'self'; form-action 'self'; report-uri /csp-report
 ```
+
+Violations are reported to `/csp-report` and logged. The only relaxation in
+the codebase, `BuildCSPAllowingEval`, is an opt-in for one hosted static site
+and is refused on the console, the API and any path that carries a session.
 
 What that means in practice:
 
 - **No CDN, no `eval`, no `new Function`.** HTMX 2 is vendored as
-  `static/js/htmx.min.js`; everything else is first-party.
+  `static/js/htmx.min.js`, and Alpine as its eval-free CSP build
+  (`alpine-csp.min.js`, with the island registry `vayu-islands.js`).
+  Everything else is first-party.
 - **Every inline `<script>` carries the per-request nonce** (`render.CSPNonce`).
   Event handlers are attached from script, never with `onclick=`/`onerror=`
   attributes.
 - **Stylesheets are `'self'` only.** Inline `style="…"` attributes are allowed
   (`style-src-attr`); `<style>` elements are not.
 - **Fonts are self-hosted** woff2 under `/static/fonts/`: Space Grotesk
-  (headings), Inter (body), JetBrains Mono (code).
+  (headings), Inter (body), JetBrains Mono (code). Newsreader beside them is
+  Halcyon's, for the public site.
 
 A page that breaks one of these does not degrade gracefully — the browser
 blocks it. Test in a real browser against a built binary, not only with Go
@@ -52,8 +63,9 @@ embedded one when the directory is missing or read-only. URLs carry
 |------|------|
 | `static/css/vayuos.css` | The console stylesheet, Still Air: tokens, shell, components |
 | `static/js/admin-os.js` | Shell bootstrap: theme, toasts, command palette, list keyboard layer, shared helpers |
-| `static/js/admin-os-<app>.js` | One script per app (mail, talk, members, editor, website, …), loaded only by that app's page |
+| `static/js/admin-os-<app>.js` | One script per app (twenty: mail, talk, members, editor, website, storage, …), loaded only by that app's page |
 | `static/js/htmx.min.js` | Vendored HTMX |
+| `static/js/alpine-csp.min.js`, `vayu-islands.js` | Alpine's CSP build and the islands that use it |
 
 `admin-os.js` is one closure of init blocks. Anything that uses its helpers
 (`$`, `$$`, `on`) must sit inside it; the list keyboard layer once sat after the
@@ -73,7 +85,11 @@ Use these rather than writing another copy:
 | `vpPrompt(opts, onDone)` | inline shell script, `admin_os_ui.go` | The console's single-field input modal |
 | `vpPost(url, body, onok, onerr)` | `admin-os.js` | CSRF-protected JSON POST that reports every failure |
 | `vpCsrf()` | `admin-os.js` | The double-submit token for hand-rolled requests (`X-CSRF-Token`) |
-| `vpActions` | `admin-os.js` | Registry of command-palette actions |
+| `vpRefresh()`, `vpRelTime(t)` | `admin-os.js` | Redraw the current page's live regions; "3 min ago" |
+
+The command palette's actions are not a client registry. The server builds
+them (`cmdAction` in `admin_os_ui.go`), each gated on the operator's access
+to the page it acts for, so the palette never offers what the role cannot do.
 
 Native `alert`/`confirm`/`prompt` are forbidden in console scripts;
 `TestConsoleScriptsUseTheConsolesOwnDialogs` scans every file. HTMX's own

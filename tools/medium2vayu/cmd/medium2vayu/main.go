@@ -159,6 +159,7 @@ func runImport(cmd *cobra.Command, _ []string) error {
 			Tags:      a.Tags,
 			CreatedAt: a.CreatedAt,
 			UpdatedAt: a.CreatedAt,
+			Draft:     a.IsDraft,
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "  ERR [%d/%d] %s: %v\n", i+1, len(articles), a.Slug, err)

@@ -120,6 +120,7 @@ func runImport(ctx context.Context, csvPath, vayuDB string, skipDrafts, dryRun, 
 			Tags:      a.Tags,
 			CreatedAt: a.CreatedAt,
 			UpdatedAt: now,
+			Draft:     a.IsDraft,
 		}
 
 		inserted, err := w.Insert(ctx, va)

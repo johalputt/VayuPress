@@ -10,6 +10,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Imported drafts stay drafts.** Every importer stored posts without a
+  status, and the column defaults to published: `vayupress migrate markdown`,
+  `ghost` or `wordpress` with `--skip-drafts=false`, or `ghost2vayu` and
+  `wp2vayu` with `--status draft` or `all`, published every draft they were
+  asked to keep. Each importer, built in and in `tools/`, now stores the
+  source's draft as a draft; a Ghost post that was scheduled arrives as a
+  draft too.
+- **`vayupress migrate` names its real flags.** Its usage offered `--db`,
+  which nothing read: the import went to the service's database whatever it
+  said. `migrate info` gave each standalone importer flags it does not have
+  (`--wp-db`, `--ghost-db`, `--dir`, `--zip` for `--wp-dsn`, `--ghost-dsn`,
+  `--site`, `--input`). Both are now checked against the code that parses
+  them. The migration and Ghost guides are rewritten from the tools' real
+  commands.
+- **The update page and the CLI say which signatures they check.** The CLI's
+  dry run reported "checksum + Ed25519 signature" without naming the Sigstore
+  signature that decides an install. The page offered a "pinned key" read
+  from `VAYU_RELEASE_PUBKEY`, which nothing has verified against since the
+  release key was compiled in. Both now report Sigstore always, and the
+  release key when the build carries one, which every build since 3.17.63
+  does. `VAYU_RELEASE_PUBKEY` can be removed from `/etc/vayupress/env`.
 - **Docs: the attack-surface document describes the product as it is.** It
   listed federation, an AI runtime, signed articles ("`Verify` called before
   any signed article is served"), Merkle proofs, archives and DID login, all

@@ -5,7 +5,7 @@ package main
 // migrate.go — "vayupress migrate" subcommand.
 //
 // Usage:
-//   vayupress migrate markdown --dir /path/to/posts [--db /path/to/vayupress.db] [--dry-run] [--recursive] [--skip-drafts]
+//   vayupress migrate markdown --dir /path/to/posts [--dry-run] [--recursive] [--skip-drafts]
 //   vayupress migrate list     --dir /path/to/posts [--recursive]
 //   vayupress migrate info
 //
@@ -16,7 +16,9 @@ package main
 // The importer writes directly to the VayuPress SQLite database via INSERT OR
 // IGNORE, so re-running is always safe. Each imported article also gets an
 // article_sources side-car row (format=markdown, source=raw file body) so the
-// Admin v2 editor can open it in Markdown mode.
+// editor can open it in Markdown mode. The database is the one config.Load
+// resolves (DB_PATH): there is no --db flag, and the usage once advertised one
+// that was never parsed, so an import aimed at another file went to this one.
 
 import (
 	"bytes"
@@ -73,7 +75,7 @@ func runMigrate(args []string) error {
 
 func printMigrateUsage() {
 	fmt.Println(`Usage:
-  vayupress migrate markdown  --dir <folder> [--db <vayupress.db>] [--dry-run] [--recursive=false] [--skip-drafts=false]
+  vayupress migrate markdown  --dir <folder> [--dry-run] [--recursive=false] [--skip-drafts=false]
   vayupress migrate ghost     --file <ghost-export.json> [--dry-run] [--skip-drafts=false]
   vayupress migrate wordpress --file <wordpress-export.xml> [--dry-run] [--skip-drafts=false]
   vayupress migrate export    --file <site.vaybundle> [--include-pages=false]
@@ -85,15 +87,17 @@ Subcommands:
   markdown    Import Markdown files (with optional YAML frontmatter) into the VayuPress database.
   ghost       Import a Ghost JSON export (Settings → Labs → Export) — built-in, no external tool.
   wordpress   Import a WordPress WXR/XML export (Tools → Export → All content) — built-in.
-  export      Export this site's content (posts + pages) to a signed VayuPress bundle — content only,
+  export      Export this site's content (posts + pages) to a checksummed VayuPress bundle — content only,
               no accounts/mailboxes/keys — to move to another VayuPress install (e.g. clearnet → Tor).
   import      Import a VayuPress content bundle. --mode=merge upserts by slug; --mode=add-only skips existing.
   list        List Markdown files that would be imported without writing anything.
   info        Print guidance for migrating from WordPress, Ghost, Hugo, Jekyll, Medium, Notion, and Substack.
 
+Every subcommand writes to the database named by DB_PATH, and reads the same
+environment as the service (API_KEY included): run it with /etc/vayupress/env.
+
 Flags (markdown / list):
   --dir <path>      Directory containing .md files (required).
-  --db  <path>      Path to the VayuPress SQLite database (default: $VAYU_DB or ./vayupress.db).
   --dry-run         Print what would be imported without writing to the database.
   --recursive       Walk subdirectories (default: true).
   --skip-drafts     Skip files with draft: true in frontmatter (default: true).`)
@@ -108,14 +112,17 @@ repository. Build and run them independently:
 
   Platform      Tool               Command
   ──────────────────────────────────────────────────────────────────────────
-  WordPress     tools/wordpress2vayu    wp2vayu migrate --wp-db=… --vayu-db=…
-  Ghost         tools/ghost-to-vayu     ghost2vayu migrate --ghost-db=… --vayu-db=…
-  Hugo          tools/hugo2vayu         hugo2vayu import --dir=… --vayu-db=…
-  Jekyll        tools/jekyll2vayu       jekyll2vayu import --dir=… --vayu-db=…
-  Medium        tools/medium2vayu       medium2vayu import --zip=… --vayu-db=…
+  WordPress     tools/wordpress2vayu    wp2vayu migrate --wp-dsn=… --vayu-db=…
+  Ghost         tools/ghost-to-vayu     ghost2vayu migrate --ghost-driver=… --ghost-dsn=… --vayu-db=…
+  Hugo          tools/hugo2vayu         hugo2vayu import --site=… --vayu-db=…
+  Jekyll        tools/jekyll2vayu       jekyll2vayu import --site=… --vayu-db=…
+  Medium        tools/medium2vayu       medium2vayu import --input=… --vayu-db=…
   Notion        tools/notion2vayu       notion2vayu import --zip=… --vayu-db=…
   Substack      tools/substack2vayu     substack2vayu import --csv=… --vayu-db=…
-  Markdown      (built-in)              vayupress migrate markdown --dir=… [--db=…]
+  Markdown      (built-in)              vayupress migrate markdown --dir=…
+
+WordPress (WXR/XML) and Ghost (JSON) exports also import with the built-in
+"vayupress migrate wordpress" and "vayupress migrate ghost".
 
 For Markdown imports, use:
 
@@ -181,7 +188,7 @@ func runMigrateMarkdown(args []string) error {
 	// Use the already-open application DB if available, else open directly.
 	db := dbpkg.DB
 	if db == nil {
-		return fmt.Errorf("database not initialised; run vayupress normally or set VAYU_DB")
+		return fmt.Errorf("database not initialised; run it with the service environment, which names DB_PATH")
 	}
 
 	total, inserted, skipped, errs := len(files), 0, 0, 0
@@ -218,9 +225,9 @@ func runMigrateMarkdown(args []string) error {
 		title := doc.title
 
 		res, err := db.Exec(
-			`INSERT OR IGNORE INTO articles(id,title,slug,content,tags,created_at,updated_at)
-			 VALUES(?,?,?,?,?,?,?)`,
-			id, title, doc.slug, sanitised, tags, dateStr, dateStr,
+			`INSERT OR IGNORE INTO articles(id,title,slug,content,tags,created_at,updated_at,status)
+			 VALUES(?,?,?,?,?,?,?,?)`,
+			id, title, doc.slug, sanitised, tags, dateStr, dateStr, importStatus(doc.draft),
 		)
 		if err != nil {
 			fmt.Printf("%s → ERROR: %v\n", prefix, err)

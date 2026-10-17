@@ -38,6 +38,7 @@ sudo DOMAIN=yourdomain.com ./scripts/deploy-vayupress.sh --dry-run
 | fail2ban | Bans on nginx's auth and rate-limit errors |
 | UFW | Firewall: 22, 80, 443 and the mail ports |
 | logrotate | Log rotation |
+| Tor, obfs4proxy | Onion services, dormant until VayuTor is switched on |
 
 Search (VayuFind), the mail server, chat, analytics and the bot shield are part
 of the binary; nothing else is installed for them.

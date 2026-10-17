@@ -125,16 +125,20 @@ func TestTheSecurityDocDoesNotDescribeGatesThatDoNotExist(t *testing.T) {
 // The identity in the document must be the identity in the code. Two copies of a
 // security-critical constant drift, and the drift is silent: the doc would keep
 // describing a policy the binary had stopped enforcing.
+// docs/RELEASES.md gives the cosign command a reader verifies with, so it is held
+// to the same values.
 func TestTheDocumentedSignerIdentityMatchesTheEnforcedOne(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "SECURITY.md"))
-	if err != nil {
-		t.Fatalf("read SECURITY.md: %v", err)
-	}
-	for _, pinned := range []string{update.ReleaseSignerIdentity, update.ReleaseSignerIssuer} {
-		if !strings.Contains(string(b), pinned) {
-			t.Errorf("docs/SECURITY.md does not name the enforced signer value %q.\n\n"+
-				"The document describes a different policy from the one the binary "+
-				"applies, and nothing else would notice.", pinned)
+	for _, doc := range []string{"SECURITY.md", "RELEASES.md"} {
+		b, err := os.ReadFile(filepath.Join("..", "..", "docs", doc))
+		if err != nil {
+			t.Fatalf("read %s: %v", doc, err)
+		}
+		for _, pinned := range []string{update.ReleaseSignerIdentity, update.ReleaseSignerIssuer} {
+			if !strings.Contains(string(b), pinned) {
+				t.Errorf("docs/%s does not name the enforced signer value %q.\n\n"+
+					"The document describes a different policy from the one the binary "+
+					"applies, and nothing else would notice.", doc, pinned)
+			}
 		}
 	}
 }

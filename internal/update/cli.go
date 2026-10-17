@@ -136,7 +136,7 @@ func runApply(ctx context.Context, w io.Writer, client *http.Client, owner, repo
 		if id > 0 {
 			_ = st.MarkComplete(ctx, id, "checked", "dry-run verification passed for "+newVersion)
 		}
-		fmt.Fprintf(w, "Dry-run OK: %s verified (checksum + Ed25519 signature). Binary NOT replaced.\n", newVersion)
+		fmt.Fprintf(w, "Dry-run OK: %s verified (%s). Binary NOT replaced.\n", newVersion, verifiedControls())
 		return nil
 	}
 
@@ -145,6 +145,15 @@ func runApply(ctx context.Context, w io.Writer, client *http.Client, owner, repo
 	}
 	fmt.Fprintf(w, "Applied %s.\n\n%s\n", newVersion, RestartInstructions(newVersion))
 	return nil
+}
+
+// verifiedControls names what a passing apply has checked, from the same switch
+// ApplyVerified obeys, so the message cannot claim a signature it did not check.
+func verifiedControls() string {
+	if ReleaseRequiresEd25519() {
+		return "checksum + Sigstore signature + release key signature"
+	}
+	return "checksum + Sigstore signature"
 }
 
 func runHistory(ctx context.Context, w io.Writer, st *Store) error {

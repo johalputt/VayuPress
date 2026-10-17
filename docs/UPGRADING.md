@@ -1,197 +1,168 @@
 # Upgrading VayuPress
 
-VayuPress supports two upgrade paths. Both are sovereign — nothing phones home,
-and the privilege to replace the running binary always requires shell access to
-the host.
+**Last reviewed:** 2026-10-17, against VayuPress 3.18.7
 
-> **Security model:** see [ADR-0064](adr/ADR-0064-sovereign-self-update.md). In
-> short: the web panel can only *check* for updates (read-only). *Applying* an
-> update is a CLI action, gated by an opt-in flag, system mode, and an
-> **operator-pinned Ed25519 signature** — not just a checksum.
+An upgrade replaces one file: the binary. Migrations, static assets and these
+docs travel inside it. There are three ways to do it. Every one of them ends
+the same way, and every one checks the same signatures first.
 
----
+| Path | Who it is for | Restart |
+|------|---------------|---------|
+| **VayuOS → System › Updates** | Every install; one click | The console restarts the process for you |
+| **`vayupress update apply`** | Scripts and operators who live in a shell | You restart |
+| **The installer, `--upgrade`** | Building from source on the host | The installer restarts |
 
-## 1. Checking for updates
+## What every release must prove
 
-### From the admin panel (read-only)
+The updater installs nothing it cannot verify (`internal/update/apply.go`,
+`ApplyVerified`). The order matters, so a missing control is reported before a
+weaker one:
 
-`Settings → Software updates → Check for updates` (Admin v2) calls
-`GET /admin/api/updates/check`, which compares your running version with the
-latest GitHub release and renders the changelog. When an update is available it
-surfaces the exact, copy-to-clipboard signed-apply commands (dry-run, apply,
-rollback). It performs no download and changes nothing on disk. The page also
-shows recent **update history** (`GET /admin/api/updates/history`), and every
-check is recorded in the `update_history` table.
+1. **A newer version exists**, from GitHub's releases API, the project's
+   release mirror, or a CDN that can only *announce* a version. If only that
+   CDN answered, the update is refused with the reason: it cannot serve the
+   files.
+2. **The release has an installable binary** for this platform, a `.sha256`,
+   and a **Sigstore bundle**. No bundle, no install. An attacker who can publish
+   a release can publish a matching checksum. Leaving out the signature must
+   not wave them through.
+3. **This build's release key has signed it too.** Builds since 3.17.63 carry
+   an Ed25519 public key compiled in (`internal/update/releasekey.go`), so the
+   release's `.sig` is required as a second lock. Holding the workflow identity
+   does not yield the key, and holding the key does not let you publish under
+   that identity.
+4. **The SHA-256 matches.** This step catches a truncated or proxy-mangled
+   download, and its error says so, so it is not mistaken for a bad release.
+5. **The Sigstore signature** was made by this project's `tag-release.yml`
+   workflow, checked against a trust root compiled into the binary.
+6. **The bytes are a program this machine can run.** In the v3.16.86 outage a
+   release was a ZIP archive that passed every check above it.
 
-### From the CLI
+None of this is configurable. There is no flag that turns a signature off, and
+no environment variable that adds one: the key is in the binary, so the policy
+is the same on every install.
+
+> **`VAYU_RELEASE_PUBKEY` does nothing.** Older versions of this guide told
+> operators to set it. The release pipeline never produced the asset it looked
+> for, so setting it broke every update, and leaving it unset meant nothing was
+> checked at all. It was replaced by the compiled-in key. You can remove it from
+> `/etc/vayupress/env`.
+
+## From the console
+
+**VayuOS → System › Updates** (`/os/update`).
+
+- The install checks for a release two minutes after it starts and every six
+  hours after that. It never checks from a Tor Space. When a release is
+  waiting, the bell says so.
+- **Check now** shows the version, its release notes, and which source
+  answered.
+- **Update** runs the steps above, then:
+  - takes a VayuKeep restore point from just before the upgrade (ADR-0145);
+  - backs up the database to `/var/cache/vayupress/update-backups/`, if
+    *Back up the database first* is ticked;
+  - swaps the binary atomically, keeping the old one as `<binary>.bak`;
+  - re-execs the process, flushing the WAL first.
+  On an install with socket activation, visitors wait during the restart
+  instead of getting an error. The page shows how long a restart takes on
+  this host.
+- **Verify only** runs the same checks and writes nothing.
+- **Roll back** puts `<binary>.bak` back and restarts.
+- **History** lists every check, apply and rollback with its versions.
+
+What is refused, and why:
+
+| Refusal | Reason |
+|---------|--------|
+| A non-admin | Updates are admin-only; the request also needs its CSRF token |
+| Mode is read-only, quarantined or maintenance | `update.PreflightMode`: those modes forbid changing the binary |
+| The binary's directory is not writable by the service | The swap could not complete. The page names the directory and the fix. |
+| Database over 2 GiB with the backup ticked | Compressing it inside the request can swap-thrash a small VPS. Untick the backup (the update does not touch the database), or take a VayuKeep snapshot first. |
+
+Every action is written to the audit log and to the `update_history` table.
+
+## From the shell
 
 ```bash
-vayupress update check
+vayupress update check              # current, latest, release notes
+vayupress update apply --dry-run    # download and verify; replaces nothing
+vayupress update apply              # verify, back up the database, swap
+vayupress update rollback           # put <binary>.bak back
+vayupress update history            # the last 20 attempts
 ```
 
-Prints the current version, the latest release, whether an update is available,
-and the release notes.
+`apply` from the shell is opt-in. It refuses unless the environment it runs in
+has `VAYU_SELFUPDATE_ENABLED=true`, and it refuses in the same modes the
+console does. Run it as the service user, with the service's environment
+(`/etc/vayupress/env` is readable by root only), then restart:
 
----
+```bash
+sudo systemd-run --uid=www-data --pipe --wait \
+  -p EnvironmentFile=/etc/vayupress/env -E VAYU_SELFUPDATE_ENABLED=true \
+  /usr/local/bin/vayupress update apply
+sudo systemctl restart vayupress
+```
 
-## 2. Applying an update (CLI-only, signature-verified)
+The CLI never restarts the process; `rollback` likewise ends with
+"Restart the service to run it."
 
-Applying is **off by default** and refuses to run unless every safety gate is
-satisfied.
+## From source
 
-### One-time setup
+```bash
+cd /opt/vayupress && sudo git pull origin main
+sudo ./scripts/deploy-vayupress.sh --upgrade
+```
 
-1. **Opt in:**
+`--upgrade` keeps `/etc/vayupress/env`, the data and the generated secrets. It
+installs the Go the module names, if the host's is older, then rebuilds and
+restarts. A binary you build yourself is not signed. The updater only verifies
+what it downloads.
+
+## Migrations
+
+Migrations are numbered SQL files compiled into the binary and applied at
+start. Each applied migration's SHA-256 is recorded. A binary that finds a
+recorded migration changed refuses to start rather than run on a schema it
+does not recognise (ADR-0034).
+
+A rolled-back binary starts on a database a newer one has migrated: the
+checksum check skips migrations it does not know (`verifyMigrationChecksums`
+in `internal/db/db.go`). If a newer migration changed something the older code
+reads, restore the database from the backup the update took:
+
+```bash
+sudo systemctl stop vayupress
+ls -t /var/cache/vayupress/update-backups/    # backup-vayupress.db-<time>.tar.gz
+sudo mkdir -p /tmp/restore
+sudo tar xzf /var/cache/vayupress/update-backups/<file> -C /tmp/restore
+sudo cp /tmp/restore/vayupress.db /var/lib/vayupress/vayupress.db
+sudo rm -f /var/lib/vayupress/vayupress.db-wal /var/lib/vayupress/vayupress.db-shm
+sudo chown www-data:www-data /var/lib/vayupress/vayupress.db
+sudo systemctl start vayupress
+```
+
+To roll back everything (database, media, mailboxes and keys) from a VayuKeep
+generation or a `vayupress backup` file, see
+[operations/backup-restore.md](operations/backup-restore.md).
+
+## Before a major version
+
+A minor or patch release never breaks a stable API route
+([compatibility/api-contracts.md](compatibility/api-contracts.md)). Before a
+major release:
+
+1. Read its section in the [CHANGELOG](../CHANGELOG.md).
+2. Take a full backup you can restore without the running install:
+
    ```bash
-   export VAYU_SELFUPDATE_ENABLED=true
+   sudo vayupress backup -out /root/before-upgrade.vpbk
+   sudo vayupress restore -in /root/before-upgrade.vpbk -verify
    ```
-2. **Nothing else to configure.** Every release is verified against the Sigstore
-   signature its build published, pinned to this project's release workflow
-   identity, using a trust root compiled into the binary. That happens on every
-   install and cannot be switched off.
 
-   `VAYU_RELEASE_PUBKEY` remains available as an **optional additional** Ed25519
-   pin for operators who maintain their own signing key. It is not required.
+3. Upgrade, then check `curl -s localhost:8080/health/ready` and the mode
+   shown on every console page.
 
-   > Until v3.17.29 this step told you to set `VAYU_RELEASE_PUBKEY` and implied
-   > it was what made updates trustworthy. It was not: the release pipeline has
-   > never produced the `.sig` asset that path looks for, so pinning a key made
-   > every update fail, while leaving it unset meant no signature was checked at
-   > all. If you set it and updates stopped working, this was why.
+## Moving from another platform
 
-### Dry run first (verifies everything, changes nothing)
-
-```bash
-vayupress update apply --dry-run
-```
-
-This downloads the candidate binary, verifies its SHA-256 against the published
-checksum, verifies the **Ed25519 signature** over that digest against your pinned
-key, and reports success — without replacing anything.
-
-### Apply
-
-```bash
-vayupress update apply
-```
-
-Sequence enforced by `internal/update`:
-
-1. Refuse unless `VAYU_SELFUPDATE_ENABLED=true`.
-2. Refuse unless `VAYU_RELEASE_PUBKEY` is set.
-3. Refuse if system mode is `read-only`, `quarantined`, or `maintenance`.
-4. Download → verify checksum (constant-time) → verify Ed25519 signature.
-5. Back up the SQLite database (+ WAL/SHM) to a timestamped `.tar.gz`.
-6. Atomically swap the binary (`os.Rename`), keeping `<binary>.bak`.
-7. **Print restart instructions — does not restart for you.**
-
-### Restart
-
-VayuPress never restarts itself. After a successful apply:
-
-```bash
-sudo systemctl restart vayupress
-```
-
-### Rollback
-
-The previous binary is preserved as `<binary>.bak` and a database backup is
-written before every apply. The fastest path is the built-in command, which
-swaps the `.bak` back over the running binary:
-
-```bash
-sudo systemctl stop vayupress
-vayupress update rollback
-sudo systemctl start vayupress
-```
-
-Or do it by hand:
-
-```bash
-sudo systemctl stop vayupress
-mv /usr/local/bin/vayupress.bak /usr/local/bin/vayupress
-# restore the DB backup if a migration changed schema:
-#   tar xzf /var/cache/vayupress/backups/<timestamp>.tar.gz -C /
-sudo systemctl start vayupress
-```
-
-### History
-
-```bash
-vayupress update history
-```
-
-Shows the last update attempts with status (`checked`, `started`, `success`,
-`failed`, `rolled_back`), versions, and backup paths.
-
----
-
-## 3. Manual upgrade (no self-update)
-
-If you prefer not to enable self-update at all, upgrade the operator-driven way:
-
-```bash
-# Back up first
-vayu-backup backup --db /var/lib/vayupress/vayupress.db --out backup.tar.gz --compress
-
-# Replace the binary with a release you built/verified yourself, then:
-sudo systemctl restart vayupress
-```
-
-Database migrations run automatically on startup with checksum-drift detection
-(ADR-0034) — a tampered or skipped migration halts boot rather than corrupting
-data.
-
----
-
-## Environment variables
-
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `VAYU_SELFUPDATE_ENABLED` | `false` | Master opt-in for `update apply` |
-| `VAYU_RELEASE_PUBKEY` | *(unset)* | Hex Ed25519 key the apply step verifies against |
-
-Both are required for `apply`; neither affects `check`.
-
----
-
-## 4. Migrating content from another platform
-
-VayuPress v1.1.0 ships a built-in Markdown import subcommand:
-
-```bash
-# Preview (no writes)
-vayupress migrate markdown --dir ./posts --dry-run
-
-# Import
-vayupress migrate markdown --dir ./posts
-
-# See all migration options (WordPress, Ghost, Hugo, Jekyll, Medium, Notion, Substack)
-vayupress migrate info
-```
-
-See [docs/MIGRATION.md](MIGRATION.md) for the complete guide.
-
----
-
-## Release History
-
-| Version | Date | Highlights |
-|---------|------|------------|
-| **v1.7.0** | 2026-06-22 | Draft/publish workflow, VayuOS unified operator consoles, member signup, 3 security fixes (LEAK-1/2/3) |
-| **v1.6.0** | 2026-06-21 | Admin v2 removed — VayuOS is the one admin; native create + legacy-post editing in block editor |
-| **v1.5.0** | 2026-06-21 | VayuOS launch, governance panel, AI-assist (opt-in), inline history diff, native Theme Studio |
-| **v1.1.0** | 2026-06-19 | Built-in `migrate` CLI, multi-format editor (Markdown ⇄ HTML), `article_sources` side-car, XML/HTML escaping fixes |
-| **v1.0.0** | 2026-06-15 | Initial stable release (P1–P27 constitution, adaptive modes, write-queue, self-update, Admin v2) |
-
----
-
-## v1.7.0 Upgrade Steps
-
-1. **Back up the database** before upgrading.
-2. Replace the binary. Migrations run automatically on startup.
-3. **Migration 030** adds `status TEXT NOT NULL DEFAULT 'published'` to
-   `articles`. All existing rows become `published` — no content is hidden.
-4. No environment changes required.
-5. The VayuOS shell at `/os` is unchanged. Old operator paths
-   (`/admin/modes`, `/admin/policy`, etc.) continue to 301-redirect.
+Importing from WordPress, Ghost or Markdown is a migration, not an upgrade:
+[MIGRATION.md](MIGRATION.md) and [GHOST-MIGRATION.md](GHOST-MIGRATION.md).

@@ -174,6 +174,7 @@ func migrateCmd() *cobra.Command {
 								Tags:      p.Tags,
 								CreatedAt: p.CreatedAt,
 								UpdatedAt: p.UpdatedAt,
+								Draft:     p.Status != "publish",
 							})
 							if err != nil {
 								fmt.Fprintf(os.Stderr, "insert error [%s]: %v\n", p.Slug, err)
