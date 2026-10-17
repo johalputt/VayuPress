@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/johalputt/vayupress/internal/apikeys"
+	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/pace"
 )
 
@@ -20,7 +21,13 @@ import (
 // coldRenderWait must show in the performance tool as a wait of at least that
 // long, and as one more shed.
 func TestTheRenderSlotWaitIsReported(t *testing.T) {
+	openMigratedDB(t) // the slot count is sized from the read pool
 	fillColdRenderSlots(t)
+	// Every render an earlier test made is in the shared window: run after a
+	// hundred instant ones, a single 50 ms wait is not their p99.
+	saved := coldRenderWaits
+	coldRenderWaits = &metrics.WindowedHistogram{}
+	t.Cleanup(func() { coldRenderWaits = saved })
 	before := coldRenderShed.Load()
 	if _, ok := admitColdRender(httptest.NewRecorder(), httptest.NewRequest("GET", "/tags/go", nil)); ok {
 		t.Fatal("a request was admitted with every slot taken")

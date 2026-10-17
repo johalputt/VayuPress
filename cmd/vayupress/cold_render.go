@@ -47,8 +47,9 @@ var (
 	coldRenderNoted atomic.Int64 // unix seconds of the last log line about it
 	// coldRenderWaits is how long each uncached render waited for its slot,
 	// shed ones included. A route's latency counts the wait and the render
-	// together; this says which of the two a slow topic page was.
-	coldRenderWaits metrics.WindowedHistogram
+	// together; this says which of the two a slow topic page was. A pointer so
+	// a test can read its own waits apart from every render before it.
+	coldRenderWaits = &metrics.WindowedHistogram{}
 )
 
 // coldRenderState is the slots' state as the performance tool reports it.
