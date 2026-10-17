@@ -50,8 +50,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   such a page, by the script's own rules: only a person counts (VayuShield's
   classification; a crawler fetches pages but never ran the script), an
   opt-out (Do Not Track, Global Privacy Control) is not counted, nor a
-  prefetch, nor a refused country, and the site is the one this install
-  served. Views counted from now on; earlier visits were never recorded.
+  prefetch, nor a refused country, one address has the script's budget (120
+  a minute, shared), and the site is the one this install served. Views counted from now on; earlier visits were never recorded.
 - **VayuOS opens fast on a large site.** Home took more than 15 seconds on
   johal.in, and the live visitors panel 8. Every analytics count is bounded
   by a date range, but SQLite answered the ones that group or count distinct

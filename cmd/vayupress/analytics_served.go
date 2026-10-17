@@ -16,8 +16,9 @@ package main
 // VayuShield classifies as a person: a crawler fetches pages but never runs the
 // script, and counting its fetches would put every crawler into a site's
 // figures. The other rules are the beacon's own (handleAnalyticsCollect): an
-// opt-out drops the view, a refused country does not count, and the domain is
-// the one this install resolved, never one the request names.
+// opt-out drops the view, a refused country does not count, one address has
+// the beacon's budget, and the domain is the one this install resolved, never
+// one the request names.
 
 import (
 	"net"
@@ -62,7 +63,13 @@ func (a *App) recordServedPage(r *http.Request) {
 		EventType:   1,
 		Geo:         geo,
 	}
-	a.analytics.CollectAsync(req, loginClientIP(r), r.UserAgent(), a.contentScope(r))
+	// The beacon's per-address budget, shared: a view counted here is one the
+	// beacon would have sent, so one address gets one budget for both.
+	ip := loginClientIP(r)
+	if !analyticsLimiter.allow(ip) {
+		return
+	}
+	a.analytics.CollectAsync(req, ip, r.UserAgent(), a.contentScope(r))
 }
 
 // isPagePath reports whether an uploaded site's path names a page rather than

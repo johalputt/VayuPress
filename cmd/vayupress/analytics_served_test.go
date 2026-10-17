@@ -93,3 +93,25 @@ func TestOnlyAServedPageCounts(t *testing.T) {
 		}
 	}
 }
+
+// Audit, before the release: the beacon allows one address 120 events a
+// minute (analyticsLimiter), and counting a served page bypassed it. A script
+// sending browser headers could add views to any site as fast as the site
+// answered. The two now share the one budget.
+func TestAServedPageSpendsTheBeaconsBudget(t *testing.T) {
+	openMigratedDB(t)
+	a := &App{analytics: analytics.New(dbpkg.DB), vayuShield: vayushield.New(vayushield.Config{Enabled: true})}
+	for i := 0; i < 200; i++ {
+		r := browserGet("/menu/")
+		r.RemoteAddr = "198.51.100.77:40000"
+		a.recordServedPage(r)
+	}
+	if err := a.analytics.FlushEvents(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	_ = dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM analytics_pageviews`).Scan(&n)
+	if n > 120 {
+		t.Errorf("one address added %d views in a burst; the beacon's budget is 120 a minute", n)
+	}
+}
