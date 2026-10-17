@@ -158,17 +158,21 @@ var newCardJob = func() *pace.Job {
 // pages of a large archive read up to 200 bodies per page: on 235k posts a cold
 // tag page cost 125 ms with its cards missing and 17 ms with them stored. An
 // edit deletes its post's card (migration 103), and the next pass rebuilds it.
-func fillMissingCards(ctx context.Context) int {
+//
+// complete is true only when the pass ran out of posts without a card. A pass
+// the pacer stops (a busy host) or a cancelled one ends with the rest still
+// missing, and said nothing: "the warmer builds them" was not readable as
+// "the warmer has built them".
+func fillMissingCards(ctx context.Context) (built int, complete bool) {
 	if dbpkg.DB == nil {
-		return 0
+		return 0, false
 	}
 	job := newCardJob()
 	var created, last string
-	built := 0
 	for {
 		n, err := job.Next(ctx)
 		if err != nil {
-			return built
+			return built, false
 		}
 		q, args := missingCardsSQL, []any{}
 		if last != "" {
@@ -177,7 +181,7 @@ func fillMissingCards(ctx context.Context) int {
 		}
 		rows, err := dbpkg.Reader().QueryContext(ctx, q+missingCardsOrder, append(args, n*cardFillBatch)...)
 		if err != nil {
-			return built
+			return built, false
 		}
 		var ids []string
 		for rows.Next() {
@@ -188,7 +192,7 @@ func fillMissingCards(ctx context.Context) int {
 		_ = rows.Err()
 		_ = rows.Close()
 		if len(ids) == 0 {
-			return built
+			return built, true
 		}
 		cards := make(map[string]render.HomeArticle, len(ids))
 		fillCards(ctx, ids, cards)

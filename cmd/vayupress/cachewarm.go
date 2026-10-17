@@ -41,6 +41,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -119,10 +120,21 @@ func (a *App) startCacheWarmer(done <-chan struct{}) {
 // after a renderer change the page pass rebuilds every post for hours, and a
 // card costs well under a millisecond.
 func warmCards(ctx context.Context) {
-	if n := fillMissingCards(ctx); n > 0 {
+	n, complete := fillMissingCards(ctx)
+	cardPass.Store(&cardPassResult{At: time.Now(), Built: n, Complete: complete})
+	if n > 0 {
 		logging.LogInfo("cachewarm", "built "+strconv.Itoa(n)+" listing card"+plural(n))
 	}
 }
+
+// cardPassResult is the last card pass, as the performance tool reports it.
+type cardPassResult struct {
+	At       time.Time
+	Built    int
+	Complete bool // the pass found no post left without a card
+}
+
+var cardPass atomic.Pointer[cardPassResult]
 
 // contextUntil returns a context cancelled when done is closed, so in-flight
 // warm renders abort promptly on shutdown.

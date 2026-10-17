@@ -196,7 +196,7 @@ func TestTheWarmerBuildsEveryListedPostsCard(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := fillMissingCards(context.Background()); got != posts {
+	if got, _ := fillMissingCards(context.Background()); got != posts {
 		t.Errorf("built %d cards, want %d", got, posts)
 	}
 	var stored int
@@ -209,7 +209,7 @@ func TestTheWarmerBuildsEveryListedPostsCard(t *testing.T) {
 	if cardCount(t, "draft") != 0 || cardCount(t, "page") != 0 {
 		t.Error("a draft or a page was given a card no listing shows")
 	}
-	if again := fillMissingCards(context.Background()); again != 0 {
+	if again, _ := fillMissingCards(context.Background()); again != 0 {
 		t.Errorf("a second pass rebuilt %d cards that were already stored", again)
 	}
 }

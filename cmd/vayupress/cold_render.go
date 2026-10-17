@@ -32,6 +32,7 @@ import (
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/metrics"
 )
 
 // coldRenderWait is how long an uncached render waits for a slot. Long enough
@@ -44,7 +45,26 @@ var (
 	coldRenderSlots chan struct{}
 	coldRenderShed  atomic.Int64 // requests told to retry, since start
 	coldRenderNoted atomic.Int64 // unix seconds of the last log line about it
+	// coldRenderWaits is how long each uncached render waited for its slot,
+	// shed ones included. A route's latency counts the wait and the render
+	// together; this says which of the two a slow topic page was.
+	coldRenderWaits metrics.WindowedHistogram
 )
+
+// coldRenderState is the slots' state as the performance tool reports it.
+func coldRenderState() map[string]any {
+	slots, inUse := 0, 0
+	if coldRenderSlots != nil {
+		slots, inUse = cap(coldRenderSlots), len(coldRenderSlots)
+	}
+	return map[string]any{
+		"slots":           slots,
+		"in_use":          inUse,
+		"wait_p95_ms":     coldRenderWaits.Percentile(95),
+		"wait_p99_ms":     coldRenderWaits.Percentile(99),
+		"shed_since_boot": coldRenderShed.Load(),
+	}
+}
 
 // coldRenderLimit is a third of the public read pool, at least 2 and at most
 // two per CPU: rendering is CPU work as well as queries.
@@ -64,6 +84,8 @@ func coldRenderLimit() int {
 // answered the request (503, Retry-After) and returns false.
 func admitColdRender(w http.ResponseWriter, r *http.Request) (func(), bool) {
 	coldRenderOnce.Do(func() { coldRenderSlots = make(chan struct{}, coldRenderLimit()) })
+	start := time.Now()
+	defer func() { coldRenderWaits.Record(time.Since(start)) }()
 	t := time.NewTimer(coldRenderWait)
 	defer t.Stop()
 	select {

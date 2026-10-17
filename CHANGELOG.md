@@ -10,6 +10,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **The performance reading says why an uncached page was slow.** johal.in's
+  topic pages read a p95 of 1.5 s while renders read 55 ms, and nothing could
+  say where the rest went. `get_performance` (and so the connector) now
+  reports how long uncached pages waited for a render slot (p95, p99, how many
+  were asked to retry) and whether the last listing-card pass finished: one
+  the host's pacer stopped used to end with the rest still missing, and said
+  nothing.
 - **Links from a Ghost site keep working.** A site moved from Ghost carries
   its inbound links in Ghost's shapes, and each one 404'd: `/my-post/` with its
   trailing slash, and topics at `/tag/go/`. They now answer `301` to `/my-post`
