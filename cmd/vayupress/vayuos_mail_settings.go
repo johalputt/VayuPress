@@ -173,14 +173,36 @@ func (a *App) handleVayuOSMySettings(w http.ResponseWriter, r *http.Request) {
 		a.writeMailSetup(w, r, "Mailbox settings")
 		return
 	}
-	_, own := a.ownMailbox(r)
-	ac, ok := a.mailAccountByEmail(r.Context(), own)
-	if !ok {
-		http.Redirect(w, r, "/os/vayumail/inbox", http.StatusSeeOther)
-		return
-	}
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
+	_, own := a.ownMailbox(r)
+	ac, ok := a.mailAccountByEmail(r.Context(), own)
+	if a.isAdminRequest(r) {
+		// An administrator manages every mailbox, so theirs is its full page:
+		// the one assigned to them, or else the mailbox at the address they
+		// sign in with, which on most installs is the owner's only one and is
+		// never "assigned". Without either, the page lists the mailboxes.
+		// It sent them to the inbox, which for an administrator is the
+		// mailbox directory: Mailbox settings opened a list of mailboxes with
+		// no settings on it (3cr).
+		if !ok {
+			if u := currentUser(r); u != nil {
+				ac, ok = a.mailAccountByEmail(r.Context(), u.Email)
+			}
+		}
+		if ok {
+			http.Redirect(w, r, "/os/vayumail/accounts/settings?user="+qparam(ac.Email), http.StatusSeeOther)
+			return
+		}
+		writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox settings", "vayumail", cfg, htmpl.HTML(a.mailboxSettingsPicker(r.Context()))))
+		return
+	}
+	if !ok {
+		writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox settings", "vayumail", cfg, htmpl.HTML(
+			`<div class="page-header"><h1>Mailbox settings</h1></div>`+
+				`<div class="empty-state">No mailbox has been given to your account yet. An administrator gives one under <strong>Members → Team &amp; roles</strong>.</div>`)))
+		return
+	}
 	sec, _ := a.mailboxSettingsSections(r.Context(), ac.Email, true)
 	// Two-factor stays on the site's account page (handlers_portal_totp.go),
 	// where turning it off asks for a current code; a second way to change the
@@ -201,6 +223,30 @@ func (a *App) handleVayuOSMySettings(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(holderPasswordForm())
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox settings", "vayumail", cfg, htmpl.HTML(body.String())))
+}
+
+// mailboxSettingsPicker is Mailbox settings for an administrator with no
+// mailbox of their own: every mailbox, each opening its settings.
+func (a *App) mailboxSettingsPicker(ctx context.Context) string {
+	var b strings.Builder
+	b.WriteString(`<div class="page-header"><h1>Mailbox settings</h1></div>`)
+	b.WriteString(`<p class="page-sub">Choose a mailbox: forwarding, vacation reply, aliases, filters, recovery, keys and its picture.</p>`)
+	accs, err := a.vayuMail.Accounts().List(ctx)
+	if err != nil {
+		b.WriteString(saCallout("danger", html.EscapeString("Could not read the mailboxes: "+err.Error())))
+		return b.String()
+	}
+	if len(accs) == 0 {
+		b.WriteString(`<div class="empty-state">No mailbox exists yet. <a href="/os/vayumail/accounts">Create one under Administration</a>.</div>`)
+		return b.String()
+	}
+	b.WriteString(`<div class="card"><ul class="vm-mbox-pick">`)
+	for _, ac := range accs {
+		b.WriteString(`<li><a href="/os/vayumail/accounts/settings?user=` + qparam(ac.Email) + `">` +
+			mailAvatarImg(ac.Email, a.mailboxAvatarSet()) + `<span class="mono">` + esc(ac.Email) + `</span></a></li>`)
+	}
+	b.WriteString(`</ul></div>`)
+	return b.String()
 }
 
 // holderPasswordForm is the holder's own password change. It answers into

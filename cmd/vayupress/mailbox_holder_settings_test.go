@@ -178,3 +178,48 @@ func TestAMailboxSessionsProfileIsItsMailboxSettings(t *testing.T) {
 		t.Errorf("a mailbox session's profile = %d → %q, want its mailbox settings", rec.Code, rec.Header().Get("Location"))
 	}
 }
+
+// Mailbox settings sent anyone whose own mailbox it could not find to the
+// inbox, and for an administrator the inbox is the mailbox directory: the
+// operator clicked Mailbox settings and got a list of mailboxes with no
+// settings on it (3cr). One case per kind of session.
+func TestMailboxSettingsAlwaysOpensSettings(t *testing.T) {
+	a := appWithMailAccounts(t)
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	a.userStore = users.New(db)
+	get := func(u *users.User) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		a.handleVayuOSMySettings(rec, withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/settings", nil), u))
+		return rec
+	}
+
+	// The owner signs in with the address of a mailbox no one assigned to
+	// them: that mailbox's full page.
+	owner := &users.User{ID: "u1", Email: "dana@example.com", Role: users.RoleAdmin}
+	if rec := get(owner); rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/os/vayumail/accounts/settings?user=dana%40example.com" {
+		t.Errorf("the owner whose sign-in address is a mailbox = %d → %q, want that mailbox's settings", rec.Code, rec.Header().Get("Location"))
+	}
+
+	// An administrator with no mailbox: the mailboxes, each to its settings.
+	admin := &users.User{ID: "u2", Email: "ops@elsewhere.example", Role: users.RoleAdmin}
+	rec := get(admin)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `href="/os/vayumail/accounts/settings?user=dana%40example.com"`) {
+		t.Errorf("an administrator with no mailbox = %d, want a page linking each mailbox's settings:\n%s", rec.Code, rec.Body.String())
+	}
+
+	// Anyone else with no mailbox is told so, on the page they asked for.
+	editor := &users.User{ID: "u3", Email: "ed@elsewhere.example", Role: users.RoleEditor}
+	rec = get(editor)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "No mailbox has been given to your account yet") {
+		t.Errorf("an editor with no mailbox = %d %q, want the page saying none is given", rec.Code, rec.Header().Get("Location"))
+	}
+	// And an editor signing in with a mailbox's address is not its holder:
+	// only an assignment makes one.
+	if rec := get(&users.User{ID: "u4", Email: "dana@example.com", Role: users.RoleEditor}); strings.Contains(rec.Body.String(), "vm-mbox-settings") {
+		t.Error("an editor whose sign-in address is a mailbox got its settings without an assignment")
+	}
+}

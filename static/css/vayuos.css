@@ -3352,6 +3352,14 @@
 
 .vp-os .vm-mbox-head__badges { display: inline-flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 
+/* Mailbox settings for an administrator with no mailbox: each mailbox a row
+   that opens its settings. */
+.vp-os .vm-mbox-pick { list-style: none; margin: 0; padding: 0; }
+
+.vp-os .vm-mbox-pick a { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); color: var(--text); text-decoration: none; border-radius: var(--r-md); overflow-wrap: anywhere; }
+
+.vp-os .vm-mbox-pick a:hover, .vp-os .vm-mbox-pick a:focus-visible { background: var(--bg-surface-2); }
+
 .vp-os .vm-acct__avatar { flex: 0 0 auto; width: 34px; height: 34px; border-radius: var(--r-full); background: var(--brand-dim); color: var(--brand); display: grid; place-items: center; font-weight: 600; font-size: var(--text-base); }
 
 .vp-os .vm-acct__id { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
