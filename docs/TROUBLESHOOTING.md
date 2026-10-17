@@ -153,31 +153,31 @@ curl -s -H "X-API-Key: $API_KEY" "http://localhost:8080/debug/pprof/goroutine?de
 curl -s http://localhost:8080/metrics | grep vayupress_http_request_duration_seconds
 ```
 
-Check if Nginx is serving static files (should be, for cached pages):
-
-```bash
-nginx -t && sudo systemctl status nginx
-```
+nginx proxies every page to the application; it serves nothing from the page
+cache itself. A slow page is therefore the application's. Look at whether it
+was a cold render (**System › Monitoring** shows the slowest routes), and
+whether the page cache is on (Settings › Advanced › Page cache).
 
 ## Storage Issues
 
-### Storage quota exceeded (413 on upload)
+### The media library is full (507 on upload)
 
 ```bash
-df -h /var/www/vayupress
-curl http://localhost:8080/health/storage
+df -h /var/lib/vayupress
+curl -s http://localhost:8080/health/storage
 ```
 
-Increase `STORAGE_QUOTA_GB` in the environment, or delete old media.
+Uploads are refused with `507` once the library reaches `MEDIA_QUOTA_GB`
+(default 5 GB). Raise it in `/etc/vayupress/env` and restart, or delete files
+you no longer need from **VayuOS → Content › Media**.
+`STORAGE_QUOTA_GB` is the ceiling for everything stored together, which
+`/health/storage` reports against.
 
-### Orphaned media files
+### Unused media files
 
-The orphan cleanup cron runs daily. To run manually:
-
-```bash
-curl -X POST http://localhost:8080/admin/storage/cleanup \
-  -H "Authorization: Bearer $API_KEY"
-```
+Nothing deletes media automatically: a file no post links to today may be
+linked from a page, a newsletter or another site. Delete it from **Content ›
+Media** when you know it is unused.
 
 ## VayuTalk Chat Issues
 

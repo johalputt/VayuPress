@@ -81,7 +81,23 @@ This is the client's self-rescue path and it should be set up on **day one**,
 not on the day it is needed. A local copy in a mail client is a backup the
 studio cannot lose, cannot be locked out of, and does not have to be asked for.
 
-### 3.2 Backups exist and are verified, not merely enabled
+### 3.2 The client can download the whole archive, today
+
+Since 3.17.99 (2026-10-04) webmail has **Download all mail** in
+the mailbox's side bar (`/os/vayumail/download`). It is every folder, as a
+zip of mbox files, streamed as it is written, so a large mailbox does not
+need memory to match. Thunderbird, Apple Mail and most archivers open mbox
+files directly.
+
+The holder can download their own mailbox. Once it is handed over, the
+operator cannot (`mailReader`, ADR-0152), and an operator's download of a
+mailbox they still administer is written to that mailbox's access record
+before a byte is sent, where its holder sees it.
+
+Teach the client to press it once, now, and keep the file. It is the same
+self-rescue as §3.1 without a mail client to configure.
+
+### 3.3 Backups exist and are verified, not merely enabled
 
 VayuKeep replicates the whole data directory — database, settings, media and
 **maildirs** — to a target the operator owns, and every generation is
@@ -97,7 +113,7 @@ reports the second and is able to say no.
 
 Turn it on. Check the drill result, not the toggle.
 
-### 3.3 Content is exportable to a file
+### 3.4 Content is exportable to a file
 
 ```
 vayupress migrate export --file client-site.vaybundle
@@ -108,7 +124,7 @@ The bundle is checksummed and offline-movable, and the import supports a dry
 run. It carries **content only** — articles and pages. Accounts, mailboxes, PGP
 keys and chat identities deliberately never cross.
 
-### 3.4 There is no lock-in to unlock
+### 3.5 There is no lock-in to unlock
 
 The whole product is one Apache-2.0 binary and a SQLite database, published on
 GitHub. A successor — the client's nephew, another agency, a hosting company —
@@ -132,9 +148,10 @@ The client needs three things, in this order:
 
 1. **The domain.** Covered by §2 if it was done. If not, this is the blocker
    and everything else waits on it.
-2. **Their mail.** Immediately available over IMAP if §3.1 was set up. If not,
-   it must come from a backup, which requires the backup location and its
-   passphrase.
+2. **Their mail.** Already on their machine if §3.1 or §3.2 was done. If the
+   server is still running, they can sign in and download it now (§3.2). If
+   not, it must come from a backup, which requires the backup location and
+   its passphrase.
 3. **The site.** Rebuildable from a backup or a content bundle; worst case,
    re-built from scratch. Painful, not fatal.
 
@@ -142,8 +159,9 @@ The client needs three things, in this order:
 
 ### 4.3 Client leaves for another provider
 
-An ordinary, planned migration. Export content with §3.3, let them pull mail
-over IMAP with §3.1, and point DNS at the new host. Hand over rather than make
+An ordinary, planned migration. Export content with §3.4, let them download
+their mail (§3.2) or pull it over IMAP (§3.1), and point DNS at the new host.
+A new VayuPress host can bring a mailbox in over IMAP from the old one. Hand over rather than make
 them extract — a studio that makes leaving difficult earns exactly one bad
 referral for every client who tries.
 
@@ -206,12 +224,10 @@ discount.
   domain is in the client's name, that the envelope exists, or that IMAP was
   ever set up. Every step in §2 and §4.4 is a habit, and habits lapse. The
   first three could plausibly become panel checks; today they are not.
-- **There is no self-service mail export.** A client cannot press a button and
-  receive their archive. IMAP is the substitute and it is a good one, but it
-  requires a mail client configured in advance — and a client who never did
-  that, whose studio has vanished, depends entirely on a backup someone else
-  holds. ADR-0152 §D4 names this same gap as one of the reasons cryptographic
-  sealing was not built; it has not closed since.
+- **Self-service export needs a running server.** Download all mail (§3.2)
+  closed the gap ADR-0152 §D4 named, but only while the install is up and the
+  client can sign in. A client who never downloaded a copy, whose server is
+  gone, depends entirely on a backup someone else holds.
 - **It assumes the backups are real.** Everything in §4.2 rests on VayuKeep
   being enabled, its target reachable, and its passphrase known. An operator who
   turned it on and never looked at a drill result has a plan resting on an

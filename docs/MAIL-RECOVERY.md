@@ -17,7 +17,7 @@ Trust cannot be created at the moment it is needed. A factor that could be
 established *after* access is lost would be a factor an attacker could establish
 too, so VayuPress does not offer one. That makes enrolment the whole game.
 
-For each mailbox, in **VayuOS → VayuMail → Accounts**, open the account's card
+For each mailbox, in **VayuOS → Mail › Accounts**, open the account's card
 and expand **Recovery**:
 
 1. **Generate recovery codes.** Ten single-use codes. They are shown once. Copy

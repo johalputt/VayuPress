@@ -53,8 +53,8 @@ without being shipped.
    `-X main.Version`. One `linux/amd64` binary with libc linked in, so it does
    not depend on the host's.
 4. **Signs it twice.** Cosign signs keyless, through GitHub's OIDC identity
-   for this workflow, and the bundle is published to the Rekor transparency
-   log. The Ed25519 release key signs it too (`scripts/release-sign`). The
+   for this workflow, with an RFC 3161 timestamp from Sigstore's timestamp
+   authority, and the entry is recorded in the Rekor transparency log. The Ed25519 release key signs it too (`scripts/release-sign`). The
    workflow refuses to publish a build that pins a key without the key's
    secret, because every install would refuse that release and no later one
    could rescue them.

@@ -69,12 +69,19 @@ produces it.
 3. A signature bundle exists for the binary — a release without one is refused,
    never accepted on its checksum
 4. That signature verifies, and its certificate identity matches the workflow above
-5. The verified bytes are an executable image for this platform
-6. Database backed up (optional; the operator's choice, and never silent)
+5. The release key's Ed25519 signature (`vayupress.sig`) verifies against the
+   public key compiled into this build (`internal/update/releasekey.go`) —
+   required whenever the build carries one, as every build since 3.17.63
+   does. The key lives only in the release workflow's secret store, so holding
+   the workflow identity alone cannot publish a release, and holding the key
+   alone cannot either
+6. The verified bytes are an executable image for this platform
+7. Database backed up (optional; the operator's choice, and never silent)
 
-`VAYU_RELEASE_PUBKEY` is an **optional additional** Ed25519 pin for operators who
-maintain their own key. It is not required, and it is no longer what provides
-authenticity.
+`VAYU_RELEASE_PUBKEY` is not read by the updater. It was an environment pin
+that verified nothing by default and broke every update when set; the key is
+compiled in instead, so the policy is the same on every install and travels
+with the binary.
 
 The CLI path additionally requires `VAYU_SELFUPDATE_ENABLED=true`.
 

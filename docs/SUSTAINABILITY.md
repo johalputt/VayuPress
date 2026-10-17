@@ -90,24 +90,26 @@ VayuPress is designed to be carbon-minimal:
 | SQLite-first (single file) | No separate DB server process; lower CPU/memory |
 | Single Go binary | No runtime overhead; cold starts are fast |
 | No CDN required | Self-hosted fonts eliminate CDN round-trips |
-| Zero telemetry | No analytics server; no data collection infrastructure |
+| Zero telemetry | The project collects nothing from installs; site analytics are built in and stay on the install |
 | Efficient write queue | WAL adaptive checkpoint reduces disk I/O |
-| No background polling | Event-driven; no wasted CPU cycles |
+| Paced background work | The warmer, card building, backups and restore drills ask the pacer first and size each step to what the host can spare (`internal/pace`) |
+| Pages drawn once | A page is rendered once and served from disk until it changes |
 
-### Carbon Footprint Estimate
+### What one machine carries
 
-A typical VayuPress instance at idle uses:
-- **CPU**: < 1% on a single core
-- **Memory**: < 200 MB (idle, no content)
-- **Disk I/O**: < 10 IOPS (WAL checkpoint + backup)
-- **Network**: < 1 Kbps (health checks only)
-
-This is approximately **100× more efficient** than a typical WordPress stack (PHP-FPM + MySQL + Redis + Nginx + CDN).
+johal.in runs 234,727 posts across fourteen sites, its mail server and its
+chat on one 4-vCPU, 8 GB VPS. Read from its connector on 2026-10-17, over a
+15-minute window: HTTP p95 17 ms, p99 75 ms, and 85% of pages served from the
+page cache since start. There is no second machine: no database server, no
+search cluster, no cache tier, no CDN. That is the footprint claim, and it is
+a measurement of one install rather than a comparison with anyone else's.
 
 ### Sustainability Commitments
 
 1. We will never add a feature that requires always-on external services
-2. We will never add analytics, telemetry, or tracking — even opt-in aggregate stats
+2. The project will never collect telemetry from installs, not even opt-in
+   aggregate stats. Site analytics (VayuAnalytics) belong to the operator, set
+   no cookie, and never leave the install
 3. We will prefer algorithmic efficiency over throwing compute at problems
 4. We will document the carbon impact of significant new features in their ADR
 5. Release binaries are built with `-trimpath` and `-s -w` to minimize size (less storage, faster transfer)
@@ -148,9 +150,16 @@ We track the sustainability of our dependencies:
 
 | Dependency | Upstream health | Action if deprecated |
 |-----------|-----------------|---------------------|
-| Go stdlib | Excellent (Google) | N/A |
+| Go stdlib and `golang.org/x/*` | Excellent (the Go team) | N/A |
 | mattn/go-sqlite3 | Good (active) | Consider modernc.org/sqlite |
-| Isso | Moderate (small project) | Replace with Go implementation |
+| go-chi/chi | Good (active) | The standard library's router covers most of it |
+| microcosm-cc/bluemonday | Good (active) | Sanitising is security-critical; any replacement needs the same allowlist tests |
+| sigstore/sigstore-go | Excellent (OpenSSF) | N/A |
+| emersion/go-* (DAV, iCal, vCard, msgauth) | Good (one maintainer) | Vendored if it stops |
 | Let's Encrypt | Excellent (ISRG) | N/A |
+
+The full list, with each module's role, is in
+[ARCHITECTURE.md](ARCHITECTURE.md#direct-dependencies), and every licence in
+[NOTICE](../NOTICE).
 
 Dependencies with declining upstream health are flagged in the Architecture Lead's annual review.
