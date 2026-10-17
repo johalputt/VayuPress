@@ -10,6 +10,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Sign out from the site signs out.** The account panel's Sign out sent a
+  background request and reloaded the page whatever answered, so anything that
+  stopped the request on its way (a challenge, a refusal) left the reader
+  signed in, looking at a button that did nothing. It is now a real form
+  submission, as the account page's always was. And the site's owner, or
+  anyone signed in to VayuOS, had no Sign out on the site at all: their name in
+  the bar went straight to the console. It now opens the account panel, with
+  Open VayuOS and Sign out.
 - **Analytics retention covers every table it promises to.** The privacy
   disclosure publishes one retention window, and two tables were never purged
   under it: the daily rollups' visitor sketches and revenue rows, which keep

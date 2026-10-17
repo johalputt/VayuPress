@@ -304,6 +304,66 @@ test.describe("Halcyon", () => {
     }
   });
 
+  // Sign out from the site signs out (3ci). It was a background fetch and a
+  // reload that swallowed whatever answered, and for the owner, whose name in
+  // the bar linked straight to the console, there was no Sign out at all. Two
+  // stages: the owner with a real session against the real logout, then a
+  // reader (stubbed: no member session in this run), whose Sign out must leave
+  // as a top-level POST to /members/logout rather than a background request.
+  test("Sign out from the site signs out, for the owner and for a reader", async ({ page, browser }) => {
+    await page.goto("/os");
+    await page.waitForFunction(() => /(?:^|;\s*)vp_csrf=/.test(document.cookie));
+    const setMembership = (on) => page.evaluate(async (v) => {
+      const csrf = decodeURIComponent(document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/)[1]);
+      const r = await fetch("/os/api/settings", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify({ key: "site.membership_buttons", value: v }) });
+      return r.status;
+    }, on ? "true" : "false");
+    expect(await setMembership(true)).toBe(200);
+    const email = `owner-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@example.com`;
+    const password = "Signout-Test-Passw0rd!";
+    const made = await page.request.post("/api/v1/admin/users", { data: { email, name: "Owner", password, role: "admin" } });
+    expect(made.status(), await made.text()).toBeLessThan(300);
+    try {
+      // The owner: signed in to the console, then on the site.
+      const ctx = await browser.newContext();
+      const owner = await ctx.newPage();
+      await owner.goto("/os/login");
+      await owner.fill("input[name=email]", email);
+      await owner.fill("input[name=password]", password);
+      await Promise.all([owner.waitForURL(/\/os/), owner.click("form.login-form button[type=submit]")]);
+      const me = () => owner.evaluate(() => fetch("/api/v1/members/me", { cache: "no-store" }).then((r) => r.json()));
+      await expect(async () => {
+        await owner.goto("/halcyon-long");
+        await expect(owner.locator(".h-bar [data-vp-signin].vayu-nav-member"), "the owner is named in the bar").toHaveCount(1, { timeout: 1000 });
+      }).toPass({ timeout: 15000, intervals: [1000, 2000] });
+      expect((await me()).authenticated).toBe(true);
+      await owner.locator(".h-bar [data-vp-signin]").click();
+      const out = owner.locator(".vp-portal-overlay.is-open [data-vp-logout]");
+      await expect(out, "the owner's account panel offers Sign out").toHaveCount(1);
+      await Promise.all([owner.waitForURL((u) => u.pathname === "/"), out.click()]);
+      expect((await me()).authenticated, "signed out after Sign out").toBe(false);
+      await ctx.close();
+
+      // A reader: the click must navigate with a POST to the logout.
+      const reader = { enabled: true, authenticated: true, member: { name: "Asha Rao", email: "asha@example.com", paid: false } };
+      await page.route("**/api/v1/members/me", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(reader) }));
+      let logout = null;
+      await page.route("**/members/logout", (route) => {
+        logout = { method: route.request().method(), navigation: route.request().isNavigationRequest() };
+        return route.fulfill({ status: 303, headers: { Location: "/" } });
+      });
+      await page.goto("/halcyon-long");
+      await page.locator(".h-bar [data-vp-signin]").click();
+      await page.locator(".vp-portal-overlay.is-open [data-vp-logout]").click();
+      await expect.poll(() => logout, { message: "a Sign out request was sent" }).not.toBeNull();
+      expect(logout).toEqual({ method: "POST", navigation: true });
+    } finally {
+      await page.unroute("**/api/v1/members/me");
+      await page.unroute("**/members/logout");
+      expect(await setMembership(false)).toBe(200);
+    }
+  });
+
   // A signed-in reader is named where Sign in and Subscribe were: in the bar,
   // in the phone menu, and no newsletter form asks them to join. The page is
   // cached for everyone, so it is drawn signed out and turned by the portal

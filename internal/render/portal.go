@@ -162,6 +162,19 @@ const PortalJS = `(function () {
     var avatarInner = m.avatar
       ? '<img class="vp-portal-avatar-img" src="' + esc(m.avatar) + '" alt="">'
       : esc(initial);
+    // A console session (the owner, staff, a mailbox holder) is signed in on
+    // the site too, and its name in the bar once linked straight to the
+    // console: there was no way to sign out from the site at all.
+    if (m.console_url) {
+      return '<div class="vp-portal-account-id">' +
+        '<div class="vp-portal-avatar">' + avatarInner + '</div>' +
+        '<div class="vp-portal-idtext"><div class="vp-portal-acc-name">' + esc(name) + '</div>' +
+        '<div class="vp-portal-acc-mail">' + esc(m.email || '') + '</div></div></div>' +
+        '<div class="vp-portal-actions"><a class="vp-portal-btn" href="' + esc(m.console_url) + '">Open VayuOS</a></div>' +
+        '<div class="vp-portal-signout">' +
+        '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-logout>Sign out</button>' +
+        '</div>';
+    }
     if (document.documentElement.getAttribute('data-vp-portal') === 'sections') {
       return viewAccountSections(m, name, avatarInner, mailBtn);
     }
@@ -644,15 +657,22 @@ const PortalJS = `(function () {
     if (state.auth && view === 'mailbox') { loadMailbox(); }
     if (state.auth && view === 'advertise') { loadAdvertise(); }
 
-    var out = body.querySelector('[data-vp-logout]');
-    if (out) {
+    // Sign out is a real form POST, as the account page's is. A background
+    // fetch followed by a reload swallowed whatever answered instead of the
+    // logout (a challenge, a refusal), and the page came back still signed in:
+    // a button that did nothing. A navigation shows the reader that answer, and
+    // lands on the home page signed out.
+    body.querySelectorAll('[data-vp-logout]').forEach(function (out) {
       out.addEventListener('click', function () {
         out.disabled = true;
-        fetch('/members/logout', { method: 'POST', credentials: 'same-origin' })
-          .then(function () { window.location.reload(); })
-          .catch(function () { window.location.reload(); });
+        var f = document.createElement('form');
+        f.method = 'POST';
+        f.action = '/members/logout';
+        f.style.display = 'none';
+        document.body.appendChild(f);
+        f.submit();
       });
-    }
+    });
   }
 
   // ── Shell (button + overlay) ───────────────────────────────────────────────
@@ -765,13 +785,15 @@ const PortalJS = `(function () {
         label.textContent = nm;
         si.appendChild(label);
         si.setAttribute('title', state.member.email ? nm + ' · ' + state.member.email : nm);
+        // The link is the way there without the panel's script; with it,
+        // everyone signed in gets the account panel, which is where Sign out is.
         if (state.member.console_url) {
           si.classList.add('vayu-nav-operator');
           si.setAttribute('href', state.member.console_url);
         } else {
           si.setAttribute('href', '/members/account');
-          si.addEventListener('click', function (e) { e.preventDefault(); open('account'); });
         }
+        si.addEventListener('click', function (e) { e.preventDefault(); open('account'); });
       });
     } else {
       // Signed out: Sign in and Subscribe open the panel where they are.
