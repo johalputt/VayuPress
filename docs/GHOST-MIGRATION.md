@@ -150,20 +150,24 @@ Ghost and VayuPress put the same posts at slightly different addresses:
 | Topic | `/tag/go/` | `/tags/go` |
 | Author | `/author/name/` | `/author/{id}` |
 
-**VayuPress does not yet redirect these itself.** Redirect rules
-(`/api/v1/admin/redirects`) match one exact path each, so they suit a few
-renamed posts, not a whole catalogue. Until the binary handles Ghost's shapes,
-add them to the HTTPS `server` block in `/etc/nginx/sites-available/vayupress`:
+**VayuPress redirects the first two itself** (since 3.18.8, `ghostURLTarget`):
+`/my-post/` answers `301` to `/my-post` when a published post or page has that
+slug, and `/tag/go/`, `/tag/go` and `/tags/go/` answer `301` to `/tags/go`. The
+query string is kept. Only a `GET` or `HEAD` that would otherwise be a 404 is
+redirected, so no address that works today changes, and a draft's address is
+never revealed.
+
+Ghost's author pages have no equivalent, because an author's address here is
+their id rather than a slug. If old author links matter, send them home from the
+HTTPS `server` block in `/etc/nginx/sites-available/vayupress`:
 
 ```nginx
-location ~ ^/tag/([^/]+)/?$     { return 301 /tags/$1; }
-location ~ ^/author/            { return 301 /; }
-location ~ "^/([a-z0-9-]+)/$"   { return 301 /$1$is_args$args; }
+location ~ ^/author/[^/]+/?$ { return 301 /; }
 ```
 
-Then run `sudo nginx -t && sudo systemctl reload nginx`. The installer rewrites
-that file when it runs again (`--upgrade`), so re-add these after one; the
-one-click update does not touch nginx.
+The installer rewrites that file when it runs again (`--upgrade`), so re-add it
+after one; the one-click update does not touch nginx. For a handful of renamed
+posts, an exact rule (`POST /api/v1/admin/redirects`) is the simpler tool.
 
 ## Cutover
 
@@ -184,4 +188,4 @@ one-click update does not touch nginx.
 | Topic pages are empty | The service has not restarted since the import | Restart it |
 | Search finds nothing new | The index has not caught up | `POST /os/api/search/reindex` |
 | A batch is slow | Large Mobiledoc documents | `--batch 10 --delay 500ms` |
-| Old links return 404 | Ghost's trailing slash and `/tag/` | The nginx rules above |
+| Old links return 404 | An author page, or a post that is not published | The author rule above; publish the post |

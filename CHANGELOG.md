@@ -10,6 +10,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Links from a Ghost site keep working.** A site moved from Ghost carries
+  its inbound links in Ghost's shapes, and each one 404'd: `/my-post/` with its
+  trailing slash, and topics at `/tag/go/`. They now answer `301` to `/my-post`
+  and `/tags/go`, keeping the query string. Only a `GET` or `HEAD` that would
+  have been a 404 is redirected, and only to a published post or page, so no
+  working address changes and a draft is never revealed.
+- **Read-only mode refuses post writes.** The install enters read-only on
+  repeated WAL write faults and on migration faults, and said writes were
+  refused then; post and page writes never asked. Now the API and the
+  connector answer `503 writes_refused`, the console's editor, status, pin,
+  slug, bulk and delete routes answer `503` before writing anything, and
+  quarantined mode refuses the same. Nothing is lost: a job already queued
+  waits and applies when the mode is back, and a scheduled post that falls
+  due stays scheduled instead of being marked failed.
 - **One workflow publishes releases.** `release.yml` built and published a
   release on any pushed tag, and `publish-v1.9.0.yml` on a manual run with
   signing "best-effort"; neither made the release-key signature every install
