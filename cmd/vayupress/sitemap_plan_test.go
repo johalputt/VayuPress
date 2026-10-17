@@ -90,3 +90,32 @@ func TestTheSitemapReadsOnlyItsCoveringIndex(t *testing.T) {
 		}
 	}
 }
+
+// The Posts page's list reads an index in date order and stops at the page,
+// on every tab (3cm). With is_page=0 as a plain equality SQLite took
+// idx_articles_is_page and sorted every post to find the newest 100: 0.6 s on
+// 235k posts, on the console page an editor opens most.
+func TestThePostsListStopsAtThePage(t *testing.T) {
+	openMigratedDB(t)
+	for _, status := range []string{"all", "published", "draft"} {
+		q := osPostsListSQL([]string{"is_page=0"}, status)
+		rows, err := dbpkg.Reader().Query(`EXPLAIN QUERY PLAN `+q, 100, 0)
+		if err != nil {
+			t.Fatalf("%s: %v", status, err)
+		}
+		var plan []string
+		for rows.Next() {
+			var id, parent, unused int
+			var detail string
+			if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+				t.Fatal(err)
+			}
+			plan = append(plan, detail)
+		}
+		rows.Close()
+		p := strings.Join(plan, " | ")
+		if strings.Contains(p, "TEMP B-TREE FOR ORDER BY") {
+			t.Errorf("the %s tab sorts every post to show one page: %s", status, p)
+		}
+	}
+}

@@ -323,15 +323,15 @@ func (s *Store) OverviewSince(ctx context.Context, days int) (*Overview, error) 
 		Scan(&o.TotalPageviews, &o.TotalVisits)
 	// Unique visitors counts distinct visitor_id (NOT sessions).
 	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT visitor_id) FROM analytics_sessions WHERE created_at>=?`, from).
+		`SELECT COUNT(DISTINCT +visitor_id) FROM analytics_sessions WHERE created_at>=?`, from).
 		Scan(&o.UniqueVisitors)
 	// Bounce rate: share of sessions with exactly one pageview.
 	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COALESCE(AVG(CASE WHEN v.cnt=1 THEN 100.0 ELSE 0.0 END),0) FROM (SELECT session_id,COUNT(1) cnt FROM analytics_pageviews WHERE created_at>=? GROUP BY session_id) v`, from).
+		`SELECT COALESCE(AVG(CASE WHEN v.cnt=1 THEN 100.0 ELSE 0.0 END),0) FROM (SELECT session_id,COUNT(1) cnt FROM analytics_pageviews WHERE created_at>=? GROUP BY +session_id) v`, from).
 		Scan(&o.BounceRate)
 	// Average visit duration.
 	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COALESCE(AVG(v.dur),0) FROM (SELECT `+avgSessionSecondsSQL+` dur FROM analytics_pageviews WHERE created_at>=? GROUP BY session_id) v`, from).
+		`SELECT COALESCE(AVG(v.dur),0) FROM (SELECT `+avgSessionSecondsSQL+` dur FROM analytics_pageviews WHERE created_at>=? GROUP BY +session_id) v`, from).
 		Scan(&o.AvgDuration)
 	return o, nil
 }
@@ -349,10 +349,10 @@ func (s *Store) OverviewBetween(ctx context.Context, fromInclusive, toExclusive 
 		`SELECT COUNT(DISTINCT visitor_id) FROM analytics_sessions WHERE created_at>=? AND created_at<?`, fromInclusive, toExclusive).
 		Scan(&o.UniqueVisitors)
 	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COALESCE(AVG(CASE WHEN v.cnt=1 THEN 100.0 ELSE 0.0 END),0) FROM (SELECT session_id,COUNT(1) cnt FROM analytics_pageviews WHERE created_at>=? AND created_at<? AND event_type=1 GROUP BY session_id) v`, fromInclusive, toExclusive).
+		`SELECT COALESCE(AVG(CASE WHEN v.cnt=1 THEN 100.0 ELSE 0.0 END),0) FROM (SELECT session_id,COUNT(1) cnt FROM analytics_pageviews WHERE created_at>=? AND created_at<? AND event_type=1 GROUP BY +session_id) v`, fromInclusive, toExclusive).
 		Scan(&o.BounceRate)
 	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COALESCE(AVG(v.dur),0) FROM (SELECT `+avgSessionSecondsSQL+` dur FROM analytics_pageviews WHERE created_at>=? AND created_at<? GROUP BY session_id) v`, fromInclusive, toExclusive).
+		`SELECT COALESCE(AVG(v.dur),0) FROM (SELECT `+avgSessionSecondsSQL+` dur FROM analytics_pageviews WHERE created_at>=? AND created_at<? GROUP BY +session_id) v`, fromInclusive, toExclusive).
 		Scan(&o.AvgDuration)
 	return o, nil
 }
@@ -545,7 +545,7 @@ func (s *Store) audienceSince(ctx context.Context, column string, days int) ([]A
 	}
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT `+column+`,COUNT(DISTINCT visitor_id) FROM analytics_sessions WHERE created_at>=? AND `+column+`!='' GROUP BY `+column+` ORDER BY 2 DESC LIMIT 100`, from)
+		`SELECT `+column+`,COUNT(DISTINCT visitor_id) FROM analytics_sessions WHERE created_at>=? AND `+column+`!='' GROUP BY +`+column+` ORDER BY 2 DESC LIMIT 100`, from)
 	if err != nil {
 		return nil, err
 	}
@@ -608,7 +608,7 @@ func (s *Store) Channels(ctx context.Context, days int) ([]AudienceStat, error) 
 	}
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT referrer,COUNT(1) FROM analytics_pageviews WHERE created_at>=? GROUP BY referrer`, from)
+		`SELECT referrer,COUNT(1) FROM analytics_pageviews WHERE created_at>=? GROUP BY +referrer`, from)
 	if err != nil {
 		return nil, err
 	}
@@ -727,11 +727,11 @@ func (s *Store) Realtime(ctx context.Context) (*RealtimeStats, error) {
 		WindowMinutes:   5,
 	}
 	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT session_id) FROM analytics_pageviews WHERE created_at>=?`, since).
+		`SELECT COUNT(DISTINCT +session_id) FROM analytics_pageviews WHERE created_at>=?`, since).
 		Scan(&rs.ActiveVisitors)
 
 	if rows, err := s.readDB().QueryContext(ctx,
-		`SELECT url_path,COUNT(1) FROM analytics_pageviews WHERE created_at>=? GROUP BY url_path ORDER BY 2 DESC LIMIT 10`, since); err == nil {
+		`SELECT url_path,COUNT(1) FROM analytics_pageviews WHERE created_at>=? GROUP BY +url_path ORDER BY 2 DESC LIMIT 10`, since); err == nil {
 		for rows.Next() {
 			var p RealtimePage
 			if err := rows.Scan(&p.Path, &p.Count); err == nil {
@@ -759,7 +759,7 @@ func (s *Store) Realtime(ctx context.Context) (*RealtimeStats, error) {
 	// when a reverse proxy sets a geo header.
 	var unknownCountry int
 	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT p.session_id) FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id WHERE p.created_at>=? AND COALESCE(s.country,'')=''`, since).
+		`SELECT COUNT(DISTINCT +p.session_id) FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id WHERE p.created_at>=? AND COALESCE(s.country,'')=''`, since).
 		Scan(&unknownCountry)
 	if unknownCountry > 0 {
 		rs.ActiveCountries = append(rs.ActiveCountries, AudienceStat{Label: "", Count: unknownCountry})
@@ -776,7 +776,7 @@ func (s *Store) Realtime(ctx context.Context) (*RealtimeStats, error) {
 	if rows, err := s.readDB().QueryContext(ctx,
 		`SELECT referrer,COUNT(1) FROM analytics_pageviews
 		 WHERE created_at>=? AND referrer!=''`+liveNotSelf+
-			` GROUP BY referrer ORDER BY 2 DESC LIMIT 10`,
+			` GROUP BY +referrer ORDER BY 2 DESC LIMIT 10`,
 		append([]any{since}, liveSelfArgs...)...); err == nil {
 		for rows.Next() {
 			var a AudienceStat
@@ -814,7 +814,7 @@ func (s *Store) RecentSessions(ctx context.Context, days, limit int) ([]SessionI
 	}
 	from := time.Now().UTC().AddDate(0, 0, -days).Format("2006-01-02")
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT s.id,s.visitor_id,s.browser,s.os,s.device,s.country,s.created_at,COUNT(p.id) FROM analytics_sessions s LEFT JOIN analytics_pageviews p ON s.id=p.session_id WHERE s.created_at>=? GROUP BY s.id ORDER BY s.created_at DESC LIMIT ?`, from, limit)
+		`SELECT s.id,s.visitor_id,s.browser,s.os,s.device,s.country,s.created_at,COUNT(p.id) FROM analytics_sessions s LEFT JOIN analytics_pageviews p ON s.id=p.session_id WHERE s.created_at>=? GROUP BY +s.id ORDER BY s.created_at DESC LIMIT ?`, from, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -997,7 +997,7 @@ func (s *Store) Retention(ctx context.Context, weeks int) ([]CohortRow, error) {
 	frows, err := s.readDB().QueryContext(ctx,
 		`SELECT s.visitor_id, MIN(x.created_at) FROM analytics_sessions s
 		 JOIN analytics_sessions x ON x.visitor_id=s.visitor_id
-		 WHERE s.created_at>=? GROUP BY s.visitor_id`, windowStart)
+		 WHERE s.created_at>=? GROUP BY +s.visitor_id`, windowStart)
 	if err != nil {
 		return nil, err
 	}
@@ -1258,10 +1258,10 @@ func (s *Store) OverviewSinceScoped(ctx context.Context, scope string, days int)
 		`SELECT COUNT(1),COUNT(DISTINCT session_id) FROM analytics_pageviews WHERE created_at>=? AND event_type=1`+clause,
 		args...).Scan(&o.TotalPageviews, &o.TotalVisits)
 	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COALESCE(AVG(CASE WHEN v.cnt=1 THEN 100.0 ELSE 0.0 END),0) FROM (SELECT session_id,COUNT(1) cnt FROM analytics_pageviews WHERE created_at>=? AND event_type=1`+clause+` GROUP BY session_id) v`,
+		`SELECT COALESCE(AVG(CASE WHEN v.cnt=1 THEN 100.0 ELSE 0.0 END),0) FROM (SELECT session_id,COUNT(1) cnt FROM analytics_pageviews WHERE created_at>=? AND event_type=1`+clause+` GROUP BY +session_id) v`,
 		args...).Scan(&o.BounceRate)
 	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COALESCE(AVG(v.dur),0) FROM (SELECT `+avgSessionSecondsSQL+` dur FROM analytics_pageviews WHERE created_at>=?`+clause+` GROUP BY session_id) v`,
+		`SELECT COALESCE(AVG(v.dur),0) FROM (SELECT `+avgSessionSecondsSQL+` dur FROM analytics_pageviews WHERE created_at>=?`+clause+` GROUP BY +session_id) v`,
 		args...).Scan(&o.AvgDuration)
 	// Unique visitors come from the session table, which carries no domain, so
 	// the distinct-session count above is used instead of an unscoped figure. An

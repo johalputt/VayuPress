@@ -20,6 +20,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **VayuOS opens fast on a large site.** Home took more than 15 seconds on
+  johal.in, and the live visitors panel 8. Every analytics count is bounded
+  by a date range, but SQLite answered the ones that group or count distinct
+  pages, referrers, sessions or visitors by walking that column's index from
+  end to end, reading every visit ever recorded to check its date. They now
+  read the date range alone, and new indexes (migration 112) carry the session
+  and visitor beside the date, so Home's figures never touch a table row. Home
+  also no longer counts on the request: its visitor figures come from the
+  background cache the Analytics page already used. On a copy holding
+  johal.in's 532,000 page views and 235,000 posts, Home went from 1.5 s to
+  25 ms, the live panel from 1.9 s to 2 ms, and Posts from 0.8 s to 0.14 s.
+  The Analytics page's background refresh, which ran the same walks every 75
+  seconds whether anyone looked or not, is now as cheap.
 - **Sign in with VayuMail on the site works for the owner and staff, with
   two-factor.** It checked only mail-only mailboxes, so anyone whose mailbox is
   their VayuOS account was told the password did not match, never reached the

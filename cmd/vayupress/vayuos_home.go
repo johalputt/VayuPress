@@ -65,7 +65,7 @@ func (a *App) stillAirHomeBody(ctx context.Context, cfg *osSettings, snap *admin
 
 	// ── Visitors · This install ──
 	b.WriteString(`<div class="sa-home__cols">`)
-	b.WriteString(a.saHomeVisitors(ctx, cfg))
+	b.WriteString(a.saHomeVisitors(cfg))
 	b.WriteString(saHomeInstall(cfg, snap, m))
 	b.WriteString(`</div>`)
 
@@ -184,18 +184,38 @@ func saHomeSetup(items []osChecklistItem) string {
 
 // saHomeVisitors shows the last two weeks: the three figures that answer "how
 // is the site doing", and one line for the trend.
-func (a *App) saHomeVisitors(ctx context.Context, cfg *osSettings) string {
+func (a *App) saHomeVisitors(cfg *osSettings) string {
 	if cfg.AccessLevel < osPathMinLevel("/os/analytics") {
 		return ""
 	}
-	head := `<section class="sa-home__sec" aria-labelledby="sa-visitors"><div class="section-head"><span class="section-head__title" id="sa-visitors">Visitors</span>` +
-		`<span class="section-head__hint">Last ` + strconv.Itoa(saHomeVisitorDays) + ` days</span></div>`
+	head := saHomeVisitorsHead()
 	if a.analytics == nil {
 		return head + `<p class="sa-home__none">Analytics is not running on this install.</p></section>`
 	}
+	// The figures are the same for everyone who may see them, so they come
+	// from the dashboard cache the Analytics page uses: Home is the console's
+	// first page and never waits on a count (3cm), and the warmer keeps them
+	// fresh.
+	if frag, ready := adminDash.get(homeVisitorsKey, analyticsFragmentTTL, a.renderHomeVisitors); ready {
+		return frag
+	}
+	return head + `<p class="sa-home__none">Counting the last ` + strconv.Itoa(saHomeVisitorDays) + ` days; reload in a few seconds.</p></section>`
+}
+
+const homeVisitorsKey = "home:visitors"
+
+func saHomeVisitorsHead() string {
+	return `<section class="sa-home__sec" aria-labelledby="sa-visitors"><div class="section-head"><span class="section-head__title" id="sa-visitors">Visitors</span>` +
+		`<span class="section-head__hint">Last ` + strconv.Itoa(saHomeVisitorDays) + ` days</span></div>`
+}
+
+// renderHomeVisitors counts Home's visitor figures, off the request. An empty
+// result is not cached (adminFragmentCache), so a failed count is retried.
+func (a *App) renderHomeVisitors(ctx context.Context) string {
+	head := saHomeVisitorsHead()
 	ov, err := a.analytics.OverviewSince(ctx, saHomeVisitorDays)
 	if err != nil || ov == nil {
-		return head + `<p class="sa-home__none">Visitor figures are unavailable right now.</p></section>`
+		return ""
 	}
 	series, _ := a.analytics.PageviewSeries(ctx, saHomeVisitorDays)
 	points := make([]int, 0, len(series))

@@ -2402,6 +2402,35 @@ func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
 // `LIMIT 500` cap so every post is reachable regardless of archive size.
 const osPostsPageSize = 100
 
+// osPostsListSQL is the Posts page's list: the filter in where (which leads
+// with is_page=0), the tab's status, newest first, one page.
+//
+// is_page=0 is written +is_page=0 here, and only here: as an equality on an
+// indexed column it led SQLite to idx_articles_is_page, which holds nearly
+// every post, and every one of them was then sorted to find the newest 100.
+// On 235k posts that was 0.6 s of the page's 0.8 s (3cm). Without it the list
+// walks idx_articles_created, or idx_articles_status on a status tab, and stops
+// at the page. The status counts keep the plain form: their covering index
+// leads with is_page.
+func osPostsListSQL(where []string, status string) string {
+	w := append([]string{}, where...)
+	if len(w) > 0 && w[0] == "is_page=0" {
+		w[0] = "+is_page=0"
+	}
+	switch status {
+	case "published":
+		w = append(w, "status='published'")
+	case "draft":
+		w = append(w, "status='draft'")
+	case "garbled":
+		w = append(w, "slug IN (SELECT slug FROM text_repair_lost)")
+	case "review":
+		w = append(w, dbpkg.TextOfferWhere())
+	}
+	return `SELECT title,slug,updated_at,COALESCE(status,'published'),COALESCE(featured,0) FROM articles WHERE ` +
+		strings.Join(w, " AND ") + ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
+}
+
 // osPostState is a post's state as the page grammar shows it: a dot and a word.
 func osPostState(status string) string {
 	if status == "draft" {
@@ -2736,26 +2765,9 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	// ── Fetch the current page of posts (drafts included; the public site never
 	// surfaces drafts but the manager must). ──────────────────────────────────
 	var posts []osPostRow
-	listWhere := append([]string{}, where...)
-	listArgs := append([]any{}, args...)
-	switch status {
-	case "published":
-		listWhere = append(listWhere, "status='published'")
-	case "draft":
-		listWhere = append(listWhere, "status='draft'")
-	case "garbled":
-		listWhere = append(listWhere, "slug IN (SELECT slug FROM text_repair_lost)")
-	case "review":
-		listWhere = append(listWhere, dbpkg.TextOfferWhere())
-	}
-	listClause := ""
-	if len(listWhere) > 0 {
-		listClause = " WHERE " + strings.Join(listWhere, " AND ")
-	}
-	listArgs = append(listArgs, osPostsPageSize, offset)
+	listArgs := append(append([]any{}, args...), osPostsPageSize, offset)
 	if dbpkg.DB != nil {
-		if rows, err := dbpkg.Reader().QueryContext(ctx,
-			`SELECT title,slug,updated_at,COALESCE(status,'published'),COALESCE(featured,0) FROM articles`+listClause+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...); err == nil {
+		if rows, err := dbpkg.Reader().QueryContext(ctx, osPostsListSQL(where, status), listArgs...); err == nil {
 			defer rows.Close()
 			for rows.Next() {
 				var p osPostRow

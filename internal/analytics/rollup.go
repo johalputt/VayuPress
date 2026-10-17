@@ -133,21 +133,6 @@ func (s *Store) RollupUniques(ctx context.Context, fromDay, toDay string) (uint6
 	return uint64(merged.Estimate() + 0.5), nil
 }
 
-// UniquesForRange applies the ladder rule: short ranges count raw rows
-// (hour-fresh), long ranges merge daily sketches (O(days), no full scan).
-func (s *Store) UniquesForRange(ctx context.Context, days int) (uint64, error) {
-	if days <= RollupRawCutoffDays {
-		var n uint64
-		err := s.readDB().QueryRowContext(ctx,
-			`SELECT COUNT(DISTINCT visitor_id) FROM analytics_pageviews WHERE created_at>=?`,
-			time.Now().UTC().AddDate(0, 0, -(days-1)).Format("2006-01-02")).Scan(&n)
-		return n, err
-	}
-	to := time.Now().UTC()
-	from := to.AddDate(0, 0, -(days - 1))
-	return s.RollupUniques(ctx, from.Format("2006-01-02"), to.Format("2006-01-02"))
-}
-
 // StartRollupLadder rebuilds yesterday+today every interval until ctx dies.
 // Yesterday covers late-arriving beacons; today keeps the freshest sketch
 // current so long-range queries never see a hole at the leading edge.

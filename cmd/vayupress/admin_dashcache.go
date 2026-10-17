@@ -158,6 +158,7 @@ func (a *App) startDashboardWarmer(done <-chan struct{}) {
 			adminDash.warm("analytics:30", func(ctx context.Context) string {
 				return a.renderAnalyticsBody(ctx, 30, label)
 			})
+			adminDash.warm(homeVisitorsKey, a.renderHomeVisitors)
 		}
 		if a.vaEngagement != nil {
 			adminDash.warm("shield-engagement:30", func(ctx context.Context) string {

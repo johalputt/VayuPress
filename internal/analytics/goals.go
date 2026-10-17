@@ -114,7 +114,7 @@ func (s *Store) GoalResults(ctx context.Context, days int) ([]GoalResult, error)
 	// Denominator: distinct visitors active in the window.
 	totalVisitors := 0
 	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT visitor_id) FROM analytics_sessions WHERE created_at>=?`, from).
+		`SELECT COUNT(DISTINCT +visitor_id) FROM analytics_sessions WHERE created_at>=?`, from).
 		Scan(&totalVisitors)
 
 	results := make([]GoalResult, 0, len(goals))
