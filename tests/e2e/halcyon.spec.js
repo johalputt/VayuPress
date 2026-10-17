@@ -655,6 +655,50 @@ test.describe("Halcyon", () => {
     });
   }
 
+  // The sign-in panel's messages are read in the site's colours. They were
+  // pale mint and rose, written for the dark default, so on Halcyon the
+  // two-factor prompt could not be read (3ck). Both states, both schemes;
+  // the sign-in link's answer is stubbed to bring each one up. One test, not
+  // one per scheme, because it turns the site's membership buttons on and off.
+  test("the sign-in panel's messages reach their contrast", async ({ page }) => {
+    await page.goto("/os");
+    await page.waitForFunction(() => /(?:^|;\s*)vp_csrf=/.test(document.cookie));
+    const setMembership = (on) => page.evaluate(async (v) => {
+      const csrf = decodeURIComponent(document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/)[1]);
+      const r = await fetch("/os/api/settings", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify({ key: "site.membership_buttons", value: v }) });
+      return r.status;
+    }, on ? "true" : "false");
+    expect(await setMembership(true)).toBe(200);
+    try {
+      await page.route("**/api/v1/members/me", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ enabled: true, authenticated: false }) }));
+      let answer = 200;
+      await page.route("**/api/v1/members/login", (route) => route.fulfill({ status: answer, contentType: "application/json", body: "{}" }));
+      for (const scheme of ["light", "dark"]) {
+        await page.evaluate((s) => localStorage.setItem("vayu-theme", s), scheme);
+        await expect(async () => {
+          await page.goto("/halcyon-long");
+          await expect(page.locator(".h-bar [data-vp-signin]")).toHaveCount(1, { timeout: 1000 });
+        }).toPass({ timeout: 15000, intervals: [1000, 2000] });
+        await expect(page.locator("html")).toHaveAttribute("data-theme", scheme);
+        await page.locator(".h-bar [data-vp-signin]").click();
+        const panel = page.locator(".vp-portal-overlay.is-open");
+        for (const [status, kind] of [[200, "ok"], [429, "err"]]) {
+          answer = status;
+          await panel.locator("form[data-vp-form=magic] [name=email]").fill("reader@example.com");
+          await panel.locator("form[data-vp-form=magic] button[type=submit]").click();
+          await expect(panel.locator(`.vp-portal-notice--${kind}`)).toBeVisible();
+          // The panel slides and its message fades in; read it settled.
+          await page.waitForTimeout(700);
+          expect((await lowContrast(page)).filter((s) => s.includes("vp-portal")), `${kind} (${scheme})`).toEqual([]);
+        }
+      }
+    } finally {
+      await page.unroute("**/api/v1/members/me");
+      await page.unroute("**/api/v1/members/login");
+      expect(await setMembership(false)).toBe(200);
+    }
+  });
+
   test("every control a keyboard reaches has a name", async ({ page }) => {
     for (const p of A11Y_PAGES) {
       await page.goto(p);

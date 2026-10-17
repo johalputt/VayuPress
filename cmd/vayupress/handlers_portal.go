@@ -241,38 +241,67 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 		time.Sleep(d)
 	}
 
+	// The address's password is its console account's or its mail-only
+	// mailbox's, tried in the order the mail bridge (vayuMailBridge) and
+	// /os/login try them. This path knew only the second, so the owner, staff
+	// and authors, whose mailbox is their console account, were told their
+	// password did not match and had to sign in at /os (3ck). A handed-over
+	// mailbox belongs to its client: the console account no longer opens it,
+	// here as over IMAP.
+	ctx := r.Context()
 	accts := a.vayuMail.Accounts()
-	hash := accts.HashFor(r.Context(), emailAddr)
-	// Verify even when the account is unknown (hash == "") to keep the timing and
-	// the response identical regardless of whether the address exists.
-	if !auth.VerifySecretArgon2id(body.Password, hash) || hash == "" {
+	consoleOpen := a.userStore != nil && !a.vayuMail.IsHandedOver(emailAddr)
+	matched := false
+	if consoleOpen {
+		_, err := a.userStore.Authenticate(ctx, emailAddr, body.Password)
+		matched = err == nil
+	}
+	if !matched {
+		// Verify even when the account is unknown (hash == "") to keep the
+		// timing and the response identical whether or not the address exists.
+		hash := accts.HashFor(ctx, emailAddr)
+		matched = auth.VerifySecretArgon2id(body.Password, hash) && hash != ""
+	}
+	if !matched {
 		mailAuthThrottle.Fail(emailAddr)
 		auth.RecordAuthFailure(lockKey)
 		writeAPIError(w, r, http.StatusUnauthorized, "invalid-credentials", "That email and password don't match", "")
 		return
 	}
 
-	// Second factor, when the mailbox has 2FA enabled.
-	if secret, enabled := accts.TOTPStatus(r.Context(), emailAddr); enabled {
+	// The second factor belongs to the address, not to whichever password
+	// opened it: with two-factor on for either account, a code is required,
+	// whichever of the two passwords was given. Asking only for the matched
+	// account's code let the mailbox password skip the console account's
+	// second factor. A code from either enabled authenticator is accepted.
+	mailSecret, mailOn := accts.TOTPStatus(ctx, emailAddr)
+	consoleOn := false
+	if consoleOpen {
+		_, consoleOn, _ = a.userStore.TOTPSecretByEmail(ctx, emailAddr)
+	}
+	if mailOn || consoleOn {
 		code := strings.TrimSpace(body.Code)
 		if code == "" {
 			writeAPIError(w, r, http.StatusUnauthorized, "totp-required", "This account uses two-factor authentication — enter your 6-digit code", "")
 			return
 		}
-		step, ok := totp.MatchAt(secret, code, time.Now())
+		ok := false
+		if consoleOn {
+			// verifyTOTPForLogin is /os/login's check, single use included.
+			ok, _ = a.verifyTOTPForLogin(ctx, emailAddr, code)
+		}
+		if !ok && mailOn {
+			// Single-use (audit): consume the matched step atomically so a
+			// captured code cannot be replayed within its acceptance window.
+			if step, match := totp.MatchAt(mailSecret, code, time.Now()); match {
+				consumed, cerr := accts.ConsumeTOTPStep(ctx, emailAddr, int64(step))
+				ok = cerr == nil && consumed
+			}
+		}
 		if !ok {
 			mailAuthThrottle.Fail(emailAddr)
 			auth.RecordAuthFailure(lockKey)
-			writeAPIError(w, r, http.StatusUnauthorized, "totp-invalid", "That code is not valid — try the current one", "")
-			return
-		}
-		// Single-use (audit): consume the matched step atomically so a captured
-		// code cannot be replayed within its acceptance window.
-		consumed, cerr := accts.ConsumeTOTPStep(r.Context(), emailAddr, int64(step))
-		if cerr != nil || !consumed {
-			mailAuthThrottle.Fail(emailAddr)
-			auth.RecordAuthFailure(lockKey)
-			writeAPIError(w, r, http.StatusUnauthorized, "totp-invalid", "That code has already been used — try the next one", "")
+			writeAPIError(w, r, http.StatusUnauthorized, "totp-invalid", "That code is not valid, or it has been used. Try the current one.", "")
 			return
 		}
 	}

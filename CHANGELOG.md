@@ -20,6 +20,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Sign in with VayuMail on the site works for the owner and staff, with
+  two-factor.** It checked only mail-only mailboxes, so anyone whose mailbox is
+  their VayuOS account was told the password did not match, never reached the
+  two-factor code, and had to sign in at `/os` instead. It now takes the
+  VayuOS account's password as well as the mailbox's, and asks for the code
+  when two-factor is on. A mailbox handed over to its client is still not opened by
+  the operator's console password. The panel's messages were also pale text
+  meant for a dark background, so on Halcyon the request for the code could
+  barely be read; they now use the site's own text colour.
 - **Sign out from the site signs out.** The account panel's Sign out sent a
   background request and reloaded the page whatever answered, so anything that
   stopped the request on its way (a challenge, a refusal) left the reader
@@ -91,6 +100,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   integrity check on open, `BEGIN IMMEDIATE`, a database path checked
   against a prefix, an 8 MB body limit, seccomp on x86-64 alone. Each row now
   names its mechanism; ADR-0061 says which of its systems are gone.
+
+### Security
+
+- **The mailbox password no longer skips the VayuOS account's two-factor.**
+  Where a mail-only mailbox and a VayuOS account share an address, Sign in
+  with VayuMail on the site accepted the mailbox password with no code, even
+  with two-factor on for the VayuOS account. It now asks for the code when
+  either account has two-factor on, whichever password is given. The session
+  it opened was a reader's, not VayuOS's.
 
 ## [3.18.7] — 2026-10-16
 

@@ -89,14 +89,15 @@
   border: 1px solid transparent;
 }
 
+/* Words in the page's text colour, the state in the tint (as portal.css). */
 .su-notice--ok {
-  color: #d1fae5;
+  color: var(--su-text);
   background: rgba(16, 185, 129, .12);
   border-color: rgba(16, 185, 129, .35);
 }
 
 .su-notice--err {
-  color: #fee2e2;
+  color: var(--su-text);
   background: rgba(239, 68, 68, .12);
   border-color: rgba(239, 68, 68, .35);
 }

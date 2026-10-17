@@ -174,8 +174,12 @@
   line-height: 1.45;
   border: 1px solid transparent;
 }
-.vp-portal-notice--ok { color: #d1fae5; background: rgba(16, 185, 129, .12); border-color: rgba(16, 185, 129, .35); }
-.vp-portal-notice--err { color: #fee2e2; background: rgba(239, 68, 68, .12); border-color: rgba(239, 68, 68, .35); }
+/* The state is the tint and the border; the words are the panel's own text
+   colour. Fixed pale mint and rose read only on the dark default: on a light
+   theme (Halcyon, any operator palette) the two-factor prompt was all but
+   invisible (3ck). */
+.vp-portal-notice--ok { color: var(--vpp-text); background: rgba(16, 185, 129, .12); border-color: rgba(16, 185, 129, .35); }
+.vp-portal-notice--err { color: var(--vpp-text); background: rgba(239, 68, 68, .12); border-color: rgba(239, 68, 68, .35); }
 
 .vp-portal-foot { margin: 1.3rem 0 0; font-size: .88rem; color: var(--vpp-muted); }
 .vp-portal-link {
