@@ -638,6 +638,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// accounts list keeps a link to it instead of nesting seven sections.
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/accounts/settings", a.handleVayuOSMailboxSettings)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/settings", a.handleVayuOSMySettings)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/settings/password", a.handleVayuOSMyPassword)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/avatar", a.handleVayuOSAvatarUpload)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/avatar/remove", a.handleVayuOSAvatarRemove)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/smime", a.handleVayuOSSMIMEUpload)

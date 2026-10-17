@@ -42,6 +42,9 @@ const (
 	mailResetByAdmin      mailResetReason = "administrator"
 	mailResetByBreakGlass mailResetReason = "break-glass"
 	mailResetByDevice     mailResetReason = "trusted-device"
+	// mailResetByHolder is the holder changing their own password from their
+	// mailbox settings, with the current one (3cl).
+	mailResetByHolder mailResetReason = "holder"
 )
 
 // mailResetOutcome reports what the pipeline actually destroyed. It is returned
@@ -265,6 +268,8 @@ func mailResetNotice(email string, reason mailResetReason, actor string,
 		how = "from the server console by an operator with shell access"
 	case mailResetByDevice:
 		how = "from one of your signed-in devices"
+	case mailResetByHolder:
+		how = "from your mailbox settings, with the old password"
 	}
 
 	var b strings.Builder

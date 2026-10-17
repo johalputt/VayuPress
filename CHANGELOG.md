@@ -17,7 +17,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   Mail now has **Mailbox settings** for the mailbox the session holds, and
   the site's panel links to it. Each control acts only on the holder's own
   mailbox; aliases, handover, quota, role and the address itself stay an
-  administrator's. Recovery and app passwords stay on Connect.
+  administrator's. Recovery and app passwords stay on Connect. The holder
+  can also change their own password there, with the current one: as with
+  any reset, every app, device and session on the mailbox is signed out and
+  a notice is sent. Two-factor stays on the site's account page, where
+  turning it off asks for a current code.
 - **An ad already placed can be edited.** Each slot on Advertising now has an
   Edit button, opening a sheet filled with what the slot holds: its name,
   placement, kind, image, link, label and creative. Before, a slot could only

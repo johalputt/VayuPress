@@ -24,12 +24,15 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"html"
 	"net/http"
 	"strings"
+	"time"
 
 	htmpl "html/template"
 
+	"github.com/johalputt/vayupress/internal/auth"
 	avatarpkg "github.com/johalputt/vayupress/internal/avatar"
 	"github.com/johalputt/vayupress/internal/render"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
@@ -179,16 +182,81 @@ func (a *App) handleVayuOSMySettings(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 	sec, _ := a.mailboxSettingsSections(r.Context(), ac.Email, true)
+	// Two-factor stays on the site's account page (handlers_portal_totp.go),
+	// where turning it off asks for a current code; a second way to change the
+	// factor from here would be the weaker of the two.
+	twoFA := "off"
+	if ac.TOTPEnabled {
+		twoFA = "on"
+	}
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Mailbox settings</h1></div>`)
 	body.WriteString(`<p class="page-sub">Forwarding, your vacation reply, filters, keys and your picture, for ` + esc(ac.Email) + `.</p>`)
 	body.WriteString(`<div class="card vm-mbox-head">` + mailAvatarImg(ac.Email, a.mailboxAvatarSet()) +
 		`<div class="vm-mbox-head__meta"><div class="vm-mbox-head__email mono">` + esc(ac.Email) + `</div>` +
-		`<div class="muted text-sm">Recovery and app passwords are on <a href="/os/vayumail/connect">Connect</a>.</div></div></div>`)
+		`<div class="muted text-sm">Recovery and app passwords are on <a href="/os/vayumail/connect">Connect</a>. ` +
+		`Two-factor is ` + twoFA + `, and is set on <a href="/members/account">your account on the site</a>.</div></div></div>`)
 	body.WriteString(`<span id="vm-mbox-spin" class="htmx-indicator vm-spin" aria-hidden="true">saving…</span>`)
 	body.WriteString(`<div id="vm-mbox-settings">` + sec + `</div>`)
+	body.WriteString(holderPasswordForm())
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox settings", "vayumail", cfg, htmpl.HTML(body.String())))
+}
+
+// holderPasswordForm is the holder's own password change. It answers into
+// #vm-pass-result, because the change signs every session out, this one too.
+func holderPasswordForm() string {
+	return `<details class="vm-ooo vm-acct__sub" id="vm-pass"><summary><span class="field-label">Password</span></summary>` +
+		`<form class="vm-ooo-form" hx-post="/os/vayumail/settings/password" hx-target="#vm-pass-result" hx-swap="innerHTML">` +
+		`<label class="field"><span class="field-label">Current password</span><input class="input input--sm" type="password" name="current" autocomplete="current-password" required></label>` +
+		`<label class="field"><span class="field-label">New password</span><input class="input input--sm" type="password" name="new" autocomplete="new-password" minlength="8" required></label>` +
+		`<label class="field"><span class="field-label">New password again</span><input class="input input--sm" type="password" name="again" autocomplete="new-password" minlength="8" required></label>` +
+		`<p class="text-xs muted">Changing it signs out every app, device and web session on this mailbox, this one too, and sends you a notice.</p>` +
+		`<button class="btn btn--primary btn--sm" type="submit">Change password</button></form>` +
+		`<div id="vm-pass-result" aria-live="polite"></div></details>`
+}
+
+// handleVayuOSMyPassword changes the holder's own password, proven by the
+// current one, through applyMailPasswordReset: the one path every mailbox
+// password change takes, so app passwords, sessions and reset links are
+// revoked and the holder is told, as for any reset (3cl).
+func (a *App) handleVayuOSMyPassword(w http.ResponseWriter, r *http.Request) {
+	_, own := a.ownMailbox(r)
+	if own == "" || !a.mailRunning() || a.vayuMail.Accounts() == nil {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "no mailbox of your own here", "")
+		return
+	}
+	_ = r.ParseForm()
+	answer := func(tone, msg string) { writeOSHTML(w, r, saCallout(tone, html.EscapeString(msg))) }
+	if r.FormValue("new") != r.FormValue("again") {
+		answer("danger", "The two new passwords differ.")
+		return
+	}
+	// The current password is a guess like any sign-in's: the same per-mailbox
+	// throttle, so a session left open is not an unmetered oracle for it.
+	if d := mailAuthThrottle.Delay(own); d > 0 {
+		time.Sleep(d)
+	}
+	if !auth.VerifySecretArgon2id(r.FormValue("current"), a.vayuMail.Accounts().HashFor(r.Context(), own)) {
+		mailAuthThrottle.Fail(own)
+		answer("danger", "That is not the current password.")
+		return
+	}
+	mailAuthThrottle.Success(own)
+	deps, ok := a.mailResetDepsFor()
+	if !ok {
+		answer("danger", "Mail is not running.")
+		return
+	}
+	out, err := applyMailPasswordReset(r.Context(), deps, own, r.FormValue("new"), mailResetByHolder, own)
+	if err != nil {
+		answer("danger", "Not changed: "+err.Error()+".")
+		return
+	}
+	writeOSHTML(w, r, saCallout("ok", html.EscapeString(fmt.Sprintf(
+		"Password changed. %d app%s and %d session%s were signed out, this one too.",
+		out.AppPasswordsRevoked, plural(out.AppPasswordsRevoked), out.SessionsRevoked, plural(out.SessionsRevoked))))+
+		` <a class="btn btn--sm" href="/os/login">Sign in again</a>`)
 }
 
 // handleVayuOSMailboxSettings renders one mailbox's full settings page.

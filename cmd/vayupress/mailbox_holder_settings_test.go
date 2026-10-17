@@ -129,3 +129,38 @@ func TestTheSitesMailboxViewKnowsAGrantedMailbox(t *testing.T) {
 		t.Errorf("a granted mailbox's holder = %d %s; want has_mailbox and the address", rec.Code, rec.Body.String())
 	}
 }
+
+// The holder changes their own password with the current one, through the
+// pipeline every reset takes (3cl). A wrong current password changes nothing.
+func TestAHolderChangesTheirOwnPassword(t *testing.T) {
+	a := appWithMailAccounts(t)
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	a.userStore = users.New(db)
+	ctx := context.Background()
+	dana := &users.User{ID: "vmail:dana@example.com", Email: "dana@example.com", Role: users.RoleAuthor, MailAddress: "dana@example.com"}
+	opens := func(pass string) bool {
+		return auth.VerifySecretArgon2id(pass, a.vayuMail.Accounts().HashFor(ctx, "dana@example.com"))
+	}
+
+	rec := postAppPwForm(a.handleVayuOSMyPassword, "/", url.Values{"current": {"not-it"}, "new": {"a-new-mailbox-pass"}, "again": {"a-new-mailbox-pass"}}, dana)
+	if !strings.Contains(rec.Body.String(), "not the current password") || opens("a-new-mailbox-pass") {
+		t.Fatalf("a wrong current password: %s; new opens = %v", rec.Body.String(), opens("a-new-mailbox-pass"))
+	}
+	rec = postAppPwForm(a.handleVayuOSMyPassword, "/", url.Values{"current": {"main-mailbox-pass"}, "new": {"a-new-mailbox-pass"}, "again": {"a-new-mailbox-typo"}}, dana)
+	if !strings.Contains(rec.Body.String(), "differ") || opens("a-new-mailbox-pass") {
+		t.Fatalf("two different new passwords: %s", rec.Body.String())
+	}
+	rec = postAppPwForm(a.handleVayuOSMyPassword, "/", url.Values{"current": {"main-mailbox-pass"}, "new": {"a-new-mailbox-pass"}, "again": {"a-new-mailbox-pass"}}, dana)
+	if !strings.Contains(rec.Body.String(), "Password changed") || !opens("a-new-mailbox-pass") || opens("main-mailbox-pass") {
+		t.Fatalf("the holder's change: %s; new opens %v, old opens %v", rec.Body.String(), opens("a-new-mailbox-pass"), opens("main-mailbox-pass"))
+	}
+
+	nobody := &users.User{ID: "u9", Email: "editor@example.com", Role: users.RoleEditor}
+	if rec := postAppPwForm(a.handleVayuOSMyPassword, "/", url.Values{"current": {"x"}, "new": {"yyyyyyyy"}, "again": {"yyyyyyyy"}}, nobody); rec.Code != http.StatusForbidden {
+		t.Errorf("a session with no mailbox of its own = %d, want 403", rec.Code)
+	}
+}
