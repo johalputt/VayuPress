@@ -61,6 +61,9 @@ func identifyingAnalyticsTables(t *testing.T, db *sql.DB) []string {
 		_ = rows.Scan(&n)
 		names = append(names, n)
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
 	rows.Close()
 	var out []string
 	for _, n := range names {
@@ -97,6 +100,9 @@ func columnsOf(t *testing.T, db *sql.DB, table string) []colInfo {
 			t.Fatal(err)
 		}
 		cols = append(cols, colInfo{name: name, typ: strings.ToUpper(typ), notNull: nn == 1, hasDflt: dflt.Valid, pk: pk > 0})
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
 	}
 	return cols
 }

@@ -181,6 +181,9 @@ func TestNoConsoleReadWalksAWholeTable(t *testing.T) {
 				derived[m[1]] = true
 			}
 		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
 		_ = rows.Close()
 		tables := map[string]string{}
 		for _, m := range fromRe.FindAllStringSubmatch(q.sql, -1) {

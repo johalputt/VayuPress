@@ -112,6 +112,9 @@ func TestThePostsListStopsAtThePage(t *testing.T) {
 			}
 			plan = append(plan, detail)
 		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
 		rows.Close()
 		p := strings.Join(plan, " | ")
 		if strings.Contains(p, "TEMP B-TREE FOR ORDER BY") {
