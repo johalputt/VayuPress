@@ -81,7 +81,15 @@ func (a *App) serveCustomIfActive(w http.ResponseWriter, r *http.Request, urlPat
 	if !a.customSiteActive(r) {
 		return false
 	}
-	return customsite.Serve(w, r, a.customSiteDir(r), urlPath)
+	if !isPagePath(urlPath) {
+		return customsite.Serve(w, r, a.customSiteDir(r), urlPath)
+	}
+	sw := &servedStatus{ResponseWriter: w}
+	ok := customsite.Serve(sw, r, a.customSiteDir(r), urlPath)
+	if ok && sw.served() {
+		a.recordServedPage(r)
+	}
+	return ok
 }
 
 // handleOSWebsiteCustomRollback swaps the current custom bundle for the previous

@@ -219,7 +219,9 @@ func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if a.bizRootActive(r) {
-		a.handleBizSite(w, r)
+		if a.renderSitePage(w, r, "") {
+			a.recordServedPage(r)
+		}
 		return
 	}
 	a.renderHomeAt(w, r, 1)

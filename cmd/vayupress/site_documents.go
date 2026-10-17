@@ -118,7 +118,11 @@ func (a *App) serveSitePageIfActive(w http.ResponseWriter, r *http.Request) bool
 	if m == nil || !a.bizRootActive(r) {
 		return false
 	}
-	return a.renderSitePage(w, r, m[1])
+	if !a.renderSitePage(w, r, m[1]) {
+		return false
+	}
+	a.recordServedPage(r)
+	return true
 }
 
 // handleSiteGalleryJS serves the gallery viewer (sitedoc.GalleryJS). Its URL

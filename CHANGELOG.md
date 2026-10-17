@@ -32,6 +32,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **A website's own Analytics counts its visitors.** Only the pages
+  VayuPress draws for a blog carry the counting script, so a site serving its
+  own uploaded files, or a template website, recorded no visit at all: on an
+  install hosting fourteen sites, eleven had never counted one, and each
+  one's Analytics read nothing. The server now counts the view as it serves
+  such a page, by the script's own rules: only a person counts (VayuShield's
+  classification; a crawler fetches pages but never ran the script), an
+  opt-out (Do Not Track, Global Privacy Control) is not counted, nor a
+  prefetch, nor a refused country, and the site is the one this install
+  served. Views counted from now on; earlier visits were never recorded.
 - **VayuOS opens fast on a large site.** Home took more than 15 seconds on
   johal.in, and the live visitors panel 8. Every analytics count is bounded
   by a date range, but SQLite answered the ones that group or count distinct
