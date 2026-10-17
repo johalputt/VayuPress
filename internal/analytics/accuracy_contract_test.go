@@ -169,3 +169,24 @@ func TestTheAccuracyContract(t *testing.T) {
 		t.Errorf("OverviewSince = %+v, OverviewBetween over the same days = %+v", *since, *between)
 	}
 }
+
+// "How they found you" counted every event under its referrer, so a reader
+// who arrived from a search and then signed up was two search arrivals. It
+// counts page views, as the referrer list beside it does.
+func TestAChannelCountsArrivalsNotEvents(t *testing.T) {
+	s := newExtStore(t)
+	ctx := context.Background()
+	for _, et := range []int{1, 2} {
+		req := CollectRequest{URL: "/a", Referrer: "https://www.google.com/", Hostname: "h", EventType: et, EventName: "signup"}
+		if err := s.Collect(ctx, req, "198.51.100.9", "Mozilla/5.0 Firefox/131.0", "s1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.ChannelsScoped(ctx, "s1", 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Label != "Organic search" || got[0].Count != 1 {
+		t.Errorf("channels = %+v, want one Organic search arrival", got)
+	}
+}

@@ -17,16 +17,21 @@ package main
 // visitor can write traffic into.
 
 import (
+	"context"
 	htmpl "html/template"
 	"net/http"
 	"strconv"
-	"strings"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
-// handleOSScopedAnalytics renders one domain's traffic.
+// handleOSScopedAnalytics renders one site's Analytics: the install's page,
+// fed by the readers that take a site, so a client reads their own site with
+// the same figures, definitions and charts the operator reads for the
+// install (row 5, Phase 2).
 func (a *App) handleOSScopedAnalytics(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
@@ -35,79 +40,141 @@ func (a *App) handleOSScopedAnalytics(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/os/domains", http.StatusSeeOther)
 		return
 	}
-
-	body := `<div class="page-header"><h1>Visitors</h1></div>` +
-		`<p class="page-sub"><a href="/os/d/` + esc(d.ID) + `">← ` + esc(d.Host) + `</a></p>` +
-		`<p class="page-sub">Traffic to <b>` + esc(d.Host) + `</b> over the last 30 days. ` +
-		`Counted without cookies, so nobody is tracked between visits.</p>`
-
+	title := "Visitors · " + d.Host
 	if a.analytics == nil {
-		body += `<div class="card"><p class="text-sm muted">Analytics are not running on this install.</p></div>`
-		writeOSHTML(w, r, adminOSLayout(nonce, "Visitors · "+d.Host, "optimize", cfg, htmpl.HTML(body)))
+		writeOSHTML(w, r, adminOSLayout(nonce, title, "optimize", cfg, ui.Overview(ui.OverviewPage{Title: "Visitors"},
+			ui.Band{Title: "Visitors", Aside: ui.Empty("trend", "Analytics are off", "This install was started without the analytics store.", "")})))
 		return
 	}
-
-	// d.ID is the scope. It is the same value the beacon path writes, so what is
-	// counted here is exactly what was recorded for this host.
-	ov, _ := a.analytics.OverviewSinceScoped(r.Context(), d.ID, 30)
-	top, _ := a.analytics.TopPagesScoped(r.Context(), d.ID, 30, 10)
-
-	body += scopedAnalyticsBody(ov.TotalPageviews, ov.TotalVisits, ov.BounceRate, ov.AvgDuration, top)
-	writeOSHTML(w, r, adminOSLayout(nonce, "Visitors · "+d.Host, "optimize", cfg, htmpl.HTML(body)))
+	days, label := analyticsPeriod(r)
+	body := a.renderSiteAnalyticsBody(r.Context(), d.ID, d.Host, days, label)
+	writeOSHTML(w, r, adminOSLayout(nonce, title, "optimize", cfg, htmpl.HTML(body)))
 }
 
-// scopedAnalyticsBody renders the numbers and the busiest-pages table.
-//
-// Extracted from the handler because the markup was built inline against a
-// request, a database and a live analytics service — so nothing could render
-// this page without all three, and it therefore had no test at all. A page that
-// cannot be rendered in a test is a page whose restyling cannot be checked.
-func scopedAnalyticsBody(views, visits int, bounce, avgDur float64, top []analytics.PageStat) string {
-	var b strings.Builder
+// renderSiteAnalyticsBody is one site's report. Every reader is given the
+// site (d.ID, the value the ingest wrote), so nothing here can count another
+// site's traffic.
+func (a *App) renderSiteAnalyticsBody(ctx context.Context, site, host string, days int, label string) string {
+	st := a.analytics
+	page := ui.OverviewPage{Title: "Visitors", Actions: osPeriodSelector("/os/d/"+site+"/analytics", days)}
+	ov, err := st.OverviewSinceScoped(ctx, site, days)
+	if err != nil {
+		page.State = ui.Text("The figures could not be read: " + err.Error())
+		return string(ui.Overview(page, ui.Band{Title: "Visitors"}))
+	}
+	now := time.Now().UTC()
+	prev, _ := st.OverviewBetweenScoped(ctx, site, now.AddDate(0, 0, -(2*days-1)).Format("2006-01-02"), now.AddDate(0, 0, -(days-1)).Format("2006-01-02"))
+	series, _ := st.PageviewSeriesScoped(ctx, site, days)
+	top, _ := st.TopPagesScoped(ctx, site, days, 10)
+	landing, _ := st.LandingPagesScoped(ctx, site, days, 10)
+	refs, _ := st.TopReferrersScoped(ctx, site, days, 10)
+	channels, _ := st.ChannelsScoped(ctx, site, days)
+	audience := func(col string) []analytics.AudienceStat {
+		out, _ := st.AudienceScoped(ctx, site, col, days)
+		return out
+	}
+	events, _ := st.CustomEventsScoped(ctx, site, days)
 
-	b.WriteString(`<div class="stat-grid">` +
-		osStatTile("Page views", strconv.Itoa(views), "") +
-		osStatTile("Visits", strconv.Itoa(visits), "") +
-		osStatTile("Bounce rate", strconv.FormatFloat(bounce, 'f', 0, 64)+"%", "") +
-		osStatTile("Avg. visit", strconv.FormatFloat(avgDur, 'f', 0, 64)+"s", "") +
-		`</div>`)
+	page.State = ui.Text("No visits to " + host + " in the " + label)
+	if ov.UniqueVisitors > 0 {
+		page.State = ui.Text(countOf(ov.UniqueVisitors, "visitor") + " to " + host + " in the " + label)
+	}
+	figs := append(analyticsFigures(ov, prev, 0), siteVisitFigures(ov, prev)...)
+	chart := `<p class="table-empty">Visits to this site appear here as people read it.</p>`
+	if len(series) > 0 {
+		chart = osTrendChart(series, "Traffic over the "+label)
+	}
 
-	// ── The bands, as collapsible details (house style §11) ──────────────────
-	b.WriteString(`<div class="section-head"><span class="section-head__title">This site's traffic</span>` +
-		`<span class="section-head__hint">This site's own pages only</span></div>`)
-	b.WriteString(`<div class="mon-stack">`)
+	bars := func(items []osChartBar, denom osBarDenom, empty string) string { return osBarList(items, denom, empty) }
+	pageBars := make([]osChartBar, 0, len(top))
+	for _, p := range top {
+		pageBars = append(pageBars, osChartBar{Label: prettyPathText(p.Path), Value: p.Pageviews})
+	}
+	landBars := make([]osChartBar, 0, len(landing))
+	for _, l := range landing {
+		landBars = append(landBars, osChartBar{Label: prettyPathText(l.Path), Value: l.Visits})
+	}
+	refBars := make([]osChartBar, 0, len(refs))
+	refTotal := 0
+	for _, r := range refs {
+		refBars = append(refBars, osChartBar{Label: r.Referrer, Value: r.Count})
+		refTotal += r.Count
+	}
+	eventBars := make([]osChartBar, 0, len(events))
+	for _, e := range events {
+		eventBars = append(eventBars, osChartBar{Label: e.Name, Value: e.Count})
+	}
 
-	var pages strings.Builder
-	pages.WriteString(`<div class="card">`)
-	if len(top) == 0 {
-		pages.WriteString(`<p class="text-sm muted">No visits recorded for this site yet. Traffic recorded before ` +
-			`this install was upgraded is attributed to the primary domain, because that is the only ` +
-			`domain it could have been — it is not moved retroactively.</p>`)
-	} else {
-		pages.WriteString(`<table class="table"><thead><tr><th>Page</th><th>Views</th><th>Visits</th></tr></thead><tbody>`)
-		for _, p := range top {
-			pages.WriteString(`<tr><td class="mono text-sm">` + esc(p.Path) + `</td><td>` +
-				strconv.Itoa(p.Pageviews) + `</td><td>` + strconv.Itoa(p.UniqueVisitors) + `</td></tr>`)
+	sections := []ui.HTML{
+		ui.HTML(analyticsCols(
+			string(ui.Section("Top pages", "Page views", ui.HTML(bars(pageBars, osShareOf(ov.TotalPageviews), "No page views recorded yet.")))),
+			string(ui.Section("Landing pages", "Where visits began", ui.HTML(bars(landBars, osShareOf(ov.TotalVisits), "No visits recorded yet.")))))),
+		ui.HTML(analyticsCols(
+			string(ui.Section("Referrers", "Other sites that sent readers", ui.HTML(bars(refBars, osShareOf(refTotal), "No links from other sites yet.")))),
+			string(ui.Section("How they found you", "From the referrer alone", ui.HTML(bars(osBarsFromAudience(channels), osShareOfListed(), "Visitors are grouped here once they arrive.")))))),
+		ui.Section("What they read on", "", ui.HTML(analyticsCols(
+			analyticsPanel("Devices", osDonut(osSegsFromAudience(audience("device")), "No device data yet.")),
+			analyticsPanel("Browsers", bars(osBarsFromAudience(audience("browser")), osShareOfListed(), "No browser data yet.")),
+			analyticsPanel("Systems", bars(osBarsFromAudience(audience("os")), osShareOfListed(), "No system data yet."))))),
+		ui.Section("Where they are", "Coarse location only", ui.HTML(osGeoSection(audience("country"), audience("region"), audience("city")))),
+		ui.Section("Speed for readers", "Core Web Vitals, 75th percentile", ui.HTML(a.siteVitals(ctx, site, days))),
+		ui.Section("Events", "What this site tracks with data-vp-event or VayuPress.track()",
+			ui.HTML(bars(eventBars, osShareHidden(), "No custom events yet."))),
+		ui.Explain(ui.HTML(`<p>These are this site's own figures: every count reads only the visits recorded for ` + esc(host) +
+			`. A visit is a reader's pages with no 30-minute gap; a visitor is recognised within a day by a salted hash that changes daily, so "visitors" over a week counts a person once for each day they came. Nothing here uses a cookie, and nothing leaves this server. <a href="/docs/ANALYTICS" target="_blank" rel="noopener">What each figure means</a>.</p>`)),
+	}
+	return string(ui.Overview(page, ui.Band{Title: "Visitors", Hint: "The " + label, Figures: figs, Chart: ui.HTML(chart)}, sections...))
+}
+
+// siteVisitFigures adds what a site's owner asks first after "how many":
+// visits, how many stopped at one page, and how long the others stayed.
+func siteVisitFigures(ov, prev *analytics.Overview) []ui.Figure {
+	if ov == nil || ov.TotalVisits == 0 {
+		return nil
+	}
+	pv := 0
+	if prev != nil {
+		pv = prev.TotalVisits
+	}
+	figs := []ui.Figure{
+		{Value: strconv.Itoa(ov.TotalVisits), Label: "Visits", Note: analyticsChange(ov.TotalVisits, pv)},
+		{Value: strconv.FormatFloat(ov.BounceRate, 'f', 0, 64) + "%", Label: "Bounce rate", Note: "Visits of one page and nothing else"},
+	}
+	if ov.AvgDuration > 0 {
+		figs = append(figs, ui.Figure{Value: osDuration(ov.AvgDuration), Label: "Average visit", Note: "Over the visits of more than one page"})
+	}
+	return figs
+}
+
+// osDuration writes a visit's length as a reader would say it.
+func osDuration(sec float64) string {
+	s := int(sec + 0.5)
+	if s < 60 {
+		return strconv.Itoa(s) + "s"
+	}
+	return strconv.Itoa(s/60) + "m " + strconv.Itoa(s%60) + "s"
+}
+
+// siteVitals is the site's Core Web Vitals, each against Google's "good"
+// line, from the pages' own measurements (the engagement beacon).
+func (a *App) siteVitals(ctx context.Context, site string, days int) string {
+	if a.vaEngagement == nil {
+		return `<p class="table-empty">Speed is measured by the reading beacon, which is not running.</p>`
+	}
+	v, err := a.vaEngagement.WebVitalsP75Scoped(ctx, site, days)
+	if err != nil || v == nil || v.Samples == 0 {
+		return `<p class="table-empty">No page has reported its speed yet.</p>`
+	}
+	row := func(name, value string, good bool, line string) string {
+		tone := "ok"
+		if !good {
+			tone = "warn"
 		}
-		pages.WriteString(`</tbody></table>`)
+		return `<tr><td>` + name + `</td><td class="mono">` + value + `</td><td>` + string(ui.State(tone, map[bool]string{true: "Good", false: "Needs work"}[good])) + `</td><td class="muted text-sm">` + line + `</td></tr>`
 	}
-	pages.WriteString(`</div>`)
-	pagesChip := `<span class="mon-chip mon-chip--off">Nothing yet</span>`
-	if len(top) > 0 {
-		pagesChip = `<span class="mon-chip mon-chip--on">` + strconv.Itoa(len(top)) + ` pages</span>`
-	}
-	b.WriteString(monAcc(saIcon("trend"), "Busiest pages", "Where this site's visits landed", pagesChip, true, pages.String()))
-
-	// What these numbers are and are not. The visitor count is deliberately the
-	// distinct-session count, and saying so is cheaper than being asked why it
-	// differs from the install-wide page.
-	b.WriteString(monAcc(saIcon("grid"), "What these numbers mean", "And what they cannot be compared with",
-		`<span class="mon-chip mon-chip--on">Read this once</span>`, false,
-		`<div class="card"><p class="text-sm muted">"Visits" counts distinct sessions on this `+
-			`hostname. The install-wide Analytics page counts unique visitors from a session table that `+
-			`carries no domain, so its visitor figure spans every site here — the two are different `+
-			`populations and are not comparable. A 404 is not counted as a page view.</p></div>`))
-
-	b.WriteString(`</div>`) // mon-stack
-	return b.String()
+	return `<div class="table-wrap"><table class="table"><thead><tr><th>Measure</th><th>p75</th><th></th><th>Good is</th></tr></thead><tbody>` +
+		row("Largest paint (LCP)", strconv.Itoa(v.P75LCPMs)+" ms", v.P75LCPMs <= 2500, "2.5 s or less") +
+		row("Response to input (INP)", strconv.Itoa(v.P75INPMs)+" ms", v.P75INPMs <= 200, "200 ms or less") +
+		row("Layout shift (CLS)", strconv.FormatFloat(float64(v.P75CLSX100)/100, 'f', 2, 64), v.P75CLSX100 <= 10, "0.10 or less") +
+		`</tbody></table></div><p class="settings-row-hint">From ` + strconv.FormatInt(v.Samples, 10) + ` page loads that reported.</p>`
 }

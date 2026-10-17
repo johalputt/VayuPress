@@ -26,7 +26,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/bizsite"
 	"github.com/johalputt/vayupress/internal/customsite"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
@@ -164,34 +163,6 @@ func TestWebsitePageMeetsTheHouseStyle(t *testing.T) {
 func bizsiteContentForTest(name string) bizsite.Content { return bizsite.Content{Name: name} }
 func customsiteManifestForTest(files int) customsite.Manifest {
 	return customsite.Manifest{Files: files, HasPrev: true}
-}
-
-// Phase 1 — Visitors. The smallest per-domain page, and the one that proves the
-// helper works on something it was not written against.
-func TestAnalyticsPageMeetsTheHouseStyle(t *testing.T) {
-	withPages := scopedAnalyticsBody(1200, 340, 41.5, 62, []analytics.PageStat{
-		{Path: "/", Pageviews: 900, UniqueVisitors: 260},
-		{Path: "/about", Pageviews: 300, UniqueVisitors: 80},
-	})
-	assertHouseStyle(t, withPages, houseStyle{Name: "Visitors", MinTiles: 4, MinBands: 2})
-
-	// The numbers must be the ones passed in, not a shape that happens to render.
-	for _, want := range []string{"1200", "340", "42%", "62s", "/about"} {
-		if !strings.Contains(withPages, want) {
-			t.Errorf("the page does not show %q", want)
-		}
-	}
-
-	// An empty site must still be a valid page, and must say why it is empty
-	// rather than showing a bare zero.
-	empty := scopedAnalyticsBody(0, 0, 0, 0, nil)
-	assertHouseStyle(t, empty, houseStyle{Name: "Visitors (no traffic)", MinTiles: 4, MinBands: 2})
-	if !strings.Contains(empty, "No visits recorded") {
-		t.Error("a site with no traffic shows no explanation, only zeroes")
-	}
-	if !strings.Contains(empty, ">Nothing yet<") {
-		t.Error("the collapsed band does not say it is empty, so it reads as a closed door")
-	}
 }
 
 // Phase 2 — the domain Home page. Its six bands were already collapsible; the
@@ -476,8 +447,7 @@ func TestEveryConvertedPageIsCSPSafe(t *testing.T) {
 	}{
 		{"Website", scopedWebsitePage(siteWithEval(t, true), "bistro",
 			bizsiteContentForTest("Test"), true, customsiteManifestForTest(30), false)},
-		{"Visitors", scopedAnalyticsBody(1200, 340, 41.5, 62, []analytics.PageStat{
-			{Path: "/", Pageviews: 900, UniqueVisitors: 260}})},
+		{"Visitors", siteAnalyticsPage(t, "d1", "/", "/about")},
 		{"Domain home", scopedConsolePage(d, 12, 3, 0, true, nil, nil, nil, nil, "")},
 		{"SEO", scopedSEOBody("d1", "https://customer.example", map[string]string{})},
 		{"Content", scopedContentPage(d, []dbpkg.Article{
@@ -513,7 +483,7 @@ func TestHostileCustomerContentReachesThePanelEscaped(t *testing.T) {
 			scopedSettingsBody("d1", "customer.example",
 				map[string]string{settings.KeySiteName: payload}, presDefault), "site name"},
 		{"a page path recorded by the analytics collector",
-			scopedAnalyticsBody(10, 5, 0, 0, []analytics.PageStat{{Path: payload, Pageviews: 3}}), "path"},
+			siteAnalyticsPage(t, "d1", "/"+payload), "path"},
 		{"an article title",
 			scopedContentPage(d, []dbpkg.Article{
 				{Title: payload, Slug: "x", Status: "published", UpdatedAt: time.Now()}}), "title"},

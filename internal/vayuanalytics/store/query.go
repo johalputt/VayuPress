@@ -382,12 +382,22 @@ type WebVitals struct {
 // ORDER BY/OFFSET trick is exact for SQLite without extension modules and
 // cheap here because the WHERE clause excludes unreported rows.
 func (s *Store) WebVitalsP75(ctx context.Context, days int) (*WebVitals, error) {
+	return s.webVitalsP75(ctx, days, "", nil)
+}
+
+// WebVitalsP75Scoped is WebVitalsP75 for one site's pages ("" the primary).
+func (s *Store) WebVitalsP75Scoped(ctx context.Context, domainID string, days int) (*WebVitals, error) {
+	return s.webVitalsP75(ctx, days, " AND domain_id=?", []any{domainID})
+}
+
+func (s *Store) webVitalsP75(ctx context.Context, days int, clause string, cargs []any) (*WebVitals, error) {
 	from := fromTime(days)
 	out := &WebVitals{}
+	args := append([]any{from}, cargs...)
 	pick := func(col string, dst *int, count *int64) error {
 		var n int64
 		if err := s.readDB().QueryRowContext(ctx,
-			`SELECT COUNT(1) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+col+`>0`, from).Scan(&n); err != nil {
+			`SELECT COUNT(1) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+col+`>0`+clause, args...).Scan(&n); err != nil {
 			return err
 		}
 		*count = n
@@ -396,8 +406,8 @@ func (s *Store) WebVitalsP75(ctx context.Context, days int) (*WebVitals, error) 
 		}
 		off := n * 3 / 4 // floor(p75 rank)-1 → zero-based OFFSET
 		return s.readDB().QueryRowContext(ctx,
-			`SELECT `+col+` FROM vayuanalytics_sessions WHERE entry_time>=? AND `+col+`>0 ORDER BY `+col+` LIMIT 1 OFFSET ?`,
-			from, off).Scan(dst)
+			`SELECT `+col+` FROM vayuanalytics_sessions WHERE entry_time>=? AND `+col+`>0`+clause+` ORDER BY `+col+` LIMIT 1 OFFSET ?`,
+			append(args, off)...).Scan(dst)
 	}
 	if err := pick("lcp_ms", &out.P75LCPMs, &out.Samples); err != nil {
 		return nil, err

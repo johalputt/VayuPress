@@ -398,7 +398,7 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 		return a.renderAnalyticsBody(ctx, days, periodLabel)
 	})
 	if !ready {
-		frag = string(ui.Overview(ui.OverviewPage{Title: "Analytics", State: ui.Text("Counting the last " + periodLabel), Actions: osPeriodSelector(days)},
+		frag = string(ui.Overview(ui.OverviewPage{Title: "Analytics", State: ui.Text("Counting the last " + periodLabel), Actions: osPeriodSelector("/os/analytics", days)},
 			ui.Band{Title: "Visitors", Hint: "Last " + periodLabel, Chart: `<p class="table-empty">This is counted in the background; reload in a few seconds.</p>`}))
 	}
 	body := frag + "\n" + `<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js?v=` + assetVer("js/admin-os-intel.js") + `"></script>`
@@ -416,7 +416,7 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 	if err != nil {
 		return ""
 	}
-	page := ui.OverviewPage{Title: "Analytics", Actions: osPeriodSelector(days)}
+	page := ui.OverviewPage{Title: "Analytics", Actions: osPeriodSelector("/os/analytics", days)}
 	sites, scope := a.analyticsScopeNote(ctx)
 	if sum == nil {
 		page.State = ui.Text("No visits recorded yet")
@@ -625,10 +625,10 @@ func analyticsPeriod(r *http.Request) (int, string) {
 }
 
 // osPeriodSelector renders the period chooser as a row of links (GET, no JS).
-func osPeriodSelector(days int) ui.HTML {
+func osPeriodSelector(base string, days int) ui.HTML {
 	segs := make([]ui.Segment, 0, len(analyticsPeriodOptions))
 	for _, o := range analyticsPeriodOptions {
-		segs = append(segs, ui.Segment{Label: o.Label, Href: "/os/analytics?days=" + strconv.Itoa(o.Days), Count: -1, On: o.Days == days})
+		segs = append(segs, ui.Segment{Label: o.Label, Href: base + "?days=" + strconv.Itoa(o.Days), Count: -1, On: o.Days == days})
 	}
 	// data-period: the analytics script marks the chooser as loading while the
 	// chosen range is fetched.

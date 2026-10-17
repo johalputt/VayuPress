@@ -135,10 +135,20 @@ func TestNoConsoleReadWalksAWholeTable(t *testing.T) {
 		_, _ = s.RevenueStats(ctx, days)
 		_, _ = s.OverviewSinceScoped(ctx, "d1", days)
 		_, _ = s.TopPagesScoped(ctx, "d1", days, 10)
+		_, _ = s.LandingPagesScoped(ctx, "d1", days, 10)
+		_, _ = s.TopReferrersScoped(ctx, "d1", days, 10)
+		_, _ = s.PageviewSeriesScoped(ctx, "d1", days)
+		_, _ = s.ChannelsScoped(ctx, "d1", days)
+		_, _ = s.UTMStatsScoped(ctx, "d1", days)
+		_, _ = s.CustomEventsScoped(ctx, "d1", days)
+		for _, col := range []string{"browser", "device", "os", "country", "region", "city"} {
+			_, _ = s.AudienceScoped(ctx, "d1", col, days)
+		}
 		_, _ = s.GoalResults(ctx, days)
 		_, _ = s.PathFlows(ctx, days, 10)
 	}
 	_, _ = s.OverviewBetween(ctx, weekAgo, today)
+	_, _ = s.OverviewBetweenScoped(ctx, "d1", weekAgo, today)
 	_, _ = s.Realtime(ctx)
 	// Not a console read, but it runs daily over the growing tables.
 	if err := s.BuildDailyRollup(ctx, time.Now()); err != nil {

@@ -242,12 +242,18 @@ type DayPageviews struct {
 
 // PageviewSeries returns daily pageview + visitor counts.
 func (s *Store) PageviewSeries(ctx context.Context, days int) ([]DayPageviews, error) {
+	return s.PageviewSeriesScoped(ctx, ScopeAllDomains, days)
+}
+
+// PageviewSeriesScoped is PageviewSeries for one site.
+func (s *Store) PageviewSeriesScoped(ctx context.Context, scope string, days int) ([]DayPageviews, error) {
 	if days <= 0 {
 		days = 14
 	}
-	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	from := s.now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	clause, carg := domainClause(scope)
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT DATE(created_at) as d,SUM(event_type=1),COUNT(DISTINCT visitor_id) FROM analytics_pageviews WHERE created_at>=? GROUP BY d ORDER BY d`, from)
+		`SELECT DATE(created_at) as d,SUM(event_type=1),COUNT(DISTINCT visitor_id) FROM analytics_pageviews WHERE created_at>=?`+clause+` GROUP BY d ORDER BY d`, append([]any{from}, carg...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -274,42 +280,7 @@ type PageStat struct {
 
 // TopPages returns the most-viewed pages.
 func (s *Store) TopPages(ctx context.Context, days, limit int) ([]PageStat, error) {
-	if days <= 0 {
-		days = 14
-	}
-	if limit <= 0 || limit > 200 {
-		limit = 20
-	}
-	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
-	// Group on the path with any trailing slash stripped. "/post" and "/post/"
-	// are one page: a reader can arrive at either spelling, and grouping the raw
-	// value listed the same page twice with its traffic split between the rows —
-	// so a page's real total was under-reported and its rank was wrong. Merging
-	// them here also keeps this panel agreeing with the public Trending widget,
-	// which reads the same event log and deliberately mirrors these numbers.
-	// New pageviews are normalised on the way in; the trim covers history that
-	// was recorded before that.
-	// The expression trims the slash off the REMAINDER and puts the leading one
-	// back, so the homepage survives: a plain RTRIM(url_path,'/') turns "/" into
-	// the empty string and the busiest page on the site would be listed with no
-	// path at all.
-	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT '/' || RTRIM(SUBSTR(url_path,2),'/') AS p,COUNT(1) as pv,COUNT(DISTINCT visitor_id) as uv
-		 FROM analytics_pageviews WHERE created_at>=? AND event_type=1
-		 GROUP BY '/' || RTRIM(SUBSTR(url_path,2),'/') ORDER BY pv DESC LIMIT ?`, from, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	result := []PageStat{}
-	for rows.Next() {
-		var ps PageStat
-		if err := rows.Scan(&ps.Path, &ps.Pageviews, &ps.UniqueVisitors); err != nil {
-			return nil, err
-		}
-		result = append(result, ps)
-	}
-	return result, rows.Err()
+	return s.TopPagesScoped(ctx, ScopeAllDomains, days, limit)
 }
 
 // ── Referrers ────────────────────────────────────────────────────────────────
@@ -323,6 +294,11 @@ type ReferrerStat struct {
 
 // TopReferrers returns the most common referrer hosts.
 func (s *Store) TopReferrers(ctx context.Context, days, limit int) ([]ReferrerStat, error) {
+	return s.TopReferrersScoped(ctx, ScopeAllDomains, days, limit)
+}
+
+// TopReferrersScoped is TopReferrers for one site.
+func (s *Store) TopReferrersScoped(ctx context.Context, scope string, days, limit int) ([]ReferrerStat, error) {
 	if days <= 0 {
 		days = 14
 	}
@@ -346,11 +322,12 @@ func (s *Store) TopReferrers(ctx context.Context, days, limit int) ([]ReferrerSt
 	// topped by the operator's own webmail and MCP hosts, each with a count larger
 	// than the site's entire pageview total.
 	notSelf, selfArgs := s.selfHostExclusion("referrer")
+	clause, carg := domainClause(scope)
 	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT referrer,COUNT(1) as cnt FROM analytics_pageviews
-		 WHERE created_at>=? AND event_type=1 AND referrer!=''`+notSelf+
+		 WHERE created_at>=? AND event_type=1 AND referrer!=''`+clause+notSelf+
 			` GROUP BY referrer ORDER BY cnt DESC LIMIT ?`,
-		append(append([]any{from}, selfArgs...), limit)...)
+		append(append(append([]any{from}, carg...), selfArgs...), limit)...)
 	if err != nil {
 		return nil, err
 	}
@@ -377,37 +354,40 @@ type AudienceStat struct {
 
 // Browsers returns visitor counts by browser bucket.
 func (s *Store) Browsers(ctx context.Context, days int) ([]AudienceStat, error) {
-	return s.audienceSince(ctx, "browser", days)
+	return s.AudienceScoped(ctx, ScopeAllDomains, "browser", days)
 }
 
 // Devices returns visitor counts by device bucket.
 func (s *Store) Devices(ctx context.Context, days int) ([]AudienceStat, error) {
-	return s.audienceSince(ctx, "device", days)
+	return s.AudienceScoped(ctx, ScopeAllDomains, "device", days)
 }
 
 // OperatingSystems returns visitor counts by OS bucket.
 func (s *Store) OperatingSystems(ctx context.Context, days int) ([]AudienceStat, error) {
-	return s.audienceSince(ctx, "os", days)
+	return s.AudienceScoped(ctx, ScopeAllDomains, "os", days)
 }
 
 // Countries returns visitor counts by country (ISO alpha-2), populated only
 // when a reverse proxy supplies geo headers (see CollectRequest.Geo).
 func (s *Store) Countries(ctx context.Context, days int) ([]AudienceStat, error) {
-	return s.audienceSince(ctx, "country", days)
+	return s.AudienceScoped(ctx, ScopeAllDomains, "country", days)
 }
 
 // Regions returns visitor counts by region/state (proxy-supplied).
 func (s *Store) Regions(ctx context.Context, days int) ([]AudienceStat, error) {
-	return s.audienceSince(ctx, "region", days)
+	return s.AudienceScoped(ctx, ScopeAllDomains, "region", days)
 }
 
 // Cities returns visitor counts by city (proxy-supplied; often empty unless the
 // CDN/proxy provides a city header).
 func (s *Store) Cities(ctx context.Context, days int) ([]AudienceStat, error) {
-	return s.audienceSince(ctx, "city", days)
+	return s.AudienceScoped(ctx, ScopeAllDomains, "city", days)
 }
 
-func (s *Store) audienceSince(ctx context.Context, column string, days int) ([]AudienceStat, error) {
+// AudienceScoped breaks one site's visitors down by column (browser, device,
+// os, country, region or city), counted over the visits that began in the
+// range.
+func (s *Store) AudienceScoped(ctx context.Context, scope, column string, days int) ([]AudienceStat, error) {
 	if days <= 0 {
 		days = 14
 	}
@@ -417,9 +397,10 @@ func (s *Store) audienceSince(ctx context.Context, column string, days int) ([]A
 	default:
 		column = "browser"
 	}
-	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	from := s.now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	clause, carg := domainClause(scope)
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT `+column+`,COUNT(DISTINCT visitor_id) FROM analytics_sessions WHERE created_at>=? AND `+column+`!='' GROUP BY +`+column+` ORDER BY 2 DESC LIMIT 100`, from)
+		`SELECT `+column+`,COUNT(DISTINCT visitor_id) FROM analytics_sessions WHERE created_at>=? AND `+column+`!=''`+clause+` GROUP BY +`+column+` ORDER BY 2 DESC LIMIT 100`, append([]any{from}, carg...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -477,12 +458,18 @@ func ReferrerChannel(host string) string {
 // Social / Referral) by classifying the stored referrer host. All aggregate and
 // no-PII. Empty buckets are omitted; the result is sorted by count descending.
 func (s *Store) Channels(ctx context.Context, days int) ([]AudienceStat, error) {
+	return s.ChannelsScoped(ctx, ScopeAllDomains, days)
+}
+
+// ChannelsScoped is Channels for one site.
+func (s *Store) ChannelsScoped(ctx context.Context, scope string, days int) ([]AudienceStat, error) {
 	if days <= 0 {
 		days = 14
 	}
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	clause, carg := domainClause(scope)
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT referrer,COUNT(1) FROM analytics_pageviews WHERE created_at>=? GROUP BY +referrer`, from)
+		`SELECT referrer,COUNT(1) FROM analytics_pageviews WHERE created_at>=? AND event_type=1`+clause+` GROUP BY +referrer`, append([]any{from}, carg...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -521,12 +508,18 @@ type UTMStat struct {
 
 // UTMStats returns UTM campaign performance.
 func (s *Store) UTMStats(ctx context.Context, days int) ([]UTMStat, error) {
+	return s.UTMStatsScoped(ctx, ScopeAllDomains, days)
+}
+
+// UTMStatsScoped is UTMStats for one site.
+func (s *Store) UTMStatsScoped(ctx context.Context, scope string, days int) ([]UTMStat, error) {
 	if days <= 0 {
 		days = 14
 	}
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	clause, carg := domainClause(scope)
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT utm_source,utm_medium,utm_campaign,COUNT(1) FROM analytics_pageviews WHERE created_at>=? AND (utm_source!='' OR utm_medium!='' OR utm_campaign!='') GROUP BY utm_source,utm_medium,utm_campaign ORDER BY 4 DESC LIMIT 50`, from)
+		`SELECT utm_source,utm_medium,utm_campaign,COUNT(1) FROM analytics_pageviews WHERE created_at>=? AND (utm_source!='' OR utm_medium!='' OR utm_campaign!='')`+clause+` GROUP BY utm_source,utm_medium,utm_campaign ORDER BY 4 DESC LIMIT 50`, append([]any{from}, carg...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -552,12 +545,18 @@ type EventStat struct {
 
 // CustomEvents returns the most-triggered custom events.
 func (s *Store) CustomEvents(ctx context.Context, days int) ([]EventStat, error) {
+	return s.CustomEventsScoped(ctx, ScopeAllDomains, days)
+}
+
+// CustomEventsScoped is CustomEvents for one site.
+func (s *Store) CustomEventsScoped(ctx context.Context, scope string, days int) ([]EventStat, error) {
 	if days <= 0 {
 		days = 14
 	}
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	clause, carg := domainClause(scope)
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT event_name,COUNT(1) FROM analytics_pageviews WHERE created_at>=? AND event_type=2 AND event_name!='' GROUP BY event_name ORDER BY 2 DESC LIMIT 50`, from)
+		`SELECT event_name,COUNT(1) FROM analytics_pageviews WHERE created_at>=? AND event_type=2 AND event_name!=''`+clause+` GROUP BY event_name ORDER BY 2 DESC LIMIT 50`, append([]any{from}, carg...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -1126,6 +1125,50 @@ func (s *Store) OverviewSinceScoped(ctx context.Context, scope string, days int)
 	return s.overviewWindow(ctx, scope, s.now().UTC().AddDate(0, 0, -(days-1)).Format("2006-01-02"), "")
 }
 
+// OverviewBetweenScoped is OverviewBetween for one site: its previous period,
+// by the same definitions.
+func (s *Store) OverviewBetweenScoped(ctx context.Context, scope, fromInclusive, toExclusive string) (*Overview, error) {
+	return s.overviewWindow(ctx, scope, fromInclusive, toExclusive)
+}
+
+// LandingStat is one landing page: the visits that began on it and their
+// visitors.
+type LandingStat struct {
+	Path     string `json:"path"`
+	Visits   int    `json:"visits"`
+	Visitors int    `json:"visitors"`
+}
+
+// LandingPagesScoped lists where one site's visits began in the trailing
+// days, busiest first: the landing page each visit row keeps (migration 113).
+func (s *Store) LandingPagesScoped(ctx context.Context, scope string, days, limit int) ([]LandingStat, error) {
+	if days <= 0 {
+		days = 14
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 20
+	}
+	from := s.now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	clause, carg := domainClause(scope)
+	rows, err := s.readDB().QueryContext(ctx,
+		`SELECT landing,COUNT(1),COUNT(DISTINCT visitor_id) FROM analytics_sessions
+		 WHERE created_at>=? AND events>0 AND landing!=''`+clause+` GROUP BY +landing ORDER BY 2 DESC LIMIT ?`,
+		append(append([]any{from}, carg...), limit)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []LandingStat{}
+	for rows.Next() {
+		var l LandingStat
+		if err := rows.Scan(&l.Path, &l.Visits, &l.Visitors); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
 // TopPagesScoped is TopPages for one domain.
 func (s *Store) TopPagesScoped(ctx context.Context, scope string, days, limit int) ([]PageStat, error) {
 	if days <= 0 {
@@ -1134,11 +1177,23 @@ func (s *Store) TopPagesScoped(ctx context.Context, scope string, days, limit in
 	if limit <= 0 || limit > 200 {
 		limit = 20
 	}
-	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	from := s.now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
 	clause, arg := domainClause(scope)
 	args := append([]any{from}, arg...)
 	args = append(args, limit)
 
+	// Group on the path with any trailing slash stripped. "/post" and "/post/"
+	// are one page: a reader can arrive at either spelling, and grouping the raw
+	// value listed the same page twice with its traffic split between the rows —
+	// so a page's real total was under-reported and its rank was wrong. Merging
+	// them here also keeps this panel agreeing with the public Trending widget,
+	// which reads the same event log and deliberately mirrors these numbers.
+	// New pageviews are normalised on the way in; the trim covers history that
+	// was recorded before that.
+	// The expression trims the slash off the REMAINDER and puts the leading one
+	// back, so the homepage survives: a plain RTRIM(url_path,'/') turns "/" into
+	// the empty string and the busiest page on the site would be listed with no
+	// path at all.
 	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT '/' || RTRIM(SUBSTR(url_path,2),'/') AS p,COUNT(1) as pv,COUNT(DISTINCT visitor_id) as uv
 		 FROM analytics_pageviews WHERE created_at>=? AND event_type=1`+clause+`
@@ -1147,7 +1202,7 @@ func (s *Store) TopPagesScoped(ctx context.Context, scope string, days, limit in
 		return nil, err
 	}
 	defer rows.Close()
-	var out []PageStat
+	out := []PageStat{}
 	for rows.Next() {
 		var ps PageStat
 		if err := rows.Scan(&ps.Path, &ps.Pageviews, &ps.UniqueVisitors); err != nil {

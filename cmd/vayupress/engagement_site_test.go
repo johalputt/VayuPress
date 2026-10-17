@@ -31,7 +31,7 @@ func TestAnEngagementRowIsItsSites(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36")
 	req.Header.Set("Accept-Language", "en-GB,en;q=0.9")
-	req.RemoteAddr = "198.51.100.77:4000"
+	req.RemoteAddr = "203.0.113.209:4000" // an address no other test spends the beacon budget of
 	req = req.WithContext(context.WithValue(req.Context(), ctxKeyDomain{}, domain.Domain{ID: "d-served"}))
 	a.handleVAEnter(httptest.NewRecorder(), req)
 

@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/bizsite"
 	"github.com/johalputt/vayupress/internal/customsite"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
@@ -168,7 +167,7 @@ func TestTheOtherPerSitePagesEmitNoUnstyledClass(t *testing.T) {
 	assertClassesAreStyled(t, "the SEO page", css,
 		scopedSEOBody("d1", "https://customer.example", map[string]string{}))
 	assertClassesAreStyled(t, "the visitors page", css,
-		scopedAnalyticsBody(1200, 340, 41.5, 62, []analytics.PageStat{{Path: "/", Pageviews: 900}}))
+		siteAnalyticsPage(t, "d1", "/", "/about"))
 }
 
 // betweenMarkers returns the markup between two landmarks, so an assertion about

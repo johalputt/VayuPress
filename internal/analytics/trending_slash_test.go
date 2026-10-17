@@ -66,7 +66,7 @@ func TestTrailingSlashViewsCountTowardTrending(t *testing.T) {
 	addViews(t, db, "/nft-experiences/", 50) // trailing slash — used to vanish
 	addViews(t, db, "/paid-email", 3)
 
-	got, err := (&Store{db: db}).TrendingArticlesByViews(context.Background(), 7, 10)
+	got, err := New(db).TrendingArticlesByViews(context.Background(), 7, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestBothSpellingsMergeIntoOneRow(t *testing.T) {
 	addViews(t, db, "/nft-experiences", 20)
 	addViews(t, db, "/nft-experiences/", 30)
 
-	got, err := (&Store{db: db}).TrendingArticlesByViews(context.Background(), 7, 10)
+	got, err := New(db).TrendingArticlesByViews(context.Background(), 7, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestDailyAggregateAlsoNormalises(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got, err := (&Store{db: db}).TrendingArticles(context.Background(), 7, 10)
+	got, err := New(db).TrendingArticles(context.Background(), 7, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestRootPathNeverMatchesAnArticle(t *testing.T) {
 	addViews(t, db, "/", 500)
 	addViews(t, db, "/paid-email", 2)
 
-	got, err := (&Store{db: db}).TrendingArticlesByViews(context.Background(), 7, 10)
+	got, err := New(db).TrendingArticlesByViews(context.Background(), 7, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestTopPagesMergesSpellingsAndKeepsRoot(t *testing.T) {
 	addViews(t, db, "/nft-experiences/", 30)
 	addViews(t, db, "/", 7)
 
-	got, err := (&Store{db: db}).TopPages(context.Background(), 7, 20)
+	got, err := New(db).TopPages(context.Background(), 7, 20)
 	if err != nil {
 		t.Fatal(err)
 	}

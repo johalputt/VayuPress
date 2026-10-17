@@ -4,6 +4,7 @@ package main
 
 import (
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -59,35 +60,33 @@ func TestAnEmptyAnalyticsScopeMeansThePrimaryNotEverything(t *testing.T) {
 // The per-domain traffic page must read the scoped queries. Reading the
 // unscoped ones would show every site's traffic under one client's name.
 func TestTheScopedTrafficPageUsesTheScopedQueries(t *testing.T) {
-	body := goFuncBody(readSourceFile(t, "admin_os_scoped_analytics.go"), "handleOSScopedAnalytics")
-	for _, want := range []string{"OverviewSinceScoped(", "TopPagesScoped("} {
-		if !strings.Contains(body, want) {
-			t.Errorf("the per-domain traffic page does not call %s", want)
+	body := goFuncBody(readSourceFile(t, "admin_os_scoped_analytics.go"), "renderSiteAnalyticsBody")
+	calls := regexp.MustCompile(`\bst\.(\w+)\(`).FindAllStringSubmatch(body, -1)
+	if len(calls) < 8 {
+		t.Fatalf("the site's page reads %d things from the store; the test no longer sees its reads", len(calls))
+	}
+	for _, c := range calls {
+		if !strings.HasSuffix(c[1], "Scoped") {
+			t.Errorf("the site's page calls the store's %s, which is not given the site: it would report "+
+				"every site on the install under one client's name", c[1])
 		}
 	}
-	for _, unscoped := range []string{"OverviewSince(", "TopPages("} {
-		// The scoped names contain the unscoped ones, so check for a call that is
-		// NOT the scoped variant.
-		if strings.Contains(strings.ReplaceAll(body, unscoped[:len(unscoped)-1]+"Scoped(", ""), unscoped) {
-			t.Errorf("the per-domain page calls the UNSCOPED %s, so it reports every site on "+
-				"the install under one client's name", unscoped)
-		}
+	if !strings.Contains(goFuncBody(readSourceFile(t, "admin_os_scoped_analytics.go"), "siteVitals"), "WebVitalsP75Scoped(") {
+		t.Error("the site's speed is not read for the site")
 	}
 }
 
-// The page must not present a scoped number beside an unscoped one as if they
-// were the same population. This is the "check the claims" rule: the figures are
-// right and the label would be wrong.
-func TestTheTrafficPageSaysWhatItsNumbersAreNot(t *testing.T) {
-	// Asserted on the RENDERED page, not on the handler's source text. The
-	// original read the handler's body for the phrase, so moving the copy into a
-	// render function broke a test about what a visitor sees — while what a
-	// visitor sees had not changed at all. A test that reads source cannot tell a
-	// refactor from a regression.
-	page := scopedAnalyticsBody(10, 5, 0, 0, nil)
-	if !strings.Contains(page, "not comparable") {
-		t.Error("the per-domain traffic page does not warn that its visit count and the " +
-			"install-wide visitor count are different populations")
+// The page says what its visitors are: a daily hash, so a week's figure counts
+// a person once for each day they came, and where each figure is defined.
+// (It once warned that its visits and the install's visitors were different
+// populations; since visitors are counted from each site's own rows, they
+// are the same measure.)
+func TestTheTrafficPageSaysWhatItsVisitorsAre(t *testing.T) {
+	page := siteAnalyticsPage(t, "d1", "/")
+	for _, want := range []string{"once for each day they came", `href="/docs/ANALYTICS"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the site's traffic page does not say %q", want)
+		}
 	}
 }
 
