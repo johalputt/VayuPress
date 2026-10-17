@@ -32,7 +32,7 @@ func TestTheHolderCanStillMintTheirOwnCredentialAfterHandover(t *testing.T) {
 	if body == "" {
 		t.Fatal("canManageAppPassword not found")
 	}
-	owner := strings.Index(body, "isOwner")
+	owner := strings.Index(body, "isMailboxHolder(")
 	severance := strings.Index(body, "IsHandedOver(")
 	if owner < 0 || severance < 0 {
 		t.Fatalf("expected both an owner check and a handover severance, got owner=%d severance=%d",

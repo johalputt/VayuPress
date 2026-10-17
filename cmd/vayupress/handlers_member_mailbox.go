@@ -145,11 +145,15 @@ func (a *App) handleMemberMailboxStatus(w http.ResponseWriter, r *http.Request) 
 	if ok {
 		resp["quota_mb"] = tier.MailQuotaMB
 	}
+	// A mailbox the operator granted counts as much as one a member claimed:
+	// memberOwnMailbox knows both, as the account page does. This endpoint knew
+	// only the claimed kind, so a granted holder was told their plan had no
+	// mailbox (3cl).
+	if addr, ok := a.memberOwnMailbox(r); ok {
+		resp["has_mailbox"] = true
+		resp["address"] = addr
+	}
 	if a.members != nil {
-		if addr := a.members.MailAddressFor(r.Context(), m.Email); addr != "" {
-			resp["has_mailbox"] = true
-			resp["address"] = addr
-		}
 		// Premium addresses the member has bought but not yet activated.
 		if grants, _ := a.members.ClaimablePremiumGrants(r.Context(), m.Email); len(grants) > 0 {
 			purchased := make([]map[string]string, 0, len(grants))

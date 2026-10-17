@@ -10,6 +10,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **A mailbox holder manages their own mailbox's settings.** Someone given a
+  mailbox could change none of it: forwarding, the vacation reply, filters,
+  the S/MIME certificate and the picture all answered "administrators only",
+  and the site's account panel told them their plan had no mailbox at all.
+  Mail now has **Mailbox settings** for the mailbox the session holds, and
+  the site's panel links to it. Each control acts only on the holder's own
+  mailbox; aliases, handover, quota, role and the address itself stay an
+  administrator's. Recovery and app passwords stay on Connect.
 - **An ad already placed can be edited.** Each slot on Advertising now has an
   Edit button, opening a sheet filled with what the slot holds: its name,
   placement, kind, image, link, label and creative. Before, a slot could only

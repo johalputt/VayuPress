@@ -236,6 +236,10 @@ var clientReachableUnderAdminPrefix = []string{
 	"/os/vayumail/accounts/avatar",
 	"/os/vayumail/accounts/avatar/remove",
 	"/os/vayumail/accounts/avatar/cartoon",
+	// The holder's own certificate (3cl): smimeAccount accepts a non-admin
+	// only for their own mailbox (TestAHolderChangesOnlyTheirOwnMailbox).
+	"/os/vayumail/accounts/smime",
+	"/os/vayumail/accounts/smime/remove",
 }
 
 // The inverse, and the one that matters most: no route that administers

@@ -445,6 +445,7 @@ const PortalJS = `(function () {
             '<div class="vp-portal-plan-name">' + esc(d.address) + '</div></div>' +
             '<p class="vp-portal-foot">' + (d.quota_mb ? esc(String(d.quota_mb)) + ' MB storage' : 'Unlimited storage') + ' · PGP encryption + WKD · VayuTalk secure chat included.</p>' +
             '<a class="vp-portal-btn" href="/os/vayumail/inbox">Open VayuMail</a>' +
+            '<a class="vp-portal-btn vp-portal-btn--ghost" href="/os/vayumail/settings">Forwarding, vacation reply and filters</a>' +
             '<p class="vp-portal-foot">On your phone, open the VayuMail app and sign in with this address to finish device setup — that also unlocks end-to-end encrypted VayuTalk chat.</p>';
           wireActivateForms();
           return;

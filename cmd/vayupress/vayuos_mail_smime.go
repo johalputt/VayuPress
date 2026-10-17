@@ -38,20 +38,23 @@ func (a *App) vayuCardSMIME(ctx context.Context, ac vmail.Account) string {
 		`<p class="text-xs muted">Replace it with a new file:</p>` + form + `</details>`
 }
 
-// smimeAccount is the mailbox a certificate request names, if an
-// administrator may change it: a mailbox handed to its holder signs only
-// with what its holder gives it.
+// smimeAccount is the mailbox a certificate request names, if this session
+// may change it: its holder (3cl), or an administrator, except on a mailbox
+// handed to its holder, which signs only with what its holder gives it.
 func (a *App) smimeAccount(w http.ResponseWriter, r *http.Request) string {
 	if !a.mailRunning() || a.vayuMail.Accounts() == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
 		return ""
 	}
-	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
-		return ""
-	}
 	email := a.avatarAccountEmail(w, r, r.FormValue("email"))
 	if email == "" {
+		return ""
+	}
+	if a.isMailboxHolder(r, email) {
+		return email
+	}
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "only this mailbox's holder or an administrator", "")
 		return ""
 	}
 	if a.vayuMail.IsHandedOver(email) {

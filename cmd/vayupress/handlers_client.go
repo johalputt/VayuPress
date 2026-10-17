@@ -81,6 +81,14 @@ var clientSurface = []clientSurfaceEntry{
 	{Prefix: "/os/vayumail/compose", Audience: audienceClient},
 	{Prefix: "/os/vayumail/sent", Audience: audienceClient},
 	{Prefix: "/os/vayumail/connect", Audience: audienceClient},
+	// Their own mailbox's personal settings (3cl). The page and every control
+	// on it act only on the caller's own mailbox (isMailboxHolder); aliases,
+	// handover and the address itself stay an administrator's.
+	{Prefix: "/os/vayumail/settings", Audience: audienceClient},
+	{Prefix: "/os/vayumail/autoreply/action", Audience: audienceClient},
+	{Prefix: "/os/vayumail/filters/action", Audience: audienceClient},
+	{Prefix: "/os/vayumail/aliases/action", Audience: audienceClient},
+	{Prefix: "/os/vayumail/accounts/smime", Audience: audienceClient},
 	// The machinery those five pages run on. Granting the page and withholding
 	// its controls is the failure this list was audited for: the composer was
 	// reachable and Send was not, so a client could write a message and get a
@@ -107,9 +115,10 @@ var clientSurface = []clientSurfaceEntry{
 	{Prefix: "/os/vayumail/unseen", Audience: audienceClient},
 	// Two LEAVES under accounts/, never the branch. apppassword is what the
 	// Connect page exists to do; avatar renders the sender chips in their own
-	// inbox. Matching is exact-or-child, so neither carries /os/vayumail/accounts
-	// itself, and the writing siblings of both (avatar/remove, avatar/cartoon)
-	// refuse a non-admin in the handler regardless.
+	// inbox, and its writing children (avatar/remove, avatar/cartoon) are the
+	// picture on their own settings page, refused in the handler for any
+	// mailbox but the caller's own (mayChangeMailboxSettings). Matching is
+	// exact-or-child, so neither carries /os/vayumail/accounts itself.
 	{Prefix: "/os/vayumail/accounts/apppassword", Audience: audienceClient},
 	{Prefix: "/os/vayumail/accounts/avatar", Audience: audienceClient},
 	{Prefix: "/os/api/vayuos/mail/", Audience: audienceClient},

@@ -637,6 +637,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// One mailbox's own page: every per-mailbox setting, on its own URL. The
 		// accounts list keeps a link to it instead of nesting seven sections.
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/accounts/settings", a.handleVayuOSMailboxSettings)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/settings", a.handleVayuOSMySettings)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/avatar", a.handleVayuOSAvatarUpload)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/avatar/remove", a.handleVayuOSAvatarRemove)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/smime", a.handleVayuOSSMIMEUpload)

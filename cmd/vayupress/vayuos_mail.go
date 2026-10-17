@@ -1062,19 +1062,19 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleVayuOSFilterAction creates or deletes a delivery rule and returns the
-// refreshed card (HTMX swap). Admin-only (the card lives on the Accounts page).
+// refreshed card (HTMX swap). An administrator, or the mailbox's holder (3cl).
 func (a *App) handleVayuOSFilterAction(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
 		return
 	}
-	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
-		return
-	}
 	_ = r.ParseForm()
 	accts := a.vayuMail.Accounts()
 	email := strings.TrimSpace(r.FormValue("email"))
+	if !a.mayChangeMailboxSettings(r, email) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "only this mailbox's holder or an administrator", "")
+		return
+	}
 	var opErr error
 	switch r.FormValue("op") {
 	case "create":
@@ -1108,19 +1108,19 @@ func (a *App) handleVayuOSFilterAction(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleVayuOSAutoreplyAction saves a mailbox's autoresponder settings and
-// returns the refreshed card (HTMX swap). Admin-only (the card lives on the
-// admin Accounts page).
+// returns the refreshed card (HTMX swap). An administrator, or the mailbox's
+// holder (3cl).
 func (a *App) handleVayuOSAutoreplyAction(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
 		return
 	}
-	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
-		return
-	}
 	_ = r.ParseForm()
 	email := strings.TrimSpace(r.FormValue("email"))
+	if !a.mayChangeMailboxSettings(r, email) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "only this mailbox's holder or an administrator", "")
+		return
+	}
 	ar := vmail.Autoreply{
 		Enabled: r.FormValue("enabled") == "1",
 		Subject: strings.TrimSpace(r.FormValue("subject")),
@@ -1161,17 +1161,20 @@ func (a *App) handleVayuOSAutoreplyAction(w http.ResponseWriter, r *http.Request
 }
 
 // handleVayuOSAliasAction applies an alias/forward change and returns the
-// refreshed card (HTMX swap). Admin-only.
+// refreshed card (HTMX swap). An administrator; a holder for their own
+// forwarding only.
 func (a *App) handleVayuOSAliasAction(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
 		return
 	}
-	if !a.isAdminRequest(r) {
+	_ = r.ParseForm()
+	// A holder may set where their own mail is forwarded; aliases are addresses
+	// on the operator's domain, and only an administrator gives them out (3cl).
+	if !a.isAdminRequest(r) && (r.FormValue("op") != "forward-set" || !a.isMailboxHolder(r, r.FormValue("email"))) {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
 		return
 	}
-	_ = r.ParseForm()
 	accts := a.vayuMail.Accounts()
 	fallbackDomain := a.vayuMail.Config().Domain
 	var opErr error
@@ -2122,9 +2125,7 @@ func (a *App) canManageAppPassword(r *http.Request, email string) bool {
 	if strings.TrimSpace(email) == "" {
 		return false
 	}
-	_, own := a.ownMailbox(r)
-	isOwner := own != "" && strings.EqualFold(own, email)
-	if isOwner {
+	if a.isMailboxHolder(r, email) {
 		return true
 	}
 	// SEVERANCE (ADR-0152 D4). An administrator may provision credentials for a

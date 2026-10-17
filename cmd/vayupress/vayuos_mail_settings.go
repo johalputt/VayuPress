@@ -37,7 +37,11 @@ import (
 
 // mailboxSettingsSections builds every per-mailbox setting as one fragment. The
 // bool reports whether the mailbox exists.
-func (a *App) mailboxSettingsSections(ctx context.Context, email string) (string, bool) {
+//
+// forHolder builds the holder's own page (3cl): the personal settings only.
+// The address's aliases and its handover are the operator's, and recovery is
+// on the holder's Connect page already.
+func (a *App) mailboxSettingsSections(ctx context.Context, email string, forHolder bool) (string, bool) {
 	ac, ok := a.mailAccountByEmail(ctx, email)
 	if !ok {
 		return "", false
@@ -45,9 +49,11 @@ func (a *App) mailboxSettingsSections(ctx context.Context, email string) (string
 	var b strings.Builder
 	b.WriteString(`<div class="vm-acct__sub"><span class="field-label">Auto-forward a copy to</span>` + vayuCardForwarding(ac) + `</div>`)
 	b.WriteString(a.vayuCardVacation(ctx, ac))
-	b.WriteString(a.vayuCardAliases(ctx, ac))
-	b.WriteString(a.vayuCardRecovery(ctx, ac.Email))
-	b.WriteString(a.vayuCardHandover(ctx, ac))
+	if !forHolder {
+		b.WriteString(a.vayuCardAliases(ctx, ac))
+		b.WriteString(a.vayuCardRecovery(ctx, ac.Email))
+		b.WriteString(a.vayuCardHandover(ctx, ac))
+	}
 	b.WriteString(a.vayuCardPGP(ac))
 	b.WriteString(a.vayuCardSMIME(ctx, ac))
 	b.WriteString(a.vayuCardFilters(ctx, ac))
@@ -123,13 +129,66 @@ func (a *App) mailAccountByEmail(ctx context.Context, email string) (vmail.Accou
 // else (including a direct POST from a test) returns the accounts list — the
 // original behaviour, unchanged. Both surfaces render the same mailbox, so a
 // spoofed header can only choose *which* admin-only fragment comes back.
+//
+// A holder only ever gets their own page's sections back. The accounts list
+// names every mailbox on the server, and a control a holder may now use must
+// not answer with it (3cl).
 func (a *App) acctRefresh(r *http.Request, email string) string {
+	if !a.isAdminRequest(r) {
+		sec, _ := a.mailboxSettingsSections(r.Context(), email, true)
+		return `<div id="vm-mbox-settings">` + sec + `</div>`
+	}
 	if r.Header.Get("HX-Target") == "vm-mbox-settings" && strings.TrimSpace(email) != "" {
-		if sec, ok := a.mailboxSettingsSections(r.Context(), email); ok {
+		if sec, ok := a.mailboxSettingsSections(r.Context(), email, false); ok {
 			return `<div id="vm-mbox-settings">` + sec + `</div>`
 		}
 	}
 	return a.vayuAccountsList(r.Context())
+}
+
+// isMailboxHolder reports whether email is this session's own mailbox: the
+// boundary app passwords and signatures already use (canManageAppPassword).
+// The holder of a mailbox manages its personal settings (the operator's
+// decision of 2026-10-17, 3cl); only an administrator manages the address
+// itself.
+func (a *App) isMailboxHolder(r *http.Request, email string) bool {
+	_, own := a.ownMailbox(r)
+	return own != "" && strings.EqualFold(own, strings.TrimSpace(email))
+}
+
+// mayChangeMailboxSettings is who may change a mailbox's personal settings: an
+// administrator, as before, or its holder.
+func (a *App) mayChangeMailboxSettings(r *http.Request, email string) bool {
+	return a.isAdminRequest(r) || a.isMailboxHolder(r, email)
+}
+
+// handleVayuOSMySettings is the holder's own settings page: forwarding,
+// vacation, filters, keys and picture for the mailbox this session holds. An
+// administrator's per-mailbox page is /os/vayumail/accounts/settings.
+func (a *App) handleVayuOSMySettings(w http.ResponseWriter, r *http.Request) {
+	if !a.mailRunning() || a.vayuMail.Accounts() == nil {
+		a.writeMailSetup(w, r, "Mailbox settings")
+		return
+	}
+	_, own := a.ownMailbox(r)
+	ac, ok := a.mailAccountByEmail(r.Context(), own)
+	if !ok {
+		http.Redirect(w, r, "/os/vayumail/inbox", http.StatusSeeOther)
+		return
+	}
+	nonce := render.CSPNonce(r)
+	cfg := a.getOSSettings(r.Context())
+	sec, _ := a.mailboxSettingsSections(r.Context(), ac.Email, true)
+	var body strings.Builder
+	body.WriteString(`<div class="page-header"><h1>Mailbox settings</h1></div>`)
+	body.WriteString(`<p class="page-sub">Forwarding, your vacation reply, filters, keys and your picture, for ` + esc(ac.Email) + `.</p>`)
+	body.WriteString(`<div class="card vm-mbox-head">` + mailAvatarImg(ac.Email, a.mailboxAvatarSet()) +
+		`<div class="vm-mbox-head__meta"><div class="vm-mbox-head__email mono">` + esc(ac.Email) + `</div>` +
+		`<div class="muted text-sm">Recovery and app passwords are on <a href="/os/vayumail/connect">Connect</a>.</div></div></div>`)
+	body.WriteString(`<span id="vm-mbox-spin" class="htmx-indicator vm-spin" aria-hidden="true">saving…</span>`)
+	body.WriteString(`<div id="vm-mbox-settings">` + sec + `</div>`)
+	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
+	writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox settings", "vayumail", cfg, htmpl.HTML(body.String())))
 }
 
 // handleVayuOSMailboxSettings renders one mailbox's full settings page.
@@ -180,7 +239,7 @@ func (a *App) handleVayuOSMailboxSettings(w http.ResponseWriter, r *http.Request
 		`<a class="btn btn--sm" href="/os/vayumail/accounts">← All mailboxes</a>` +
 		`</div>`)
 
-	sec, _ := a.mailboxSettingsSections(r.Context(), ac.Email)
+	sec, _ := a.mailboxSettingsSections(r.Context(), ac.Email, false)
 	body.WriteString(`<span id="vm-mbox-spin" class="htmx-indicator vm-spin" aria-hidden="true">saving…</span>`)
 	body.WriteString(`<div id="vm-mbox-settings">` + sec + `</div>`)
 

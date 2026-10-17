@@ -202,7 +202,7 @@ func TestTheCatchAllAlias(t *testing.T) {
 		t.Fatalf("a * inside a name was not refused:\n%.1500s", rec.Body.String())
 	}
 	postForm(a.handleVayuOSAliasAction, "/os/vayumail/aliases/action", "op=alias-create&local=*&target=dana@example.com", admin)
-	body, _ := a.mailboxSettingsSections(context.Background(), "dana@example.com")
+	body, _ := a.mailboxSettingsSections(context.Background(), "dana@example.com", false)
 	if !strings.Contains(body, `<td class="mono">*@example.com <span class="muted text-xs">catch-all</span></td>`) ||
 		!strings.Contains(body, "An alias named * is the catch-all") {
 		t.Fatalf("the catch-all is not named in the card:\n%s", body)

@@ -52,14 +52,10 @@ func (a *App) avatarAccountEmail(w http.ResponseWriter, r *http.Request, raw str
 }
 
 // handleVayuOSAvatarUpload stores a mailbox's profile picture and returns the
-// refreshed accounts list. Admin-only, CSRF-protected, multipart.
+// refreshed accounts list. An administrator or the mailbox's holder (3cl), CSRF-protected, multipart.
 func (a *App) handleVayuOSAvatarUpload(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
-		return
-	}
-	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxMailAvatarBytes+64*1024)
@@ -69,6 +65,10 @@ func (a *App) handleVayuOSAvatarUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	email := a.avatarAccountEmail(w, r, r.FormValue("email"))
 	if email == "" {
+		return
+	}
+	if !a.mayChangeMailboxSettings(r, email) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "only this mailbox's holder or an administrator", "")
 		return
 	}
 	file, _, err := r.FormFile("avatar")
@@ -100,18 +100,18 @@ func (a *App) handleVayuOSAvatarUpload(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleVayuOSAvatarRemove clears a mailbox's profile picture (back to initials)
-// and returns the refreshed accounts list. Admin-only, CSRF-protected.
+// and returns the refreshed accounts list. An administrator or the mailbox's holder (3cl), CSRF-protected.
 func (a *App) handleVayuOSAvatarRemove(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
 		return
 	}
-	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
-		return
-	}
 	email := a.avatarAccountEmail(w, r, r.FormValue("email"))
 	if email == "" {
+		return
+	}
+	if !a.mayChangeMailboxSettings(r, email) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "only this mailbox's holder or an administrator", "")
 		return
 	}
 	if err := a.vayuMail.Accounts().ClearAvatar(r.Context(), email); err != nil {
@@ -196,18 +196,18 @@ func cartoonIndexParam(raw string) int {
 // picture without uploading a file. The cartoon is a self-contained SVG generated
 // server-side (never client-supplied), stored like an uploaded picture and served
 // with X-Content-Type-Options: nosniff — an SVG referenced from <img> cannot run
-// scripts, so this is safe. Admin-only, CSRF-protected. Returns the refreshed list.
+// scripts, so this is safe. An administrator or the mailbox's holder (3cl), CSRF-protected. Returns the refreshed list.
 func (a *App) handleVayuOSAvatarCartoon(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
 		return
 	}
-	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
-		return
-	}
 	email := a.avatarAccountEmail(w, r, r.FormValue("email"))
 	if email == "" {
+		return
+	}
+	if !a.mayChangeMailboxSettings(r, email) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "only this mailbox's holder or an administrator", "")
 		return
 	}
 	svg := avatar.Cartoon(cartoonIndexParam(r.FormValue("n")), email)
@@ -224,12 +224,8 @@ func (a *App) handleVayuOSAvatarCartoon(w http.ResponseWriter, r *http.Request) 
 // guarded (mounted on the admin group); the SVG is deterministic and reveals
 // nothing private — it is derived from, but does not disclose, the address.
 func (a *App) handleVayuOSAvatarCartoonPreview(w http.ResponseWriter, r *http.Request) {
-	if !a.isAdminRequest(r) {
-		http.NotFound(w, r)
-		return
-	}
 	email := strings.ToLower(sanitizeMailUser(strings.TrimSpace(r.URL.Query().Get("email"))))
-	if email == "" || !strings.Contains(email, "@") {
+	if email == "" || !strings.Contains(email, "@") || !a.mayChangeMailboxSettings(r, email) {
 		http.NotFound(w, r)
 		return
 	}
