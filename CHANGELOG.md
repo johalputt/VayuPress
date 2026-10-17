@@ -10,6 +10,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **One workflow publishes releases.** `release.yml` built and published a
+  release on any pushed tag, and `publish-v1.9.0.yml` on a manual run with
+  signing "best-effort"; neither made the release-key signature every install
+  since 3.17.63 requires, so a release from either would have been refused
+  everywhere and left standing. Both are removed, and a test fails if any
+  workflow but `tag-release.yml` publishes one.
 - **Imported drafts stay drafts.** Every importer stored posts without a
   status, and the column defaults to published: `vayupress migrate markdown`,
   `ghost` or `wordpress` with `--skip-drafts=false`, or `ghost2vayu` and
