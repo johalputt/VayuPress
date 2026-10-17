@@ -19,6 +19,8 @@ func newTestStore(t *testing.T) *Store {
 	for _, stmt := range []string{
 		`CREATE TABLE analytics_daily(day TEXT NOT NULL,domain_id TEXT NOT NULL DEFAULT '',path TEXT NOT NULL,views INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(day,domain_id,path))`,
 		`CREATE TABLE analytics_referrers(day TEXT NOT NULL,domain_id TEXT NOT NULL DEFAULT '',host TEXT NOT NULL,hits INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(day,domain_id,host))`,
+		// Purge covers the rollups too (migration 093).
+		`CREATE TABLE IF NOT EXISTS analytics_rollup_daily(day TEXT NOT NULL, domain_id TEXT NOT NULL DEFAULT '', views INTEGER NOT NULL DEFAULT 0, sessions INTEGER NOT NULL DEFAULT 0, uniques_hll BLOB NOT NULL, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(day, domain_id))`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
 			t.Fatal(err)
