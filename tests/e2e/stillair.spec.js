@@ -1392,7 +1392,7 @@ test("a list's rows are table rows, each item on one line", async ({ page }) => 
 
 // Advertising once it is on is a Settings page: slots are a list, a new slot
 // rises in a sheet, and the price and networks are rows under the one bar.
-test("advertising, once on, lists its slots and adds one from a sheet", async ({ page }) => {
+test("advertising, once on, lists its slots, adds one from a sheet and edits it", async ({ page }) => {
   await openConsole(page);
   await page.goto("/os/ads");
   await Promise.all([page.waitForEvent("load"), page.getByRole("button", { name: "Turn on Advertising" }).click()]);
@@ -1409,6 +1409,20 @@ test("advertising, once on, lists its slots and adds one from a sheet", async ({
   await expect(row.locator(".sa-indicator")).toHaveText("On");
   await Promise.all([page.waitForEvent("load"), row.getByRole("button", { name: "Turn off" }).click()]);
   await expect(page.locator("tr", { hasText: name }).locator(".sa-indicator")).toHaveText("Off");
+
+  // A placed slot is edited in its own sheet, filled with what it holds now,
+  // and the edit leaves it off: saving the creative does not switch it on.
+  await page.locator("tr", { hasText: name }).getByRole("button", { name: "Edit" }).click();
+  const edit = page.locator("dialog.sa-sheet[open]", { hasText: `Edit ${name}` });
+  await expect(edit.locator("input[id$='-name']")).toHaveValue(name);
+  await edit.locator("input[id$='-name']").fill(`${name} edited`);
+  await edit.locator("input[id$='-link']").fill("https://sponsor.example/autumn");
+  await Promise.all([page.waitForEvent("load"), edit.getByRole("button", { name: "Save the slot" }).click()]);
+  const edited = page.locator("tr", { hasText: `${name} edited` });
+  await expect(edited.locator(".sa-indicator")).toHaveText("Off");
+  await edited.getByRole("button", { name: "Edit" }).click();
+  await expect(page.locator("dialog.sa-sheet[open] input[id$='-link']")).toHaveValue("https://sponsor.example/autumn");
+  await page.keyboard.press("Escape");
 
   const price = page.locator("#ad-price");
   const before = await price.inputValue();

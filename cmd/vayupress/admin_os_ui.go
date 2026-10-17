@@ -486,6 +486,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/ads", a.handleOSAds)
 		pr.Get("/os/api/ads", a.handleOSAdsList)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/ads", a.handleOSAdCreate)
+		pr.With(auth.CSRFTokenMiddleware).Put("/os/api/ads/{id}", a.handleOSAdUpdate)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/ads/{id}/toggle", a.handleOSAdToggle)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/ads/{id}/approve", a.handleOSAdReviewApprove)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/ads/{id}/reject", a.handleOSAdReviewReject)

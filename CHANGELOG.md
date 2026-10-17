@@ -8,6 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **An ad already placed can be edited.** Each slot on Advertising now has an
+  Edit button, opening a sheet filled with what the slot holds: its name,
+  placement, kind, image, link, label and creative. Before, a slot could only
+  be turned off or deleted, so a new link or image meant deleting it and
+  making it again. Saving keeps the slot on or off as it was, and a member's
+  paid ad keeps its review status, so an edit never publishes what has not
+  been approved. Each edit is in the audit log (`ads.update`).
+
 ### Fixed
 
 - **Sign out from the site signs out.** The account panel's Sign out sent a

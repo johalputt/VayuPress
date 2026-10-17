@@ -20,6 +20,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/johalputt/vayupress/internal/ads"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/ui"
@@ -75,14 +76,18 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 		adsense = "On, and waiting for a publisher ID."
 	}
 
-	newSlot := `<div class="field"><label class="field-label" for="ad-name">Name</label><input id="ad-name" class="input" type="text" placeholder="Below-post banner"></div>
-<div class="field"><label class="field-label" for="ad-placement">Placement</label><select id="ad-placement" class="select">` + adsPlacementOptions() + `</select></div>
-<div class="field"><label class="field-label" for="ad-kind">What fills it</label><select id="ad-kind" class="select"><option value="image">An image and a link</option><option value="html">An HTML creative, sanitised</option><option value="adsense">A Google AdSense unit</option></select></div>
-<div class="field"><label class="field-label" for="ad-image">Image URL</label><input id="ad-image" class="input" type="text" placeholder="/media/banner.png or https://…"><span class="field-hint">For an image and a link.</span></div>
-<div class="field"><label class="field-label" for="ad-link">Where it links</label><input id="ad-link" class="input" type="text" placeholder="https://sponsor.example"><span class="field-hint">For an image and a link.</span></div>
-<div class="field"><label class="field-label" for="ad-alt">Label</label><input id="ad-alt" class="input" type="text" placeholder="Sponsored by …"></div>
-<div class="field"><label class="field-label" for="ad-html">HTML, or the AdSense unit ID</label><textarea id="ad-html" class="textarea font-mono" rows="3"></textarea></div>
-<div class="mt-3"><button type="button" class="btn btn--primary btn--sm" id="ad-create-btn">Add the slot</button></div>`
+	newSlot := adSlotForm("ad", ads.Slot{Kind: ads.KindImage}) +
+		`<div class="mt-3"><button type="button" class="btn btn--primary btn--sm" id="ad-create-btn">Add the slot</button></div>`
+	// One sheet per slot, filled with what it holds now, as API keys' Manage
+	// sheets are: an ad once placed could only be turned off or deleted, so a
+	// changed link or a new image meant deleting the slot and making it again.
+	editSheets := ui.HTML("")
+	for _, sl := range slots {
+		pre := "ad-e-" + sl.ID
+		editSheets += ui.Sheet(pre, "Edit "+sl.Name, ui.HTML(adSlotForm(pre, sl)+
+			`<div class="mt-3"><button type="button" class="btn btn--primary btn--sm" data-ad-save="`+html.EscapeString(sl.ID)+
+			`" data-prefix="`+html.EscapeString(pre)+`" data-enabled="`+strconv.FormatBool(sl.Enabled)+`" data-sort="`+strconv.Itoa(sl.Sort)+`">Save the slot</button></div>`))
+	}
 
 	page := ui.SettingsPage("Advertising", state, "Your own ad slots and your members' ads, served from this site with no ad network.",
 		ui.HTML(`<div class="page-lead">`+lead+`</div>`),
@@ -97,6 +102,7 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 				Control: field("ad-disclosure", settings.KeyAffiliateDisclosure, "textarea", "Affiliate disclosure", disclosure)},
 		)),
 		ui.Sheet("ad-new", "Add an ad slot", ui.HTML(newSlot)),
+		editSheets,
 		ui.SaveBar(),
 	)
 	body := string(page) + `
@@ -115,6 +121,15 @@ if(createBtn)createBtn.addEventListener('click',function(){
   jfetch('POST','/os/api/ads',payload).then(function(res){createBtn.disabled=false;if(res.ok){location.reload();}else{show(res.d.detail||res.d.title||'Error',true);}}).catch(function(e){createBtn.disabled=false;show('Error: '+e,true);});
 });
 function val(id){var el=document.getElementById(id);return el?el.value:'';}
+document.querySelectorAll('[data-ad-save]').forEach(function(b){
+  b.addEventListener('click',function(){
+    var p=b.getAttribute('data-prefix');
+    var payload={name:val(p+'-name'),placement:val(p+'-placement'),kind:val(p+'-kind'),image_url:val(p+'-image'),link_url:val(p+'-link'),alt_text:val(p+'-alt'),html:val(p+'-html'),enabled:b.getAttribute('data-enabled')==='true',sort:parseInt(b.getAttribute('data-sort'),10)||0};
+    if(!payload.name.trim()){show('Give the slot a name',true);return;}
+    b.disabled=true;show('Saving…',false);
+    jfetch('PUT','/os/api/ads/'+encodeURIComponent(b.getAttribute('data-ad-save')),payload).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show(res.d.detail||(res.d.error&&res.d.error.message)||'Error',true);}}).catch(function(e){b.disabled=false;show('Error: '+e,true);});
+  });
+});
 document.querySelectorAll('[data-ad-action]').forEach(function(b){
   b.addEventListener('click',function(){
     var act=b.getAttribute('data-ad-action');var id=b.getAttribute('data-id');
@@ -210,6 +225,7 @@ func adsSlotsTable(slots []ads.Slot) string {
   <td>` + html.EscapeString(s.Kind) + `</td>
   <td>` + statusPill + `</td>
   <td class="row-actions">
+    <button type="button" class="btn btn--ghost btn--sm" data-sheet="ad-e-` + html.EscapeString(s.ID) + `">Edit</button>
     <button type="button" class="btn btn--ghost btn--sm" data-ad-action="toggle" data-to="` + toggleTo + `" data-id="` + html.EscapeString(s.ID) + `">` + toggleLabel + `</button>
     <button type="button" class="btn btn--ghost btn--sm" data-ad-action="delete" data-id="` + html.EscapeString(s.ID) + `">Delete</button>
   </td>
@@ -221,12 +237,73 @@ func adsSlotsTable(slots []ads.Slot) string {
 </table></div>`
 }
 
-func adsPlacementOptions() string {
+func adsPlacementOptions(selected string) string {
 	out := ""
 	for _, p := range ads.Placements() {
-		out += `<option value="` + html.EscapeString(p.ID) + `">` + html.EscapeString(p.Label) + `</option>`
+		sel := ""
+		if p.ID == selected {
+			sel = " selected"
+		}
+		out += `<option value="` + html.EscapeString(p.ID) + `"` + sel + `>` + html.EscapeString(p.Label) + `</option>`
 	}
 	return out
+}
+
+// adSlotForm is the slot's fields, ids prefixed with prefix, filled from sl:
+// the same form adds a slot (prefix "ad", an empty slot) and edits one.
+func adSlotForm(prefix string, sl ads.Slot) string {
+	id := func(f string) string { return html.EscapeString(prefix + "-" + f) }
+	kinds := ""
+	for _, k := range []struct{ id, label string }{{ads.KindImage, "An image and a link"}, {ads.KindHTML, "An HTML creative, sanitised"}, {ads.KindAdSense, "A Google AdSense unit"}} {
+		sel := ""
+		if k.id == sl.Kind {
+			sel = " selected"
+		}
+		kinds += `<option value="` + k.id + `"` + sel + `>` + k.label + `</option>`
+	}
+	return `<div class="field"><label class="field-label" for="` + id("name") + `">Name</label><input id="` + id("name") + `" class="input" type="text" placeholder="Below-post banner" value="` + html.EscapeString(sl.Name) + `"></div>
+<div class="field"><label class="field-label" for="` + id("placement") + `">Placement</label><select id="` + id("placement") + `" class="select">` + adsPlacementOptions(sl.Placement) + `</select></div>
+<div class="field"><label class="field-label" for="` + id("kind") + `">What fills it</label><select id="` + id("kind") + `" class="select">` + kinds + `</select></div>
+<div class="field"><label class="field-label" for="` + id("image") + `">Image URL</label><input id="` + id("image") + `" class="input" type="text" placeholder="/media/banner.png or https://…" value="` + html.EscapeString(sl.ImageURL) + `"><span class="field-hint">For an image and a link.</span></div>
+<div class="field"><label class="field-label" for="` + id("link") + `">Where it links</label><input id="` + id("link") + `" class="input" type="text" placeholder="https://sponsor.example" value="` + html.EscapeString(sl.LinkURL) + `"><span class="field-hint">For an image and a link.</span></div>
+<div class="field"><label class="field-label" for="` + id("alt") + `">Label</label><input id="` + id("alt") + `" class="input" type="text" placeholder="Sponsored by …" value="` + html.EscapeString(sl.AltText) + `"></div>
+<div class="field"><label class="field-label" for="` + id("html") + `">HTML, or the AdSense unit ID</label><textarea id="` + id("html") + `" class="textarea font-mono" rows="3">` + html.EscapeString(sl.HTML) + `</textarea></div>`
+}
+
+// handleOSAdUpdate saves an edited slot. A member's paid ad keeps its review
+// status: Update writes the creative, never the status.
+func (a *App) handleOSAdUpdate(w http.ResponseWriter, r *http.Request) {
+	if a.ads == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-error", "ads not initialised", "")
+		return
+	}
+	var body struct {
+		Name      string `json:"name"`
+		Placement string `json:"placement"`
+		Kind      string `json:"kind"`
+		ImageURL  string `json:"image_url"`
+		LinkURL   string `json:"link_url"`
+		AltText   string `json:"alt_text"`
+		HTML      string `json:"html"`
+		Sort      int    `json:"sort"`
+		Enabled   bool   `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if err := a.ads.Update(r.Context(), id, ads.SlotInput{
+		Name: body.Name, Placement: body.Placement, Kind: body.Kind,
+		ImageURL: body.ImageURL, LinkURL: body.LinkURL, AltText: body.AltText,
+		HTML: body.HTML, Sort: body.Sort, Enabled: body.Enabled,
+	}); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "ads-error", err.Error(), "")
+		return
+	}
+	dbpkg.AuditLog("ads.update", dbpkg.AuditActor(r), id, body.Placement)
+	a.purgeAdCaches()
+	writeJSON(w, r, http.StatusOK, map[string]string{"id": id})
 }
 
 // ── JSON CRUD handlers (session + CSRF, mounted under /os) ─────────────────────
