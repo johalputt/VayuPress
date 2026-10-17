@@ -94,9 +94,6 @@ type Hit struct {
 	// Visitor is the visitor hash of the day the visit began.
 	Visitor string
 	Session string
-	// Entry marks the first event of a visit: visits, landing pages and the
-	// day a visit belongs to are counted from these.
-	Entry bool
 	// Repeat is the visit's last page view again, within repeatWindow: the
 	// same view delivered twice, to be counted once.
 	Repeat bool
@@ -256,7 +253,7 @@ func (h *Hasher) Observe(site, ip, ua, lang, path string, view bool, now time.Ti
 		next.lastView, next.viewAt = pathSum, ms
 	}
 	shard.m[key] = next
-	return Hit{Visitor: visitor, Session: token, Entry: true}
+	return Hit{Visitor: visitor, Session: token}
 }
 
 func fnv1a(s string) uint64 {

@@ -53,7 +53,7 @@ var eventSeq atomic.Uint64
 
 // collectEvent is one fully-normalised beacon ready to write.
 type collectEvent struct {
-	sessionArgs []any // INSERT OR IGNORE INTO analytics_sessions VALUES(...)
+	sessionArgs []any // the visit's upsert into analytics_sessions
 	pvArgs      []any // INSERT INTO analytics_pageviews VALUES(...)
 	eventRows   [][]any
 }
@@ -119,19 +119,21 @@ func (s *Store) buildCollectEvent(req CollectRequest, ip, ua, domainID string) *
 	// in three indexes, and on johal.in's volume the other half was ~30 MB a
 	// copy with nothing to gain (a collision needs ~2^64 visits).
 	hit.Session, hit.Visitor = hit.Session[:idLen], hit.Visitor[:idLen]
-	entry := 0
-	if hit.Entry {
-		entry = 1
+	view := 0
+	landing := ""
+	if et == 1 {
+		view, landing = 1, path
 	}
 	name := trunc(req.EventName, 200)
 	eventID := "e" + itoa64(now.UnixNano()) + "-" + itoa64(int64(eventSeq.Add(1)))
 
 	ev := &collectEvent{
 		sessionArgs: []any{hit.Session, hit.Visitor, coarseBrowser(ua), coarseOS(ua), coarseDevice(ua), "", "",
-			trunc(req.Geo.Country, 2), trunc(req.Geo.Region, 80), trunc(req.Geo.City, 120), now},
+			trunc(req.Geo.Country, 2), trunc(req.Geo.Region, 80), trunc(req.Geo.City, 120), now,
+			domainID, now, view, landing},
 		pvArgs: []any{eventID, hit.Session, path, query, trunc(req.PageTitle, 300), referrerHostExtended(req.Referrer), trunc(host, 200),
 			trunc(req.UTMSource, 100), trunc(req.UTMMedium, 100), trunc(req.UTMCampaign, 100),
-			trunc(req.UTMContent, 100), trunc(req.UTMTerm, 100), et, name, now, domainID, hit.Visitor, entry},
+			trunc(req.UTMContent, 100), trunc(req.UTMTerm, 100), et, name, now, domainID, hit.Visitor},
 	}
 	if et == 2 && len(req.EventData) > 0 {
 		n := 0
@@ -223,13 +225,19 @@ func (s *Store) applyCollectBatch(ctx context.Context, batch []collectEvent) err
 	if err != nil {
 		return err
 	}
-	ss, err := tx.PrepareContext(ctx, `INSERT OR IGNORE INTO analytics_sessions(id,visitor_id,browser,os,device,screen,language,country,region,city,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
+	// The visit row opens on its first event and is brought up to date by
+	// every later one: the overview reads visits, bounces, lengths and
+	// landing pages from it (migration 113). A visit that opened on a custom
+	// event lands on its first page view.
+	ss, err := tx.PrepareContext(ctx, `INSERT INTO analytics_sessions(id,visitor_id,browser,os,device,screen,language,country,region,city,created_at,domain_id,last_at,events,views,landing) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)
+		ON CONFLICT(id) DO UPDATE SET last_at=MAX(COALESCE(last_at,excluded.last_at),excluded.last_at), events=events+1, views=views+excluded.views,
+		  landing=CASE WHEN landing='' THEN excluded.landing ELSE landing END`)
 	if err != nil {
 		_ = tx.Rollback()
 		return err
 	}
 	defer ss.Close()
-	pv, err := tx.PrepareContext(ctx, `INSERT INTO analytics_pageviews(id,session_id,url_path,url_query,page_title,referrer,hostname,utm_source,utm_medium,utm_campaign,utm_content,utm_term,event_type,event_name,created_at,domain_id,visitor_id,entry) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+	pv, err := tx.PrepareContext(ctx, `INSERT INTO analytics_pageviews(id,session_id,url_path,url_query,page_title,referrer,hostname,utm_source,utm_medium,utm_campaign,utm_content,utm_term,event_type,event_name,created_at,domain_id,visitor_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		_ = tx.Rollback()
 		return err

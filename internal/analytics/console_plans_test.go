@@ -140,6 +140,10 @@ func TestNoConsoleReadWalksAWholeTable(t *testing.T) {
 	}
 	_, _ = s.OverviewBetween(ctx, weekAgo, today)
 	_, _ = s.Realtime(ctx)
+	// Not a console read, but it runs daily over the growing tables.
+	if err := s.BuildDailyRollup(ctx, time.Now()); err != nil {
+		t.Fatalf("the daily rollup: %v", err)
+	}
 	_, _ = s.Retention(ctx, 8)
 	_, _, _ = s.GetFunnel(ctx, fid)
 	_, _ = s.ListFunnels(ctx)

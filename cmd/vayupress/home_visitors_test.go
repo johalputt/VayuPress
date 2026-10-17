@@ -20,10 +20,10 @@ func TestHomeNeverCountsVisitorsOnTheRequest(t *testing.T) {
 	openMigratedDB(t)
 	now := time.Now().UTC()
 	for i, sid := range []string{"s1", "s1", "s2"} {
-		if _, err := dbpkg.DB.Exec(`INSERT INTO analytics_sessions(id,visitor_id,created_at) VALUES(?,?,?) ON CONFLICT DO NOTHING`, sid, "v-"+sid, now); err != nil {
+		if _, err := dbpkg.DB.Exec(`INSERT INTO analytics_sessions(id,visitor_id,created_at,last_at,events,views) VALUES(?,?,?,?,1,1) ON CONFLICT DO UPDATE SET events=events+1, views=views+1`, sid, "v-"+sid, now, now); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := dbpkg.DB.Exec(`INSERT INTO analytics_pageviews(id,session_id,visitor_id,entry,url_path,created_at) VALUES(?,?,?,?,?,?)`, "p"+string(rune('0'+i)), sid, "v-"+sid, i != 1, "/a", now); err != nil {
+		if _, err := dbpkg.DB.Exec(`INSERT INTO analytics_pageviews(id,session_id,visitor_id,url_path,created_at) VALUES(?,?,?,?,?)`, "p"+string(rune('0'+i)), sid, "v-"+sid, "/a", now); err != nil {
 			t.Fatal(err)
 		}
 	}

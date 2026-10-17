@@ -195,16 +195,15 @@ func (s *Store) overviewWindow(ctx context.Context, scope, from, to string) (*Ov
 		Scan(&o.UniqueVisitors); err != nil {
 		return nil, err
 	}
-	// Each visit begun in the window, with all of its events wherever they
-	// fall: a visit crossing the window's end is measured whole, and counted
-	// once, in the window it began.
+	// The visits begun in the window, each with all of its events wherever
+	// they fall: a visit crossing the window's end is measured whole, and
+	// counted once, in the window it began. One row per visit, kept current at
+	// ingest (migration 113).
 	var bounces int
 	var avg sql.NullFloat64
 	if err := db.QueryRowContext(ctx,
-		`SELECT COUNT(1),COALESCE(SUM(v.n=1 AND v.views=1),0),AVG(CASE WHEN v.n>1 THEN v.d END) FROM (
-		   SELECT COUNT(1) n, SUM(x.event_type=1) views, (julianday(MAX(x.created_at))-julianday(MIN(x.created_at)))*86400.0 d
-		   FROM (SELECT DISTINCT +session_id AS session_id FROM analytics_pageviews WHERE entry=1 AND `+where+`) e
-		   JOIN analytics_pageviews x ON x.session_id=e.session_id GROUP BY e.session_id) v`, args...).
+		`SELECT COUNT(1),COALESCE(SUM(events=1 AND views=1),0),AVG(CASE WHEN events>1 THEN (julianday(last_at)-julianday(created_at))*86400.0 END)
+		 FROM analytics_sessions WHERE events>0 AND `+where, args...).
 		Scan(&o.TotalVisits, &bounces, &avg); err != nil {
 		return nil, err
 	}

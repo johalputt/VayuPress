@@ -34,26 +34,38 @@ func (s *Store) BuildDailyRollup(ctx context.Context, day time.Time) error {
 		sessions int64
 	}
 	tot := map[string]totals{}
-	rows, err := s.readDB().QueryContext(ctx, `
-		SELECT COALESCE(domain_id,''), SUM(event_type=1), SUM(entry)
-		FROM analytics_pageviews
-		WHERE created_at>=? AND created_at<?
-		GROUP BY domain_id`, dayKey, dayKey+"~")
-	if err != nil {
-		return err
-	}
-	for rows.Next() {
-		var dom string
-		var v, ss int64
-		if err := rows.Scan(&dom, &v, &ss); err != nil {
-			rows.Close()
+	for _, q := range []struct {
+		sql      string
+		sessions bool
+	}{
+		{`SELECT COALESCE(domain_id,''), COUNT(1) FROM analytics_pageviews
+		  WHERE created_at>=? AND created_at<? AND event_type=1 GROUP BY domain_id`, false},
+		{`SELECT domain_id, COUNT(1) FROM analytics_sessions
+		  WHERE created_at>=? AND created_at<? AND events>0 GROUP BY domain_id`, true},
+	} {
+		rows, err := s.readDB().QueryContext(ctx, q.sql, dayKey, dayKey+"~")
+		if err != nil {
 			return err
 		}
-		tot[dom] = totals{views: v, sessions: ss}
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
+		for rows.Next() {
+			var dom string
+			var n int64
+			if err := rows.Scan(&dom, &n); err != nil {
+				rows.Close()
+				return err
+			}
+			t := tot[dom]
+			if q.sessions {
+				t.sessions = n
+			} else {
+				t.views = n
+			}
+			tot[dom] = t
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
 	}
 
 	// Pass 2 — fold every distinct visitor per domain into its sketch.

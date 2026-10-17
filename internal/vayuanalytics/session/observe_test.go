@@ -20,10 +20,10 @@ func TestAVisitEndsAfterThirtyIdleMinutes(t *testing.T) {
 	a := h.Observe("site", "1.1.1.1", "UA", "en", "/b", true, at(9, 29, 50))
 	b := h.Observe("site", "1.1.1.1", "UA", "en", "/c", true, at(9, 30, 10))
 	c := h.Observe("site", "1.1.1.1", "UA", "en", "/b", true, at(10, 10, 10))
-	if !a.Entry || b.Entry || b.Session != a.Session {
-		t.Errorf("across the half-hour: %+v then %+v, want one visit entered once", a, b)
+	if b.Session != a.Session {
+		t.Errorf("across the half-hour: %+v then %+v, want one visit", a, b)
 	}
-	if !c.Entry || c.Session == a.Session {
+	if c.Session == a.Session {
 		t.Errorf("after 40 idle minutes: %+v, want a new visit", c)
 	}
 }
@@ -34,7 +34,7 @@ func TestAVisitCrossingMidnightIsOneVisit(t *testing.T) {
 	h := NewMasterHasher([]byte("k"))
 	a := h.Observe("site", "1.1.1.1", "UA", "en", "/", true, at(23, 59, 50))
 	b := h.Observe("site", "1.1.1.1", "UA", "en", "/a", true, at(24, 0, 10))
-	if b.Entry || b.Session != a.Session || b.Visitor != a.Visitor {
+	if b.Session != a.Session || b.Visitor != a.Visitor {
 		t.Errorf("past midnight: %+v, want the visit begun at 23:59:50 (%+v)", b, a)
 	}
 	if fresh := h.Visitor("1.1.1.1", "UA", "en", at(24, 0, 10)); fresh == a.Visitor {
@@ -48,7 +48,7 @@ func TestAVisitBelongsToOneSite(t *testing.T) {
 	h := NewMasterHasher([]byte("k"))
 	a := h.Observe("one", "1.1.1.1", "UA", "en", "/", true, at(9, 0, 0))
 	b := h.Observe("two", "1.1.1.1", "UA", "en", "/", true, at(9, 0, 5))
-	if !b.Entry || b.Session == a.Session {
+	if b.Session == a.Session {
 		t.Errorf("the second site: %+v, want its own visit (first: %+v)", b, a)
 	}
 }

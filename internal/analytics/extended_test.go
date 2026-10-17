@@ -24,8 +24,8 @@ func newExtStore(t *testing.T) *Store {
 	}
 	t.Cleanup(func() { db.Close() })
 	ddl := []string{
-		`CREATE TABLE analytics_sessions(id TEXT PRIMARY KEY, visitor_id TEXT NOT NULL, browser TEXT NOT NULL DEFAULT '', os TEXT NOT NULL DEFAULT '', device TEXT NOT NULL DEFAULT '', screen TEXT NOT NULL DEFAULT '', language TEXT NOT NULL DEFAULT '', country TEXT NOT NULL DEFAULT '', region TEXT NOT NULL DEFAULT '', city TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`,
-		`CREATE TABLE analytics_pageviews(id TEXT PRIMARY KEY, session_id TEXT NOT NULL, url_path TEXT NOT NULL, url_query TEXT NOT NULL DEFAULT '', page_title TEXT NOT NULL DEFAULT '', referrer TEXT NOT NULL DEFAULT '', hostname TEXT NOT NULL DEFAULT '', utm_source TEXT NOT NULL DEFAULT '', utm_medium TEXT NOT NULL DEFAULT '', utm_campaign TEXT NOT NULL DEFAULT '', utm_content TEXT NOT NULL DEFAULT '', utm_term TEXT NOT NULL DEFAULT '', event_type INTEGER NOT NULL DEFAULT 1, event_name TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,domain_id TEXT NOT NULL DEFAULT '', visitor_id TEXT NOT NULL DEFAULT '', entry INTEGER NOT NULL DEFAULT 0);`,
+		`CREATE TABLE analytics_sessions(id TEXT PRIMARY KEY, visitor_id TEXT NOT NULL, browser TEXT NOT NULL DEFAULT '', os TEXT NOT NULL DEFAULT '', device TEXT NOT NULL DEFAULT '', screen TEXT NOT NULL DEFAULT '', language TEXT NOT NULL DEFAULT '', country TEXT NOT NULL DEFAULT '', region TEXT NOT NULL DEFAULT '', city TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, domain_id TEXT NOT NULL DEFAULT '', last_at DATETIME, events INTEGER NOT NULL DEFAULT 0, views INTEGER NOT NULL DEFAULT 0, landing TEXT NOT NULL DEFAULT '');`,
+		`CREATE TABLE analytics_pageviews(id TEXT PRIMARY KEY, session_id TEXT NOT NULL, url_path TEXT NOT NULL, url_query TEXT NOT NULL DEFAULT '', page_title TEXT NOT NULL DEFAULT '', referrer TEXT NOT NULL DEFAULT '', hostname TEXT NOT NULL DEFAULT '', utm_source TEXT NOT NULL DEFAULT '', utm_medium TEXT NOT NULL DEFAULT '', utm_campaign TEXT NOT NULL DEFAULT '', utm_content TEXT NOT NULL DEFAULT '', utm_term TEXT NOT NULL DEFAULT '', event_type INTEGER NOT NULL DEFAULT 1, event_name TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,domain_id TEXT NOT NULL DEFAULT '', visitor_id TEXT NOT NULL DEFAULT '');`,
 		`CREATE TABLE analytics_event_data(id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL, property_key TEXT NOT NULL, property_value TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`,
 	}
 	for _, q := range ddl {
@@ -151,18 +151,16 @@ func TestAverageVisitDurationIsActuallyMeasured(t *testing.T) {
 	s := newExtStore(t)
 	ctx := context.Background()
 
-	// One visitor, two pageviews five minutes apart — the same session, because
-	// sessions bucket on a 30-minute window.
-	if err := s.Collect(ctx, CollectRequest{URL: "/", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome", ""); err != nil {
-		t.Fatalf("collect: %v", err)
-	}
-	if err := s.Collect(ctx, CollectRequest{URL: "/post", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome", ""); err != nil {
-		t.Fatalf("collect: %v", err)
-	}
-	// Backdate the first pageview so the session spans a measurable stretch.
-	if _, err := s.db.ExecContext(ctx,
-		`UPDATE analytics_pageviews SET created_at=datetime(created_at,'-300 seconds') WHERE url_path='/'`); err != nil {
-		t.Fatalf("backdate: %v", err)
+	// One visitor, two pageviews five minutes apart: one visit.
+	t0 := time.Now().UTC().Add(-time.Hour)
+	for _, v := range []struct {
+		at   time.Time
+		path string
+	}{{t0, "/"}, {t0.Add(300 * time.Second), "/post"}} {
+		s.now = func() time.Time { return v.at }
+		if err := s.Collect(ctx, CollectRequest{URL: v.path, Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome", ""); err != nil {
+			t.Fatalf("collect: %v", err)
+		}
 	}
 
 	ov, err := s.OverviewSince(ctx, 14)

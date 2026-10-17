@@ -11,10 +11,10 @@ import (
 	vasession "github.com/johalputt/vayupress/internal/vayuanalytics/session"
 )
 
-// The accuracy contract (row 5, step 0.3; the fixture and the figures are
-// plans/vayupress/analytics-shield/ACCURACY.md): a day of known events through
-// the ingest path, and the report each definition must give. One assertion per
-// figure, so a failure names the rule it broke.
+// The accuracy contract: a day of known events through the ingest path, and
+// the report each definition in docs/ANALYTICS.md must give for it. The
+// fixture is contractStore below, one event per line with the rule it pins
+// beside it. One assertion per figure, so a failure names the rule it broke.
 //
 // Each of 3.18.8's definitions, put back, fails it: visits cut at fixed
 // half-hours (6, not 5), a site's visitors counted as its visits (5, not 3),
@@ -54,16 +54,16 @@ func contractStore(t *testing.T) (*Store, time.Time) {
 		}
 	}
 	self := "https://site.test/"
-	collect(9, 0, 0, r1, "s1", "/", "https://www.google.com/search?q=x", "")
-	collect(9, 4, 0, r1, "s1", "/a", self, "")
-	collect(9, 4, 0, r1, "s1", "/a", self, "") // the same view delivered twice
-	collect(9, 29, 50, r2, "s1", "/b", "", "")
-	collect(9, 30, 10, r2, "s1", "/c", self, "")
-	collect(10, 10, 0, r2, "s1", "/b", "", "")
-	collect(11, 0, 0, r3, "s1", "/a", "https://news.ycombinator.com/item?id=1", "")
-	collect(11, 0, 30, r3, "s1", "/a", "", "signup")
-	collect(23, 59, 50, r1, "s1", "/", "", "")
-	collect(24, 0, 10, r1, "s1", "/a", self, "")
+	collect(9, 0, 0, r1, "s1", "/", "https://www.google.com/search?q=x", "")        // R1 lands from a search
+	collect(9, 4, 0, r1, "s1", "/a", self, "")                                      // the site's own page is no referrer
+	collect(9, 4, 0, r1, "s1", "/a", self, "")                                      // the same view delivered twice: one view
+	collect(9, 29, 50, r2, "s1", "/b", "", "")                                      // R2 lands just before the half-hour
+	collect(9, 30, 10, r2, "s1", "/c", self, "")                                    // just after it: the same visit
+	collect(10, 10, 0, r2, "s1", "/b", "", "")                                      // 40 idle minutes: a new visit, a bounce
+	collect(11, 0, 0, r3, "s1", "/a", "https://news.ycombinator.com/item?id=1", "") // R3 lands from a link
+	collect(11, 0, 30, r3, "s1", "/a", "", "signup")                                // a conversion: not a view, not a bounce
+	collect(23, 59, 50, r1, "s1", "/", "", "")                                      // R1 again, late: a visit of day 1
+	collect(24, 0, 10, r1, "s1", "/a", self, "")                                    // past midnight: the same visit, a view of day 2
 	// Another site on the install: R1 reads it too. It must not reach s1's
 	// figures.
 	collect(9, 10, 0, r1, "s2", "/", "", "")
@@ -114,7 +114,7 @@ func TestTheAccuracyContract(t *testing.T) {
 	}
 
 	landing := map[string]int{}
-	rows, err := s.db.Query(`SELECT url_path, COUNT(1) FROM analytics_pageviews WHERE domain_id='s1' AND entry=1 GROUP BY url_path`)
+	rows, err := s.db.Query(`SELECT landing, COUNT(1) FROM analytics_sessions WHERE domain_id='s1' GROUP BY landing`)
 	if err != nil {
 		t.Fatal(err)
 	}
