@@ -107,6 +107,14 @@ vayupress mail recovery someone@yourdomain.com   # what is enrolled for this mai
 vayupress mail unrecoverable                     # mailboxes with no factor at all
 ```
 
+### Changing your own password
+
+A holder who knows their password changes it in **Mail › Mailbox settings ›
+Password**, with the current one. It is checked under the same per-mailbox
+throttle as a sign-in, and the change runs the pipeline below like any reset:
+every app, device and session on the mailbox is signed out, the browser
+changing it included, and the notice is sent.
+
 ---
 
 ## What a reset actually does
@@ -114,7 +122,7 @@ vayupress mail unrecoverable                     # mailboxes with no factor at a
 Changing only the password is the classic incomplete fix: an attacker who already
 holds an app password keeps their access *through* the victim's recovery, while
 the victim believes they have locked the door. So every reset — self-service,
-administrator, or break-glass — runs one pipeline:
+the holder's own change, administrator, or break-glass — runs one pipeline:
 
 1. Replaces the password hash.
 2. **Revokes every app password** for the mailbox. They are independent
