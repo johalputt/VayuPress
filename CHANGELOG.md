@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.10] — 2026-10-17
+
+A mailbox holder has one name and one picture, on the site and on their mail.
+
 ### Fixed
 
 - **A person has one name, on the site and on their mail.** A mailbox's name
