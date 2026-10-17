@@ -10,8 +10,10 @@
 -- visit began in, instead of being rebuilt from every event of every visit
 -- (a 30-day overview on 426k views: 0.30 s rebuilt, a range read here).
 -- Backfilled from the event rows; sessions recorded before this were cut at
--- fixed half-hours and stay as they were cut. One statement per line, as the
--- runner requires.
+-- fixed half-hours and stay as they were cut.
+-- vayuanalytics_sessions.domain_id: an engagement or vitals row says which
+-- site its page was on, so a site's Performance reads its own; rows before
+-- this are the primary's. One statement per line, as the runner requires.
 ALTER TABLE analytics_pageviews ADD COLUMN visitor_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE analytics_sessions ADD COLUMN domain_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE analytics_sessions ADD COLUMN last_at DATETIME;
@@ -26,5 +28,7 @@ CREATE INDEX IF NOT EXISTS idx_apv_created_session_visitor ON analytics_pageview
 CREATE INDEX IF NOT EXISTS idx_apv_domain_created_visitor ON analytics_pageviews(domain_id, created_at, visitor_id);
 CREATE INDEX IF NOT EXISTS idx_asession_visits ON analytics_sessions(created_at, events, views, last_at);
 CREATE INDEX IF NOT EXISTS idx_asession_domain_visits ON analytics_sessions(domain_id, created_at, events, views, last_at);
+ALTER TABLE vayuanalytics_sessions ADD COLUMN domain_id TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_va_domain_entry ON vayuanalytics_sessions(domain_id, entry_time);
 DROP INDEX IF EXISTS idx_apv_created_session;
 DROP INDEX IF EXISTS idx_apv_domain_created;

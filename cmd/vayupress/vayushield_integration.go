@@ -582,6 +582,7 @@ func (a *App) handleVAEnter(w http.ResponseWriter, r *http.Request) {
 		SessionHash: sess,
 		VisitorHash: visitor,
 		PagePath:    path,
+		DomainID:    a.contentScope(r),
 		Class:       class,
 		Country:     geoFromHeaders(r).Country,
 		ClientType:  clientType,

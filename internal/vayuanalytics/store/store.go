@@ -81,11 +81,15 @@ type EnterInput struct {
 	// Empty falls back to SessionHash so pre-090 callers and tests keep working.
 	VisitorHash string
 	PagePath    string
-	Class       classifier.Result
-	Country     string
-	ClientType  string // human | GoodBot | BadBot | AIAgent | Headless | Unknown
-	BotScore    float64
-	Now         time.Time
+	// DomainID is the site this install served the page for ("" the primary):
+	// resolved from the request by the handler, never read from the beacon,
+	// which anyone can send naming any site.
+	DomainID   string
+	Class      classifier.Result
+	Country    string
+	ClientType string // human | GoodBot | BadBot | AIAgent | Headless | Unknown
+	BotScore   float64
+	Now        time.Time
 	// Real-user Core Web Vitals as reported by the page's PerformanceObserver
 	// (migration 091). Zero means "not reported yet"; the unload beacon
 	// overwrites with MAX semantics, so late INP/CLS still land on the row.
@@ -134,11 +138,11 @@ func recordEnter(ctx context.Context, e execer, in EnterInput) error {
 	}
 	lcp, inp, clsx := clampCWV(in.LCPMs, in.INPMs, in.CLSX100)
 	_, err := e.ExecContext(ctx, `INSERT INTO vayuanalytics_sessions
-(session_hash,visitor_hash,page_path,source_category,source_detail,referrer_domain,referrer_path,entry_time,country_code,client_type,bot_score,is_new_session,lcp_ms,inp_ms,cls_x100)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+(session_hash,visitor_hash,page_path,source_category,source_detail,referrer_domain,referrer_path,entry_time,country_code,client_type,bot_score,is_new_session,lcp_ms,inp_ms,cls_x100,domain_id)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		in.SessionHash, visitor, in.PagePath, string(in.Class.Category), in.Class.Detail,
 		in.Class.ReferrerDomain, in.Class.ReferrerPath, now, in.Country, ct, in.BotScore, isNew,
-		lcp, inp, clsx)
+		lcp, inp, clsx, in.DomainID)
 	return err
 }
 
