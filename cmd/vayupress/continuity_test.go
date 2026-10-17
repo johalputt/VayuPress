@@ -79,8 +79,10 @@ func TestTheContinuityPlanKeepsItsLimits(t *testing.T) {
 		t.Fatalf("docs/CONTINUITY.md is missing — ADR-0152 open decision 7 requires it: %v", err)
 	}
 	doc := string(b)
+	// "no self-service mail export" was the limit until Download all mail
+	// (3.17.99) closed it; what remains is that it needs the server to be up.
 	for _, want := range []string{
-		"no self-service mail export",
+		"Self-service export needs a running server",
 		"It is procedural, not enforced",
 		"has not been rehearsed",
 	} {
