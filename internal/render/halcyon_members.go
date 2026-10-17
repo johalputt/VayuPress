@@ -65,7 +65,10 @@ func halcyonMemberPage(page string, kind MemberPage, cfg theme.HalcyonConfig) st
 	// and are escaped here anyway: this tag is assembled as a string, outside
 	// html/template, so nothing an option ever holds can leave its attribute.
 	face, appearance := template.HTMLEscapeString(cfg.Face), template.HTMLEscapeString(cfg.Appearance)
-	open := `<html lang="en" class="h" data-face="` + face + `" data-size="` + strconv.Itoa(cfg.TextSize) +
+	// data-vp-portal="sections": the account panel's Halcyon view, as every
+	// other Halcyon page has it; without it the panel opened here in its older
+	// look (3cw).
+	open := `<html lang="en" class="h" data-vp-portal="sections" data-face="` + face + `" data-size="` + strconv.Itoa(cfg.TextSize) +
 		`" data-site-face="` + face + `" data-site-size="` + strconv.Itoa(cfg.TextSize) + `" data-appearance="` + appearance + `"`
 	if cfg.Appearance == "light" || cfg.Appearance == "dark" {
 		open += ` data-theme="` + appearance + `"`

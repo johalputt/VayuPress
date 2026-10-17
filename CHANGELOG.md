@@ -8,6 +8,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **The account panel on the account page is the one on every other page.**
+  Opened on the member account page, the panel showed its older layout, the
+  stacked cards and accordions, because that page did not ask for Halcyon's;
+  it does now.
+
 ## [3.18.10] — 2026-10-17
 
 A mailbox holder has one name and one picture, on the site and on their mail.

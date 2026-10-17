@@ -648,6 +648,9 @@ func TestAMemberPageWithTheBarLoadsThePortal(t *testing.T) {
 	if got := HalcyonMemberPage(memberPageFixture, MemberSite); !strings.Contains(got, `src="/static/js/portal.js?v=`) {
 		t.Error("a member page with the site's bar does not load the portal script")
 	}
+	if got := HalcyonMemberPage(memberPageFixture, MemberSite); !strings.Contains(got, `data-vp-portal="sections"`) {
+		t.Error("the member page's account panel would open in its older view, not Halcyon's sections")
+	}
 	if got := HalcyonMemberPage(memberPageFixture, MemberTask); strings.Contains(got, "/static/js/portal.js") {
 		t.Error("a task page, which has no bar, loads the portal script")
 	}
