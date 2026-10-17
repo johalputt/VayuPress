@@ -47,7 +47,19 @@ func (a *App) handleOSScopedAnalytics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	days, label := analyticsPeriod(r)
-	body := a.renderSiteAnalyticsBody(r.Context(), d.ID, d.Host, days, label)
+	// Counted off the request, in the cache the install's Analytics uses: an
+	// exact count of a busy site's visitors over a month reads every view in
+	// it (0.3 s at a million events, 1.1 s for the whole install), and no
+	// console page waits on that.
+	id, host := d.ID, d.Host
+	body, ready := adminDash.get("site-analytics:"+id+":"+strconv.Itoa(days), analyticsFragmentTTL, func(ctx context.Context) string {
+		return a.renderSiteAnalyticsBody(ctx, id, host, days, label)
+	})
+	if !ready {
+		body = string(ui.Overview(ui.OverviewPage{Title: "Visitors", State: ui.Text("Counting the " + label + " for " + host),
+			Actions: osPeriodSelector("/os/d/"+id+"/analytics", days)},
+			ui.Band{Title: "Visitors", Chart: `<p class="table-empty">This is counted in the background; reload in a few seconds.</p>`}))
+	}
 	writeOSHTML(w, r, adminOSLayout(nonce, title, "optimize", cfg, htmpl.HTML(body)))
 }
 
