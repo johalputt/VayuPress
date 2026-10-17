@@ -71,6 +71,10 @@ done < <(printf '%s\n' "$raw" | sort)
 majors=()
 prerelease_majors=()
 major_probe_failed=0
+# The direct modules the proxy could not answer for. Named in the report: one
+# that could not be checked is not one that was found current, and the message
+# used to say nothing at all had been checked while listing goldmark's major.
+unprobed=()
 
 # probe_one asks the proxy whether ONE module path exists, and distinguishes
 # "the proxy says no" from "the proxy could not be reached".
@@ -150,7 +154,7 @@ while IFS= read -r line; do
   [ -n "$mpath" ] || continue
   newer="$(probe_majors "$mpath")"
   if [ "$newer" = "?" ]; then
-    major_probe_failed=1
+    unprobed+=("$mpath")
     continue
   fi
   [ -n "$newer" ] || continue
@@ -276,6 +280,10 @@ fi
 if [ "${major_probe_failed}" -ne 0 ]; then
   echo "⚠ could not enumerate direct modules to probe for new majors — nothing is claimed about them."
   echo "<sub>⚠ The major-version probe could not run, so nothing is claimed either way about newer majors.</sub>" | emit
+elif [ "${#unprobed[@]}" -gt 0 ]; then
+  echo "⚠ ${#unprobed[@]} direct module(s) could not be checked for a newer major (no answer from the module proxy or the source); nothing is claimed about:"
+  printf '  %s\n' "${unprobed[@]}"
+  echo "<sub>⚠ Not checked for a newer major (no answer from the module proxy or the source): $(printf '<code>%s</code> ' "${unprobed[@]}")</sub>" | emit
 fi
 
 # RED only when a DIRECT dependency is behind — that is the actionable signal.
