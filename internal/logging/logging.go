@@ -18,6 +18,7 @@ type LogFields struct {
 	CausationID   string `json:"causation_id,omitempty"`
 	Method        string `json:"method,omitempty"`
 	Path          string `json:"path,omitempty"`
+	Site          string `json:"site,omitempty"`
 	Status        int    `json:"status,omitempty"`
 	LatencyMS     int64  `json:"latency_ms,omitempty"`
 	RemoteAddr    string `json:"remote_addr,omitempty"`

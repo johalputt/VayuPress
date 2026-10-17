@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/auth"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/vayushield/botdb"
 )
@@ -497,6 +498,7 @@ func (a *App) handleAnalyticsCreateFunnel(w http.ResponseWriter, r *http.Request
 		writeAPIError(w, r, 500, "db-error", err.Error(), "")
 		return
 	}
+	dbpkg.AuditLog("analytics.funnel.create", dbpkg.AuditActor(r), id, in.Name)
 	writeJSON(w, r, 201, map[string]string{"id": id, "name": in.Name})
 }
 
@@ -603,6 +605,7 @@ func (a *App) handleAnalyticsCreateGoal(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	a.refreshAnalyticsReports()
+	dbpkg.AuditLog("analytics.goal.create", dbpkg.AuditActor(r), id, in.Kind+" "+in.Target)
 	writeJSON(w, r, 201, map[string]string{"id": id, "name": in.Name})
 }
 
@@ -617,6 +620,7 @@ func (a *App) handleAnalyticsDeleteGoal(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	a.refreshAnalyticsReports()
+	dbpkg.AuditLog("analytics.goal.delete", dbpkg.AuditActor(r), id, "")
 	writeJSON(w, r, 200, map[string]bool{"deleted": true})
 }
 

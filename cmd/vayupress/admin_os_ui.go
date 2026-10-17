@@ -3927,9 +3927,16 @@ func (a *App) handleOSSettingsAPI(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "unknown-setting", "There is no setting called "+strconv.Quote(body.Key), "")
 		return
 	}
+	prev := a.siteSettings.Get(r.Context(), settings.ForPrimary(), body.Key)
 	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{body.Key: body.Value}); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "settings-error", err.Error(), "")
 		return
+	}
+	// Who changed which setting, and when; never the value, because a few
+	// keys hold credentials (tor.space_api_key) and the audit log is read by
+	// everyone who can read the console's activity.
+	if prev != body.Value {
+		dbpkg.AuditLog("settings.set", dbpkg.AuditActor(r), body.Key, "")
 	}
 	a.reloadRenderSettings(r.Context())
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})

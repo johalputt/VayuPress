@@ -7,9 +7,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -233,11 +235,33 @@ func structuredLoggerMiddleware(next http.Handler) http.Handler {
 		logging.LogJSON(logging.LogFields{
 			Level: "info", RequestID: getRequestID(r),
 			CorrelationID: trace.CorrelationID(r.Context()),
-			Method:        r.Method, Path: r.URL.Path,
+			Method:        r.Method, Path: r.URL.Path, Site: logSite(r.Host),
 			Status: ww.Status(), LatencyMS: dur.Milliseconds(),
 			RemoteAddr: ra, UserAgent: ua, Component: "http",
 		})
 	})
+}
+
+// logSite is the host a request was served for, for the request log: an
+// install serving many sites wrote lines no one could tell apart by site. It
+// is the Host the client sent, so it is written only when it has a
+// hostname's shape (letters, digits, dot, hyphen; at most 253), lowercased and
+// without its port; anything else is left out rather than written into a log
+// line someone will read.
+func logSite(host string) string {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	if host == "" || len(host) > 253 {
+		return ""
+	}
+	for i := 0; i < len(host); i++ {
+		c := host[i]
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '.' || c == '-') {
+			return ""
+		}
+	}
+	return strings.ToLower(host)
 }
 
 // routeOf names a served request by the router's pattern for it, after the
