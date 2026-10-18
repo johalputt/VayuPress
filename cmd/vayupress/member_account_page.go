@@ -262,6 +262,11 @@ func (a *App) accountPage(r *http.Request, f accountFacts) string {
 
 	var secs []string
 	index := []string{"profile", "Profile", "plan", "Plan"}
+	// Advertising and claiming an address run in the account panel, which is
+	// served only while membership is on: without it their buttons would do
+	// nothing, so their rows are not drawn.
+	portalJS := string(render.PortalJSLink())
+	portal := portalJS != ""
 
 	// ── Profile ──
 	picker := `<div class="acct-pick" role="group" aria-label="Choose your picture">`
@@ -372,13 +377,13 @@ func (a *App) accountPage(r *http.Request, f accountFacts) string {
 		if a.memberMayTalk() {
 			rows = append(rows, acctRow("", "VayuTalk", acctValue("Encrypted chat", "With anyone who has an address on "+f.mailHost), acctLink("/os/talk", "Open", ""), ""))
 		}
-		if f.bought > 0 {
+		if f.bought > 0 && portal {
 			rows = append(rows, acctRow("", "Bought addresses", acctValue(boughtLabel(f.bought), ""),
 				`<button type="button" class="acct-btn" data-acct-portal="mailbox">Set up</button>`, ""))
 		}
 		secs = append(secs, acctSection("mail", "Mail", "Your own address on "+f.mailHost, rows...))
 		index = append(index, "mail", "Mail")
-	case f.entitled:
+	case f.entitled && portal:
 		// Claiming, and buying a name of one's own, run in the account panel's
 		// mailbox view: one place for the address checks, the terms and the
 		// purchase, rather than a second claim form here.
@@ -439,10 +444,14 @@ func (a *App) accountPage(r *http.Request, f accountFacts) string {
 		}
 		actRows = append(actRows, acctRow("comments", "Comments", html.EscapeString(countOf(n, "comment"))+`<small>`+states+`</small>`, acctOpen("comments", "View", ""), body))
 	}
-	actRows = append(actRows, acctRow("", "Advertising", acctValue("Put your product in front of this site’s readers", ""),
-		`<button type="button" class="acct-btn" data-acct-portal="advertise">Open</button>`, ""))
-	secs = append(secs, acctSection("activity", "Activity", "What you have done here", actRows...))
-	index = append(index, "activity", "Activity")
+	if portal {
+		actRows = append(actRows, acctRow("", "Advertising", acctValue("Put your product in front of this site’s readers", ""),
+			`<button type="button" class="acct-btn" data-acct-portal="advertise">Open</button>`, ""))
+	}
+	if len(actRows) > 0 {
+		secs = append(secs, acctSection("activity", "Activity", "What you have done here", actRows...))
+		index = append(index, "activity", "Activity")
+	}
 
 	var idx strings.Builder
 	for i := 0; i+1 < len(index); i += 2 {
@@ -465,7 +474,7 @@ func (a *App) accountPage(r *http.Request, f accountFacts) string {
 <link rel="stylesheet" href="/theme.css">
 <link rel="stylesheet" href="/static/css/signup.css?v=` + assetVer("css/signup.css") + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
-` + string(render.PortalJSLink()) + `
+` + portalJS + `
 </head>
 <body class="su-body acct-body">
 <form id="acct-form" method="POST" action="/members/account" hidden></form>

@@ -21,6 +21,7 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/members"
+	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/secrets"
 	"github.com/johalputt/vayupress/internal/settings"
 )
@@ -38,6 +39,9 @@ func accountApp(t *testing.T, paid bool) (*App, *members.Member, *http.Cookie) {
 		dbpkg.ClosePools()
 		_ = dbpkg.DB.Close()
 	})
+	// Members sign in while membership is on, and the account panel is served.
+	render.SetMembershipEnabled(true)
+	t.Cleanup(func() { render.SetMembershipEnabled(false) })
 	store := members.New(dbpkg.DB)
 	a := &App{members: store, siteSettings: settings.New(dbpkg.DB)}
 	m, err := store.UpsertScoped(t.Context(), "", "reader@example.com")
@@ -138,6 +142,21 @@ func TestTheAccountPageHasEveryControl(t *testing.T) {
 	css := repoFile(t, "static/css/signup.css")
 	if !strings.Contains(css, ".acct-js .acct-more:not(.is-open) { display: none; }") {
 		t.Error("the rows that open in place are not folded only under the script")
+	}
+}
+
+// Advertising and claiming an address open the account panel, which is
+// served only while membership is on: without it their buttons would do
+// nothing, so they are not drawn.
+func TestPanelOnlyRowsNeedThePanel(t *testing.T) {
+	a, _, c := accountApp(t, false)
+	if page := getAccount(t, a, c, "/members/account"); !strings.Contains(page, `data-acct-portal="advertise"`) || !strings.Contains(page, "/static/js/portal.js") {
+		t.Fatal("with membership on, the page offers no Advertising, or does not load the panel")
+	}
+	render.SetMembershipEnabled(false)
+	page := getAccount(t, a, c, "/members/account")
+	if strings.Contains(page, `data-acct-portal="`) {
+		t.Error("with the panel not served, the page draws buttons that would open it")
 	}
 }
 
