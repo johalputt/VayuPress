@@ -76,6 +76,11 @@ func (a *App) handleMemberMe(w http.ResponseWriter, r *http.Request) {
 	if m := a.resolveMember(r); m != nil {
 		resp["authenticated"] = true
 		resp["member"] = a.memberSnapshot(r, m)
+		// The account panel asks for the rest when it opens; every page view
+		// asks for the snapshot alone.
+		if r.URL.Query().Get("detail") == "1" {
+			resp["account"] = a.accountSnapshot(r, m)
+		}
 	} else if u := a.resolveConsoleUser(r); u != nil {
 		// A VayuOS operator/staff user is signed in (console session) even though
 		// they hold no reader "member" session. Reflect that on the public site so

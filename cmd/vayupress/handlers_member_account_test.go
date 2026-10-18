@@ -8,51 +8,53 @@ import (
 	"testing"
 )
 
-// TestRenderMemberSecurityCard guards the member 2FA card structure: the
-// disabled state must offer a scannable QR + manual key + verify, and the
-// enabled state must offer a code-gated disable (and never re-offer enrolment).
-func TestRenderMemberSecurityCard(t *testing.T) {
-	off := renderMemberSecurityCard(false)
-	for _, want := range []string{"data-totp-card", "data-totp-begin", "data-totp-qr", "data-totp-key", "data-totp-uri", "data-totp-verify", "Off"} {
-		if !strings.Contains(off, want) {
-			t.Errorf("disabled 2FA card missing %q", want)
-		}
-	}
-	on := renderMemberSecurityCard(true)
-	for _, want := range []string{"data-totp-card", "data-totp-disable", "data-totp-code", "On"} {
+// Two-factor opens in place under its row: set-up offers the QR, the key and a
+// code to confirm; once it is on, the row offers only a code-gated way off,
+// never set-up again.
+func TestTwoFactorOpensInPlace(t *testing.T) {
+	on := memberTwoFactorOn()
+	for _, want := range []string{"data-totp-card", "data-totp-begin", "data-totp-qr", "data-totp-key", "data-totp-uri", "data-totp-verify", "data-totp-code"} {
 		if !strings.Contains(on, want) {
-			t.Errorf("enabled 2FA card missing %q", want)
+			t.Errorf("two-factor set-up is missing %q", want)
 		}
 	}
-	if strings.Contains(on, "data-totp-begin") {
-		t.Error("enabled 2FA card should not re-offer enrolment")
+	off := memberTwoFactorOff()
+	for _, want := range []string{"data-totp-card", "data-totp-disable", "data-totp-code"} {
+		if !strings.Contains(off, want) {
+			t.Errorf("turning two-factor off is missing %q", want)
+		}
+	}
+	if strings.Contains(off, "data-totp-begin") {
+		t.Error("with two-factor on, the row offers set-up again")
 	}
 }
 
-// TestMemberAccountInlineJS verifies the inline script carries the nonce, hits
-// exactly the member-scoped endpoints, and contains no backtick (which would
-// prematurely close the Go raw string it lives in).
+// The page's script carries the nonce, talks only to the member endpoints,
+// never writes a response into the page as markup, and holds no backtick (it
+// lives in a Go raw string).
 func TestMemberAccountInlineJS(t *testing.T) {
 	js := memberAccountInlineJS("NONCE123")
 	for _, want := range []string{
 		`nonce="NONCE123"`,
-		"/api/v1/members/totp/begin",
-		"/api/v1/members/totp/verify",
-		"/api/v1/members/totp/disable",
-		"/api/v1/members/mailbox/claim",
+		"/api/v1/members/totp/begin", "/api/v1/members/totp/verify", "/api/v1/members/totp/disable",
+		"/api/v1/members/avatar/choose", "'/api/v1/members/avatar'",
+		"data-acct-open", "data-acct-switch", "window.vpPortalOpen",
 	} {
 		if !strings.Contains(js, want) {
-			t.Errorf("inline JS missing %q", want)
+			t.Errorf("the page's script is missing %q", want)
 		}
 	}
+	if strings.Contains(js, "innerHTML") {
+		t.Error("the page's script writes markup; response data goes in with textContent")
+	}
 	if strings.Contains(js, "`") {
-		t.Error("inline JS must not contain a backtick — it would break the Go raw string")
+		t.Error("the page's script contains a backtick, which ends the Go raw string")
 	}
 }
 
 // TestFreePaidBenefitsFallback checks the benefit lists are never empty (they
-// fall back to sensible defaults when no tiers are configured), so the
-// Free-vs-Premium comparison always renders something useful.
+// fall back to sensible defaults when no tiers are configured), so the free
+// member's Plan row always says what Premium adds.
 func TestFreePaidBenefitsFallback(t *testing.T) {
 	a := &App{} // members == nil → defaults
 	free, paid := a.freePaidBenefits(context.Background())

@@ -34,16 +34,16 @@ const maxMemberReceipts = 24
 // accordion summary line and chip alongside it. All three are empty when the
 // member has never had an order, so the row is not rendered at all — an empty
 // "Receipts" row invites a click that reveals nothing.
-func (a *App) memberReceiptsSection(ctx context.Context, m *members.Member) (body, sub, chip string) {
+func (a *App) memberReceiptsSection(ctx context.Context, m *members.Member) (body string, n int, last string) {
 	if a.payments == nil || a.members == nil || m == nil {
-		return "", "", ""
+		return "", 0, ""
 	}
 	orders, err := a.payments.ListByEmail(ctx, dbpkg.Reader(), m.Email, maxMemberReceipts)
 	if err != nil || len(orders) == 0 {
 		// A failed lookup renders nothing rather than an error card: this is a
 		// secondary panel on a page whose primary job (plan, mail, security) must
 		// still work when the ledger is unavailable.
-		return "", "", ""
+		return "", 0, ""
 	}
 
 	// Paid-post orders carry only a sentinel in tier_slug, so resolve which post
@@ -65,19 +65,12 @@ func (a *App) memberReceiptsSection(ctx context.Context, m *members.Member) (bod
 		}
 	}
 
-	paidCount := 0
 	pending := 0
 	var b strings.Builder
-	b.WriteString(`<section class="ma-card">
-    <h2>Receipts</h2>
-    <p class="ma-hint">Every payment on this address. Quote the reference if you ever need to ask about one.</p>
-    <ul class="ma-rcpts">`)
+	b.WriteString(`<ul class="acct-list">`)
 	for i := range orders {
 		o := orders[i]
-		switch o.Status {
-		case payments.StatusPaid:
-			paidCount++
-		case payments.StatusPending:
+		if o.Status == payments.StatusPending {
 			pending++
 		}
 
@@ -108,34 +101,25 @@ func (a *App) memberReceiptsSection(ctx context.Context, m *members.Member) (bod
 			}
 		}
 		if o.Cadence != "" && o.TierSlug != "" && !strings.HasPrefix(o.TierSlug, "__") {
-			what += ` <span class="ma-rcpt__cad">` + html.EscapeString(o.Cadence) + `</span>`
+			what += `, ` + html.EscapeString(o.Cadence)
 		}
 
-		b.WriteString(`<li class="ma-rcpt">
-      <div class="ma-rcpt__main">
-        <span class="ma-rcpt__what">` + what + `</span>
-        <span class="ma-rcpt__amt">` + html.EscapeString(priceLabel(o.Currency, o.AmountCents)) + `</span>
-      </div>
-      <div class="ma-rcpt__meta">
-        <span>` + html.EscapeString(dateLabel+" "+config.FormatSite(when, "2 Jan 2006")) + `</span>
-        <span class="ma-rcpt__ref"><code>` + html.EscapeString(o.Reference) + `</code></span>
-        ` + receiptStatusChip(o.Status) + `
-      </div>
-    </li>`)
+		amount := priceLabel(o.Currency, o.AmountCents)
+		date := config.FormatSite(when, "2 January 2006")
+		if last == "" && o.Status == payments.StatusPaid {
+			last = "Last: " + date + ", " + amount
+		}
+		b.WriteString(`<li><div class="acct-list__top"><span class="acct-list__where">` + what + `</span>` +
+			`<span class="acct-list__amt">` + html.EscapeString(amount) + `</span></div>` +
+			`<span class="acct-list__meta">` + html.EscapeString(dateLabel+" "+config.FormatSite(when, "2 Jan 2006")) +
+			` · <code>` + html.EscapeString(o.Reference) + `</code> ` + receiptStatusChip(o.Status) + `</span></li>`)
 	}
-	b.WriteString(`</ul>`)
+	b.WriteString(`</ul><p class="acct-more__foot">Quote the reference if you ever need to ask about a payment.`)
 	if pending > 0 {
-		b.WriteString(`<p class="ma-hint">` + countOf(pending, "payment") +
-			` still being confirmed. Nothing more is needed from you unless we've asked.</p>`)
+		b.WriteString(` ` + countOf(pending, "payment") + ` still being confirmed; nothing more is needed from you unless we've asked.`)
 	}
-	b.WriteString(`
-  </section>`)
-
-	sub = countOf(len(orders), "payment")
-	// The chip reports paid count, because that is the number a member is looking
-	// for. maChip's "on" state is reserved for the healthy case.
-	chip = maChip(strconv.Itoa(paidCount)+" paid", paidCount > 0)
-	return b.String(), sub, chip
+	b.WriteString(`</p>`)
+	return b.String(), len(orders), last
 }
 
 // countOf renders "1 payment" / "3 payments". The existing plural() returns only
@@ -172,5 +156,8 @@ func receiptStatusChip(status string) string {
 	if label == "" {
 		return ""
 	}
-	return maChip(label, ok)
+	if ok {
+		return acctState(label, "ok")
+	}
+	return acctState(label, "off")
 }

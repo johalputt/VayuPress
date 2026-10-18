@@ -31,6 +31,7 @@
   --h-lift-2: 0 2px 4px rgba(28, 26, 22, 0.06), 0 30px 70px -18px rgba(28, 26, 22, 0.32);
   --h-ink: #1c1a16; --h-on-ink: #f7f5f0;
   --h-error: #a63a2a; --h-error-line: #b3402f;
+  --h-warn: #8a5a12;
   color-scheme: light;
 }
 /* ── Dusk: warm charcoal, never black ─────────────────────────────────── */
@@ -45,6 +46,7 @@
   --h-lift-2: 0 0 0 1px rgba(255, 244, 225, 0.09), 0 34px 80px -16px rgba(0, 0, 0, 0.75);
   --h-ink: #ece7dd; --h-on-ink: #171614;
   --h-error: #ef8b78; --h-error-line: #ef8b78;
+  --h-warn: #e0b46a;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -59,6 +61,7 @@
     --h-lift-2: 0 0 0 1px rgba(255, 244, 225, 0.09), 0 34px 80px -16px rgba(0, 0, 0, 0.75);
     --h-ink: #ece7dd; --h-on-ink: #171614;
     --h-error: #ef8b78; --h-error-line: #ef8b78;
+    --h-warn: #e0b46a;
     color-scheme: dark;
   }
 }
@@ -145,7 +148,17 @@
 .h .h-name { font: 500 24px/1 var(--h-serif); letter-spacing: -0.012em; color: var(--h-t1); }
 .h .h-name-h { margin: 0; display: flex; }
 .h .h-name { display: inline-flex; align-items: center; gap: 10px; }
-.h .h-logo { width: 28px; height: 28px; flex: none; border-radius: 6px; }
+.h .h-logo { width: 28px; height: 28px; flex: none; border-radius: 6px; transform-origin: 50% 60%; transition: transform 520ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 320ms var(--h-ease); }
+/* The mark comes alive under the pointer (3cy): it lifts, tips and settles
+   with a small overshoot, and casts the accent as a soft light; the name
+   takes the accent with it. Keyboard focus gets the same. */
+.h .h-name { transition: color 240ms var(--h-ease); }
+.h .h-name:hover, .h .h-name:focus-visible { color: var(--h-accent); }
+.h .h-name:hover .h-logo, .h .h-name:focus-visible .h-logo {
+  transform: translateY(-1px) scale(1.16) rotate(-8deg);
+  box-shadow: 0 6px 16px -4px color-mix(in srgb, var(--h-accent) 55%, transparent), 0 0 0 3px var(--h-mark);
+}
+.h .h-name:active .h-logo { transform: scale(1.06) rotate(-4deg); transition-duration: 120ms; }
 /* The author's picture, or their initial on the paper's own tint. */
 .h .h-av { width: 40px; height: 40px; flex: none; border-radius: 50%; object-fit: cover; }
 .h .h-av--i { display: inline-grid; place-items: center; background: var(--h-line); color: var(--h-t2); font: 500 16px/1 var(--h-serif); }
@@ -619,6 +632,8 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .h *, .h *::before, .h *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  /* The mark lights up without moving. */
+  .h .h-name:hover .h-logo, .h .h-name:focus-visible .h-logo, .h .h-name:active .h-logo { transform: none; }
 }
 @media print {
   .h .h-bar, .h .h-foot, .h .h-rail, .h .h-dock, .h .h-trend, .h .h-talk, .h .h-next, .h .vp-ads { display: none !important; }
@@ -644,11 +659,9 @@
 .h .vp-portal-input:focus { border-color: var(--h-t2); box-shadow: 0 0 0 3px var(--h-line-2); }
 .h .vp-portal-avatar { color: var(--h-on-ink); background: var(--h-ink); }
 
-/* The member panel as Halcyon draws a page: paper, a serif name, sections
-   under a small label with hairlines between, plain rows for the places to
-   go, and Halcyon's own buttons. The account view is portal.go's sectioned
-   one (data-vp-portal="sections" on <html>); portal.css's cards, tiles and
-   pills read as a stock dashboard beside a reading page. */
+/* The member panel as Halcyon draws a page: paper, a serif name, hairlines
+   between the lines of the account, and Halcyon's own buttons; portal.css's
+   gradients and glows read as a stock dashboard beside a reading page. */
 .h .vp-portal-overlay { -webkit-backdrop-filter: none; backdrop-filter: none; }
 .h .vp-portal-panel .vp-portal-head { background: none; border-bottom: 1px solid var(--h-line); box-shadow: none; }
 .h .vp-portal-panel .vp-portal-brand span { font: 400 22px/1.2 var(--h-serif); letter-spacing: -0.01em; color: var(--h-t1); }
@@ -668,37 +681,31 @@
   font: 500 14px/1 var(--h-sans); text-decoration: none; white-space: nowrap;
   background: var(--h-ink); color: var(--h-on-ink); box-shadow: none; transform: none; filter: none;
 }
-.h .vp-portal-panel .vp-portal-btn--ghost,
-.h .vp-portal-panel .vp-portal-signout .vp-portal-btn { background: none; color: var(--h-t1); box-shadow: inset 0 0 0 1px var(--h-line-2); }
+.h .vp-portal-panel .vp-portal-btn--ghost { background: none; color: var(--h-t1); box-shadow: inset 0 0 0 1px var(--h-line-2); }
 .h .vp-portal-panel .vp-portal-btn:hover { opacity: 0.88; transform: none; }
-.h .vp-portal-panel .vp-portal-btn--ghost:hover,
-.h .vp-portal-panel .vp-portal-signout .vp-portal-btn:hover { opacity: 1; background: var(--h-hover); }
+.h .vp-portal-panel .vp-portal-btn--ghost:hover { opacity: 1; background: var(--h-hover); }
+/* The account, in Halcyon's voice: the name and the facts in the reading
+   serif, what they are in the sans. */
+.h .vp-me { gap: 16px; padding: 4px 0 24px; }
+.h .vp-me .vp-portal-avatar { width: 56px; height: 56px; font: 400 24px/1 var(--h-serif); }
+.h .vp-me__name { font: 400 26px/1.15 var(--h-serif); letter-spacing: -0.01em; color: var(--h-t1); }
+.h .vp-me__mail { font: 400 13px/1.4 var(--h-sans); color: var(--h-t3); }
+.h .vp-me__main { gap: 10px; margin-bottom: 8px; }
+.h .vp-me__list { margin-top: 18px; border-top-color: var(--h-line); }
+.h .vp-me__list li { border-bottom-color: var(--h-line); }
+.h .vp-me__row { min-height: 56px; padding: 6px 0; color: var(--h-t1); }
+.h .vp-me__row::after { border-color: var(--h-t4); }
+.h .vp-me__row:hover { background: none; }
+.h .vp-me__row:hover .vp-me__k, .h .vp-me__row:hover::after { color: var(--h-accent); border-color: var(--h-accent); }
+.h .vp-me__k { font: 400 16px/1.3 var(--h-serif); }
+.h .vp-me__k small { font: 400 12.5px/1.35 var(--h-sans); color: var(--h-t3); }
+.h .vp-me__v { font: 400 13px/1.2 var(--h-sans); color: var(--h-t2); }
+.h .vp-me__on { color: var(--h-accent); }
+.h .vp-me__warn { color: var(--h-warn); }
+.h .vp-me__out { font: 400 14px/44px var(--h-sans); color: var(--h-t2); text-decoration-color: var(--h-line-2); }
+.h .vp-me__out:hover { color: var(--h-t1); text-decoration-color: currentColor; }
 .h .vp-portal-panel .vp-portal-input { border-radius: 10px; border: 1px solid var(--h-line-2); background: var(--h-canvas); color: var(--h-t1); font: 400 15px/1.4 var(--h-sans); }
 
-.h .vp-sec__id { display: flex; align-items: center; gap: 16px; padding: 4px 0 28px; }
-.h .vp-sec__id .vp-portal-avatar { flex: none; width: 56px; height: 56px; overflow: hidden; font: 400 24px/1 var(--h-serif); }
-.h .vp-sec__id .vp-portal-avatar-img { width: 100%; height: 100%; object-fit: cover; }
-.h .vp-sec__who { min-width: 0; }
-.h .vp-sec__name { margin: 0; font: 400 28px/1.15 var(--h-serif); letter-spacing: -0.012em; color: var(--h-t1); overflow-wrap: anywhere; }
-.h .vp-sec__mail { margin: 6px 0 0; font: 400 14px/1.4 var(--h-sans); color: var(--h-t3); overflow-wrap: anywhere; }
-.h .vp-sec { padding: 24px 0 28px; border-top: 1px solid var(--h-line); }
-.h .vp-sec__label { margin: 0 0 10px; font: 500 12px/1.2 var(--h-sans); letter-spacing: 0.01em; color: var(--h-t3); }
-.h .vp-sec__state { margin: 0; font: 400 22px/1.25 var(--h-serif); color: var(--h-t1); }
-.h .vp-sec__note { margin: 6px 0 0; font: 400 16px/1.55 var(--h-serif); color: var(--h-t2); }
-.h .vp-sec__actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
-.h .vp-sec__rows { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--h-line); }
-.h .vp-sec__rows li { border-bottom: 1px solid var(--h-line); }
-.h .vp-sec__row {
-  position: relative; display: flex; flex-direction: column; gap: 4px; width: 100%;
-  padding: 18px 32px 18px 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer;
-}
-.h .vp-sec__row::after { content: "\2192"; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); font: 400 16px/1 var(--h-sans); color: var(--h-t3); }
-.h .vp-sec__row-t { font: 400 19px/1.3 var(--h-serif); color: var(--h-t1); }
-.h .vp-sec__row-s { font: 400 13px/1.45 var(--h-sans); color: var(--h-t3); }
-.h .vp-sec__row:hover .vp-sec__row-t, .h .vp-sec__row:hover::after { color: var(--h-accent); }
-.h .vp-sec__end { padding-top: 20px; }
-.h .vp-sec__out { padding: 0; border: 0; background: none; cursor: pointer; font: 400 14px/44px var(--h-sans); color: var(--h-t2); text-decoration: underline; text-decoration-color: var(--h-line-2); text-underline-offset: 0.22em; }
-.h .vp-sec__out:hover { color: var(--h-t1); text-decoration-color: currentColor; }
 
 /* The bar once /members/me has named the reader: their picture or initial
    and their name, where Sign in and Subscribe were (portal.go's swap). */
@@ -708,3 +715,7 @@
 .h .vayu-nav-member .vayu-nav-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .h .h-signin.vayu-nav-member { padding: 0 6px; }
 .h .h-signin.vayu-nav-member:hover .vayu-nav-name { color: var(--h-accent); }
+/* The rule above comes after the phone one that hides .h-only-wide, and
+   showed a signed-in reader's name in the phone bar as well as in its menu:
+   the bar ran 59 px past a 320 px screen. */
+@media (max-width: 600px) { .h .h-only-wide.vayu-nav-member { display: none; } }

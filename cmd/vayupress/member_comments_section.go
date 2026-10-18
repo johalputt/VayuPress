@@ -2,7 +2,7 @@
 
 package main
 
-// member_comments_section.go — "Your comments", inline on /members/account.
+// member_comments_section.go — "Comments", opened in place on /members/account.
 //
 // This existed already, but only inside the floating VayuPortal drawer, reached
 // by a button that switches to an in-drawer view — so a member who navigated to
@@ -15,7 +15,6 @@ package main
 import (
 	"context"
 	"html"
-	"strconv"
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/comments"
@@ -31,65 +30,73 @@ const (
 	commentPreviewLen = 180
 )
 
-// memberCommentsSection renders the member's own comments with an honest status
-// for each, plus the accordion summary line and chip. Empty strings when the
-// member has never commented, so no empty row is rendered.
-func (a *App) memberCommentsSection(ctx context.Context, m *members.Member) (body, sub, chip string) {
-	if a.commentStore == nil || m == nil {
-		return "", "", ""
+// memberCommentsSection lists the member's own comments with an honest status
+// for each, and returns their count with how many are live and in review. The
+// list is empty when the member has never commented, so no empty row is drawn.
+func (a *App) memberCommentsSection(ctx context.Context, m *members.Member) (body string, n, live, review int) {
+	list := a.memberOwnComments(ctx, m)
+	if len(list) == 0 {
+		return "", 0, 0, 0
 	}
-	list, err := a.commentStore.ListByEmail(ctx, dbpkg.Reader(), m.Email, maxMemberComments)
-	if err != nil || len(list) == 0 {
-		return "", "", ""
-	}
-
-	live, waiting := 0, 0
 	var b strings.Builder
-	b.WriteString(`<section class="ma-card">
-    <h2>Your comments</h2>
-    <p class="ma-hint">Where you commented, and whether each one is live yet.</p>
-    <ul class="ma-cmts">`)
+	b.WriteString(`<ul class="acct-list">`)
 	for i := range list {
 		c := list[i]
 		switch c.Status {
 		case comments.StatusApproved:
 			live++
 		case comments.StatusPending:
-			waiting++
+			review++
 		}
 
 		// A comment on a deleted post has no slug, so it gets no link rather than a
 		// link to "/" — which would look like the post moved rather than went away.
-		where := `<span class="ma-cmt__where ma-cmt__where--gone">on a post that has since been removed</span>`
+		where := `<span class="acct-list__where">On a post that has since been removed</span>`
 		if c.Slug != "" {
 			title := c.Title
 			if strings.TrimSpace(title) == "" {
 				title = c.Slug
 			}
-			where = `<a class="ma-cmt__where su-link" href="/` + html.EscapeString(c.Slug) +
-				`#comments">on &ldquo;` + html.EscapeString(title) + `&rdquo; &rarr;</a>`
+			where = `<a class="acct-list__where" href="/` + html.EscapeString(c.Slug) +
+				`#comments">On &ldquo;` + html.EscapeString(title) + `&rdquo;</a>`
 		}
 
-		b.WriteString(`<li class="ma-cmt">
-      <div class="ma-cmt__top">
-        <span class="ma-cmt__when">` + html.EscapeString(config.FormatSite(c.CreatedAt, "2 Jan 2006")) + `</span>
-        ` + commentStatusChip(c.Status) + `
-      </div>
-      <p class="ma-cmt__body">` + html.EscapeString(truncateComment(c.Body)) + `</p>
-      ` + where + `
-    </li>`)
+		b.WriteString(`<li><div class="acct-list__top">` + where + commentStatusChip(c.Status) + `</div>` +
+			`<p class="acct-list__body">` + html.EscapeString(truncateComment(c.Body)) + `</p>` +
+			`<span class="acct-list__meta">` + html.EscapeString(config.FormatSite(c.CreatedAt, "2 Jan 2006")) + `</span></li>`)
 	}
 	b.WriteString(`</ul>`)
-	if waiting > 0 {
-		b.WriteString(`<p class="ma-hint">` + countOf(waiting, "comment") +
+	if review > 0 {
+		b.WriteString(`<p class="acct-more__foot">` + countOf(review, "comment") +
 			` awaiting review. Comments are read by a person, so this can take a little while.</p>`)
 	}
-	b.WriteString(`
-  </section>`)
+	return b.String(), len(list), live, review
+}
 
-	sub = countOf(len(list), "comment")
-	chip = maChip(strconv.Itoa(live)+" live", live > 0)
-	return b.String(), sub, chip
+// memberCommentCounts counts the member's comments as the account page lists
+// them; ok is false when they have none.
+func (a *App) memberCommentCounts(ctx context.Context, m *members.Member) (live, review int, ok bool) {
+	list := a.memberOwnComments(ctx, m)
+	for i := range list {
+		switch list[i].Status {
+		case comments.StatusApproved:
+			live++
+		case comments.StatusPending:
+			review++
+		}
+	}
+	return live, review, len(list) > 0
+}
+
+func (a *App) memberOwnComments(ctx context.Context, m *members.Member) []comments.MemberComment {
+	if a.commentStore == nil || m == nil {
+		return nil
+	}
+	list, err := a.commentStore.ListByEmail(ctx, dbpkg.Reader(), m.Email, maxMemberComments)
+	if err != nil {
+		return nil
+	}
+	return list
 }
 
 // commentStatusChip labels a comment's moderation state for its own author.
@@ -103,13 +110,13 @@ func (a *App) memberCommentsSection(ctx context.Context, m *members.Member) (bod
 func commentStatusChip(status string) string {
 	switch status {
 	case comments.StatusApproved:
-		return maChip("Live", true)
+		return acctState("Live", "ok")
 	case comments.StatusPending:
-		return maChip("In review", false)
+		return acctState("In review", "off")
 	case comments.StatusRejected, comments.StatusSpam:
-		return maChip("Not approved", false)
+		return acctState("Not approved", "warn")
 	default:
-		return maChip(status, false)
+		return acctState(status, "off")
 	}
 }
 

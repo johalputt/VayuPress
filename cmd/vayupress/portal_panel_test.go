@@ -108,33 +108,48 @@ func TestPanelSubtreeUsesBorderBox(t *testing.T) {
 	}
 }
 
-// TestAccountViewUsesTheMonetizationGrammar pins that the account view is built
-// from icon · title · subtitle · chip · chevron rows rather than a flat stack of
-// equal-weight buttons, matching the console's Monetization page.
-func TestAccountViewUsesTheMonetizationGrammar(t *testing.T) {
+// The account panel is one view on every theme and every page (3cw: on the
+// account page it opened in an older look, because the view chosen hung on a
+// page attribute one template forgot). It is a summary, not a dashboard: no
+// folded boxes, no chips, one line per fact, each a link to its control.
+func TestTheAccountPanelIsOneSummary(t *testing.T) {
 	js := render.PortalJS
-	for _, want := range []string{
-		"vp-acc__sum", "vp-acc__ic", "vp-acc__title", "vp-acc__sub", "vp-acc__chev", "vp-acc__body",
-		"details class=\"vp-acc\"",
-	} {
-		if !strings.Contains(js, want) {
-			t.Errorf("account view is missing the %q part of the accordion grammar", want)
+	i, j := strings.Index(js, "function viewAccount()"), strings.Index(js, "function loadAccount()")
+	if i < 0 || j < i {
+		t.Fatal("viewAccount and loadAccount not found in the portal script")
+	}
+	view := js[i:j]
+	for _, not := range []string{"<details", "vp-acc", "vp-chip"} {
+		if strings.Contains(view, not) {
+			t.Errorf("the account view still carries %q", not)
 		}
 	}
-	// Native <details> keeps it CSP-safe and JS-free — no click handler to lose.
-	if !strings.Contains(js, "<summary class=\"vp-acc__sum\">") {
-		t.Error("accordion rows must use native <details>/<summary>, so expanding needs no JavaScript")
+	for _, not := range []string{"data-vp-portal') ===", "viewAccountSections"} {
+		if strings.Contains(js, not) {
+			t.Errorf("the portal script still picks an account view by page: %q", not)
+		}
 	}
-
+	for _, want := range []string{
+		"class=\"vp-me__row\"", "/members/account#", "/api/v1/members/me?detail=1",
+		"'Two-factor'", "'Emails'", "'Your comments'", "'VayuTalk'", "/os/talk", "data-vp-logout",
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("the account panel is missing %q", want)
+		}
+	}
 	css := portalCSS(t)
-	for _, want := range []string{".vp-acc__sum", ".vp-acc[open] .vp-acc__chev", "@keyframes vpp-reveal", ".vp-chip"} {
+	for _, want := range []string{".vp-me__row {", ".vp-me__k", ".vp-me__v", ".vp-me__warn", ".vp-portal-body.vp-refresh > *"} {
 		if !strings.Contains(css, want) {
 			t.Errorf("portal.css is missing %q", want)
 		}
 	}
-	// Rows are tap targets too.
-	if !strings.Contains(cssBlock(t, css, ".vp-acc__sum {"), "min-height: 44px") {
-		t.Error("accordion summary rows must be at least 44px tall to be comfortable tap targets")
+	if !strings.Contains(cssBlock(t, css, ".vp-me__row {"), "min-height: 3.4rem") {
+		t.Error("the panel's lines are tap targets and must stay at least 44px tall")
+	}
+	for _, gone := range []string{".vp-acc", ".vp-chip", ".vp-portal-account-id"} {
+		if strings.Contains(css, gone) {
+			t.Errorf("portal.css still styles the retired %s", gone)
+		}
 	}
 }
 

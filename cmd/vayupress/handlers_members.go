@@ -297,14 +297,19 @@ func (a *App) handleMemberLogout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	auth.ClearSessionCookie(w)
-	// Clear with the same security attributes the session cookie was set with so
-	// the deletion reliably targets the original Secure/SameSite cookie.
+	expireMemberCookie(w)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// expireMemberCookie clears the member cookie with the same security attributes
+// it was set with, so the deletion reliably targets the original
+// Secure/SameSite cookie.
+func expireMemberCookie(w http.ResponseWriter) {
 	writeSecureCookie(w, &http.Cookie{
 		Name: memberCookie, Value: "", Path: "/", HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	})
-	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 // =============================================================================
@@ -481,6 +486,10 @@ func (a *App) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 				if err := a.members.ScheduleCancellation(r.Context(), m.ID); err != nil {
 					logging.LogError("stripe", "schedule cancel failed", err.Error())
 				}
+			} else if sub, _ := a.members.ActiveSubscription(r.Context(), m.ID); sub != nil && sub.CancelAtPeriodEnd {
+				// The renewal was restored in Stripe (by the member's "Keep my
+				// plan", or in the Stripe dashboard): the plan renews again here.
+				_ = a.members.ResumeSubscription(r.Context(), m.ID)
 			}
 		}
 	case "customer.subscription.deleted":

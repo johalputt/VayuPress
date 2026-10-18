@@ -65,10 +65,7 @@ func halcyonMemberPage(page string, kind MemberPage, cfg theme.HalcyonConfig) st
 	// and are escaped here anyway: this tag is assembled as a string, outside
 	// html/template, so nothing an option ever holds can leave its attribute.
 	face, appearance := template.HTMLEscapeString(cfg.Face), template.HTMLEscapeString(cfg.Appearance)
-	// data-vp-portal="sections": the account panel's Halcyon view, as every
-	// other Halcyon page has it; without it the panel opened here in its older
-	// look (3cw).
-	open := `<html lang="en" class="h" data-vp-portal="sections" data-face="` + face + `" data-size="` + strconv.Itoa(cfg.TextSize) +
+	open := `<html lang="en" class="h" data-face="` + face + `" data-size="` + strconv.Itoa(cfg.TextSize) +
 		`" data-site-face="` + face + `" data-site-size="` + strconv.Itoa(cfg.TextSize) + `" data-appearance="` + appearance + `"`
 	if cfg.Appearance == "light" || cfg.Appearance == "dark" {
 		open += ` data-theme="` + appearance + `"`
@@ -81,8 +78,12 @@ func halcyonMemberPage(page string, kind MemberPage, cfg theme.HalcyonConfig) st
 		// The site's bar is drawn signed out, for every reader alike, and the
 		// portal script turns it once /api/v1/members/me answers. Without it
 		// a signed-in reader's own account page offered Sign in and Subscribe
-		// under "Hello, <their name>" (3ct).
-		head += string(PortalJSLink())
+		// under "Hello, <their name>" (3ct). The account page loads it under
+		// every theme (its Advertising and Choose your address open the
+		// panel), and is not given it twice.
+		if !strings.Contains(page, "/static/js/portal.js") {
+			head += string(PortalJSLink())
+		}
 	}
 	if loc := signupCSSLinkRe.FindStringIndex(page); loc != nil {
 		page = page[:loc[1]] + head + page[loc[1]:]

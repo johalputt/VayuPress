@@ -101,7 +101,7 @@ func groupThousands(n int) string {
 
 const halcyonShared = `
 {{define "start"}}<!DOCTYPE html>
-<html lang="en" class="h" data-vp-portal="sections" data-face="{{.Cfg.Face}}" data-size="{{.Cfg.TextSize}}" data-site-face="{{.Cfg.Face}}" data-site-size="{{.Cfg.TextSize}}" data-appearance="{{.Cfg.Appearance}}"{{if eq .Cfg.Appearance "light"}} data-theme="light"{{else if eq .Cfg.Appearance "dark"}} data-theme="dark"{{end}}{{if .Cfg.Selection}} data-selection{{end}}><head>
+<html lang="en" class="h" data-face="{{.Cfg.Face}}" data-size="{{.Cfg.TextSize}}" data-site-face="{{.Cfg.Face}}" data-site-size="{{.Cfg.TextSize}}" data-appearance="{{.Cfg.Appearance}}"{{if eq .Cfg.Appearance "light"}} data-theme="light"{{else if eq .Cfg.Appearance "dark"}} data-theme="dark"{{end}}{{if .Cfg.Selection}} data-selection{{end}}><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.PageTitle}}</title>
 {{if .Description}}<meta name="description" content="{{.Description}}">{{end}}

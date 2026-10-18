@@ -374,9 +374,10 @@ test.describe("Halcyon", () => {
   // in the phone menu, and no newsletter form asks them to join. The page is
   // cached for everyone, so it is drawn signed out and turned by the portal
   // once /members/me answers (stubbed: this run has no member session). The
-  // account panel is Halcyon's sectioned view, and every button's label sits
-  // in the middle of its button. One stage per rule.
-  test("a signed-in reader is named in the bar, and the account panel is Halcyon's", async ({ page }) => {
+  // account panel is a summary: one line per fact, each a way to its control,
+  // filled in from /members/me?detail=1 once it opens; and every button's
+  // label sits in the middle of its button. One stage per rule.
+  test("a signed-in reader is named in the bar, and the account panel is a summary", async ({ page }) => {
     await page.goto("/os");
     await page.waitForFunction(() => /(?:^|;\s*)vp_csrf=/.test(document.cookie));
     const setMembership = (on) => page.evaluate(async (v) => {
@@ -387,7 +388,14 @@ test.describe("Halcyon", () => {
     expect(await setMembership(true)).toBe(200);
     try {
       const me = { enabled: true, authenticated: false, member: null };
-      await page.route("**/api/v1/members/me", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(me) }));
+      const facts = {
+        plan: { name: "Free", paid: false }, mailbox: "asha@example.com", twofa: false, talk: true,
+        emails: { replies: true, newsletter: false }, comments: { live: 3, review: 1 },
+      };
+      await page.route(/\/api\/v1\/members\/me(\?.*)?$/, (route) => {
+        const detail = new URL(route.request().url()).searchParams.get("detail") === "1";
+        return route.fulfill({ contentType: "application/json", body: JSON.stringify(detail && me.authenticated ? { ...me, account: facts } : me) });
+      });
       const bar = page.locator(".h-bar");
 
       // A settings change marks the cached pages stale, and the first request
@@ -413,6 +421,9 @@ test.describe("Halcyon", () => {
       await expect(bar.locator("[data-vp-signin] .vayu-nav-initial"), "with their initial for a picture").toHaveText("A");
       await expect(page.locator("[data-vp-signup]"), "a signed-in reader is asked to subscribe").toHaveCount(0);
       await expect(page.locator("#h-menu [data-vp-signin]"), "the phone menu names the reader").toContainText("Asha Rao");
+      await page.setViewportSize({ width: 320, height: 700 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), "a signed-in reader's bar runs off a phone").toBeLessThanOrEqual(0);
+      await page.setViewportSize({ width: 1280, height: 720 });
       await page.goto("/");
       await expect(page.locator(".h-bar .vayu-nav-name")).toHaveText("Asha Rao");
       await expect(page.locator(".h-letter"), "Home asks a member to subscribe").toHaveCount(0);
@@ -420,10 +431,13 @@ test.describe("Halcyon", () => {
 
       await bar.locator("[data-vp-signin]").click();
       const panel = page.locator(".vp-portal-panel");
-      await expect(panel.locator(".vp-sec__name")).toHaveText("Asha Rao");
-      await expect(panel.locator(".vp-sec__label")).toHaveText(["Your plan"]);
+      await expect(panel.locator(".vp-me__name")).toHaveText("Asha Rao");
       await expect(panel.locator(".vp-portal-brand"), "the panel is headed by the site").toHaveText("VayuPress");
-      await expect(panel.locator(".vp-sec__state")).toHaveText(["Free"]);
+      await expect(panel.locator(".vp-me__main .vp-portal-btn")).toHaveText(["See plans", "Account settings"]);
+      await expect(panel.locator(".vp-me__v"), "each line says how it stands now").toHaveText(
+        ["Free", "asha@example.com", "", "Off", "Replies", "3 live · 1 in review", ""]);
+      await expect(panel.locator(".vp-me__row[href='/os/talk']"), "a mailbox holder is offered VayuTalk").toHaveCount(1);
+      await expect(panel.locator(".vp-me__row[href='/members/account#security'] .vp-me__warn"), "two-factor off reads as a warning").toHaveText("Off");
       await expect(panel.locator("details"), "the account folded into boxes").toHaveCount(0);
       const off = await panel.locator(".vp-portal-btn").evaluateAll((bs) => bs.map((b) => {
         const r = document.createRange(); r.selectNodeContents(b);
@@ -432,6 +446,7 @@ test.describe("Halcyon", () => {
       }).filter((x) => x.off > 1.5));
       expect(off, "a button's label is not in its middle").toEqual([]);
     } finally {
+      await page.unroute(/\/api\/v1\/members\/me(\?.*)?$/);
       expect(await setMembership(false)).toBe(200);
     }
   });
@@ -559,6 +574,29 @@ test.describe("Halcyon", () => {
     await page.locator(".h-byline [data-h-open='h-reader']").click();
     const anim = await page.locator("#h-reader").evaluate((e) => getComputedStyle(e).animationName);
     expect(anim).toBe("none");
+  });
+
+  // The site's mark comes alive under the pointer (3cy): it lifts and tips,
+  // and the name takes the accent; for a reader who asked for less motion it
+  // only lights up.
+  test("the site's logo comes alive on hover, and holds still for less motion", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/halcyon-long");
+    const name = page.locator(".h-bar .h-name"), logo = name.locator(".h-logo");
+    const color = () => name.evaluate((e) => getComputedStyle(e).color);
+    expect(await logo.evaluate((e) => getComputedStyle(e).transform), "at rest the mark is still").toBe("none");
+    const ink = await color();
+    await name.hover();
+    await expect.poll(() => logo.evaluate((e) => new DOMMatrix(getComputedStyle(e).transform).a), { message: "the mark grows" }).toBeGreaterThan(1.05);
+    await expect.poll(color, { message: "the name takes the accent" }).not.toBe(ink);
+    await page.mouse.move(0, 600);
+    await expect.poll(() => logo.evaluate((e) => getComputedStyle(e).transform), { message: "and settles back" }).toBe("none");
+
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.reload();
+    await name.hover();
+    expect(await logo.evaluate((e) => getComputedStyle(e).transform), "with less motion the mark does not move").toBe("none");
+    expect(await logo.evaluate((e) => getComputedStyle(e).boxShadow), "but it still lights up").not.toBe("none");
   });
 
   test("asks nothing of any other host", async ({ page, baseURL }) => {

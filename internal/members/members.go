@@ -273,14 +273,29 @@ func (s *Store) RevokeSessions(ctx context.Context, email string) (int, error) {
 var ErrVerified = errors.New("member is verified")
 
 func (s *Store) Delete(ctx context.Context, email string) error {
-	email = strings.TrimSpace(strings.ToLower(email))
-	m, err := s.Get(ctx, email)
+	m, err := s.Get(ctx, strings.TrimSpace(strings.ToLower(email)))
 	if err != nil {
 		return fmt.Errorf("no such member")
 	}
 	if m.VerifiedAt != nil {
 		return ErrVerified
 	}
+	return s.remove(ctx, m)
+}
+
+// Erase removes a member at their own request, verified or not: the account
+// page's "Delete account". It is Delete without the verified guard, because
+// the guard exists to stop an operator's bulk clean-up taking real people,
+// and here the real person is the one asking.
+func (s *Store) Erase(ctx context.Context, email string) error {
+	m, err := s.Get(ctx, strings.TrimSpace(strings.ToLower(email)))
+	if err != nil {
+		return fmt.Errorf("no such member")
+	}
+	return s.remove(ctx, m)
+}
+
+func (s *Store) remove(ctx context.Context, m *Member) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

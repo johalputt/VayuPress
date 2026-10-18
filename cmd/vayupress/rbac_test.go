@@ -3,6 +3,7 @@
 package main
 
 import (
+	"github.com/johalputt/vayupress/internal/config"
 	"testing"
 
 	"github.com/johalputt/vayupress/internal/users"
@@ -153,6 +154,8 @@ func TestMailOnlyPathAllowed(t *testing.T) {
 		"/os/logout", "/os/static/css/vayuos.css",
 		// The ADR-0144 recovery endpoints a confined mailbox genuinely needs.
 		"/os/api/vayuos/mail/recovery/status", "/os/api/vayuos/mail/recovery/codes",
+		// VayuTalk, the chat that comes with a mailbox (3cx).
+		"/os/talk", "/os/talk/stream", "/os/talk/send",
 	}
 	for _, p := range allowed {
 		if !mailOnlyPathAllowed(p) {
@@ -166,11 +169,20 @@ func TestMailOnlyPathAllowed(t *testing.T) {
 		// a mailbox, not staff: the health snapshot names every component and its
 		// detail string, and the security page is admin-only in the VayuMail nav.
 		"/os/api/vayuos/health", "/os/api/vayuos/security/check",
+		// A sibling of /os/talk is not /os/talk.
+		"/os/talking",
 	}
 	for _, p := range denied {
 		if mailOnlyPathAllowed(p) {
 			t.Errorf("mailOnlyPathAllowed(%q) = true, want false (mail-only must be confined)", p)
 		}
+	}
+	// In the Tor world the chat identity is the install's one anonymous
+	// handle, not the holder's own address: a mailbox holder does not chat.
+	config.Cfg.OnionMode = true
+	t.Cleanup(func() { config.Cfg.OnionMode = false })
+	if mailOnlyPathAllowed("/os/talk") {
+		t.Error("in the Tor world a mailbox holder reaches VayuTalk")
 	}
 }
 

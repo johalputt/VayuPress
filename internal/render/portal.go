@@ -37,27 +37,9 @@ const PortalJS = `(function () {
   // A drawn X rather than the &times; glyph, which sits off-centre in many fonts
   // and made the button look misaligned at small sizes.
   var ICON_CLOSE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>';
-  var ICON_CHEV = '<svg class="vp-acc__chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>';
-
-  // acc builds one Monetization-style accordion row: an icon tile, a title with a
-  // one-line subtitle, a status chip, and a rotating chevron; the body reveals on
-  // expand. Native <details>, so it needs no JavaScript and stays CSP-safe.
-  function acc(icon, title, sub, chip, body, open) {
-    return '<details class="vp-acc"' + (open ? ' open' : '') + '>' +
-      '<summary class="vp-acc__sum">' +
-      '<span class="vp-acc__ic" aria-hidden="true">' + icon + '</span>' +
-      '<span class="vp-acc__head"><span class="vp-acc__title">' + esc(title) + '</span>' +
-      '<span class="vp-acc__sub">' + esc(sub) + '</span></span>' +
-      (chip || '') + ICON_CHEV +
-      '</summary>' +
-      '<div class="vp-acc__body">' + body + '</div></details>';
-  }
-
-  function chip(label, on) {
-    return '<span class="vp-chip' + (on ? ' vp-chip--on' : '') + '">' + esc(label) + '</span>';
-  }
-
-  var state = { enabled: false, vayumail: false, auth: false, member: null };
+  // account: the account panel's facts (/members/me?detail=1), read each time
+  // the panel opens rather than on every page view.
+  var state = { enabled: false, vayumail: false, auth: false, member: null, account: null };
   var view = 'signup';
   var lastFocus = null;
   var trigger, overlay, panel, body;
@@ -148,126 +130,92 @@ const PortalJS = `(function () {
       '<div class="vp-portal-msg" aria-live="polite"></div>';
   }
 
+  // The account panel: who you are, the one thing most members open it for,
+  // then one line per fact about the account, each a way to its control. The
+  // facts arrive a moment after the panel opens (loadAccount); until then the
+  // lines stand without their values rather than the panel waiting.
   function viewAccount() {
     var m = state.member || {};
     var name = m.name || 'there';
-    var initial = (name.charAt(0) || '?').toUpperCase();
-    var plan = m.paid ? 'Premium member' : 'Free member';
-    var mailBtn = '';
-    if (m.mail) {
-      mailBtn = m.mail.console
-        ? '<a class="vp-portal-btn" href="/os">Open VayuOS console</a>'
-        : '<a class="vp-portal-btn" href="/os/vayumail/inbox">Open VayuMail</a>';
-    }
-    var avatarInner = m.avatar
+    var pic = m.avatar
       ? '<img class="vp-portal-avatar-img" src="' + esc(m.avatar) + '" alt="">'
-      : esc(initial);
-    // A console session (the owner, staff, a mailbox holder) is signed in on
-    // the site too, and its name in the bar once linked straight to the
-    // console: there was no way to sign out from the site at all.
-    if (m.console_url) {
-      return '<div class="vp-portal-account-id">' +
-        '<div class="vp-portal-avatar">' + avatarInner + '</div>' +
-        '<div class="vp-portal-idtext"><div class="vp-portal-acc-name">' + esc(name) + '</div>' +
-        '<div class="vp-portal-acc-mail">' + esc(m.email || '') + '</div></div></div>' +
-        '<div class="vp-portal-actions"><a class="vp-portal-btn" href="' + esc(m.console_url) + '">Open VayuOS</a></div>' +
-        '<div class="vp-portal-signout">' +
-        '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-logout>Sign out</button>' +
-        '</div>';
-    }
-    if (document.documentElement.getAttribute('data-vp-portal') === 'sections') {
-      return viewAccountSections(m, name, avatarInner, mailBtn);
-    }
-
-    // Identity first, then one collapsed row per area of the account. The previous
-    // view was a flat stack of seven equal-weight buttons, which said nothing about
-    // what each did or what state it was in; these rows carry the same icon ·
-    // title · subtitle · status-chip grammar as the console, so the panel can be
-    // read at a glance instead of scanned.
-    var rows = acc('&#128142;', 'Membership', plan, chip(m.paid ? 'Active' : 'Free', m.paid),
-      '<p class="vp-acc__note">' + (m.paid
-        ? 'Your premium access is active. Billing dates and payment history live on your account page.'
-        : 'You are on the free plan. Premium unlocks members-only posts and a private mail address.') + '</p>' +
-      '<div class="vp-portal-actions">' +
-      // One primary action per row. For a free member that is "See plans"; managing
-      // the account is the secondary path, so it stays a ghost button rather than
-      // competing with it as a second filled button.
-      '<a class="vp-portal-btn vp-portal-btn--ghost" href="/members/account">Manage account</a>' +
-      (m.paid ? '' : '<a class="vp-portal-btn" href="/pricing">See plans</a>') +
-      '</div>', true);
-
-    if (m.mail || m.paid) {
-      var mailSub = m.mail ? 'Mailbox ready' : 'Included with your plan';
-      rows += acc('&#9993;', 'VayuMail', mailSub, chip(m.mail ? 'Ready' : 'Claim', !!m.mail),
-        '<p class="vp-acc__note">' + (m.mail
-          ? 'Your private address is live. Open it here or in the console.'
-          : 'Your plan includes a private address on this domain — pick a name to claim it.') + '</p>' +
-        '<div class="vp-portal-actions">' + mailBtn +
-        '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-go="mailbox">Your mailbox</button>' +
-        '</div>');
-    }
-
-    rows += acc('&#128172;', 'Your comments', 'Replies and their status', '',
-      '<p class="vp-acc__note">See where you commented and whether each one is live or still awaiting review.</p>' +
-      '<div class="vp-portal-actions">' +
-      '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-go="activity">Open your comments</button>' +
-      '</div>');
-
-    rows += acc('&#128227;', 'Advertise here', 'Reach this audience', '',
-      '<p class="vp-acc__note">Book a slot on this site and manage your creatives.</p>' +
-      '<div class="vp-portal-actions">' +
-      '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-go="advertise">Open advertising</button>' +
-      '</div>');
-
-    return '<div class="vp-portal-account-id">' +
-      '<div class="vp-portal-avatar">' + avatarInner + '</div>' +
-      '<div class="vp-portal-idtext"><div class="vp-portal-acc-name">' + esc(name) + '</div>' +
-      '<div class="vp-portal-acc-mail">' + esc(m.email || '') + '</div></div>' +
-      chip(m.paid ? 'Premium' : 'Free', m.paid) + '</div>' +
-      '<div class="vp-acc-stack">' + rows + '</div>' +
-      // Sign out sits last and quiet: it is the one action you never want to hit by
-      // accident, so it is separated from the rows above rather than sharing weight.
-      '<div class="vp-portal-signout">' +
-      '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-logout>Sign out</button>' +
-      '</div>' +
+      : esc((name.charAt(0) || '?').toUpperCase());
+    var out = '<div class="vp-me"><div class="vp-portal-avatar">' + pic + '</div>' +
+      '<div class="vp-me__who"><h2 class="vp-me__name">' + esc(name) + '</h2>' +
+      (m.email ? '<p class="vp-me__mail">' + esc(m.email) + '</p>' : '') + '</div></div>';
+    var end = '<div class="vp-me__end"><button type="button" class="vp-me__out" data-vp-logout>Sign out</button></div>' +
       '<div class="vp-portal-msg" aria-live="polite"></div>';
+    // A console session (the owner, staff, a mailbox holder) is signed in on
+    // the site too: its way on is the console, and Sign out is here.
+    if (m.console_url) {
+      return out + '<div class="vp-me__main"><a class="vp-portal-btn" href="' + esc(m.console_url) + '">Open VayuOS</a></div>' + end;
+    }
+    var a = state.account || {};
+    var primary = '';
+    if (m.mail) {
+      primary = m.mail.console ? '<a class="vp-portal-btn" href="/os/">Open VayuOS</a>'
+        : '<a class="vp-portal-btn" href="/os/vayumail/inbox">Open VayuMail</a>';
+    } else if (!m.paid) {
+      primary = '<a class="vp-portal-btn" href="/pricing">See plans</a>';
+    }
+    out += '<div class="vp-me__main">' + primary +
+      '<a class="vp-portal-btn vp-portal-btn--ghost" href="/members/account">Account settings</a></div>';
+
+    // row: a link to the account page's section, or (go) one of the panel's
+    // own views. v is markup the caller has escaped.
+    // to is a section of the account page ("#plan") or a page of its own
+    // ("/os/talk").
+    var row = function (to, go, k, v, sub) {
+      var inner = '<span class="vp-me__k">' + esc(k) + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span>' +
+        '<span class="vp-me__v">' + (v || '') + '</span>';
+      var href = to.charAt(0) === '/' ? to : '/members/account#' + to;
+      return '<li>' + (go
+        ? '<button type="button" class="vp-me__row" data-vp-go="' + go + '">' + inner + '</button>'
+        : '<a class="vp-me__row" href="' + href + '">' + inner + '</a>') + '</li>';
+    };
+    var plan = a.plan || {};
+    var rows = row('plan', '', 'Plan', esc((plan.name || (m.paid ? 'Premium' : 'Free')) + (plan.when ? ' · ' + plan.when : '')), '');
+    if (a.mailbox) {
+      rows += row('mail', '', 'Mail', esc(a.mailbox), '');
+      if (a.talk) { rows += row('/os/talk', '', 'VayuTalk', '', 'Encrypted chat'); }
+    } else if (a.mail_claim) {
+      rows += row('', 'mailbox', 'Mail', esc('Choose your address'), 'Included with your plan');
+    }
+    if (typeof a.twofa === 'boolean') {
+      rows += row('security', '', 'Two-factor', a.twofa ? '<span class="vp-me__on">On</span>' : '<span class="vp-me__warn">Off</span>',
+        a.twofa ? '' : 'Turn it on for your mailbox');
+    }
+    if (a.emails) {
+      var on = [];
+      if (a.emails.replies) { on.push('Replies'); }
+      if (a.emails.newsletter) { on.push('Newsletter'); }
+      rows += row('emails', '', 'Emails', esc(on.length ? on.join(', ') : 'None'), '');
+    }
+    if (a.comments) {
+      rows += row('', 'activity', 'Your comments', esc(a.comments.live + ' live' + (a.comments.review ? ' · ' + a.comments.review + ' in review' : '')), '');
+    }
+    rows += row('', 'advertise', 'Advertise here', '', 'Reach this site’s readers');
+    return out + '<ul class="vp-me__list">' + rows + '</ul>' + end;
   }
 
-  // The account as a theme that draws pages rather than dashboards asks for
-  // it (data-vp-portal="sections" on <html>, Halcyon's): who you are, then
-  // what your membership is and the one thing to do next, then the places to
-  // go as plain rows. No accordions: four closed boxes hid the only facts
-  // the panel exists to give, and their chips, icons and chevrons were the
-  // dashboard furniture this view leaves out.
-  function viewAccountSections(m, name, avatarInner, mailBtn) {
-    var sec = function (label, state, note, actions) {
-      return '<section class="vp-sec"><h3 class="vp-sec__label">' + label + '</h3>' +
-        '<p class="vp-sec__state">' + state + '</p><p class="vp-sec__note">' + note + '</p>' +
-        '<div class="vp-sec__actions">' + actions + '</div></section>';
-    };
-    var row = function (go, title, sub) {
-      return '<li><button type="button" class="vp-sec__row" data-vp-go="' + go + '">' +
-        '<span class="vp-sec__row-t">' + title + '</span><span class="vp-sec__row-s">' + sub + '</span></button></li>';
-    };
-    var out = '<div class="vp-sec__id"><div class="vp-portal-avatar">' + avatarInner + '</div>' +
-      '<div class="vp-sec__who"><h2 class="vp-sec__name">' + esc(name) + '</h2>' +
-      (m.email ? '<p class="vp-sec__mail">' + esc(m.email) + '</p>' : '') + '</div></div>';
-    out += sec('Your plan', m.paid ? 'Premium' : 'Free',
-      m.paid ? 'Premium is active. Billing dates and payments are on your account page.'
-        : 'Premium adds members-only posts and a private mail address.',
-      (m.paid ? '' : '<a class="vp-portal-btn" href="/pricing">See plans</a>') +
-      '<a class="vp-portal-btn vp-portal-btn--ghost" href="/members/account">Manage account</a>');
-    if (m.mail || m.paid) {
-      out += sec('Mail', m.mail ? 'Your mailbox is ready' : 'Included with Premium',
-        m.mail ? 'Your private address on this site.' : 'Pick a name to claim your private address on this site.',
-        m.mail ? mailBtn + '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-go="mailbox">Mailbox settings</button>'
-          : '<button type="button" class="vp-portal-btn" data-vp-go="mailbox">Claim your address</button>');
-    }
-    out += '<ul class="vp-sec__rows">' +
-      row('activity', 'Your comments', 'Where you commented, and what still awaits review') +
-      row('advertise', 'Advertise here', 'Put your product in front of this site’s readers') + '</ul>';
-    return out + '<div class="vp-sec__end"><button type="button" class="vp-sec__out" data-vp-logout>Sign out</button></div>' +
-      '<div class="vp-portal-msg" aria-live="polite"></div>';
+  // showsAccount: a signed-in reader sees the account unless one of its own
+  // views was asked for.
+  function showsAccount() {
+    return state.auth && view !== 'activity' && view !== 'mailbox' && view !== 'advertise';
+  }
+
+  function loadAccount() {
+    if (state.account || state.accountLoading || !state.member || state.member.console_url) { return; }
+    state.accountLoading = true;
+    fetch('/api/v1/members/me?detail=1', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        state.accountLoading = false;
+        if (!d || !d.account) { return; }
+        state.account = d.account;
+        if (showsAccount() && overlay.classList.contains('is-open')) { render(true); }
+      })
+      .catch(function () { state.accountLoading = false; });
   }
 
   // Activity view: the member's own comments with their moderation status, so a
@@ -575,17 +523,24 @@ const PortalJS = `(function () {
     }
   }
 
-  function render() {
+  function render(refresh) {
     if (!body) { return; }
     var content;
-    if (state.auth) { content = (view === 'activity') ? viewActivity() : (view === 'mailbox') ? viewMailbox() : (view === 'advertise') ? viewAdvertise() : viewAccount(); }
+    if (showsAccount()) { content = viewAccount(); }
+    else if (state.auth) { content = (view === 'activity') ? viewActivity() : (view === 'mailbox') ? viewMailbox() : viewAdvertise(); }
     else if (view === 'signin') { content = viewSignin(); }
     else if (view === 'vayumail') { content = viewVayuMail(false); }
     else { content = viewSignup(); }
 
+    // A refresh fills in facts under a reader who may already be moving
+    // through the panel: it keeps their place rather than jumping to the top.
+    var at = refresh && document.activeElement && body.contains(document.activeElement)
+      ? Array.prototype.indexOf.call(body.querySelectorAll('a, button'), document.activeElement) : -1;
+    body.classList.toggle('vp-refresh', !!refresh);
     body.innerHTML = content;
     wire();
-    var first = body.querySelector('input, a, button:not(.vp-portal-close)');
+    var focusable = body.querySelectorAll('a, button');
+    var first = at >= 0 ? focusable[at] : (refresh ? null : body.querySelector('input, a, button:not(.vp-portal-close)'));
     if (first) { try { first.focus(); } catch (e) {} }
   }
 
@@ -654,6 +609,13 @@ const PortalJS = `(function () {
       });
     }
 
+    if (showsAccount()) { loadAccount(); }
+    // On the account page itself a line of the panel leads down the page: the
+    // panel steps aside rather than staying over what it pointed to.
+    body.querySelectorAll('a[href^="/members/account#"]').forEach(function (l) {
+      l.addEventListener('click', function () { if (location.pathname === '/members/account') { close(); } });
+    });
+
     if (state.auth && view === 'activity') { loadActivity(); }
     if (state.auth && view === 'mailbox') { loadMailbox(); }
     if (state.auth && view === 'advertise') { loadAdvertise(); }
@@ -679,7 +641,10 @@ const PortalJS = `(function () {
   // ── Shell (button + overlay) ───────────────────────────────────────────────
 
   function open(initialView) {
-    if (initialView && !state.auth) { view = initialView; }
+    // A signed-in reader can be sent to one of the account's own views (the
+    // account page's Advertising and Choose your address do).
+    if (initialView) { view = initialView; }
+    state.account = null;
     lastFocus = document.activeElement;
     render();
     overlay.classList.add('is-open');

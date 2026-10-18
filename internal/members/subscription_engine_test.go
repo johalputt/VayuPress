@@ -5,6 +5,7 @@ package members
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -246,5 +247,75 @@ func TestExportCSVWritesNoFormula(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), `'=HYPERLINK(`) {
 		t.Errorf("the name was exported as a formula:\n%s", buf.String())
+	}
+}
+
+// The member's own Cancel renewal and Stripe's webhook report the same change,
+// and Stripe repeats it on every later update: it is recorded once. Keeping
+// the plan withdraws it, once.
+func TestACancellationIsRecordedOnceAndCanBeWithdrawn(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	m, _ := s.Upsert(ctx, "member@example.com")
+	if err := s.StartSubscription(ctx, SubscriptionInput{MemberID: m.ID, TierSlug: TierPaid, Cadence: CadenceMonthly, AmountCents: 800}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		if err := s.ScheduleCancellation(ctx, m.ID); err != nil {
+			t.Fatalf("scheduling %d: %v", i, err)
+		}
+	}
+	count := func(kind string) int {
+		evs, _ := s.EventsForMember(ctx, m.ID, 50)
+		n := 0
+		for _, e := range evs {
+			if e.Type == kind {
+				n++
+			}
+		}
+		return n
+	}
+	if n := count(EventCancelScheduled); n != 1 {
+		t.Errorf("%d cancellations recorded, want 1", n)
+	}
+	if err := s.ResumeSubscription(ctx, m.ID); err != nil {
+		t.Fatal(err)
+	}
+	if sub, _ := s.ActiveSubscription(ctx, m.ID); sub == nil || sub.CancelAtPeriodEnd {
+		t.Error("the plan does not renew again")
+	}
+	if err := s.ResumeSubscription(ctx, m.ID); err == nil {
+		t.Error("withdrawing a cancellation that is not there reported success")
+	}
+	if n := count(EventCancelUndone); n != 1 {
+		t.Errorf("%d withdrawals recorded, want 1", n)
+	}
+}
+
+// Delete clears never-confirmed rows and refuses a real person; Erase is the
+// person asking, and removes them with everything keyed to them.
+func TestEraseRemovesAConfirmedMemberDeleteDoesNot(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	m, _ := s.Upsert(ctx, "member@example.com")
+	if _, err := s.db.ExecContext(ctx, `UPDATE members SET verified_at=CURRENT_TIMESTAMP WHERE id=?`, m.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateSession(ctx, m.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delete(ctx, m.Email); !errors.Is(err, ErrVerified) {
+		t.Fatalf("Delete of a confirmed member = %v, want ErrVerified", err)
+	}
+	if err := s.Erase(ctx, m.Email); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Get(ctx, m.Email); err == nil {
+		t.Error("the member is still there")
+	}
+	var sessions int
+	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM member_sessions WHERE member_id=?`, m.ID).Scan(&sessions)
+	if sessions != 0 {
+		t.Errorf("%d sessions outlived the account", sessions)
 	}
 }

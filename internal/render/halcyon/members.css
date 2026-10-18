@@ -2,7 +2,7 @@
    pricing, the paywall, checkout and the author's page.
 
    They keep their markup and signup.css, which lays every component out
-   (the 2FA grid, receipts, the plan comparison, the account accordions);
+   (the account page's rows, the plan comparison, the forms);
    this sheet, loaded after it and after halcyon.css, gives them Halcyon's
    voice. signup.css was drawn for a dark page and carries its own colours, so
    every colour, gradient and glow it sets is restated here from Halcyon's
@@ -27,40 +27,36 @@
 .h .su-shell, .h .pw-shell { flex: 1 0 auto; justify-content: center; max-width: 460px; padding: 32px var(--h-gutter) 72px; gap: 24px; margin: 0 auto; }
 .h .su-card, .h .su-compare-card { padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
 .h .su-brand { display: none; }
-.h .su-title, .h .ma-title, .h .pr-head h1, .h .pw-title { font: 400 44px/1.08 var(--h-serif); letter-spacing: -0.02em; color: var(--h-t1); }
-.h .su-sub, .h .ma-subtitle, .h .pr-head p { margin-top: 12px; font: 400 19px/1.55 var(--h-serif); color: var(--h-t2); }
-.h .su-label, .h .ma-field label, .h .ma-field > span { font: 500 12px/1 var(--h-sans); color: var(--h-t3); margin-bottom: 8px; }
+.h .su-title, .h .pr-head h1, .h .pw-title { font: 400 44px/1.08 var(--h-serif); letter-spacing: -0.02em; color: var(--h-t1); }
+.h .su-sub, .h .pr-head p { margin-top: 12px; font: 400 19px/1.55 var(--h-serif); color: var(--h-t2); }
+.h .su-label{ font: 500 12px/1 var(--h-sans); color: var(--h-t3); margin-bottom: 8px; }
 .h .su-form { gap: 12px; margin-top: 28px; }
 
 /* Fields: 44 px, fully rounded, the label above; focus is a ring. */
-.h .su-input, .h .ma-input, .h .ma-field input[type=text], .h .pw-form input {
+.h .su-input, .h .pw-form input {
   height: 44px; padding: 0 20px; border: 0; border-radius: 22px; background: var(--h-surface);
   box-shadow: inset 0 0 0 1px var(--h-line-2); color: var(--h-t1); font: 400 15px/1 var(--h-sans);
 }
-.h .su-input:focus, .h .ma-input:focus, .h .ma-field input[type=text]:focus, .h .pw-form input:focus {
+.h .su-input:focus, .h .pw-form input:focus {
   outline: none; border: 0; box-shadow: inset 0 0 0 1.5px var(--h-accent), 0 0 0 4px var(--h-mark);
 }
 .h .su-input[aria-invalid="true"], .h .su-input:user-invalid { box-shadow: inset 0 0 0 1.5px var(--h-error-line); }
-.h .ma-claim-row .ma-input { border-radius: 22px 0 0 22px; }
-.h .ma-claim-at { border: 0; border-radius: 0 22px 22px 0; background: var(--h-sunken); color: var(--h-t3); }
 
 /* One primary action (ink), one secondary (outline), text actions. Busy is the
    button saying what it is doing, which the pages already write. */
-.h .su-btn, .h .ma-cta-primary, .h .pr-cta--primary, .h .pw-join, .h .ma-plan-badge--paid, .h .ma-col-tag--paid {
+.h .su-btn, .h .ma-cta-primary, .h .pr-cta--primary, .h .pw-join, .h .ma-col-tag--paid {
   background: var(--h-ink); color: var(--h-on-ink); border: 0; filter: none;
 }
-.h .su-btn, .h .ma-cta-primary, .h .ma-cta-danger, .h .pr-cta, .h .pw-join, .h .pw-form button, .h .ma-signout, .h .su-btn--ghost {
+.h .su-btn, .h .ma-cta-primary, .h .pr-cta, .h .pw-join, .h .pw-form button, .h .su-btn--ghost {
   display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px;
   border-radius: 22px; font: 500 14px/1 var(--h-sans); box-shadow: none; transform: none; text-decoration: none;
 }
 .h .su-btn:hover, .h .ma-cta-primary:hover, .h .pr-cta--primary:hover, .h .pw-join:hover { filter: none; opacity: 0.88; }
 .h .su-btn:disabled { opacity: 0.7; filter: none; cursor: progress; }
-.h .su-btn--ghost, .h .pr-cta, .h .ma-signout, .h .pw-form button { background: transparent; color: var(--h-t1); border: 0; box-shadow: inset 0 0 0 1px var(--h-line-2); }
+.h .su-btn--ghost, .h .pr-cta, .h .pw-form button { background: transparent; color: var(--h-t1); border: 0; box-shadow: inset 0 0 0 1px var(--h-line-2); }
 .h .pr-cta.pr-cta--primary { background: var(--h-ink); color: var(--h-on-ink); box-shadow: none; }
 .h .pr-cta.pr-cta--primary:hover { background: var(--h-ink); opacity: 0.88; }
-.h .su-btn--ghost:hover, .h .pr-cta:hover, .h .ma-signout:hover, .h .pw-form button:hover { background: var(--h-hover); }
-.h .ma-cta-danger { background: transparent; color: var(--h-error); box-shadow: inset 0 0 0 1px var(--h-error-line); border: 0; }
-.h .ma-cta-danger:hover { background: var(--h-hover); }
+.h .su-btn--ghost:hover, .h .pr-cta:hover, .h .pw-form button:hover { background: var(--h-hover); }
 .h .su-link, .h .au-foot a { color: var(--h-accent); font-weight: 500; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.18em; }
 
 /* Notices: words under the form, the state marked by a hairline, not a wash. */
@@ -86,40 +82,12 @@
 .h .su-compare-h { font: italic 400 22px/1.2 var(--h-serif); color: var(--h-t2); }
 
 /* Cards become sections divided by hairlines; nothing glows. */
-.h .ma-shell { flex: 1 0 auto; max-width: 720px; padding: 56px var(--h-gutter) 96px; }
-.h .ma-head { margin-bottom: 32px; }
-.h .ma-card, .h .ma-card--plan, .h .ma-card--claim, .h .ma-card--perk, .h .pr-card, .h .pw-gate, .h .au-card {
+.h .pr-card, .h .pw-gate, .h .au-card {
   background: none; border: 0; border-top: 1px solid var(--h-line-2); border-radius: 0; box-shadow: none; padding: 24px 0;
 }
-.h .ma-card h2, .h .ma-plan-h { font: 500 22px/1.3 var(--h-serif); color: var(--h-t1); }
-.h .ma-subhead { font: 500 12px/1.2 var(--h-sans); text-transform: none; letter-spacing: 0.01em; color: var(--h-t3); }
-.h .ma-row { border-color: var(--h-line); padding: 14px 0; font: 400 16px/1.4 var(--h-serif); }
-.h .ma-row span:first-child { font: 400 13px/1.4 var(--h-sans); color: var(--h-t3); }
-.h .ma-plan-col, .h .ma-plan-col--paid, .h .ma-plan-col--current { background: none; border: 0; border-radius: 0; box-shadow: inset 0 1px 0 var(--h-line-2); padding: 16px 0; }
-.h .ma-plan-col--current .ma-plan-col-h::after { content: "Your plan"; font: italic 400 14px/1 var(--h-serif); color: var(--h-accent); }
+.h .ma-plan-col, .h .ma-plan-col--paid { background: none; border: 0; border-radius: 0; box-shadow: inset 0 1px 0 var(--h-line-2); padding: 16px 0; }
 .h .ma-plan-col-h { font: 500 18px/1.3 var(--h-serif); }
-.h .ma-col-tag, .h .ma-plan-badge, .h .ma-badge { border: 0; border-radius: 12px; background: var(--h-sunken); color: var(--h-t2); font: 500 12px/1 var(--h-sans); text-transform: none; letter-spacing: 0; padding: 6px 10px; }
-.h .ma-badge--ok { color: var(--h-accent); }
-.h .ma-badge--warn { color: var(--h-error); }
-.h .ma-plan-price { color: var(--h-t3); }
-.h .ma-hint, .h .ma-claim-terms, .h .ma-2fa-manual { font: 400 14px/1.5 var(--h-sans); color: var(--h-t3); }
-.h .ma-mailid, .h .ma-2fa-key { background: var(--h-sunken); border: 0; color: var(--h-t1); font-family: var(--h-mono); }
-.h .ma-2fa-enroll, .h .ma-upgrade { border-color: var(--h-line); }
-.h .ma-acc, .h .ma-acc[open] { background: none; border: 0; border-top: 1px solid var(--h-line); border-radius: 0; box-shadow: none; }
-.h .ma-acc__sum { min-height: 64px; padding-left: 0; padding-right: 0; }
-/* The rows' pictograph tiles are decoration (aria-hidden), and Halcyon sets
-   no pictographs on the member pages: the words carry each row. */
-.h .ma-acc__ic { display: none; }
-/* The plan: its heading, its list and its action, each with room. */
-.h .ma-plan-h { margin-top: 10px; }
-.h .ma-card--plan .ma-benefits { margin: 12px 0 22px; }
-.h .ma-acc__title { font: 500 18px/1.3 var(--h-serif); }
-.h .ma-acc__sub { font: 400 13px/1.4 var(--h-sans); color: var(--h-t3); }
-.h .ma-bill-row { border-color: var(--h-line); }
-.h .ma-bill-row dt { color: var(--h-t3); font: 400 13px/1.4 var(--h-sans); }
-.h .ma-bill-row dd { font: 400 16px/1.4 var(--h-serif); }
-.h .ma-rcpt { border-color: var(--h-line); background: none; }
-
+.h .ma-col-tag { border: 0; border-radius: 12px; background: var(--h-sunken); color: var(--h-t2); font: 500 12px/1 var(--h-sans); text-transform: none; letter-spacing: 0; padding: 6px 10px; }
 /* Plans and pricing. */
 .h .pr-shell { flex: 1 0 auto; max-width: 1040px; padding: 56px var(--h-gutter) 96px; }
 .h .pr-head { text-align: left; margin-bottom: 32px; }
@@ -162,8 +130,43 @@
 
 @media (max-width: 600px) {
   .h .h-focus { height: 58px; }
-  .h .su-title, .h .ma-title, .h .pr-head h1, .h .au-page .au-name { font-size: 36px; }
+  .h .su-title, .h .pr-head h1, .h .au-page .au-name { font-size: 36px; }
   .h .su-shell { justify-content: flex-start; }
 }
 .h .pr-save { background: none; color: var(--h-accent); text-transform: none; letter-spacing: 0; font: italic 400 14px/1 var(--h-serif); padding: 0 0 0 4px; }
 .h .au-page .au-foot { display: none; }
+
+/* The account (/members/account): signup.css lays it out from the --su-*
+   tokens mapped above; Halcyon gives it its type. Values and headings are in
+   the reading serif, labels and actions in the sans. */
+.h .acct { grid-template-columns: 200px minmax(0, 680px); padding: 56px var(--h-gutter) 96px; flex: 1 0 auto; }
+.h .acct-idx a, .h .acct-idx__out { font: 400 14px/1.3 var(--h-sans); border-left-color: var(--h-line); }
+.h .acct-who__name { font: 400 40px/1.1 var(--h-serif); letter-spacing: -0.015em; color: var(--h-t1); }
+.h .acct-who__meta { font: 400 14px/1.4 var(--h-sans); color: var(--h-t3); }
+.h .acct-sec { border-top-color: var(--h-line); }
+.h .acct-sec__h h2 { font: 400 26px/1.2 var(--h-serif); letter-spacing: -0.01em; color: var(--h-t1); }
+.h .acct-sec__note, .h .acct-row__k, .h .acct-row__v small, .h .acct-more__foot, .h .acct-field, .h .acct-list__meta { font-family: var(--h-sans); color: var(--h-t3); }
+.h .acct-row { border-bottom-color: var(--h-line); }
+.h .acct-row__v, .h .acct-list__where, .h .acct-list__amt { font: 400 17px/1.4 var(--h-serif); color: var(--h-t1); }
+.h .acct-row__v small { font-size: 13px; line-height: 1.45; }
+.h .acct-list__body, .h .acct-more p { font: 400 16px/1.5 var(--h-serif); color: var(--h-t2); }
+.h .acct-btn { min-height: 36px; font: 500 14px/1 var(--h-sans); box-shadow: inset 0 0 0 1px var(--h-line-2); }
+.h .acct-btn:hover { background: var(--h-hover); }
+.h .acct-btn--primary { background: var(--h-ink); color: var(--h-on-ink); box-shadow: none; }
+.h .acct-btn--primary:hover { background: var(--h-ink); }
+.h .acct-btn--quiet { box-shadow: none; color: var(--h-t2); }
+.h .acct-btn--quiet:hover { background: none; color: var(--h-t1); }
+.h .acct-btn--danger { background: var(--h-error); color: var(--h-on-ink); box-shadow: none; }
+.h .acct-state--ok { color: var(--h-accent); }
+.h .acct-state--warn { color: var(--h-warn); }
+.h .acct-switch input:checked + .acct-switch__track { background: var(--h-accent); }
+.h .acct-input { height: 40px; border-radius: 10px; border-color: var(--h-line-2); background: var(--h-raised); font: 400 16px/1 var(--h-sans); }
+.h .acct-input:focus { border-color: var(--h-t2); box-shadow: 0 0 0 3px var(--h-line-2); }
+.h .acct-notice { background: none; font: 400 16px/1.5 var(--h-serif); box-shadow: inset 3px 0 0 var(--h-accent), inset 0 0 0 1px var(--h-line); }
+.h .acct-notice--err { color: var(--h-error); box-shadow: inset 3px 0 0 var(--h-error-line), inset 0 0 0 1px var(--h-line); }
+.h .acct-end { border-top-color: var(--h-line); font-family: var(--h-sans); }
+@media (max-width: 860px) {
+  .h .acct { padding: 28px 16px 64px; }
+  .h .acct-who__name { font-size: 30px; }
+  .h .acct-sec__h h2 { font-size: 23px; }
+}

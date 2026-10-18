@@ -188,17 +188,45 @@ func (s *Store) CancelSubscription(ctx context.Context, memberID string) error {
 // of the current paid period instead of immediately. The member keeps full
 // access until then. This is the default "cancel" behaviour readers expect from
 // Ghost/Substack — access is not yanked the moment they cancel.
+//
+// It is idempotent: the member's own "Cancel renewal" schedules it, and then
+// Stripe's customer.subscription.updated webhook reports the same change (and
+// repeats it on every later update), which must not be recorded again.
 func (s *Store) ScheduleCancellation(ctx context.Context, memberID string) error {
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE member_subscriptions SET cancel_at_period_end=1 WHERE member_id=? AND status=?`,
+		`UPDATE member_subscriptions SET cancel_at_period_end=1 WHERE member_id=? AND status=? AND cancel_at_period_end=0`,
 		memberID, SubActive)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
+		var already int
+		_ = s.db.QueryRowContext(ctx,
+			`SELECT COUNT(1) FROM member_subscriptions WHERE member_id=? AND status=? AND cancel_at_period_end=1`,
+			memberID, SubActive).Scan(&already)
+		if already > 0 {
+			return nil
+		}
 		return fmt.Errorf("no active subscription to cancel")
 	}
 	s.recordEventTx(ctx, memberID, EventCancelScheduled, "", 0)
+	return nil
+}
+
+// ResumeSubscription withdraws a cancellation queued by ScheduleCancellation:
+// the member changed their mind before the period ended, and the plan renews
+// as it would have.
+func (s *Store) ResumeSubscription(ctx context.Context, memberID string) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE member_subscriptions SET cancel_at_period_end=0 WHERE member_id=? AND status=? AND cancel_at_period_end=1`,
+		memberID, SubActive)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no cancellation to withdraw")
+	}
+	s.recordEventTx(ctx, memberID, EventCancelUndone, "", 0)
 	return nil
 }
 

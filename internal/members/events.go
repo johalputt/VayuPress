@@ -26,6 +26,7 @@ const (
 	EventRenew           = "renew"            // a subscription period renewed
 	EventCancel          = "cancel"           // a subscription ended immediately
 	EventCancelScheduled = "cancel_scheduled" // cancellation queued for period end
+	EventCancelUndone    = "cancel_undone"    // a queued cancellation withdrawn by the member
 	EventExpired         = "expired"          // a paid period lapsed with no renewal (audit: non-Stripe entitlements never lapsed)
 	EventComp            = "comp"             // operator granted a complimentary plan
 	EventPaymentFailed   = "payment_failed"   // a Stripe invoice payment failed

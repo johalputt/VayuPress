@@ -392,6 +392,7 @@ func activityFeedHTML(events []members.Event, currency string) string {
 		members.EventRenew:           "renewed",
 		members.EventCancel:          "cancelled",
 		members.EventCancelScheduled: "cancels at period end",
+		members.EventCancelUndone:    "kept their plan",
 		members.EventComp:            "was given a plan",
 		members.EventPaymentFailed:   "had a payment fail",
 	}

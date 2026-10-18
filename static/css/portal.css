@@ -199,7 +199,6 @@
 .vp-portal-perks li::before { content: "✓"; color: var(--vpp-accent-2); font-weight: 700; }
 
 /* Account view */
-.vp-portal-account-id { display: flex; align-items: center; gap: .85rem; margin-bottom: 1.5rem; }
 .vp-portal-avatar {
   width: 52px; height: 52px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
@@ -209,8 +208,6 @@
 }
 /* Profile photo fills the avatar circle when the account has one. */
 .vp-portal-avatar-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
-.vp-portal-account-id .vp-portal-acc-name { font-weight: 700; font-size: 1.05rem; }
-.vp-portal-account-id .vp-portal-acc-mail { color: var(--vpp-muted); font-size: .85rem; }
 
 .vp-portal-plan {
   border: 1px solid var(--vpp-border);
@@ -221,9 +218,6 @@
 }
 .vp-portal-plan-label { color: var(--vpp-muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .07em; }
 .vp-portal-plan-name { font-weight: 700; font-size: 1.05rem; margin-top: .15rem; }
-
-.vp-portal-actions { display: flex; flex-direction: column; gap: .6rem; margin-top: .4rem; }
-.vp-portal-actions a, .vp-portal-actions button { width: 100%; text-align: center; text-decoration: none; box-sizing: border-box; }
 
 @media (max-width: 480px) {
   .vp-portal-panel { max-width: 100%; padding: 2.5rem 1.4rem; }
@@ -444,10 +438,7 @@
 .vp-portal-sub { font-size: .8rem; line-height: 1.45; margin-bottom: .8rem; }
 
 /* ── Identity row: a smaller mark, closer to its text ────────────────────── */
-.vp-portal-account-id { gap: .55rem; margin-bottom: .75rem; }
 .vp-portal-avatar { width: 32px; height: 32px; font-size: .82rem; }
-.vp-portal-account-id .vp-portal-acc-name { font-size: .88rem; font-weight: 650; }
-.vp-portal-account-id .vp-portal-acc-mail { font-size: .74rem; }
 
 /* ── Plan card ───────────────────────────────────────────────────────────── */
 .vp-portal-plan { padding: .55rem .7rem; margin-bottom: .65rem; border-radius: 9px; }
@@ -465,7 +456,6 @@
   font-weight: 600;
   border-radius: 8px;
 }
-.vp-portal-actions { gap: .32rem; margin-top: .25rem; }
 
 /* ── Perks / lists ───────────────────────────────────────────────────────── */
 .vp-portal-perks { margin-top: .8rem; padding-top: .7rem; gap: .32rem; }
@@ -532,15 +522,6 @@
   background: color-mix(in srgb, var(--vpp-accent) 7%, var(--vpp-bg));
   border-color: color-mix(in srgb, var(--vpp-accent) 26%, transparent);
 }
-/* Separate the account actions from the identity above them. */
-.vp-portal-actions {
-  padding-top: .6rem;
-  border-top: 1px solid var(--vpp-border);
-}
-/* Sign out is the one destructive-ish action here: keep it quiet and last. */
-.vp-portal-actions > :last-child { opacity: .82; }
-.vp-portal-actions > :last-child:hover { opacity: 1; }
-
 @media (max-width: 560px) {
   /* The sheet keeps its accent edge along the top instead of the side. */
   .vp-portal-panel {
@@ -656,136 +637,38 @@
 .vp-portal-close:active { background: var(--vpp-surface-2); }
 .vp-portal-close:focus-visible { outline: 2px solid var(--vpp-accent-2); outline-offset: 2px; }
 
-/* ── Identity card ──────────────────────────────────────────────────────── */
-
-.vp-portal-account-id {
-  display: flex;
-  align-items: center;
-  gap: .7rem;
-  padding: .7rem .75rem;
-  margin-bottom: .8rem;
-  border: 1px solid var(--vpp-border);
-  border-radius: 14px;
-  background: linear-gradient(180deg, var(--vpp-surface), var(--vpp-bg));
+/* ── Account (viewAccount) ─────────────────────────────────────────────── */
+/* Who you are, one main action beside Account settings, then one line per
+   fact about the account, each a way to its control. No boxes, no chips. */
+.vp-me { display: flex; align-items: center; gap: .9rem; padding: .25rem 0 1.4rem; }
+.vp-me__who { min-width: 0; }
+.vp-me__name { margin: 0; font-size: 1.3rem; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.vp-me__mail { margin: .2rem 0 0; color: var(--vpp-muted); font-size: .85rem; overflow-wrap: anywhere; }
+.vp-me__main { display: flex; gap: .6rem; margin-bottom: 1.1rem; }
+.vp-me__main .vp-portal-btn { flex: 1 1 0; width: auto; margin: 0; text-align: center; text-decoration: none; }
+.vp-me__list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--vpp-border); }
+.vp-me__list li { border-bottom: 1px solid var(--vpp-border); }
+.vp-me__row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto 10px; align-items: center; gap: .75rem;
+  width: 100%; min-height: 3.4rem; padding: .55rem .15rem; border: 0; background: none;
+  color: var(--vpp-text); font: inherit; text-align: left; text-decoration: none; cursor: pointer;
 }
-.vp-portal-idtext { min-width: 0; flex: 1; }
-.vp-portal-account-id .vp-portal-acc-name,
-.vp-portal-account-id .vp-portal-acc-mail {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ── Accordion rows (mirrors .mon-acc) ──────────────────────────────────── */
-
-.vp-acc-stack { display: grid; gap: .5rem; }
-
-.vp-acc {
-  border: 1px solid var(--vpp-border);
-  border-radius: 13px;
-  background: var(--vpp-surface);
-  overflow: hidden;
-  transition: border-color .16s ease, box-shadow .16s ease;
-}
-.vp-acc[open] {
-  border-color: color-mix(in srgb, var(--vpp-accent) 32%, var(--vpp-border));
-  box-shadow: 0 6px 18px -12px rgba(0, 0, 0, .6);
-}
-
-.vp-acc__sum {
-  display: flex;
-  align-items: center;
-  gap: .65rem;
-  cursor: pointer;
-  list-style: none;
-  padding: .6rem .7rem;
-  min-height: 44px;
-  user-select: none;
-  touch-action: manipulation;
-  transition: background .16s ease;
-}
-.vp-acc__sum::-webkit-details-marker { display: none; }
-.vp-acc__sum::marker { content: ""; }
-.vp-acc__sum:hover { background: var(--vpp-surface-2); }
-.vp-acc__sum:focus-visible { outline: 2px solid var(--vpp-accent-2); outline-offset: -2px; }
-
-.vp-acc__ic {
-  flex: none;
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: .95rem;
-  border-radius: 9px;
-  background: var(--vpp-surface-2);
-  border: 1px solid var(--vpp-border);
-}
-.vp-acc__head { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
-.vp-acc__title { font-weight: 650; font-size: .88rem; color: var(--vpp-text); }
-.vp-acc__sub {
-  font-size: .76rem;
-  color: var(--vpp-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.vp-acc__chev { flex: none; color: var(--vpp-muted); transition: transform .16s ease; }
-.vp-acc[open] .vp-acc__chev { transform: rotate(180deg); }
-.vp-acc[open] .vp-acc__sum { border-bottom: 1px solid var(--vpp-border); }
-
-.vp-acc__body {
-  padding: .7rem .75rem .8rem;
-  animation: vpp-reveal .26s cubic-bezier(.16, .84, .44, 1);
-}
-.vp-acc__note {
-  margin: 0 0 .6rem;
-  font-size: .8rem;
-  line-height: 1.5;
-  color: var(--vpp-muted);
-}
-.vp-acc__body .vp-portal-actions {
-  margin: 0;
-  gap: .4rem;
-  /* The accordion IS the frame; the separator and the dimmed last child from the
-     flat-button layout would both be noise in here. */
-  padding-top: 0;
-  border-top: 0;
-}
-.vp-acc__body .vp-portal-actions > :last-child { opacity: 1; }
-
-@keyframes vpp-reveal {
-  from { opacity: 0; transform: translateY(-5px); }
-  to   { opacity: 1; transform: none; }
-}
-
-/* ── Status chip (mirrors .mon-chip) ────────────────────────────────────── */
-
-.vp-chip {
-  flex: none;
-  font-size: .68rem;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--vpp-border);
-  color: var(--vpp-muted);
-  background: var(--vpp-surface-2);
-  white-space: nowrap;
-}
-.vp-chip--on {
-  color: #34d399;
-  border-color: rgba(52, 211, 153, .4);
-  background: rgba(52, 211, 153, .12);
-}
-
-/* ── Sign out, set apart ────────────────────────────────────────────────── */
-
-.vp-portal-signout {
-  margin-top: .9rem;
-  padding-top: .75rem;
-  border-top: 1px solid var(--vpp-border);
-}
-.vp-portal-signout .vp-portal-btn { width: 100%; }
+.vp-me__row::after { content: ""; width: 7px; height: 7px; border-top: 1.5px solid var(--vpp-muted); border-right: 1.5px solid var(--vpp-muted); transform: rotate(45deg); }
+.vp-me__row:hover { background: var(--vpp-surface-2); }
+.vp-me__row:focus-visible { outline: 2px solid var(--vpp-accent-2); outline-offset: -2px; }
+.vp-me__k { min-width: 0; font-size: .95rem; font-weight: 600; }
+.vp-me__k small { display: block; margin-top: .1rem; color: var(--vpp-muted); font-size: .78rem; font-weight: 400; }
+.vp-me__v { color: var(--vpp-muted); font-size: .82rem; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 12rem; }
+.vp-me__on, .vp-me__warn { display: inline-flex; align-items: center; gap: .35rem; font-weight: 600; }
+.vp-me__on::before, .vp-me__warn::before { content: ""; width: .42rem; height: .42rem; border-radius: 50%; background: currentColor; }
+.vp-me__on { color: var(--vpp-ok); }
+.vp-me__warn { color: #e0b46a; }
+.vp-me__end { display: flex; justify-content: flex-end; padding-top: 1rem; }
+.vp-me__out { min-height: 44px; padding: 0 .25rem; border: 0; background: none; color: var(--vpp-muted); font: inherit; font-size: .9rem; cursor: pointer; text-decoration: underline; text-underline-offset: .2em; }
+.vp-me__out:hover { color: var(--vpp-text); }
+/* The facts arriving a moment after the panel opens fill in place: no second
+   staggered entrance. */
+.vp-portal-overlay.is-open .vp-portal-body.vp-refresh > * { animation: none; }
 
 /* ── Phones ─────────────────────────────────────────────────────────────── */
 
@@ -820,10 +703,8 @@
     /* Decoration only: it must never absorb a tap meant for the close button. */
     pointer-events: none;
   }
-  .vp-acc__sum { padding: .7rem .75rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .vp-acc__body { animation: none; }
-  .vp-acc__chev, .vp-acc, .vp-acc__sum, .vp-portal-close { transition: none; }
+  .vp-portal-close { transition: none; }
 }

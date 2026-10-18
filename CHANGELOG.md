@@ -8,12 +8,60 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Members cancel their own renewal, and can take it back.** A plan paid
+  through Stripe shows its next payment with Cancel renewal; the member keeps
+  the plan until the period ends, and Keep my plan restores the renewal.
+  Stripe is changed first, and the account follows only when Stripe agreed,
+  so the page never says "Ends" while Stripe goes on charging. A plan paid by
+  PayPal or offline does not renew by itself, and now says so ("Paid until"),
+  instead of a billing note telling the member to cancel something they could
+  not.
+- **Members delete their own account.** Typing their email address removes
+  the account, its plan, its settings and every session. Payments through
+  Stripe are stopped first, and nothing is deleted if they cannot be. A
+  mailbox the member holds is not deleted with the account; the page says so
+  before they confirm.
+- **Members choose their picture.** The account page has the picture
+  chooser: the automatic one, twelve cartoons, or a photo of their own (up to
+  100 KB). The site already stored a member's choice; nothing let them make
+  it. It is the same picture on their comments and on mail they send.
+- **VayuTalk for members with a mailbox.** The account page and the account
+  panel offer VayuTalk to a member who holds a VayuMail address, and a
+  mailbox holder's session can now open it: a non-administrator chats only as
+  their own address, as before. Not in the Tor world, where the chat identity
+  is the install's anonymous handle.
+- **The site's logo comes alive on hover.** On Halcyon the mark in the bar
+  lifts, tips and settles with a small overshoot, and the name takes the
+  accent. With reduced motion it only lights up.
+
+### Changed
+
+- **The member account page is one clean page.** Every setting is one row:
+  what it is, how it stands now, and one thing to do about it, under Profile,
+  Plan, Mail, Security, Emails and Activity, with an index beside them on a
+  wide screen. Nothing is folded away; the picture chooser, the name, two-
+  factor set-up, receipts, comments and deleting the account open in place
+  under their row. The reply and newsletter emails are switches that save
+  when flipped. The plan card, the separate billing card, the accordions and
+  their emoji headings are gone. Without JavaScript the page still works:
+  what would open in place is drawn open, and the choices post as a form.
+- **The account panel is a summary you can act on.** Your picture and name,
+  one main action (Open VayuMail, or See plans) beside Account settings, then
+  one line per fact: your plan and when it renews, your address, two-factor
+  on or off, which emails you get, your comments live and in review. Each
+  line goes to its control. It is one view on every theme and every page.
+
 ### Fixed
 
 - **The account panel on the account page is the one on every other page.**
   Opened on the member account page, the panel showed its older layout, the
   stacked cards and accordions, because that page did not ask for Halcyon's;
-  it does now.
+  there is now one panel, and it does not depend on the page.
+- **A signed-in reader's name no longer pushes Halcyon's bar off a phone.**
+  The name showed in the phone bar as well as in its menu, and the bar ran
+  59 px past a 320 px screen.
 
 ## [3.18.10] — 2026-10-17
 

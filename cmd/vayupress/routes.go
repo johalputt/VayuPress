@@ -392,12 +392,15 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/members", a.handleMemberSigninPage)
 	r.Get("/members/account", a.handleMemberAccount)
 	r.With(refuseCrossOrigin).Post("/members/account", a.handleMemberAccountUpdate)
+	r.With(refuseCrossOrigin).Post("/members/account/renewal", a.handleMemberRenewal)
+	r.With(refuseCrossOrigin).Post("/members/account/delete", a.handleMemberAccountDelete)
 	// VayuPortal overlay backend — capability snapshot + VayuMail credential login.
 	r.Get("/api/v1/members/me", a.handleMemberMe)
 	r.Get("/api/v1/members/comments", a.handleMemberComments)
 	// Member avatars: public serve (by opaque id, for comments), plus the
 	// member-authed upload / choose. The member cookie is SameSite=Lax, so a
 	// cross-site POST never carries it (CSRF-safe), matching the account endpoints.
+	r.Get("/api/v1/members/avatar/preview/{choice}", a.handleMemberAvatarPreview)
 	r.Get("/api/v1/members/avatar/{id}", a.handleMemberAvatarServe)
 	r.With(refuseCrossOrigin).Post("/api/v1/members/avatar", a.handleMemberAvatarUpload)
 	r.With(refuseCrossOrigin).Post("/api/v1/members/avatar/choose", a.handleMemberAvatarChoose)

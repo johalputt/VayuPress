@@ -648,8 +648,11 @@ func TestAMemberPageWithTheBarLoadsThePortal(t *testing.T) {
 	if got := HalcyonMemberPage(memberPageFixture, MemberSite); !strings.Contains(got, `src="/static/js/portal.js?v=`) {
 		t.Error("a member page with the site's bar does not load the portal script")
 	}
-	if got := HalcyonMemberPage(memberPageFixture, MemberSite); !strings.Contains(got, `data-vp-portal="sections"`) {
-		t.Error("the member page's account panel would open in its older view, not Halcyon's sections")
+	// The account page loads the portal itself, under every theme: it is not
+	// loaded a second time.
+	own := strings.Replace(memberPageFixture, "</head>", string(PortalJSLink())+"</head>", 1)
+	if got := HalcyonMemberPage(own, MemberSite); strings.Count(got, "/static/js/portal.js") != 1 {
+		t.Errorf("a page that loads the portal itself carries it %d times", strings.Count(got, "/static/js/portal.js"))
 	}
 	if got := HalcyonMemberPage(memberPageFixture, MemberTask); strings.Contains(got, "/static/js/portal.js") {
 		t.Error("a task page, which has no bar, loads the portal script")

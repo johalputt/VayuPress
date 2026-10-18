@@ -3,7 +3,6 @@
 package main
 
 import (
-	"os"
 	"strings"
 	"testing"
 
@@ -30,11 +29,11 @@ func TestReceiptStatusChipCoversEveryOrderStatus(t *testing.T) {
 	}
 	// Only "paid" is the healthy state. A refund rendering as a green tick would
 	// tell a member their money is fine when it has been sent back.
-	if !strings.Contains(receiptStatusChip(payments.StatusPaid), "ma-chip--on") {
+	if !strings.Contains(receiptStatusChip(payments.StatusPaid), "acct-state--ok") {
 		t.Error("paid should be the affirmative chip state")
 	}
 	for _, s := range []string{payments.StatusRefunded, payments.StatusCanceled, payments.StatusFailed, payments.StatusPending} {
-		if strings.Contains(receiptStatusChip(s), "ma-chip--on") {
+		if strings.Contains(receiptStatusChip(s), "acct-state--ok") {
 			t.Errorf("status %q must not render as the affirmative state", s)
 		}
 	}
@@ -64,7 +63,7 @@ func TestCommentStatusChipIsHonestWithoutTippingOffSpammers(t *testing.T) {
 		t.Errorf("the author must never be told their comment was marked spam: %q", spam)
 	}
 	// Pending must not read as the affirmative state.
-	if strings.Contains(commentStatusChip(comments.StatusPending), "ma-chip--on") {
+	if strings.Contains(commentStatusChip(comments.StatusPending), "acct-state--ok") {
 		t.Error("a comment awaiting review must not render as the affirmative state")
 	}
 }
@@ -111,33 +110,6 @@ func TestCountOf(t *testing.T) {
 	}
 }
 
-// TestAccountSectionsAppendSoTheyDoNotStealTheOpenRow guards a documented
-// invariant of the account page: the open accordion is chosen positionally
-// (i == 0), so a new row inserted at the front would silently collapse the
-// VayuMail row that members actually come to the page for.
-func TestAccountSectionsAppendSoTheyDoNotStealTheOpenRow(t *testing.T) {
-	src, err := os.ReadFile("handlers_member_portal.go")
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	s := string(src)
-	firstRow := strings.Index(s, `rows = append(rows, accRow{`)
-	mail := strings.Index(s, `accRow{"&#128236;", "VayuMail address"`)
-	receipts := strings.Index(s, `"Receipts"`)
-	cmts := strings.Index(s, `accRow{"&#128172;", "Your comments"`)
-	if mail < 0 || receipts < 0 || cmts < 0 || firstRow < 0 {
-		t.Fatal("expected the mail, receipts and comments rows to all be present")
-	}
-	if receipts < mail || cmts < mail {
-		t.Error("receipts/comments must be appended AFTER the VayuMail row, or they steal the open state")
-	}
-	// And the open row must still be selected positionally, which is what makes
-	// the ordering above matter.
-	if !strings.Contains(s, "i == 0") {
-		t.Error("the open row is no longer positional; re-check the ordering assumption above")
-	}
-}
-
 // TestReceiptProductLabelIsEscaped: orderProductLabel interpolates the raw tier
 // slug, and the receipts renderer writes its result into the page as markup. The
 // admin ledger escapes it at the call site; this pins that the member page does
@@ -164,8 +136,8 @@ func TestReceiptProductLabelIsEscaped(t *testing.T) {
 func TestMemberReceiptAndCommentStylesExist(t *testing.T) {
 	css := repoFile(t, "static/css/signup.css")
 	for _, want := range []string{
-		".ma-rcpts", ".ma-rcpt__main", ".ma-rcpt__amt", ".ma-rcpt__ref", ".ma-rcpt__cad",
-		".ma-cmts", ".ma-cmt__body", ".ma-cmt__where", ".ma-cmt__where--gone", ".ma-cmt__when",
+		".acct-list", ".acct-list__top", ".acct-list__where", ".acct-list__amt", ".acct-list__body", ".acct-list__meta",
+		".acct-state--ok", ".acct-state--off", ".acct-state--warn",
 	} {
 		if !strings.Contains(css, want) {
 			t.Errorf("missing %s — the account page renders it, so it must be styled", want)

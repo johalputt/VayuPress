@@ -14,6 +14,7 @@
   --su-accent-2: #818cf8;
   --su-ok: #10b981;
   --su-err: #ef4444;
+  --su-warn: #e0b46a;
   --su-font: var(--vp-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
 }
 
@@ -204,86 +205,9 @@
 
 /* ── Member account portal (/members/account) ─────────────────────────────── */
 
-.ma-shell {
-  width: 100%;
-  max-width: 40rem;
-  margin: 0 auto;
-  padding: 2.5rem 1.25rem;
-}
-
-.ma-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.ma-title { margin: 0; font-size: 1.6rem; letter-spacing: -.02em; }
-
-.ma-card {
-  border: 1px solid var(--su-border);
-  border-radius: 14px;
-  padding: 1.5rem;
-  margin-bottom: 1.25rem;
-  background: linear-gradient(180deg, var(--su-surface-2), var(--su-surface));
-}
-
-.ma-card h2 { margin: 0 0 1rem; font-size: 1.05rem; }
-
-.ma-plan { font-size: 1rem; margin: 0; }
-.ma-plan--paid { font-weight: 600; }
-.ma-muted { color: var(--su-muted); font-weight: 400; }
-
-.ma-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: .45rem 0;
-  border-bottom: 1px solid var(--su-border);
-}
-.ma-row:last-child { border-bottom: 0; }
-.ma-row span:first-child { color: var(--su-muted); }
-
-.ma-field { display: block; margin-bottom: 1rem; }
-.ma-field label { display: block; font-weight: 600; margin-bottom: .35rem; font-size: .9rem; }
-.ma-field input[type=text] {
-  width: 100%;
-  padding: .6rem .8rem;
-  font-size: .98rem;
-  color: var(--su-text);
-  background: var(--su-bg);
-  border: 1px solid var(--su-border);
-  border-radius: 10px;
-  outline: none;
-}
-.ma-field input[type=text]:focus { border-color: var(--su-accent); box-shadow: 0 0 0 3px rgba(99,102,241,.25); }
-
-.ma-check { display: flex; align-items: center; gap: .6rem; margin: .7rem 0; font-size: .92rem; }
-.ma-subhead { margin: 1.4rem 0 .4rem; font-size: .82rem; text-transform: uppercase; letter-spacing: .06em; color: var(--su-muted, #6b7280); }
-.ma-hint { margin: .6rem 0 1rem; font-size: .82rem; color: var(--su-muted, #6b7280); }
 
 .su-btn--inline { display: inline-block; width: auto; text-decoration: none; }
 
-.ma-upgrade {
-  margin-top: 1rem;
-  padding: 1rem;
-  border: 1px dashed var(--su-border);
-  border-radius: 10px;
-  text-align: center;
-}
-.ma-upgrade p { margin: 0 0 .6rem; }
-
-.ma-signout {
-  background: transparent;
-  border: 1px solid var(--su-border);
-  border-radius: 9px;
-  padding: .45rem .9rem;
-  cursor: pointer;
-  color: var(--su-text);
-  font: inherit;
-}
-.ma-signout:hover { border-color: var(--su-accent); }
 
 /* ── Public pricing page (/pricing) ───────────────────────────────────────── */
 
@@ -438,6 +362,7 @@ html[data-theme="light"] {
   --su-muted: #5b6472;
   --su-accent: #4f46e5;
   --su-accent-2: #6366f1;
+  --su-warn: #8a5a12;
 }
 /* Floating theme toggle (author + auth pages) */
 .vayu-theme-toggle.au-theme-toggle {
@@ -472,38 +397,21 @@ html[data-theme="light"] {
 .au-posts-empty { color: var(--su-muted); font-size: .95rem; padding: 1rem 0; }
 .au-page .au-foot { margin-top: 2rem; text-align: center; }
 
-/* ══ Premium member dashboard v2 — plan, benefits, mail-ID, 2FA ═════════════ */
-
-.ma-subtitle { margin: .25rem 0 0; color: var(--su-muted); font-size: .9rem; }
-
-/* Plan hero card */
-.ma-card--plan { background: linear-gradient(180deg, rgba(99,102,241,.10), var(--su-surface)); border-color: rgba(129,140,248,.35); }
-.ma-plan-top { display: flex; align-items: center; gap: .6rem; margin-bottom: .3rem; flex-wrap: wrap; }
-.ma-plan-badge {
-  display: inline-flex; align-items: center; gap: .35rem;
-  font-size: .78rem; font-weight: 700; letter-spacing: .02em;
-  padding: .25rem .7rem; border-radius: 999px;
-  background: var(--su-surface-2); border: 1px solid var(--su-border); color: var(--su-text);
-}
-.ma-plan-badge--paid { background: linear-gradient(180deg, var(--su-accent-2), var(--su-accent)); color: #fff; border-color: transparent; }
-.ma-plan-price { color: var(--su-muted); font-size: .85rem; font-weight: 600; }
-.ma-plan-h { margin: .5rem 0 .3rem; font-size: 1.05rem; }
+/* ══ Plan benefits and comparison (the sign-up page) ═══════════════════════ */
 
 /* Benefit lists (check bullets) */
 .ma-benefits { list-style: none; padding: 0; margin: .4rem 0 1rem; display: flex; flex-direction: column; gap: .5rem; }
 .ma-benefits li { padding-left: 1.5rem; position: relative; font-size: .92rem; line-height: 1.4; }
 .ma-benefits li::before { content: "✓"; position: absolute; left: 0; top: 0; color: var(--su-accent-2); font-weight: 700; }
 
-/* Primary / danger CTAs (buttons and links share the look) */
-.ma-cta-primary, .ma-cta-danger {
+/* The primary CTA (buttons and links share the look) */
+.ma-cta-primary {
   display: inline-block; width: auto; text-align: center; text-decoration: none;
   padding: .65rem 1.15rem; border-radius: 11px; font: inherit; font-weight: 600;
   cursor: pointer; border: 1px solid transparent; margin-top: .4rem;
 }
 .ma-cta-primary { background: linear-gradient(180deg, var(--su-accent-2), var(--su-accent)); color: #fff; }
 .ma-cta-primary:hover { filter: brightness(1.07); }
-.ma-cta-danger { background: transparent; border-color: var(--su-err); color: var(--su-err); }
-.ma-cta-danger:hover { background: rgba(239,68,68,.1); }
 
 /* Free vs Premium comparison */
 .ma-compare { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; }
@@ -512,41 +420,9 @@ html[data-theme="light"] {
 .ma-plan-col--paid { border-color: rgba(129,140,248,.45); background: linear-gradient(180deg, rgba(99,102,241,.08), var(--su-bg)); }
 /* The column the member is actually on. Its sibling --paid carried a treatment
    and this one carried none, so "you are here" read only in the tag text. */
-.ma-plan-col--current { border-color: var(--su-muted); background: var(--su-surface); }
 .ma-plan-col-h { display: flex; align-items: center; gap: .5rem; font-weight: 700; margin-bottom: .5rem; }
 .ma-col-tag { font-size: .62rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: .12rem .45rem; border-radius: 999px; background: var(--su-surface-2); color: var(--su-muted); }
 .ma-col-tag--paid { background: linear-gradient(180deg, var(--su-accent-2), var(--su-accent)); color: #fff; }
-
-/* Mail-ID card */
-.ma-mailid { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.1rem; font-weight: 600; padding: .7rem .9rem; border-radius: 10px; background: var(--su-bg); border: 1px solid var(--su-border); word-break: break-all; margin-bottom: .3rem; }
-.ma-card--claim, .ma-card--perk { border-color: rgba(129,140,248,.3); }
-
-/* Claim form */
-.ma-claim { display: flex; flex-direction: column; gap: .7rem; }
-.ma-claim-row { display: flex; align-items: stretch; }
-.ma-input { width: 100%; padding: .6rem .8rem; font: inherit; font-size: .98rem; color: var(--su-text); background: var(--su-bg); border: 1px solid var(--su-border); border-radius: 10px; outline: none; }
-.ma-input:focus { border-color: var(--su-accent); box-shadow: 0 0 0 3px rgba(99,102,241,.25); }
-.ma-claim-row .ma-input { border-radius: 10px 0 0 10px; border-right: 0; }
-.ma-claim-at { display: inline-flex; align-items: center; padding: 0 .8rem; background: var(--su-surface-2); border: 1px solid var(--su-border); border-radius: 0 10px 10px 0; color: var(--su-muted); font-size: .9rem; white-space: nowrap; }
-.ma-claim-terms { font-size: .85rem; }
-.ma-claim-msg { margin: 0; font-size: .85rem; min-height: 1.1em; }
-.ma-claim-msg.is-err { color: var(--su-err); }
-.ma-claim-msg.is-ok { color: var(--su-muted); }
-
-/* Two-factor card */
-.ma-badge { font-size: .68rem; font-weight: 700; letter-spacing: .03em; padding: .15rem .5rem; border-radius: 999px; vertical-align: middle; }
-.ma-badge--ok { background: rgba(16,185,129,.16); color: var(--su-ok); }
-.ma-badge--warn { background: rgba(245,158,11,.18); color: #f59e0b; }
-.ma-2fa-off { display: flex; flex-direction: column; gap: .6rem; align-items: flex-start; margin-top: .6rem; }
-.ma-2fa-enroll { margin-top: 1rem; border-top: 1px solid var(--su-border); padding-top: 1rem; }
-.ma-2fa-grid { display: flex; gap: 1.1rem; align-items: flex-start; flex-wrap: wrap; }
-.ma-2fa-qrbox { background: #fff; padding: 8px; border-radius: 10px; line-height: 0; flex-shrink: 0; }
-.ma-2fa-qr { display: block; width: 188px; height: 188px; }
-.ma-2fa-steps { flex: 1; min-width: 12rem; font-size: .9rem; }
-.ma-2fa-steps p { margin: 0 0 .6rem; line-height: 1.45; }
-.ma-2fa-manual { color: var(--su-muted); }
-.ma-2fa-key { display: inline-block; font-family: ui-monospace, monospace; font-size: .85rem; word-break: break-all; background: var(--su-bg); padding: .2rem .4rem; border-radius: 6px; border: 1px solid var(--su-border); }
-.ma-field > span { display: block; font-weight: 600; margin-bottom: .35rem; font-size: .9rem; }
 
 /* Sign-in: alternate VayuMail login + "or" divider */
 .su-or { display: flex; align-items: center; text-align: center; color: var(--su-muted); font-size: .8rem; margin: 1.3rem 0 .6rem; }
@@ -628,13 +504,6 @@ html[data-theme="light"] {
 .pr-card--current { border-color: color-mix(in srgb, var(--su-accent-2) 38%, transparent); }
 .pr-card--current.pr-card--featured { box-shadow: none; }
 
-/* ── Account page ────────────────────────────────────────────────────────── */
-.ma-title { font-size: 1.32rem; }
-.ma-card { padding: 1.15rem 1.2rem; border-radius: 14px; }
-.ma-card h2 { font-size: .98rem; margin-bottom: .75rem; }
-/* The plan card's tint was competing with the page; keep the hint, drop the wash. */
-.ma-card--plan { background: var(--su-surface); border-color: color-mix(in srgb, var(--su-accent-2) 30%, transparent); }
-
 /* ── Motion: responsive, not theatrical ──────────────────────────────────── */
 .pr-cta, .pr-card {
   transition: transform .18s cubic-bezier(.22, .61, .36, 1), box-shadow .18s ease, filter .18s ease;
@@ -655,187 +524,6 @@ html[data-theme="light"] {
   .pr-cta:hover, .pr-card:hover { transform: none; }
 }
 
-/* ── Membership & billing card ────────────────────────────────────────────────
-   A definition list rather than a table: these are label/value facts, not
-   tabular data, and a dl stays readable when it wraps to one column on a phone. */
-.ma-bill { margin: 0; display: grid; gap: .1rem; }
-.ma-bill-row {
-  display: grid;
-  grid-template-columns: 8.5rem 1fr;
-  gap: .6rem;
-  padding: .5rem 0;
-  border-bottom: 1px solid var(--su-border, rgba(255, 255, 255, .07));
-}
-.ma-bill-row:last-child { border-bottom: 0; }
-.ma-bill-row dt { color: var(--su-muted); font-size: .82rem; }
-.ma-bill-row dd { margin: 0; font-size: .9rem; font-weight: 600; }
-.ma-bill-note {
-  display: block;
-  margin-top: .15rem;
-  font-size: .76rem;
-  font-weight: 400;
-  color: var(--su-muted);
-}
-
-.ma-bill-hist { margin-top: .9rem; padding-top: .8rem; border-top: 1px solid var(--su-border, rgba(255, 255, 255, .07)); }
-.ma-bill-hist-h { font-size: .74rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--su-muted); margin-bottom: .45rem; }
-.ma-bill-hist ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .3rem; }
-.ma-bill-hist li { font-size: .84rem; display: flex; gap: .55rem; }
-.ma-bill-when { color: var(--su-muted); font-variant-numeric: tabular-nums; flex: none; min-width: 5.4rem; }
-
-@media (max-width: 480px) {
-  .ma-bill-row { grid-template-columns: 1fr; gap: .1rem; }
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   Monetization design language on the member pages.
-
-   The account page was a flat stack of eight equal-weight cards, so everything
-   shouted at the same volume and the page had to be read top to bottom to find
-   anything. Each secondary section now collapses to one summary row — icon tile ·
-   title · one-line subtitle · status chip · rotating chevron — and expanding
-   reveals the existing card, chromeless, with a short reveal. This mirrors
-   .mon-acc in vayuos.css deliberately: the console and the member pages should
-   read as one design.
-
-   Native <details>, so it needs no JavaScript: nothing to break under a strict
-   CSP, and nothing lost if a script fails to load.
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-.ma-sec {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: .75rem;
-  margin: 1.5rem 0 .7rem;
-}
-.ma-sec__title {
-  margin: 0;
-  font-size: 1.02rem;
-  font-weight: 700;
-  letter-spacing: -.01em;
-  color: var(--su-text, #e8eaf0);
-}
-.ma-sec__hint { font-size: .74rem; color: var(--su-muted, #9aa3b2); }
-
-.ma-acc {
-  border: 1px solid var(--su-border, rgba(255, 255, 255, .09));
-  border-radius: 14px;
-  background: var(--su-surface, #161922);
-  overflow: hidden;
-  margin-bottom: .55rem;
-  transition: border-color .16s ease, box-shadow .16s ease;
-}
-.ma-acc[open] {
-  border-color: color-mix(in srgb, var(--su-accent, #6366f1) 32%, var(--su-border, rgba(255, 255, 255, .09)));
-  box-shadow: 0 8px 22px -14px rgba(0, 0, 0, .65);
-}
-
-.ma-acc__sum {
-  display: flex;
-  align-items: center;
-  gap: .7rem;
-  cursor: pointer;
-  list-style: none;
-  padding: .7rem .85rem;
-  /* Comfortable tap target (WCAG 2.5.5). */
-  min-height: 48px;
-  user-select: none;
-  touch-action: manipulation;
-  transition: background .16s ease;
-}
-.ma-acc__sum::-webkit-details-marker { display: none; }
-.ma-acc__sum::marker { content: ""; }
-.ma-acc__sum:hover { background: color-mix(in srgb, #fff 3%, transparent); }
-.ma-acc__sum:focus-visible { outline: 2px solid var(--su-accent, #6366f1); outline-offset: -2px; }
-
-.ma-acc__ic {
-  flex: none;
-  width: 34px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1rem;
-  border-radius: 10px;
-  background: color-mix(in srgb, #fff 5%, transparent);
-  border: 1px solid var(--su-border, rgba(255, 255, 255, .09));
-}
-.ma-acc__head { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
-.ma-acc__title { font-weight: 650; font-size: .92rem; color: var(--su-text, #e8eaf0); }
-.ma-acc__sub {
-  font-size: .77rem;
-  color: var(--su-muted, #9aa3b2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.ma-acc__chev { flex: none; color: var(--su-muted, #9aa3b2); transition: transform .16s ease; }
-.ma-acc[open] .ma-acc__chev { transform: rotate(180deg); }
-.ma-acc[open] .ma-acc__sum { border-bottom: 1px solid var(--su-border, rgba(255, 255, 255, .09)); }
-
-.ma-acc__body { animation: ma-reveal .26s cubic-bezier(.16, .84, .44, 1); }
-@keyframes ma-reveal {
-  from { opacity: 0; transform: translateY(-5px); }
-  to   { opacity: 1; transform: none; }
-}
-
-/* The wrapped card renders chromeless — the accordion IS the frame — and its
-   duplicate heading is hidden, because the summary row already names it. */
-.ma-acc__body > .ma-card {
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  margin: 0;
-  padding: .85rem .9rem 1rem;
-}
-.ma-acc__body > .ma-card::before { display: none; }
-.ma-acc__body > .ma-card > h2:first-child { display: none; }
-
-/* ── Status chip (mirrors .mon-chip) ────────────────────────────────────── */
-
-.ma-chip {
-  flex: none;
-  font-size: .69rem;
-  font-weight: 600;
-  padding: 3px 9px;
-  border-radius: 999px;
-  /* Theme-neutral grey rather than a white tint: the off state used a 4% WHITE
-     fill and a white border, which is invisible on the light theme — so states
-     like "Refunded" and "Not approved" read as stray text next to the green
-     "Paid" pill instead of as chips. A mid grey resolves on both themes. */
-  border: 1px solid rgba(127, 127, 127, .34);
-  color: var(--su-muted, #9aa3b2);
-  background: rgba(127, 127, 127, .1);
-  white-space: nowrap;
-  max-width: 11rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.ma-chip--on {
-  color: #34d399;
-  border-color: rgba(52, 211, 153, .4);
-  background: rgba(52, 211, 153, .12);
-}
-
-@media (max-width: 560px) {
-  .ma-acc__sum { padding: .75rem .8rem; gap: .6rem; }
-  .ma-acc__ic { width: 32px; height: 32px; }
-  /* The subtitle is often an email address; let it wrap rather than truncate to
-     a few characters on a narrow screen. */
-  .ma-acc__sub { white-space: normal; overflow-wrap: anywhere; }
-  .ma-chip { max-width: 6.5rem; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ma-acc__body { animation: none; }
-  .ma-acc, .ma-acc__sum, .ma-acc__chev { transition: none; }
-}
-
-/* "Sign out" wrapped to two lines in the page header on a narrow screen, because
-   the flex header let the button shrink below its text. It is a two-word label; it
-   should never break. */
-.ma-signout { white-space: nowrap; flex: none; }
 
 /* Recovery completion list (ADR-0144). The reset reports exactly what it
    disconnected, and those counts are the holder's only way to notice a device
@@ -932,87 +620,131 @@ html[data-theme="light"] {
   .pr-toggle-btn { flex: 1; justify-content: center; padding: .5rem .6rem; font-size: .82rem; }
 }
 
-/* ---------------------------------------------------------------------------
-   Receipts and "Your comments" on the account page.
 
-   Both are lists of small records rather than tables: the account page is read
-   on a phone as often as a desktop, and a four-column table there either
-   scrolls sideways or shrinks past legibility. Each row is a two-line block —
-   what and how much, then when / reference / status.
-   --------------------------------------------------------------------------- */
-.ma-rcpts, .ma-cmts {
-  list-style: none;
-  margin: .9rem 0 0;
-  padding: 0;
-  display: grid;
-  gap: .1rem;
-}
-.ma-rcpt, .ma-cmt {
-  padding: .65rem 0;
-  border-bottom: 1px solid var(--su-border, rgba(255, 255, 255, .07));
-}
-.ma-rcpt:last-child, .ma-cmt:last-child { border-bottom: 0; }
+/* ── The member's account (/members/account) ─────────────────────────────────
+   One grammar for every setting: what it is · what it is now · one action.
+   Hairlines, not cards; a state is a coloured word, not a chip. Colours come
+   from the --su-* tokens, which Halcyon maps to its own (members.css). */
+.su-body.acct-body { display: block; background: var(--su-bg); }
+.acct { display: grid; grid-template-columns: 11rem minmax(0, 42rem); gap: 4rem; justify-content: center; padding: 3.5rem 1.25rem 6rem; }
+.acct-idx { position: sticky; top: 2rem; align-self: start; display: flex; flex-direction: column; padding-top: 8.5rem; }
+.acct-idx a, .acct-idx__out { display: block; padding: .45rem 0 .45rem .9rem; border: 0; border-left: 1px solid var(--su-border); background: none; color: var(--su-muted); font: inherit; font-size: .88rem; text-align: left; text-decoration: none; cursor: pointer; }
+.acct-idx a:hover, .acct-idx__out:hover { color: var(--su-text); border-left-color: var(--su-text); }
+.acct-idx form { margin-top: 1.5rem; }
+.acct-idx__out { border-left-color: transparent; padding-left: 0; }
+.acct-main { min-width: 0; }
 
-.ma-rcpt__main {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: .8rem;
-}
-.ma-rcpt__what { font-size: .92rem; font-weight: 600; }
-/* The amount is the thing being looked for, so it is tabular and never wraps. */
-.ma-rcpt__amt {
-  font-size: .95rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  flex: none;
-}
-.ma-rcpt__cad {
-  font-size: .72rem;
-  font-weight: 500;
-  color: var(--su-muted);
-  text-transform: lowercase;
-}
-.ma-rcpt__meta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: .5rem;
-  margin-top: .3rem;
-  font-size: .78rem;
-  color: var(--su-muted);
-}
-/* A reference is quoted to a human, so it must be selectable in one gesture. */
-.ma-rcpt__ref code {
-  font-size: .74rem;
-  padding: .1rem .34rem;
-  border-radius: 5px;
-  background: var(--su-card-2, rgba(255, 255, 255, .05));
-  user-select: all;
-}
+.acct-who { display: flex; align-items: center; gap: 1.4rem; padding-bottom: 2.5rem; }
+.acct-who__pic { position: relative; flex: none; }
+.acct-av { display: block; border-radius: 50%; object-fit: cover; background: var(--su-surface-2); }
+.acct-who__pic .acct-av { width: 5rem; height: 5rem; }
+.acct-who__edit { position: absolute; right: -.15rem; bottom: -.15rem; width: 1.9rem; height: 1.9rem; border-radius: 50%; display: grid; place-items: center; background: var(--su-surface); color: var(--su-muted); box-shadow: 0 0 0 1px var(--su-border); }
+.acct-who__edit:hover { color: var(--su-text); }
+.acct-who__name { margin: 0; font-size: 2.3rem; line-height: 1.1; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.acct-who__meta { margin: .45rem 0 0; color: var(--su-muted); font-size: .9rem; overflow-wrap: anywhere; }
 
-.ma-cmt__top { display: flex; align-items: center; gap: .5rem; }
-/* A status chip in these rows must never be clipped: "Not approved" truncated to
-   "Not approv…" is exactly the word a member needs to read. The parent rows wrap,
-   so a long chip takes its own line rather than losing characters. .ma-chip caps
-   its width for the accordion summary, where space really is fixed. */
-.ma-rcpt__meta .ma-chip, .ma-cmt__top .ma-chip {
-  max-width: none;
-  overflow: visible;
-  text-overflow: clip;
-}
-.ma-cmt__when { font-size: .78rem; color: var(--su-muted); font-variant-numeric: tabular-nums; }
-.ma-cmt__body {
-  margin: .35rem 0 .25rem;
-  font-size: .88rem;
-  line-height: 1.5;
-  color: var(--su-text, inherit);
-}
-.ma-cmt__where { font-size: .8rem; }
-/* A removed post is stated plainly, not styled as a broken link. */
-.ma-cmt__where--gone { color: var(--su-muted); font-style: italic; }
+.acct-notice { margin: 0 0 2rem; padding: .8rem 1rem; border-radius: 10px; background: var(--su-surface); box-shadow: inset 3px 0 0 var(--su-accent), inset 0 0 0 1px var(--su-border); font-size: .92rem; }
+.acct-notice--err { color: var(--su-err); box-shadow: inset 3px 0 0 var(--su-err), inset 0 0 0 1px var(--su-border); }
 
-@media (max-width: 480px) {
-  .ma-rcpt__main { flex-direction: column; gap: .15rem; }
+.acct-sec { padding: 2.25rem 0 .5rem; border-top: 1px solid var(--su-border); scroll-margin-top: 1.5rem; }
+.acct-sec__h { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: .5rem; }
+.acct-sec__h h2 { margin: 0; font-size: 1.45rem; letter-spacing: -.01em; }
+.acct-sec__note { margin: 0; color: var(--su-muted); font-size: .82rem; }
+.acct-sec__note.is-err { color: var(--su-err); }
+
+.acct-rows { margin: 0; padding: 0; list-style: none; }
+.acct-row { display: grid; grid-template-columns: 10.5rem minmax(0, 1fr) auto; align-items: center; gap: .5rem 1.25rem; min-height: 4.25rem; padding: .85rem 0; border-bottom: 1px solid var(--su-border); scroll-margin-top: 1.5rem; }
+.acct-row:last-child { border-bottom: 0; }
+.acct-row__k { color: var(--su-muted); font-size: .88rem; }
+.acct-row__v { min-width: 0; font-size: 1.02rem; overflow-wrap: anywhere; }
+.acct-row__v small { display: block; margin-top: .15rem; color: var(--su-muted); font-size: .82rem; }
+.acct-row__a { display: flex; gap: .5rem; justify-content: flex-end; }
+.acct-row__a form { margin: 0; }
+.acct-inl { display: flex; align-items: center; gap: .8rem; }
+.acct-inl .acct-av { width: 2.25rem; height: 2.25rem; flex: none; }
+
+.acct-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 2.5rem; padding: 0 1rem; border: 0; border-radius: 999px; background: none; color: var(--su-text); box-shadow: inset 0 0 0 1px var(--su-border); font: inherit; font-size: .88rem; font-weight: 500; white-space: nowrap; text-decoration: none; cursor: pointer; }
+.acct-btn:hover { background: var(--su-surface-2); }
+.acct-btn:disabled { opacity: .6; cursor: progress; }
+.acct-btn--primary { background: var(--su-text); color: var(--su-bg); box-shadow: none; }
+.acct-btn--primary:hover { background: var(--su-text); opacity: .88; }
+.acct-btn--quiet { box-shadow: none; color: var(--su-muted); padding: 0 .5rem; }
+.acct-btn--quiet:hover { background: none; color: var(--su-text); }
+.acct-btn--danger { background: var(--su-err); color: #fff; box-shadow: none; }
+.acct-btn--danger:hover { background: var(--su-err); opacity: .88; }
+.acct-btn:focus-visible, .acct-idx a:focus-visible, .acct-who__edit:focus-visible, .acct-pick__opt:focus-visible, .acct-switch input:focus-visible + .acct-switch__track { outline: 2px solid var(--su-accent); outline-offset: 2px; }
+
+.acct-state { display: inline-flex; align-items: center; gap: .4rem; font-size: .82rem; font-weight: 500; }
+.acct-state::before { content: ""; width: .45rem; height: .45rem; border-radius: 50%; background: currentColor; }
+.acct-state--ok { color: var(--su-ok); }
+.acct-state--warn { color: var(--su-warn); }
+.acct-state--off { color: var(--su-muted); }
+.acct-row__v small .acct-state { margin-right: .6rem; }
+
+/* A yes/no is a switch that saves when flipped. */
+.acct-switch { position: relative; display: inline-flex; cursor: pointer; }
+.acct-switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.acct-switch__track { width: 2.75rem; height: 1.6rem; border-radius: 999px; background: var(--su-border); position: relative; transition: background .15s; }
+.acct-switch__track::after { content: ""; position: absolute; top: .2rem; left: .2rem; width: 1.2rem; height: 1.2rem; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .25); transition: transform .15s; }
+.acct-switch input:checked + .acct-switch__track { background: var(--su-ok); }
+.acct-switch input:checked + .acct-switch__track::after { transform: translateX(1.15rem); }
+.acct-switch input:disabled + .acct-switch__track { opacity: .6; }
+
+/* What opens in place spans the row. Without the script it is simply open. */
+.acct-more { grid-column: 1 / -1; padding: .5rem 0 .75rem; }
+.acct-js .acct-more:not(.is-open) { display: none; }
+html:not(.acct-js) [data-acct-open], html:not(.acct-js) [data-acct-portal] { display: none; }
+.acct-js .acct-nojs { display: none; }
+.acct-more__foot { margin: .75rem 0 0; color: var(--su-muted); font-size: .82rem; }
+.acct-more__foot.is-err { color: var(--su-err); }
+.acct-more p { margin: 0 0 .75rem; font-size: .92rem; }
+.acct-edit { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin-bottom: .6rem; }
+.acct-input { flex: 1 1 14rem; min-width: 0; height: 2.6rem; padding: 0 .9rem; border: 1px solid var(--su-border); border-radius: 10px; background: var(--su-surface); color: var(--su-text); font: inherit; font-size: .95rem; }
+.acct-input:focus { outline: none; border-color: var(--su-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--su-accent) 25%, transparent); }
+.acct-field { display: block; margin: 0 0 .45rem; color: var(--su-muted); font-size: .85rem; }
+.acct-field b { color: var(--su-text); font-weight: 500; overflow-wrap: anywhere; }
+.acct-check { display: flex; gap: .5rem; align-items: center; margin-bottom: .6rem; font-size: .88rem; }
+.acct-claim__at { color: var(--su-muted); font-size: .92rem; }
+.acct-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.acct-pick { display: flex; flex-wrap: wrap; gap: .8rem; }
+.acct-pick__opt { width: 3.25rem; height: 3.25rem; padding: 0; border: 0; border-radius: 50%; overflow: hidden; background: var(--su-surface-2); cursor: pointer; transition: transform .15s; }
+.acct-pick__opt:hover { transform: scale(1.06); }
+.acct-pick__opt img { display: block; width: 100%; height: 100%; }
+.acct-pick__opt[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--su-bg), 0 0 0 4px var(--su-text); }
+.acct-pick__up { display: grid; place-items: center; background: none; box-shadow: inset 0 0 0 1px var(--su-border); color: var(--su-muted); font-size: 1.4rem; }
+
+.acct-2fa__enrol { display: flex; gap: 1.25rem; flex-wrap: wrap; align-items: flex-start; }
+.acct-2fa__enrol[hidden] { display: none; }
+.acct-2fa__enrol > div { flex: 1 1 16rem; min-width: 0; }
+.acct-2fa__qr { border-radius: 10px; background: #fff; padding: .5rem; }
+.acct-2fa code { font-size: .85rem; overflow-wrap: anywhere; }
+.acct-delete p { color: var(--su-muted); }
+
+.acct-list { margin: 0; padding: 0; list-style: none; }
+.acct-list li { padding: .75rem 0; border-top: 1px solid var(--su-border); }
+.acct-list li:first-child { border-top: 0; padding-top: .25rem; }
+.acct-list__top { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+.acct-list__where { font-weight: 500; overflow-wrap: anywhere; color: var(--su-text); text-decoration: none; }
+a.acct-list__where:hover { text-decoration: underline; }
+.acct-list__amt { white-space: nowrap; }
+.acct-list__body { margin: .3rem 0; color: var(--su-muted); font-size: .9rem; overflow-wrap: anywhere; }
+.acct-list__meta { display: block; margin-top: .2rem; color: var(--su-muted); font-size: .8rem; }
+.acct-list__meta code { font-size: .78rem; }
+
+.acct-end { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--su-border); color: var(--su-muted); font-size: .82rem; }
+.acct-end form { margin: 0; }
+
+@media (max-width: 860px) {
+  .acct { display: block; padding: 1.75rem 1rem 4rem; }
+  .acct-idx { display: none; }
+  .acct-who { gap: 1rem; padding-bottom: 1.75rem; }
+  .acct-who__pic .acct-av { width: 4rem; height: 4rem; }
+  .acct-who__name { font-size: 1.85rem; }
+  .acct-sec { padding-top: 1.75rem; }
+  .acct-row { grid-template-columns: minmax(0, 1fr) auto; gap: .2rem .9rem; }
+  .acct-row__k { grid-column: 1 / -1; font-size: .8rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .acct-switch__track, .acct-switch__track::after, .acct-pick__opt { transition: none; }
 }

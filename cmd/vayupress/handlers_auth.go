@@ -620,6 +620,13 @@ func mailOnlyPathAllowed(path string) bool {
 		// what an untrusted agency client would have inherited.
 		strings.HasPrefix(path, "/os/api/vayuos/mail/"):
 		return true
+	case path == "/os/talk" || strings.HasPrefix(path, "/os/talk/"):
+		// VayuTalk, the chat that comes with a mailbox. A non-admin chats only
+		// as their own address (talkIdentities), and its two install-wide
+		// switches refuse anyone but an administrator. Not in the Tor world,
+		// where the chat identity is the install's one anonymous handle rather
+		// than the holder's own address.
+		return !config.Cfg.OnionMode
 	}
 	return false
 }
