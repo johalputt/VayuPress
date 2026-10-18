@@ -2637,7 +2637,30 @@ func CacheWrite(relPath, content string) error {
 	if fi, err := os.Stat(full); err == nil {
 		oldSize = fi.Size()
 	}
-	if err := os.WriteFile(full, []byte(content), 0644); err != nil {
+	// Written beside the page and renamed over it: a cached page is served
+	// from its file while a re-render rewrites it, and written in place the
+	// file was truncated first, so a reader in between got an empty page with
+	// a 200. A rename swaps the whole file at once.
+	tmp, err := os.CreateTemp(filepath.Dir(full), ".write-*")
+	if err != nil {
+		return err
+	}
+	if _, err := tmp.WriteString(content); err != nil {
+		tmp.Close()           //nolint:errcheck
+		os.Remove(tmp.Name()) //nolint:errcheck
+		return err
+	}
+	if err := tmp.Chmod(0644); err != nil {
+		tmp.Close()           //nolint:errcheck
+		os.Remove(tmp.Name()) //nolint:errcheck
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmp.Name()) //nolint:errcheck
+		return err
+	}
+	if err := os.Rename(tmp.Name(), full); err != nil {
+		os.Remove(tmp.Name()) //nolint:errcheck
 		return err
 	}
 	db.UpdateStorageDelta(int64(len(content)) - oldSize)

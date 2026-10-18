@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.11] — 2026-10-18
+
+A clean account page and panel for members: every control in one place, cancel renewal, delete account, pick a picture, VayuTalk for mailbox holders; and a logo that comes alive on hover.
+
 ### Added
 
 - **Members cancel their own renewal, and can take it back.** A plan paid
