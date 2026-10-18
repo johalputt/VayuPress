@@ -63,6 +63,10 @@ A clean account page and panel for members: every control in one place, cancel r
   Opened on the member account page, the panel showed its older layout, the
   stacked cards and accordions, because that page did not ask for Halcyon's;
   there is now one panel, and it does not depend on the page.
+- **A page is never served half-written.** A cached page is served from its
+  file while a re-render rewrites it, and the rewrite truncated the file
+  first: a reader arriving in between got an empty page. Pages are now
+  written beside the old one and swapped in whole.
 - **A signed-in reader's name no longer pushes Halcyon's bar off a phone.**
   The name showed in the phone bar as well as in its menu, and the bar ran
   59 px past a 320 px screen.
