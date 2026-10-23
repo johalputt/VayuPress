@@ -134,3 +134,31 @@ func TestTheInstallsFormSavesItsRules(t *testing.T) {
 		t.Errorf("the saved rule is not the shield's: %v", rules)
 	}
 }
+
+// A limit's line on the page says what it refused, beside what it matched,
+// and the connector carries the refusals too.
+func TestALimitShowsWhatItRefused(t *testing.T) {
+	a, _ := shieldSitesApp(t)
+	ctx := context.Background()
+	if err := a.siteSettings.SetMany(ctx, settings.ForPrimary(), map[string]string{
+		settings.KeyShieldRules: "limit 1/min path=/search\ntest limit 1/min path=/notes",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	a.vayuShield.ApplySettings(a.shieldSettings(ctx))
+	for i := 0; i < 2; i++ {
+		askShield(a, "example.test", "/search")
+		askShield(a, "example.test", "/notes")
+	}
+	band := a.shieldPolicyBand(ctx, false)
+	for _, want := range []string{"<code>limit 1/min path=/search</code> &middot; matched 2 requests, refused 1",
+		"<code>test limit 1/min path=/notes</code> &middot; matched 2 requests, would have refused 1"} {
+		if !strings.Contains(band, want) {
+			t.Errorf("the Security page has no %q", want)
+		}
+	}
+	out, _ := json.Marshal(shieldRuleCounts(a.vayuShield))
+	if !strings.Contains(string(out), `"refused":1`) {
+		t.Errorf("the connector was not told what the limit refused: %s", out)
+	}
+}

@@ -17,11 +17,12 @@ import (
 
 // operatorRulesHint is the field's help, shared by the install's page and a
 // site's.
-const operatorRulesHint = `One rule per line: <code>block</code>, <code>challenge</code>, <code>allow</code> or <code>log</code>, then conditions that must all hold &mdash; ` +
+const operatorRulesHint = `One rule per line: <code>block</code>, <code>challenge</code>, <code>allow</code>, <code>log</code> or <code>limit 20/min</code>, then conditions that must all hold &mdash; ` +
 	`<code>path=</code>, <code>path^=</code> (starts with), <code>path*=</code> (contains), <code>method=GET,POST</code>, <code>country=CN,RU</code>, ` +
 	`<code>client=</code> (human, goodbot, badbot, aiagent, headless, unknown), <code>score&gt;=0.6</code>, <code>score&lt;0.2</code>, <code>header:Name</code> or <code>header:Name=value</code>. ` +
 	`The first rule that matches decides. Put <code>test</code> in front to count what a rule would do without doing it, and watch the count below before trusting it. ` +
 	`A block refuses that one request and nothing else: the visitor's other pages are still served. ` +
+	`A limit gives each visitor that many of the requests it matches, refilling evenly over the minute or hour (<code>limit 5/hour method=POST path=/contact</code>); past it they are asked to come back shortly, and nothing else happens to them. ` +
 	`Rules run after the shield's own checks, so a verified search engine and a signed-in reader never reach them.`
 
 // ruleDone is what a rule's action did to a request, as the count reads.
@@ -39,12 +40,15 @@ func operatorRuleHits(rules []*oprules.Rule, issues []string, now time.Time) str
 		b.WriteString(`<ul class="muted text-xs" aria-label="What each rule has matched">`)
 		for _, r := range rules {
 			n, at := r.Hits()
-			count := countOf(int(n), "request")
-			done := ruleDone[r.Action]
+			would := ""
 			if r.Test {
-				done = "would have " + done
+				would = "would have "
 			}
-			count = done + " " + count
+			count := would + ruleDone[r.Action] + " " + countOf(int(n), "request")
+			if r.Action == oprules.Limit {
+				// A limit's matches are mostly served; what it did is the refusals.
+				count = "matched " + countOf(int(n), "request") + ", " + would + "refused " + strconv.FormatInt(r.Refused(), 10)
+			}
 			if n > 0 {
 				count += ", last " + humanAgo(at, now)
 			}
@@ -71,6 +75,9 @@ func shieldRuleCounts(m *vayushield.Manager) map[string]any {
 	for _, r := range rules {
 		n, at := r.Hits()
 		row := map[string]any{"line": r.Line, "action": r.Action.String(), "test": r.Test, "hits": n}
+		if r.Action == oprules.Limit {
+			row["refused"] = r.Refused()
+		}
 		if !at.IsZero() {
 			row["last_hit"] = at.UTC().Format(time.RFC3339)
 		}

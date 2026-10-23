@@ -219,9 +219,11 @@ var rules = []Rule{
 		Onion: OnionActive, Crawler: CrawlerExempt, Lifetime: ExplicitlyPermanent,
 		Rationale: "Lines the operator wrote about requests: a path, a method, a header, the " +
 			"shield's verdict. Active in a Tor Space because those facts mean the same thing " +
-			"there; the one that does not, the country, is withheld in Tor mode so a country " +
-			"rule matches nobody, and a challenge rule fails open there with every other " +
-			"challenge. Crawler-EXEMPT by position rather than by a check: the rules run after " +
+			"there; the two that do not are withheld in Tor mode: the country, so a country " +
+			"rule matches nobody, and the source, so a limit rule never holds the whole " +
+			"audience (every peer 127.0.0.1) to one allowance. A limit that does refuse is " +
+			"counted as the rate-limit gate, whose obligations it shares. A challenge rule " +
+			"fails open there with every other challenge. Crawler-EXEMPT by position rather than by a check: the rules run after " +
 			"the classification ladder, and a confirmed crawler was served at the fast path " +
 			"before it, so no rule can de-index a site through a crawler the network confirmed. " +
 			"A block refuses one request and installs nothing against its source — a rule names " +

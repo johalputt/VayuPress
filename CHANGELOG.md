@@ -56,10 +56,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   decides; `test` in front counts what a rule would do without doing it, and
   each rule shows how many requests it has matched and when it last did. A
   block refuses that request alone and installs nothing against the visitor.
+  `limit 20/min` (or `/hour`) is a rate limit on the requests a rule
+  matches, per visitor: past it they are answered 429 with when to come
+  back, and nothing escalates; the page counts what each limit refused.
   A site can add rules of its own, which run after the install's and can
   never override one. Rules run after the shield's own checks, so a verified
   crawler or a signed-in reader never reaches them; in a Tor Space a country
-  rule matches no one. At most 100 rules; a line that cannot be read is
+  rule matches no one and a limit refuses no one, since every visitor
+  arrives from one address. At most 100 rules; a line that cannot be read is
   named and the rest apply.
 - **What readers search for.** A site's search page records each search:
   the query and whether it found anything. Analytics shows the most searched

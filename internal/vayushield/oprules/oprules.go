@@ -8,6 +8,7 @@
 //	allow header:X-Health-Check=ok
 //	test block client=headless
 //	log score>=0.6 method=POST
+//	limit 20/min path^=/search
 //
 // A line is an action, then conditions that must all hold. The first rule in
 // order that matches and acts decides. "test" in front runs a rule without
@@ -15,6 +16,12 @@
 // watched against real traffic before it is trusted. A test rule and a log
 // rule are counted and evaluation goes on, so adding one never changes what
 // the rules after it do.
+//
+// "limit N/min" (or N/hour) gives each source its own allowance on the
+// requests the rule matches: N at once, refilling evenly over the period. A
+// source within it goes on to the next rule; one past it is refused with a
+// 429 and when to come back. The allowance is held per rule, in memory, and
+// starts afresh when the rules are saved.
 //
 // This is not a WAF and does not claim to be one. Injection defence in
 // VayuPress is structural (parameterised queries, sanitising, the CSP); these
@@ -24,10 +31,13 @@
 package oprules
 
 import (
+	"math"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/vayushield/resilience"
 )
 
 // Action is what a matching rule does.
@@ -42,6 +52,8 @@ const (
 	Allow
 	// Log only counts the request.
 	Log
+	// Limit refuses a source past its allowance on the matching requests.
+	Limit
 )
 
 func (a Action) String() string {
@@ -54,6 +66,8 @@ func (a Action) String() string {
 		return "allow"
 	case Log:
 		return "log"
+	case Limit:
+		return "limit"
 	}
 	return ""
 }
@@ -61,12 +75,20 @@ func (a Action) String() string {
 // MaxRules is the most rules a set holds; lines past it are refused, by name.
 const MaxRules = 100
 
+// limitKeys bounds the sources one limit rule tracks, so a hundred of them
+// over a spray of addresses stays a few tens of megabytes; past it the
+// limiter forgets idle sources first.
+const limitKeys = 4096
+
 // Facts are what a rule can test about a request.
 type Facts struct {
 	Path, Method, Country string
 	Client                string  // the shield's client type, lowercase: human, goodbot, badbot, aiagent, headless, unknown
 	Score                 float64 // the shield's bot score
 	Header                func(name string) string
+	// Source is who a limit is counted against. Empty, a limit rule matches
+	// and counts but never refuses: there is no one to hold it against.
+	Source string
 }
 
 // Rule is one compiled line.
@@ -75,10 +97,15 @@ type Rule struct {
 	Text   string
 	Action Action
 	Test   bool
+	// RetryAfter is, for a limit rule, the seconds until a refused source has
+	// one request again.
+	RetryAfter int
 
 	conds   []cond
 	hits    atomic.Int64
 	lastHit atomic.Int64 // unix seconds
+	limiter *resilience.Limiter
+	refused atomic.Int64
 }
 
 // Hits is how many requests the rule has matched since it was compiled, and
@@ -90,6 +117,10 @@ func (r *Rule) Hits() (int64, time.Time) {
 	}
 	return n, time.Time{}
 }
+
+// Refused is how many requests a limit rule has refused (for a test rule,
+// would have refused) since it was compiled.
+func (r *Rule) Refused() int64 { return r.refused.Load() }
 
 // Set is a compiled rule list. The nil Set matches nothing.
 type Set struct {
@@ -116,7 +147,16 @@ func (s *Set) Match(f Facts, now time.Time) *Rule {
 		}
 		r.hits.Add(1)
 		r.lastHit.Store(now.Unix())
-		if !r.Test && r.Action != Log {
+		switch {
+		case r.Action == Limit:
+			if f.Source == "" || r.limiter.Allow(f.Source) {
+				continue
+			}
+			r.refused.Add(1)
+			if !r.Test {
+				return r
+			}
+		case !r.Test && r.Action != Log:
 			return r
 		}
 	}
@@ -180,8 +220,17 @@ func parseLine(line string) (*Rule, string) {
 		r.Action = Allow
 	case "log":
 		r.Action = Log
+	case "limit":
+		r.Action = Limit
+		if len(words) < 2 {
+			return nil, "limit needs an allowance after it, as limit 20/min"
+		}
+		if err := r.setLimit(words[1]); err != "" {
+			return nil, err
+		}
+		words = append(words[:1:1], words[2:]...)
 	default:
-		return nil, "starts with " + strconv.Quote(words[0]) + "; a rule starts with block, challenge, allow or log"
+		return nil, "starts with " + strconv.Quote(words[0]) + "; a rule starts with block, challenge, allow, log or limit"
 	}
 	if len(words) == 1 {
 		// A rule with no condition matches everything; that is the whole site,
@@ -196,6 +245,28 @@ func parseLine(line string) (*Rule, string) {
 		r.conds = append(r.conds, c)
 	}
 	return r, ""
+}
+
+// setLimit reads "N/min" or "N/hour": N requests at once, refilling evenly
+// over the period.
+func (r *Rule) setLimit(w string) string {
+	n, per, ok := strings.Cut(strings.ToLower(w), "/")
+	count, err := strconv.Atoi(n)
+	if !ok || err != nil || count < 1 || count > 100000 {
+		return strconv.Quote(w) + ": an allowance is a count and a period, as 20/min or 500/hour"
+	}
+	var period float64
+	switch per {
+	case "min", "minute":
+		period = 60
+	case "hour", "h":
+		period = 3600
+	default:
+		return strconv.Quote(w) + ": the period is min or hour"
+	}
+	r.limiter = resilience.NewLimiter(float64(count)/period, float64(count), limitKeys)
+	r.RetryAfter = int(math.Ceil(period / float64(count)))
+	return ""
 }
 
 func parseCond(w string) (cond, string) {

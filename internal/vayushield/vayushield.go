@@ -1923,8 +1923,19 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		action := m.Decide(r, v)
 		// The operator's own rules, last: a fact stated by the operator
 		// outranks the shield's inference about the same request.
-		if rule := m.matchRule(r, v); rule != nil {
+		if rule := m.matchRule(r, v, enfKey); rule != nil {
 			switch rule.Action {
+			case oprules.Limit:
+				// Throttled, like the install's own rate limit, and counted as
+				// that gate: a limit is held against a source, not a request.
+				// Nothing escalates: a reader who searched too fast is not a
+				// suspect.
+				if !m.observing(lc, GateRateLimit) {
+					reqclass.MarkShielded(r.Context())
+					m.onEvent(ActionBlock, 1.0)
+					m.serveThrottled(w, r, http.StatusTooManyRequests, "rate-limited", strconv.Itoa(rule.RetryAfter))
+					return
+				}
 			case oprules.Block:
 				if !m.observing(lc, GateRule) {
 					// One request refused, by what it asked for. No jail and no

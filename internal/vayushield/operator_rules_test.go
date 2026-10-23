@@ -163,3 +163,61 @@ func TestACountryRuleMatchesNobodyInATorSpace(t *testing.T) {
 		t.Errorf("a country rule refused in a Tor Space: %d", code)
 	}
 }
+
+// askFrom is ask from a given address.
+func askFrom(m *Manager, ip, path string) (int, http.Header) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.Host, req.RemoteAddr = "b.test", ip+":40000"
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0")
+	m.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})).ServeHTTP(rec, req)
+	return rec.Code, rec.Header()
+}
+
+// A limit rule answers a source past its allowance with a 429 and when to
+// come back, on the paths it names alone, and leaves other sources be.
+func TestALimitRuleThrottlesTheSourceOnItsPaths(t *testing.T) {
+	m := ruleShield("limit 2/min path^=/search", nil)
+	for i := 0; i < 2; i++ {
+		if code, _ := askFrom(m, "198.51.100.20", "/search"); code != http.StatusOK {
+			t.Fatalf("request %d within the allowance answered %d", i+1, code)
+		}
+	}
+	code, h := askFrom(m, "198.51.100.20", "/search")
+	if code != http.StatusTooManyRequests || h.Get("Retry-After") != "30" {
+		t.Fatalf("past the allowance: %d, Retry-After %q; want 429, 30", code, h.Get("Retry-After"))
+	}
+	if code, _ := askFrom(m, "198.51.100.20", "/article"); code != http.StatusOK {
+		t.Errorf("a path the limit does not name answered %d", code)
+	}
+	if code, _ := askFrom(m, "203.0.113.4", "/search"); code != http.StatusOK {
+		t.Errorf("another source answered %d", code)
+	}
+}
+
+// Observe mode counts a limit as the rate-limit gate and serves.
+func TestObserveModeCountsALimit(t *testing.T) {
+	m := ruleShield("", nil)
+	m.ApplySettings(Settings{Enabled: true, PoWThreshold: 0.99, JSThreshold: 0.995, BlockThreshold: 1,
+		Rules: "limit 1/min path=/search", ObserveOnly: true})
+	askFrom(m, "198.51.100.20", "/search")
+	if code, _ := askFrom(m, "198.51.100.20", "/search"); code != http.StatusOK {
+		t.Errorf("observe mode enforced a limit: %d", code)
+	}
+	if got := m.WouldHave()[GateRateLimit]; got != 1 {
+		t.Errorf("would-have count for the rate-limit gate is %d, want 1", got)
+	}
+}
+
+// In a Tor Space every visitor arrives as 127.0.0.1: a limit would hold the
+// whole audience to one allowance, so it refuses no one there.
+func TestALimitRefusesNoOneInATorSpace(t *testing.T) {
+	m := ruleShield("limit 1/min path=/search", func(c *Config) { c.OnionMode = true })
+	for i := 0; i < 3; i++ {
+		if code, _ := askFrom(m, "127.0.0.1", "/search"); code != http.StatusOK {
+			t.Fatalf("request %d in a Tor Space answered %d", i+1, code)
+		}
+	}
+}

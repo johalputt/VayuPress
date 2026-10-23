@@ -23,7 +23,8 @@ import (
 
 // matchRule is the rule that decides r, or nil: the install's rules first,
 // then r's site's, so a site can add rules and never override the install's.
-func (m *Manager) matchRule(r *http.Request, v Verdict) *oprules.Rule {
+// source is who a limit rule counts r against.
+func (m *Manager) matchRule(r *http.Request, v Verdict, source string) *oprules.Rule {
 	install := m.opRules.Load()
 	var site *oprules.Set
 	if sp := m.siteFor(r); sp != nil {
@@ -39,11 +40,15 @@ func (m *Manager) matchRule(r *http.Request, v Verdict) *oprules.Rule {
 		Score:  v.Result.BotScore,
 		Header: r.Header.Get,
 	}
-	// In a Tor Space a country lookup answers with the server's own location
-	// for every visitor, so the fact is withheld and a country rule matches
-	// nobody rather than everybody.
-	if m.cfg.CountryFn != nil && !m.cfg.OnionMode {
-		f.Country = m.cfg.CountryFn(r, ipOnly(m.cfg.ClientIP(r)))
+	// In a Tor Space every visitor arrives as 127.0.0.1 and a country lookup
+	// answers with the server's own location, so both facts are withheld: a
+	// country rule matches nobody rather than everybody, and a limit never
+	// holds the whole audience to one allowance.
+	if !m.cfg.OnionMode {
+		f.Source = source
+		if m.cfg.CountryFn != nil {
+			f.Country = m.cfg.CountryFn(r, ipOnly(m.cfg.ClientIP(r)))
+		}
 	}
 	now := time.Now()
 	if rule := install.Match(f, now); rule != nil {
