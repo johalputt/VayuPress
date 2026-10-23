@@ -823,7 +823,7 @@ func (a *App) shieldPolicyBand(ctx context.Context, geoBlind bool) string {
 	}
 	var b strings.Builder
 	b.WriteString(`<div class="card-title vs-section">Your own rules</div>`)
-	b.WriteString(`<p class="muted text-sm">Everything above decides by inference and can be wrong about a visitor, which is why it ends in a challenge they can solve. These are facts you state, so they are obeyed literally — an allowed network skips every gate including the jail, and a denied one is refused even if it solves a challenge. Leave them empty and nothing here applies.</p>`)
+	b.WriteString(`<p class="muted text-sm">Everything above decides by inference and can be wrong about a visitor, which is why it ends in a challenge they can solve. These are facts you state, so they are obeyed literally — an allowed network skips every gate including the jail, and a denied one is refused even if it solves a challenge. Leave them empty and nothing here applies. Any entry can end: write <code>until 2026-11-01</code> after it, or a UTC time, <code>until 2026-11-01T18:00</code>, and it stops applying at that moment, with no save needed.</p>`)
 	b.WriteString(`<div class="vs-feat"><div class="vs-adv vs-adv--open">`)
 	b.WriteString(vsArea("sh_allow_cidrs", "Always allow (networks)",
 		"Your office, a monitoring probe, a CI runner — anything that must never be challenged or jailed. One per line; a bare address means that address alone. This is also the way back in after a false-positive run.",
@@ -933,6 +933,7 @@ func (a *App) shieldPolicyBand(ctx context.Context, geoBlind bool) string {
 			}
 			b.WriteString(`</ul></div>`)
 		}
+		b.WriteString(expiredEntries(a.vayuShield.ExpiredPolicy()))
 	}
 	return b.String()
 }

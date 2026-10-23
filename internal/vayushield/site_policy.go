@@ -64,6 +64,7 @@ func (m *Manager) SetSiteSettings(sites map[string]SiteSettings) map[string][]st
 // as it now is. ApplySettings calls it too, so a change to the install's
 // lists reaches every site that added its own.
 func (m *Manager) compileSites() map[string][]string {
+	defer m.armExpiry()
 	cfgs := m.siteCfg.Load()
 	if cfgs == nil || len(*cfgs) == 0 {
 		m.sites.Store(nil)
@@ -91,6 +92,7 @@ func (m *Manager) compileSites() map[string][]string {
 			merged.DenyCountries = joinLists(install.DenyCountries, c.Policy.DenyCountries)
 			merged.ChallengeCountries = joinLists(install.ChallengeCountries, c.Policy.ChallengeCountries)
 			merged.RefuseUnknownCountry = install.RefuseUnknownCountry || c.Policy.RefuseUnknownCountry
+			merged.Now = m.cfg.Now()
 			rules, bad := policy.Compile(merged)
 			sp.rules = &rules
 			issues[site] = append(issues[site], bad...)

@@ -65,6 +65,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   rule matches no one and a limit refuses no one, since every visitor
   arrives from one address. At most 100 rules; a line that cannot be read is
   named and the rest apply.
+- **Network and country entries that end.** Any entry in the shield's
+  lists, the install's or a site's, can end: `203.0.113.0/24 until
+  2026-11-01`, or a UTC time, `until 2026-11-01T18:00`. It applies up to
+  that moment and stops on time, without a save; the Security page names
+  the entries that have ended, and an end that cannot be read leaves the
+  entry out and says so rather than making it permanent.
 - **What readers search for.** A site's search page records each search:
   the query and whether it found anything. Analytics shows the most searched
   queries and the ones that found nothing, for the install and for each

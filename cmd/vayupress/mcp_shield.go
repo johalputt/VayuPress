@@ -232,6 +232,7 @@ func (a *App) registerShieldTools(srv *mcp.Server) {
 					"geo_active":          pol.GeoActive(),
 					"source_rules_active": pol.SourceActive(),
 					"parse_errors":        a.vayuShield.PolicyIssues(),
+					"ended_entries":       len(a.vayuShield.ExpiredPolicy()),
 				},
 				"request_rules":   shieldRuleCounts(a.vayuShield),
 				"tor_inert_gates": vayushield.GatesInertInTorMode(),

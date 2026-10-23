@@ -39,7 +39,7 @@ var shieldSiteFields = []shieldSiteField{
 	{settings.KeyShieldSitePoW, "Silent proof-of-work at", "A score at or above this is asked for a proof of work.", true, false, settings.KeyShieldPoW},
 	{settings.KeyShieldSiteJS, "Visible check at", "A score at or above this is shown the check page.", true, false, settings.KeyShieldJS},
 	{settings.KeyShieldSiteBlock, "Refuse at", "A score at or above this is refused.", true, false, settings.KeyShieldBlock},
-	{settings.KeyShieldSiteDenyCIDRs, "Refuse these networks", "Addresses or CIDR ranges, one per line, refused on this site.", false, false, settings.KeyShieldDenyCIDRs},
+	{settings.KeyShieldSiteDenyCIDRs, "Refuse these networks", "Addresses or CIDR ranges, one per line, refused on this site. Any entry in these lists can end: add until 2026-11-01, or a UTC time, until 2026-11-01T18:00.", false, false, settings.KeyShieldDenyCIDRs},
 	{settings.KeyShieldSiteAllowCIDRs, "Always serve these networks", "Never challenged on this site. The install's refusals still apply.", false, false, settings.KeyShieldAllowCIDRs},
 	{settings.KeyShieldSiteDenyCountries, "Refuse these countries", "Two-letter codes, one per line.", false, false, settings.KeyShieldDenyCountries},
 	{settings.KeyShieldSiteChallengeCountries, "Challenge these countries", "Served a proof of work rather than refused.", false, false, settings.KeyShieldChallengeCountries},
@@ -191,6 +191,12 @@ func (a *App) scopedShieldForm(ctx context.Context, d domain.Domain) ui.HTML {
 		rows = append(rows, ui.Row{Label: f.Label, Hint: hint, ID: id, Control: ui.HTML(control)})
 	}
 	b.WriteString(string(ui.Rows(rows...)))
+	// The site's own entries that have ended, read from its own lists: the
+	// shield holds them merged with the install's.
+	own, _ := a.siteShieldSettings(ctx, d.ID)
+	own.Policy.Now = time.Now()
+	ended, _ := policy.Compile(own.Policy)
+	b.WriteString(expiredEntries(ended.Expired()))
 	b.WriteString(rules)
 	b.WriteString(`<div class="sa-list__sheet-actions"><button type="button" class="btn btn--primary btn--sm" data-shield-save>Save</button>` +
 		`<span class="text-xs muted" id="scoped-shield-status" role="status" aria-live="polite"></span></div>`)

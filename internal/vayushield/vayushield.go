@@ -406,6 +406,12 @@ type Manager struct {
 	opRules      atomic.Pointer[oprules.Set]
 	opRuleIssues atomic.Pointer[[]string]
 
+	// expiry recompiles the lists when their soonest entry ends
+	// (policy_expiry.go); expiryAt is that moment, unix seconds, 0 for none.
+	expiryMu    sync.Mutex
+	expiryTimer *time.Timer
+	expiryAt    atomic.Int64
+
 	// Hosted sites' own settings (site_policy.go): as given, and compiled.
 	siteCfg atomic.Pointer[map[string]SiteSettings]
 	sites   atomic.Pointer[map[string]*sitePolicy]
@@ -659,9 +665,7 @@ func (m *Manager) ApplySettings(s Settings) {
 	// rather than dropped: a silently discarded allow entry means the source it
 	// was protecting starts getting challenged with no visible cause, which is
 	// close to undiagnosable from the operator's side of the screen.
-	rules, badPolicy := policy.Compile(s.Policy)
-	m.policy.Store(&rules)
-	m.policyIssues.Store(&badPolicy)
+	m.compilePolicy(s.Policy)
 	opRules, badRules := oprules.Parse(s.Rules)
 	m.opRules.Store(opRules)
 	m.opRuleIssues.Store(&badRules)

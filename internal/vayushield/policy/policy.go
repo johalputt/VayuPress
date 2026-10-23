@@ -29,11 +29,20 @@
 // Rules are compiled at load and read lock-free afterwards. An operator edits
 // them rarely and every request reads them, so anything that parsed a CIDR per
 // request would be a self-inflicted cost far larger than the rules save.
+//
+// # Entries that end
+//
+// Any address or country entry may end with "until 2026-11-01" or "until
+// 2026-11-01T18:00" (UTC): it applies up to that moment and not after. An
+// entry past its moment is compiled away and named in Expired, and
+// NextExpiry says when the set next changes, so the caller recompiles then
+// rather than testing a clock on every request.
 package policy
 
 import (
 	"net/netip"
 	"strings"
+	"time"
 )
 
 // Verdict is what a policy says about a request.
@@ -75,6 +84,9 @@ type Rules struct {
 	refuseUnknownCountry bool // with an allow list, an unresolvable country is refused
 
 	routes []Route
+
+	expired    []string  // entries past their end, as written
+	nextExpiry time.Time // the soonest end still ahead; zero when none
 
 	// onionMode records that this is a Tor Space, where every peer is 127.0.0.1.
 	// Both address rules and country rules are compiled away there — see
@@ -126,6 +138,46 @@ type Config struct {
 	// leaving only the route rules. See Source and Country for why each is wrong
 	// rather than merely useless where every peer is 127.0.0.1.
 	OnionMode bool
+	// Now is the moment entries with an end are judged at; zero is the clock.
+	Now time.Time
+}
+
+// Expired is the entries left out because their end has passed, as written.
+func (r Rules) Expired() []string { return r.expired }
+
+// NextExpiry is when the soonest entry still in force ends; zero when none
+// has an end.
+func (r Rules) NextExpiry() time.Time { return r.nextExpiry }
+
+// untilLayouts are the forms an entry's end may take, all UTC.
+var untilLayouts = []string{"2006-01-02T15:04", "2006-01-02 15:04", "2006-01-02"}
+
+// live splits an entry from its end, if it has one. It reports the entry,
+// whether it is still in force at now, and a reason when the end cannot be
+// read; an end still ahead is folded into *next.
+func live(s string, now time.Time, next *time.Time) (entry string, ok bool, bad string) {
+	i := strings.Index(strings.ToLower(s), " until ")
+	if i < 0 {
+		return s, true, ""
+	}
+	entry, when := strings.TrimSpace(s[:i]), strings.TrimSpace(s[i+len(" until "):])
+	var end time.Time
+	for _, l := range untilLayouts {
+		if t, err := time.ParseInLocation(l, when, time.UTC); err == nil {
+			end = t
+			break
+		}
+	}
+	if end.IsZero() {
+		return entry, false, s + " (an end is a date, 2026-11-01, or a UTC time, 2026-11-01T18:00)"
+	}
+	if !now.Before(end) {
+		return entry, false, ""
+	}
+	if next.IsZero() || end.Before(*next) {
+		*next = end
+	}
+	return entry, true, ""
 }
 
 // Compile turns operator text into a rule set, and reports the entries it could
@@ -138,6 +190,31 @@ type Config struct {
 func Compile(c Config) (Rules, []string) {
 	var bad []string
 	r := Rules{onionMode: c.OnionMode}
+	now := c.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	// keep is the entries of list in force now; the rest are named, as
+	// unreadable or as ended.
+	keep := func(list []string, what string) []string {
+		out := make([]string, 0, len(list))
+		for _, s := range list {
+			s = strings.TrimSpace(s)
+			if s == "" || strings.HasPrefix(s, "#") {
+				continue
+			}
+			entry, ok, why := live(s, now, &r.nextExpiry)
+			switch {
+			case why != "":
+				bad = append(bad, what+": "+why)
+			case !ok:
+				r.expired = append(r.expired, what+": "+s)
+			default:
+				out = append(out, entry)
+			}
+		}
+		return out
+	}
 
 	parse := func(list []string, what string) []netip.Prefix {
 		out := make([]netip.Prefix, 0, len(list))
@@ -184,8 +261,8 @@ func Compile(c Config) (Rules, []string) {
 	// Parsed even in a Tor Space, and then discarded. The parse is what tells an
 	// operator their line is malformed; validating only the rules that happen to
 	// be live would mean a typo sits unreported until the day they switch worlds.
-	r.allow = parse(c.AllowCIDRs, "allow")
-	r.deny = parse(c.DenyCIDRs, "deny")
+	r.allow = parse(keep(c.AllowCIDRs, "allow"), "allow")
+	r.deny = parse(keep(c.DenyCIDRs, "deny"), "deny")
 	if c.OnionMode {
 		r.allow, r.deny = nil, nil
 	}
@@ -202,10 +279,13 @@ func Compile(c Config) (Rules, []string) {
 		}
 		return m
 	}
+	allowC := keep(c.AllowCountries, "allow country")
+	denyC := keep(c.DenyCountries, "deny country")
+	challengeC := keep(c.ChallengeCountries, "challenge country")
 	if !c.OnionMode {
-		r.allowCountries = set(c.AllowCountries)
-		r.denyCountries = set(c.DenyCountries)
-		r.challengeCountries = set(c.ChallengeCountries)
+		r.allowCountries = set(allowC)
+		r.denyCountries = set(denyC)
+		r.challengeCountries = set(challengeC)
 		r.refuseUnknownCountry = c.RefuseUnknownCountry
 	}
 

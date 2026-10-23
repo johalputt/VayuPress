@@ -85,3 +85,19 @@ func shieldRuleCounts(m *vayushield.Manager) map[string]any {
 	}
 	return map[string]any{"rules": lines, "unreadable_lines": len(bad)}
 }
+
+// expiredEntries names the list entries whose end has passed: they stay in
+// the field as written, and without this nothing would say they no longer
+// apply.
+func expiredEntries(list []string) string {
+	if len(list) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(`<div class="vs-feat"><p class="text-sm"><strong>Ended, so no longer applied:</strong> remove them when you next edit the list.</p><ul class="muted text-xs">`)
+	for _, s := range list {
+		b.WriteString(`<li>` + html.EscapeString(s) + `</li>`)
+	}
+	b.WriteString(`</ul></div>`)
+	return b.String()
+}

@@ -162,3 +162,40 @@ func TestALimitShowsWhatItRefused(t *testing.T) {
 		t.Errorf("the connector was not told what the limit refused: %s", out)
 	}
 }
+
+// An entry whose end has passed stays in the field as written, is not
+// applied, and both Security pages say so.
+func TestAnEndedEntryIsNamedOnBothPages(t *testing.T) {
+	a, d := shieldSitesApp(t)
+	ctx := context.Background()
+	if err := a.siteSettings.SetMany(ctx, settings.ForPrimary(), map[string]string{
+		settings.KeyShieldDenyCIDRs: "192.0.2.0/24 until 2020-01-01\n198.51.100.0/24 until 2099-01-01",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	a.vayuShield.ApplySettings(a.shieldSettings(ctx))
+	// askShield sends from 198.51.100.9, which the entry still in force refuses.
+	if askShield(a, "example.test", "/article") {
+		t.Error("an entry before its end was not applied")
+	}
+	band := a.shieldPolicyBand(ctx, false)
+	if !strings.Contains(band, "Ended, so no longer applied") || !strings.Contains(band, "deny: 192.0.2.0/24 until 2020-01-01") {
+		t.Error("the install's page does not name the ended entry")
+	}
+	if strings.Contains(band, "198.51.100.0/24 until 2099-01-01</li>") {
+		t.Error("an entry still in force was listed as ended")
+	}
+	body, _ := json.Marshal(map[string]any{"domain_id": "c1", "settings": map[string]string{
+		settings.KeyShieldSiteDenyCountries: "ZZ until 2020-06-01T12:00",
+	}})
+	if w := saveSiteShield(a, d, string(body)); w.Code != http.StatusOK {
+		t.Fatalf("site save answered %d", w.Code)
+	}
+	form := string(a.scopedShieldForm(ctx, d))
+	if !strings.Contains(form, "deny country: ZZ until 2020-06-01T12:00") {
+		t.Error("the site's page does not name its ended entry")
+	}
+	if strings.Contains(form, "192.0.2.0/24") {
+		t.Error("the site's page listed the install's ended entry as its own")
+	}
+}
