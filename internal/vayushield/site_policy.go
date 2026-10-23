@@ -22,7 +22,9 @@ package vayushield
 
 import (
 	"net/http"
+	"strings"
 
+	"github.com/johalputt/vayupress/internal/vayushield/oprules"
 	"github.com/johalputt/vayupress/internal/vayushield/policy"
 )
 
@@ -31,6 +33,9 @@ import (
 type SiteSettings struct {
 	PoWThreshold, JSThreshold, BlockThreshold float64
 	Policy                                    policy.Config
+	// Rules is the site's own request rules (oprules), evaluated after the
+	// install's: the install's first match decides.
+	Rules string
 }
 
 // sitePolicy is a site's compiled settings.
@@ -39,6 +44,8 @@ type sitePolicy struct {
 	// rules is the install's lists and the site's, merged; nil when the site
 	// adds no list, so the install's compiled set is used as it is.
 	rules *policy.Rules
+	// opRules is the site's own request rules; nil when it writes none.
+	opRules *oprules.Set
 }
 
 // SetSiteSettings replaces every site's own settings, keyed by the site's id
@@ -86,16 +93,24 @@ func (m *Manager) compileSites() map[string][]string {
 			merged.RefuseUnknownCountry = install.RefuseUnknownCountry || c.Policy.RefuseUnknownCountry
 			rules, bad := policy.Compile(merged)
 			sp.rules = &rules
-			if len(bad) > 0 {
-				issues[site] = bad
-			}
+			issues[site] = append(issues[site], bad...)
 		}
-		if sp.pow == 0 && sp.js == 0 && sp.block == 0 && sp.rules == nil {
+		if strings.TrimSpace(c.Rules) != "" {
+			set, bad := oprules.Parse(c.Rules)
+			sp.opRules = set
+			issues[site] = append(issues[site], bad...)
+		}
+		if sp.pow == 0 && sp.js == 0 && sp.block == 0 && sp.rules == nil && sp.opRules == nil {
 			continue
 		}
 		out[site] = sp
 	}
 	m.sites.Store(&out)
+	for site, bad := range issues {
+		if len(bad) == 0 {
+			delete(issues, site)
+		}
+	}
 	return issues
 }
 

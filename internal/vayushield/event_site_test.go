@@ -51,6 +51,9 @@ func TestAnEventNamesItsSiteAndItsRequest(t *testing.T) {
 				t.Errorf("%s recorded site %q, request %q; want site-7, req-42", table, site, req)
 			}
 		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
 		_ = rows.Close()
 		if n == 0 {
 			t.Errorf("%s recorded nothing", table)

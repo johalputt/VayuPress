@@ -337,6 +337,11 @@ const (
 	// fetching, displayed as healthy, and connected to nothing.
 	KeyShieldIntelFeeds = "shield.intel_feeds"
 
+	// KeyShieldRules is the operator's own request rules, one per line
+	// (vayushield/oprules): "block path^=/wp-", "test challenge country=CN".
+	// Empty by default, for the same reason as the lists above.
+	KeyShieldRules = "shield.rules"
+
 	// A hosted site's own VayuShield settings, stored in that site's scope.
 	// They are keys of their own, with no defaults, because empty has to mean
 	// "inherits the install": read through the install's keys, an unset site
@@ -351,6 +356,7 @@ const (
 	KeyShieldSiteAllowCountries     = "shield.site_allow_countries"
 	KeyShieldSiteDenyCountries      = "shield.site_deny_countries"
 	KeyShieldSiteChallengeCountries = "shield.site_challenge_countries"
+	KeyShieldSiteRules              = "shield.site_rules" // run after the install's
 
 	// KeyAnalyticsBeacon toggles the VayuAnalytics engagement beacon (time on
 	// page / scroll depth) injected on public pages. Default ON — it is
@@ -590,16 +596,27 @@ var NotPortable = map[string]bool{
 	KeyShieldClusterPeers:         true,
 	KeyShieldClusterNode:          true,
 	KeyShieldIntelFeeds:           true,
-	KeyAnalyticsBeacon:            true,
-	KeyVeilEnabled:                true,
-	KeyVayuKeepEnabled:            true,
-	KeyVayuKeepTarget:             true,
-	KeyVayuKeepRetainDays:         true,
-	KeyVayuKeepRetainGen:          true,
-	KeyVayuKeepEveryMin:           true,
-	KeyMailQueueRetentionDays:     true,
-	KeyTalkHost:                   true,
-	KeyStartupMillis:              true,
+	KeyShieldRules:                true,
+	// A site's own shield settings are network policy, like the install's.
+	KeyShieldSitePoW:                true,
+	KeyShieldSiteJS:                 true,
+	KeyShieldSiteBlock:              true,
+	KeyShieldSiteAllowCIDRs:         true,
+	KeyShieldSiteDenyCIDRs:          true,
+	KeyShieldSiteAllowCountries:     true,
+	KeyShieldSiteDenyCountries:      true,
+	KeyShieldSiteChallengeCountries: true,
+	KeyShieldSiteRules:              true,
+	KeyAnalyticsBeacon:              true,
+	KeyVeilEnabled:                  true,
+	KeyVayuKeepEnabled:              true,
+	KeyVayuKeepTarget:               true,
+	KeyVayuKeepRetainDays:           true,
+	KeyVayuKeepRetainGen:            true,
+	KeyVayuKeepEveryMin:             true,
+	KeyMailQueueRetentionDays:       true,
+	KeyTalkHost:                     true,
+	KeyStartupMillis:                true,
 	// The operator's own VayuOS console theme (light/dark/auto), persisted from
 	// the topbar toggle. A personal preference for THIS operator, not a property
 	// of the site's look.
@@ -619,6 +636,7 @@ var AllKeys = map[string]bool{
 	KeyShieldSiteAllowCountries:     true,
 	KeyShieldSiteDenyCountries:      true,
 	KeyShieldSiteChallengeCountries: true,
+	KeyShieldSiteRules:              true,
 	KeyNoFollowLinks:                true,
 	KeyPageCache:                    true,
 	KeyThemeStudioDraft:             true,
@@ -730,6 +748,7 @@ var AllKeys = map[string]bool{
 	KeyShieldClusterPeers:         true,
 	KeyShieldClusterNode:          true,
 	KeyShieldIntelFeeds:           true,
+	KeyShieldRules:                true,
 	KeyAnalyticsBeacon:            true,
 	KeyTorEnabled:                 true,
 	KeyVeilEnabled:                true,
@@ -844,6 +863,7 @@ var Defaults = map[string]string{
 	KeyShieldClusterPeers:         "",
 	KeyShieldClusterNode:          "",
 	KeyShieldIntelFeeds:           "",
+	KeyShieldRules:                "",
 	KeyAnalyticsBeacon:            "on",
 	KeyTorEnabled:                 "off",
 	KeyVeilEnabled:                "off",

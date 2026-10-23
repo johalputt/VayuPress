@@ -49,6 +49,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   request id that leads to each log line. No address is ever shown. Events
   recorded before this name no site and count only on the install's Shield
   page.
+- **Request rules.** The Security page takes rules of its own, one per
+  line: `block`, `challenge`, `allow` or `log`, then conditions on the path,
+  method, country, header, client type or score (`block path^=/wp-`,
+  `challenge path^=/search client=unknown`). The first rule that matches
+  decides; `test` in front counts what a rule would do without doing it, and
+  each rule shows how many requests it has matched and when it last did. A
+  block refuses that request alone and installs nothing against the visitor.
+  A site can add rules of its own, which run after the install's and can
+  never override one. Rules run after the shield's own checks, so a verified
+  crawler or a signed-in reader never reaches them; in a Tor Space a country
+  rule matches no one. At most 100 rules; a line that cannot be read is
+  named and the rest apply.
 - **What readers search for.** A site's search page records each search:
   the query and whether it found anything. Analytics shows the most searched
   queries and the ones that found nothing, for the install and for each

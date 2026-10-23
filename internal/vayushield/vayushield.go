@@ -32,6 +32,7 @@ import (
 	"net/http"
 	"net/netip"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -48,6 +49,7 @@ import (
 	"github.com/johalputt/vayupress/internal/vayushield/gossip"
 	"github.com/johalputt/vayupress/internal/vayushield/inspect"
 	"github.com/johalputt/vayupress/internal/vayushield/intel"
+	"github.com/johalputt/vayupress/internal/vayushield/oprules"
 	"github.com/johalputt/vayupress/internal/vayushield/policy"
 	"github.com/johalputt/vayupress/internal/vayushield/prefilter"
 	"github.com/johalputt/vayupress/internal/vayushield/resilience"
@@ -328,6 +330,10 @@ type Settings struct {
 	// two paths would eventually mean a save that updated the thresholds and
 	// silently left the deny list on its previous value.
 	Policy policy.Config
+
+	// Rules is the operator's request rules, one per line (oprules). They are
+	// evaluated after classification, on the same single path as Policy.
+	Rules string
 }
 
 // Manager is the live bot-protection + resilience engine.
@@ -394,6 +400,11 @@ type Manager struct {
 	// panel can name them. A rule an operator wrote and the shield silently threw
 	// away is worse than one it refused loudly.
 	policyIssues atomic.Pointer[[]string]
+
+	// The operator's request rules (rules.go), and the lines that could not
+	// be read.
+	opRules      atomic.Pointer[oprules.Set]
+	opRuleIssues atomic.Pointer[[]string]
 
 	// Hosted sites' own settings (site_policy.go): as given, and compiled.
 	siteCfg atomic.Pointer[map[string]SiteSettings]
@@ -651,6 +662,9 @@ func (m *Manager) ApplySettings(s Settings) {
 	rules, badPolicy := policy.Compile(s.Policy)
 	m.policy.Store(&rules)
 	m.policyIssues.Store(&badPolicy)
+	opRules, badRules := oprules.Parse(s.Rules)
+	m.opRules.Store(opRules)
+	m.opRuleIssues.Store(&badRules)
 
 	m.liveCfg.Store(&liveConfig{
 		enabled:     s.Enabled,
@@ -858,6 +872,7 @@ const (
 	GateGeoDeny                  // an operator's own country rules
 	GateGeoChallenge             // an operator's country rules, in their solvable form
 	GateIntelDeny                // a published hostile-network feed the operator turned on
+	GateRule                     // an operator's own request rule
 	gateCount
 )
 
@@ -867,6 +882,7 @@ var GateNames = [gateCount]string{
 	"blocklist", "reputation", "load_shed", "fair_shed",
 	"rate_limit", "surge", "challenge", "block",
 	"policy_deny", "geo_deny", "geo_challenge", "intel_deny",
+	"operator_rule",
 }
 
 // SetPolicy installs the operator's own rules. Safe to call at any time.
@@ -1905,6 +1921,30 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			m.intelDatacenter.Add(1)
 		}
 		action := m.Decide(r, v)
+		// The operator's own rules, last: a fact stated by the operator
+		// outranks the shield's inference about the same request.
+		if rule := m.matchRule(r, v); rule != nil {
+			switch rule.Action {
+			case oprules.Block:
+				if !m.observing(lc, GateRule) {
+					// One request refused, by what it asked for. No jail and no
+					// learned fingerprint: a rule names a request, not a source,
+					// and a reader who followed one bad link must not lose the
+					// whole site for it.
+					v.Result.Reasons = []string{"operator rule, line " + strconv.Itoa(rule.Line) + ": " + rule.Text}
+					reqclass.MarkShielded(r.Context())
+					m.onEvent(ActionBlock, 1.0)
+					m.serveBlock(w, r, v)
+					return
+				}
+			case oprules.Challenge:
+				if action == ActionAllow {
+					action = ActionChallengePoW
+				}
+			case oprules.Allow:
+				action = ActionAllow
+			}
+		}
 		m.onEvent(action, v.Result.BotScore)
 		m.observeCampaign(r, action)
 		m.observeJA4(r, action)

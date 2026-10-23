@@ -883,6 +883,15 @@ func (a *App) shieldPolicyBand(ctx context.Context, geoBlind bool) string {
 		"/search 8\n/feed 3\nPOST /contact 6\nmcp.example.com 2", get(settings.KeyShieldRouteCosts)))
 	b.WriteString(`</div></div>`)
 
+	b.WriteString(`<div class="vs-feat"><div class="vs-adv vs-adv--open">`)
+	b.WriteString(vsArea("sh_rules", "Request rules", operatorRulesHint,
+		"test block path^=/wp-\nchallenge path^=/search client=unknown\nallow header:X-Health-Check=ok", get(settings.KeyShieldRules)))
+	if a.vayuShield != nil {
+		rules, bad := a.vayuShield.OperatorRules()
+		b.WriteString(operatorRuleHits(rules, bad, time.Now()))
+	}
+	b.WriteString(`</div></div>`)
+
 	// Clustering, with its ceiling stated where the operator configures it rather
 	// than only in the posture report. This is the only control in the product
 	// that touches volumetric capacity at all, which makes it the easiest thing
@@ -1331,6 +1340,7 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		settings.KeyShieldChallengeCountries:   area("sh_challenge_countries"),
 		settings.KeyShieldRefuseUnknownCountry: bs("sh_refuse_unknown"),
 		settings.KeyShieldRouteCosts:           area("sh_route_costs"),
+		settings.KeyShieldRules:                area("sh_rules"),
 		settings.KeyShieldClusterPeers:         area("sh_cluster_peers"),
 		settings.KeyShieldClusterNode:          area("sh_cluster_node"),
 
@@ -1580,6 +1590,7 @@ func (a *App) shieldSettings(ctx context.Context) vayushield.Settings {
 		Surge:                on(settings.KeyShieldSurge) || shieldEnvBool("VAYUSHIELD_SURGE", false),
 		GroupIPv4:            on(settings.KeyShieldGroupIPv4),
 		ObserveOnly:          on(settings.KeyShieldObserve),
+		Rules:                g(settings.KeyShieldRules),
 		Policy: policy.Config{
 			AllowCIDRs:           policyLines(g(settings.KeyShieldAllowCIDRs)),
 			DenyCIDRs:            policyLines(g(settings.KeyShieldDenyCIDRs)),

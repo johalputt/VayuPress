@@ -233,6 +233,7 @@ func (a *App) registerShieldTools(srv *mcp.Server) {
 					"source_rules_active": pol.SourceActive(),
 					"parse_errors":        a.vayuShield.PolicyIssues(),
 				},
+				"request_rules":   shieldRuleCounts(a.vayuShield),
 				"tor_inert_gates": vayushield.GatesInertInTorMode(),
 				// Which third-party lists the operator opted into, and whether each
 				// is actually holding data. The URL is included because "trust this

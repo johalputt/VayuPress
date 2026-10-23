@@ -15,32 +15,36 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/vayushield"
+	"github.com/johalputt/vayupress/internal/vayushield/oprules"
 	"github.com/johalputt/vayupress/internal/vayushield/policy"
 )
 
 // shieldSiteField is one of a site's own shield settings.
 type shieldSiteField struct {
 	Key, Label, Hint string
-	Threshold        bool   // a number in (0, 1]; otherwise a list
+	Threshold        bool   // a number in (0, 1]
+	Rules            bool   // request rules (oprules); neither is a list
 	Install          string // the install's key it stands beside
 }
 
 // shieldSiteFields are the settings a site may set, in the order the page shows.
 var shieldSiteFields = []shieldSiteField{
-	{settings.KeyShieldSitePoW, "Silent proof-of-work at", "A score at or above this is asked for a proof of work.", true, settings.KeyShieldPoW},
-	{settings.KeyShieldSiteJS, "Visible check at", "A score at or above this is shown the check page.", true, settings.KeyShieldJS},
-	{settings.KeyShieldSiteBlock, "Refuse at", "A score at or above this is refused.", true, settings.KeyShieldBlock},
-	{settings.KeyShieldSiteDenyCIDRs, "Refuse these networks", "Addresses or CIDR ranges, one per line, refused on this site.", false, settings.KeyShieldDenyCIDRs},
-	{settings.KeyShieldSiteAllowCIDRs, "Always serve these networks", "Never challenged on this site. The install's refusals still apply.", false, settings.KeyShieldAllowCIDRs},
-	{settings.KeyShieldSiteDenyCountries, "Refuse these countries", "Two-letter codes, one per line.", false, settings.KeyShieldDenyCountries},
-	{settings.KeyShieldSiteChallengeCountries, "Challenge these countries", "Served a proof of work rather than refused.", false, settings.KeyShieldChallengeCountries},
-	{settings.KeyShieldSiteAllowCountries, "Serve only these countries", "When set, every other country is refused on this site.", false, settings.KeyShieldAllowCountries},
+	{settings.KeyShieldSitePoW, "Silent proof-of-work at", "A score at or above this is asked for a proof of work.", true, false, settings.KeyShieldPoW},
+	{settings.KeyShieldSiteJS, "Visible check at", "A score at or above this is shown the check page.", true, false, settings.KeyShieldJS},
+	{settings.KeyShieldSiteBlock, "Refuse at", "A score at or above this is refused.", true, false, settings.KeyShieldBlock},
+	{settings.KeyShieldSiteDenyCIDRs, "Refuse these networks", "Addresses or CIDR ranges, one per line, refused on this site.", false, false, settings.KeyShieldDenyCIDRs},
+	{settings.KeyShieldSiteAllowCIDRs, "Always serve these networks", "Never challenged on this site. The install's refusals still apply.", false, false, settings.KeyShieldAllowCIDRs},
+	{settings.KeyShieldSiteDenyCountries, "Refuse these countries", "Two-letter codes, one per line.", false, false, settings.KeyShieldDenyCountries},
+	{settings.KeyShieldSiteChallengeCountries, "Challenge these countries", "Served a proof of work rather than refused.", false, false, settings.KeyShieldChallengeCountries},
+	{settings.KeyShieldSiteAllowCountries, "Serve only these countries", "When set, every other country is refused on this site.", false, false, settings.KeyShieldAllowCountries},
+	{settings.KeyShieldSiteRules, "This site's request rules", "", false, true, settings.KeyShieldRules},
 }
 
 // siteShieldSettings is one site's own settings as the shield takes them, and
@@ -59,6 +63,7 @@ func (a *App) siteShieldSettings(ctx context.Context, id string) (vayushield.Sit
 		PoWThreshold:   num(settings.KeyShieldSitePoW),
 		JSThreshold:    num(settings.KeyShieldSiteJS),
 		BlockThreshold: num(settings.KeyShieldSiteBlock),
+		Rules:          g(settings.KeyShieldSiteRules),
 		Policy: policy.Config{
 			AllowCIDRs:         policyLines(g(settings.KeyShieldSiteAllowCIDRs)),
 			DenyCIDRs:          policyLines(g(settings.KeyShieldSiteDenyCIDRs)),
@@ -67,7 +72,7 @@ func (a *App) siteShieldSettings(ctx context.Context, id string) (vayushield.Sit
 			ChallengeCountries: policyLines(g(settings.KeyShieldSiteChallengeCountries)),
 		},
 	}
-	set := s.PoWThreshold > 0 || s.JSThreshold > 0 || s.BlockThreshold > 0 ||
+	set := s.PoWThreshold > 0 || s.JSThreshold > 0 || s.BlockThreshold > 0 || s.Rules != "" ||
 		len(s.Policy.AllowCIDRs)+len(s.Policy.DenyCIDRs)+len(s.Policy.AllowCountries)+len(s.Policy.DenyCountries)+len(s.Policy.ChallengeCountries) > 0
 	return s, set
 }
@@ -162,10 +167,15 @@ func (a *App) scopedShieldForm(ctx context.Context, d domain.Domain) ui.HTML {
 	var b strings.Builder
 	b.WriteString(`<div id="scoped-shield-ctx" data-id="` + esc(d.ID) + `"></div>`)
 	rows := make([]ui.Row, 0, len(shieldSiteFields))
+	var rules string
 	for _, f := range shieldSiteFields {
 		own := a.siteSettings.Get(ctx, sc, f.Key)
 		inst := strings.TrimSpace(a.siteSettings.Get(ctx, settings.ForPrimary(), f.Install))
 		id := "ss-" + strings.ReplaceAll(f.Key, ".", "-")
+		if f.Rules {
+			rules = siteRulesField(a, d.ID, id, f, own)
+			continue
+		}
 		var control string
 		hint := f.Hint
 		if f.Threshold {
@@ -181,9 +191,30 @@ func (a *App) scopedShieldForm(ctx context.Context, d domain.Domain) ui.HTML {
 		rows = append(rows, ui.Row{Label: f.Label, Hint: hint, ID: id, Control: ui.HTML(control)})
 	}
 	b.WriteString(string(ui.Rows(rows...)))
+	b.WriteString(rules)
 	b.WriteString(`<div class="sa-list__sheet-actions"><button type="button" class="btn btn--primary btn--sm" data-shield-save>Save</button>` +
 		`<span class="text-xs muted" id="scoped-shield-status" role="status" aria-live="polite"></span></div>`)
 	return ui.HTML(b.String())
+}
+
+// siteRulesField is the site's request rules at full width (a rule is a line
+// of text, too long for a row's control column), with what each has matched.
+func siteRulesField(a *App, site, id string, f shieldSiteField, own string) string {
+	note := ` This site's rules run after the install's, so a site can add a rule and never override one.`
+	var hits string
+	if a.vayuShield != nil {
+		if inst, _ := a.vayuShield.OperatorRules(); len(inst) > 0 {
+			note = ` This site's rules run after the install's ` + countOf(len(inst), "rule") + `, so a site can add a rule and never override one.`
+		}
+		// The issues are the stored text's, read again here: the shield keeps
+		// only the rules it could compile.
+		_, bad := oprules.Parse(own)
+		hits = operatorRuleHits(a.vayuShield.SiteOperatorRules(site), bad, time.Now())
+	}
+	return `<div class="vs-field vs-field--area"><label for="` + id + `">` + esc(f.Label) + `</label>` +
+		`<textarea id="` + id + `" class="input" rows="4" spellcheck="false" data-shield-key="` + esc(f.Key) +
+		`" placeholder="block path=/private">` + esc(own) + `</textarea>` +
+		`<p class="muted text-xs">` + operatorRulesHint + note + `</p>` + hits + `</div>`
 }
 
 // scopedShieldScript saves the form; the server answers with the entries it

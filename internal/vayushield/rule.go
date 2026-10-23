@@ -214,6 +214,21 @@ var rules = []Rule{
 			"and a feed that ever grew an entry covering loopback would refuse the whole audience " +
 			"at once from a file nobody here controls.",
 	},
+	{
+		Gate: GateRule, Name: "operator request rules",
+		Onion: OnionActive, Crawler: CrawlerExempt, Lifetime: ExplicitlyPermanent,
+		Rationale: "Lines the operator wrote about requests: a path, a method, a header, the " +
+			"shield's verdict. Active in a Tor Space because those facts mean the same thing " +
+			"there; the one that does not, the country, is withheld in Tor mode so a country " +
+			"rule matches nobody, and a challenge rule fails open there with every other " +
+			"challenge. Crawler-EXEMPT by position rather than by a check: the rules run after " +
+			"the classification ladder, and a confirmed crawler was served at the fast path " +
+			"before it, so no rule can de-index a site through a crawler the network confirmed. " +
+			"A block refuses one request and installs nothing against its source — a rule names " +
+			"a request, not a visitor — so there is no sentence to lift; it is configuration, " +
+			"permanent until the operator edits the line.",
+		Amnesty: amnestyNotConfiguration,
+	},
 }
 
 // amnestyNotConfiguration is the amnesty answer for a rule the operator wrote

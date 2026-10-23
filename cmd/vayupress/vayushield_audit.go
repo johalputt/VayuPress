@@ -231,7 +231,8 @@ func (a *App) shieldAuditInputs(r *http.Request) shieldaudit.Inputs {
 		}
 		in.GeoRulesSet = g(settings.KeyShieldDenyCountries) != "" ||
 			g(settings.KeyShieldChallengeCountries) != "" ||
-			g(settings.KeyShieldAllowCountries) != ""
+			g(settings.KeyShieldAllowCountries) != "" ||
+			strings.Contains(strings.ToLower(g(settings.KeyShieldRules)), "country=")
 	}
 	return in
 }
