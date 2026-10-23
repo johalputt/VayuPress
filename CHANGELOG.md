@@ -43,6 +43,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **Go 1.27.3.** The toolchain the binary is built with moves from 1.27.2
+  to 1.27.3, whose `crypto/x509` distrusts intermediate certificates known
+  to be compromised (GO-2026-6809). VayuMail's S/MIME check verifies a
+  sender's certificate chain with it, so a signature chained through such
+  an intermediate is no longer reported as valid.
 - **A key bound to one site cannot read the install-wide analytics**, whatever
   it was granted: those figures add up every site. Only the exports refused
   it before.
