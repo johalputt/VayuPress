@@ -29,22 +29,30 @@ import (
 // shieldSiteField is one of a site's own shield settings.
 type shieldSiteField struct {
 	Key, Label, Hint string
-	Threshold        bool   // a number in (0, 1]
-	Rules            bool   // request rules (oprules); neither is a list
-	Install          string // the install's key it stands beside
+	Threshold        bool           // a number in (0, 1]
+	Rules            bool           // request rules (oprules); neither is a list
+	Install          string         // the install's key it stands beside
+	Choices          []headerChoice // a response header: one of these values, nothing else
 }
 
 // shieldSiteFields are the settings a site may set, in the order the page shows.
 var shieldSiteFields = []shieldSiteField{
-	{settings.KeyShieldSitePoW, "Silent proof-of-work at", "A score at or above this is asked for a proof of work.", true, false, settings.KeyShieldPoW},
-	{settings.KeyShieldSiteJS, "Visible check at", "A score at or above this is shown the check page.", true, false, settings.KeyShieldJS},
-	{settings.KeyShieldSiteBlock, "Refuse at", "A score at or above this is refused.", true, false, settings.KeyShieldBlock},
-	{settings.KeyShieldSiteDenyCIDRs, "Refuse these networks", "Addresses or CIDR ranges, one per line, refused on this site. Any entry in these lists can end: add until 2026-11-01, or a UTC time, until 2026-11-01T18:00.", false, false, settings.KeyShieldDenyCIDRs},
-	{settings.KeyShieldSiteAllowCIDRs, "Always serve these networks", "Never challenged on this site. The install's refusals still apply.", false, false, settings.KeyShieldAllowCIDRs},
-	{settings.KeyShieldSiteDenyCountries, "Refuse these countries", "Two-letter codes, one per line.", false, false, settings.KeyShieldDenyCountries},
-	{settings.KeyShieldSiteChallengeCountries, "Challenge these countries", "Served a proof of work rather than refused.", false, false, settings.KeyShieldChallengeCountries},
-	{settings.KeyShieldSiteAllowCountries, "Serve only these countries", "When set, every other country is refused on this site.", false, false, settings.KeyShieldAllowCountries},
-	{settings.KeyShieldSiteRules, "This site's request rules", "", false, true, settings.KeyShieldRules},
+	{settings.KeyShieldSitePoW, "Silent proof-of-work at", "A score at or above this is asked for a proof of work.", true, false, settings.KeyShieldPoW, nil},
+	{settings.KeyShieldSiteJS, "Visible check at", "A score at or above this is shown the check page.", true, false, settings.KeyShieldJS, nil},
+	{settings.KeyShieldSiteBlock, "Refuse at", "A score at or above this is refused.", true, false, settings.KeyShieldBlock, nil},
+	{settings.KeyShieldSiteDenyCIDRs, "Refuse these networks", "Addresses or CIDR ranges, one per line, refused on this site. Any entry in these lists can end: add until 2026-11-01, or a UTC time, until 2026-11-01T18:00.", false, false, settings.KeyShieldDenyCIDRs, nil},
+	{settings.KeyShieldSiteAllowCIDRs, "Always serve these networks", "Never challenged on this site. The install's refusals still apply.", false, false, settings.KeyShieldAllowCIDRs, nil},
+	{settings.KeyShieldSiteDenyCountries, "Refuse these countries", "Two-letter codes, one per line.", false, false, settings.KeyShieldDenyCountries, nil},
+	{settings.KeyShieldSiteChallengeCountries, "Challenge these countries", "Served a proof of work rather than refused.", false, false, settings.KeyShieldChallengeCountries, nil},
+	{settings.KeyShieldSiteAllowCountries, "Serve only these countries", "When set, every other country is refused on this site.", false, false, settings.KeyShieldAllowCountries, nil},
+	{settings.KeyShieldSiteRules, "This site's request rules", "", false, true, settings.KeyShieldRules, nil},
+	{Key: settings.KeySiteHSTS, Label: "HTTPS only (HSTS)", Hint: "How long browsers refuse plain http for this host. " + hstsConsequence, Choices: hstsChoices},
+	{Key: settings.KeySiteReferrer, Label: "What other sites are told", Hint: "The Referer this site's pages send when a reader follows a link away.", Choices: referrerChoices},
+	{Key: settings.KeySiteFrame, Label: "Framing", Hint: "Whether this site's pages may be shown inside a frame. Other sites may never frame them.", Choices: frameChoices},
+	{Key: settings.KeySiteAllowCamera, Label: "Camera", Hint: "For a page of this site that asks for it.", Choices: allowChoices},
+	{Key: settings.KeySiteAllowMic, Label: "Microphone", Hint: "For a page of this site that asks for it.", Choices: allowChoices},
+	{Key: settings.KeySiteAllowGeo, Label: "Location", Hint: "For a page of this site that asks for it, such as a map.", Choices: allowChoices},
+	{Key: settings.KeySiteAllowPayment, Label: "Payment requests", Hint: "For a page of this site that uses the browser's payment sheet.", Choices: allowChoices},
 }
 
 // siteShieldSettings is one site's own settings as the shield takes them, and
@@ -115,6 +123,10 @@ func (a *App) handleOSScopedShieldSave(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		v = strings.TrimSpace(v)
+		if f.Choices != nil && !isChoice(f.Choices, v) {
+			writeAPIError(w, r, http.StatusBadRequest, "invalid-choice", f.Label+" must be one of the listed choices", "")
+			return
+		}
 		if f.Threshold && v != "" {
 			n, err := strconv.ParseFloat(v, 64)
 			if err != nil || n <= 0 || n > 1 {
@@ -189,7 +201,17 @@ func (a *App) scopedShieldForm(ctx context.Context, d domain.Domain) ui.HTML {
 		}
 		var control string
 		hint := f.Hint
-		if f.Threshold {
+		if f.Choices != nil {
+			var opts strings.Builder
+			for _, c := range f.Choices {
+				sel := ""
+				if c.Value == strings.TrimSpace(own) {
+					sel = " selected"
+				}
+				opts.WriteString(`<option value="` + esc(c.Value) + `"` + sel + `>` + esc(c.Label) + `</option>`)
+			}
+			control = `<select id="` + id + `" class="select" data-shield-key="` + esc(f.Key) + `">` + opts.String() + `</select>`
+		} else if f.Threshold {
 			control = `<input id="` + id + `" type="text" inputmode="decimal" class="input" data-shield-key="` + esc(f.Key) +
 				`" value="` + esc(own) + `" placeholder="` + esc(inst) + `">`
 			hint += " Empty uses the install's " + inst + "."

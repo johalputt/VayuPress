@@ -79,6 +79,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   install's saved rules and lists, on that site's readers alone. Nothing is
   saved. Network lists and limits are not tried, since no reader's address
   or pace is kept, and a rule on a score or a header is named as not judged.
+- **Each site chooses its own security headers.** A hosted site's Security
+  page sets how long browsers keep to HTTPS (HSTS, with what a change
+  costs said beside it), what the Referer tells other sites, whether its
+  pages may frame each other, and whether its own pages may ask for the
+  camera, microphone, location or payment sheet. Each is a choice from a
+  fixed list, never free text, and empty is the built-in header. The
+  choices reach the site's public pages only: never the console, the API,
+  sign-in or a page that carries a session, never the primary, and never
+  an onion. A page that refuses framing for itself keeps its refusal.
 - **What readers search for.** A site's search page records each search:
   the query and whether it found anything. Analytics shows the most searched
   queries and the ones that found nothing, for the install and for each

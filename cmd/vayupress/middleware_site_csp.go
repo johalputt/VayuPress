@@ -80,6 +80,9 @@ func (a *App) siteCSPMiddleware(next http.Handler) http.Handler {
 			}
 			w.Header().Set(hdr, render.BuildCSPAllowingEval(render.CSPNonce(r)))
 		}
+		if d, ok := activeDomain(r); ok {
+			w = a.applySiteHeaders(w, r, d)
+		}
 		if !strictPath(r.URL.Path) {
 			if p := a.sitePolicy(r); p.Mode != render.PolicyStrict {
 				w = &policyWriter{ResponseWriter: w, policy: p, now: time.Now()}

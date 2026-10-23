@@ -358,6 +358,18 @@ const (
 	KeyShieldSiteChallengeCountries = "shield.site_challenge_countries"
 	KeyShieldSiteRules              = "shield.site_rules" // run after the install's
 
+	// A hosted site's own response headers, each a choice from a fixed list
+	// (cmd/vayupress/site_headers.go). Empty is the built-in header. They
+	// reach the site's public pages only, never the console, the API or a
+	// page that carries a session.
+	KeySiteHSTS         = "headers.hsts"
+	KeySiteReferrer     = "headers.referrer"
+	KeySiteFrame        = "headers.frame"
+	KeySiteAllowCamera  = "headers.allow_camera"
+	KeySiteAllowMic     = "headers.allow_microphone"
+	KeySiteAllowGeo     = "headers.allow_geolocation"
+	KeySiteAllowPayment = "headers.allow_payment"
+
 	// KeyAnalyticsBeacon toggles the VayuAnalytics engagement beacon (time on
 	// page / scroll depth) injected on public pages. Default ON — it is
 	// cookieless and stores no PII, the same posture as the existing view
@@ -607,6 +619,13 @@ var NotPortable = map[string]bool{
 	KeyShieldSiteDenyCountries:      true,
 	KeyShieldSiteChallengeCountries: true,
 	KeyShieldSiteRules:              true,
+	KeySiteHSTS:                     true,
+	KeySiteReferrer:                 true,
+	KeySiteFrame:                    true,
+	KeySiteAllowCamera:              true,
+	KeySiteAllowMic:                 true,
+	KeySiteAllowGeo:                 true,
+	KeySiteAllowPayment:             true,
 	KeyAnalyticsBeacon:              true,
 	KeyVeilEnabled:                  true,
 	KeyVayuKeepEnabled:              true,
@@ -637,6 +656,13 @@ var AllKeys = map[string]bool{
 	KeyShieldSiteDenyCountries:      true,
 	KeyShieldSiteChallengeCountries: true,
 	KeyShieldSiteRules:              true,
+	KeySiteHSTS:                     true,
+	KeySiteReferrer:                 true,
+	KeySiteFrame:                    true,
+	KeySiteAllowCamera:              true,
+	KeySiteAllowMic:                 true,
+	KeySiteAllowGeo:                 true,
+	KeySiteAllowPayment:             true,
 	KeyNoFollowLinks:                true,
 	KeyPageCache:                    true,
 	KeyThemeStudioDraft:             true,
