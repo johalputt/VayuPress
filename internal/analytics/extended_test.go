@@ -116,27 +116,6 @@ func TestOverviewAndTopPages(t *testing.T) {
 	}
 }
 
-func TestRetentionClampsWindow(t *testing.T) {
-	t.Parallel()
-	s := newExtStore(t)
-	ctx := context.Background()
-	_ = s.Collect(ctx, CollectRequest{URL: "/", Hostname: "h", EventType: 1}, "9.9.9.9", "Chrome", "")
-
-	// A hostile/oversized weeks value must be clamped (no excessive allocation,
-	// no panic) and cohort rows must never exceed maxRetentionWeeks columns.
-	for _, w := range []int{-5, 0, 12, 100, 1 << 30} {
-		rows, err := s.Retention(ctx, w)
-		if err != nil {
-			t.Fatalf("Retention(%d): %v", w, err)
-		}
-		for _, r := range rows {
-			if len(r.Weeks) > maxRetentionWeeks {
-				t.Fatalf("Retention(%d): cohort has %d week columns, want <= %d", w, len(r.Weeks), maxRetentionWeeks)
-			}
-		}
-	}
-}
-
 // TestAverageVisitDurationIsActuallyMeasured is the regression test for a metric
 // that was declared, returned in JSON, written to the CSV export — and never
 // assigned. Every install has always reported an average visit duration of

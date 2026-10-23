@@ -34,6 +34,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   counts visitors, as every other figure does, and its pages and referrers
   are counted by reader too. A site's own Analytics has its own Right now,
   polling that site's last five minutes alone.
+- **Retention says it cannot be measured.** A visitor is recognised by a
+  hash that changes daily, so nobody can be seen to return in a later week.
+  The API's retention report drew cohorts anyway: their later weeks were
+  empty by construction, and because its weeks were fixed dates it counted
+  each visitor as retained in the week of their only visit. The route now
+  answers `measurable: false` with the reason.
 
 ### Security
 

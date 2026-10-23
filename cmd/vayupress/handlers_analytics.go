@@ -534,17 +534,29 @@ func (a *App) handleAnalyticsGetFunnel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, 200, map[string]interface{}{"funnel": f, "results": results})
 }
 
+// handleAnalyticsRetention answers that week-over-week retention cannot be
+// measured here, and why. A visitor is recognised by a hash that changes
+// every day (docs/ANALYTICS.md), so nobody can be seen to come back on a
+// later day. The report this replaced drew cohorts from that hash anyway:
+// every cohort's later weeks were empty by construction, and because its
+// weeks were fixed dates rather than counted from each cohort, it reported
+// each visitor as "retained" in the week of their only visit. The route
+// stays, so a client reading it learns the reason rather than a 404.
 func (a *App) handleAnalyticsRetention(w http.ResponseWriter, r *http.Request) {
-	if a.analytics == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "analytics-disabled", "Analytics not initialised", "")
-		return
-	}
-	data, err := a.analytics.Retention(r.Context(), queryInt(r, "weeks", 12))
-	if err != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
-		return
-	}
-	writeJSON(w, r, http.StatusOK, data)
+	writeJSON(w, r, http.StatusOK, retentionAnswer{
+		Measurable: false,
+		Identity:   "daily",
+		Reason:     "A visitor is recognised by a salted hash that changes every day, so no visitor can be seen to return on a later day. Week-over-week retention would need an identity that follows a person across days, which this install does not keep.",
+		Cohorts:    []struct{}{},
+	})
+}
+
+// retentionAnswer is the retention route's whole answer.
+type retentionAnswer struct {
+	Measurable bool       `json:"measurable"`
+	Identity   string     `json:"identity"`
+	Reason     string     `json:"reason"`
+	Cohorts    []struct{} `json:"cohorts"`
 }
 
 func (a *App) handleAnalyticsRevenue(w http.ResponseWriter, r *http.Request) {

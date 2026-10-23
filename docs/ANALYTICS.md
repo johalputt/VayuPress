@@ -59,6 +59,11 @@ path. A site's own hosts are never referrers.
 **Conversion.** A custom event, or a page view of a goal's path, counted
 against the visitors of the same range.
 
+**Retention.** Not measured. A visitor is the same only within a day, so
+nobody can be seen to come back on a later day, and a week-over-week cohort
+would be empty by construction. The API's `retention` route says so rather
+than drawing cohorts.
+
 ## Ranges
 
 A range is a set of UTC days. "Last 14 days" is today and the 13 days before

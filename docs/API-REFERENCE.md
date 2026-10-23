@@ -177,7 +177,10 @@ GET /api/v1/analytics/export     (Parquet)
 
 No cookie is set, and no IP address or user agent is stored. A visit is keyed
 by a hash whose salt rotates daily, so a reader cannot be followed from one day
-to the next.
+to the next. For the same reason `retention` answers
+`{"measurable": false, "identity": "daily", "reason": …, "cohorts": []}`:
+no visitor can be seen to return on a later day, so there are no cohorts to
+report.
 
 ## Operations
 
