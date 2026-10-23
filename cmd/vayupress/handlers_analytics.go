@@ -175,7 +175,7 @@ func (a *App) handleAnalyticsCollect(w http.ResponseWriter, r *http.Request) {
 	// Only a reader is counted, by the rule every ingest path shares
 	// (countsAsReader). This beacon used to drop bad bots alone, so a
 	// verified crawler or an AI agent that ran the page's script was counted
-	// as a visitor here and not by the server's own count (row 5, audit A5).
+	// as a visitor here and not by the server's own count.
 	if a.vayuShield != nil {
 		if !countsAsReader(a.vayuShield.Classify(r).Result.ClientType, true) {
 			w.WriteHeader(http.StatusNoContent)

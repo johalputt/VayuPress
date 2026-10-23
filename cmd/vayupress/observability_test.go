@@ -72,7 +72,7 @@ func auditRows(t *testing.T, action string) []string {
 }
 
 // A goal, a funnel and a setting could be changed with no record of who or
-// when (row 5, 0.5). Each change is audited; a setting by its key alone,
+// when. Each change is audited; a setting by its key alone,
 // because some settings are credentials.
 func TestAnalyticsAndSettingsChangesAreAudited(t *testing.T) {
 	openMigratedDB(t)

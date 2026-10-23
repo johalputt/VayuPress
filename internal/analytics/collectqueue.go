@@ -8,7 +8,7 @@ package analytics
 // on the SINGLE SQLite write connection: a session probe, a session upsert,
 // the pageview row, one row per event-data property. Under load that serialises
 // every beacon behind every other and starves everything else that needs the
-// writer (2025 audit A2). The engagement store already proved the fix shape:
+// writer. The engagement store already proved the fix shape:
 // buffer in memory on the request goroutine — cheap CPU only — and let one
 // goroutine apply whole batches in single transactions.
 //

@@ -209,7 +209,7 @@ func Classify(referrer, siteHost string, utm UTM, isBot bool) Result {
 //     (mastodon.social) — not a substring of one (notmastodon.com).
 //
 // The old unanchored strings.Contains was spoofable: any referrer CONTAINING
-// "x.com" (box.com, wix.com…) claimed X/Twitter attribution (audit A1).
+// "x.com" (box.com, wix.com…) claimed X/Twitter attribution.
 func matchHost(host string, table map[string]string) (string, bool) {
 	for k, v := range table {
 		switch {

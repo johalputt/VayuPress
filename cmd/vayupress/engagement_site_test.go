@@ -17,7 +17,7 @@ import (
 )
 
 // An engagement and vitals row did not say which site its page was on, so no
-// site could read its own Performance (row 5, Phase 1). The site is the one
+// site could read its own Performance. The site is the one
 // this install served the request for; a beacon naming another is ignored.
 func TestAnEngagementRowIsItsSites(t *testing.T) {
 	openMigratedDB(t)

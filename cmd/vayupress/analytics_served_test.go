@@ -28,7 +28,7 @@ func browserGet(target string) *http.Request {
 }
 
 // An uploaded site or a template website carries no beacon, so none of its
-// visits was ever counted and its Analytics read nothing (row 5, 0.0). The
+// visits was ever counted and its Analytics read nothing. The
 // server now counts the view as it serves the page, for a person only, by the
 // beacon's rules. One request per rule.
 func TestAServedPageIsCountedForAPersonOnly(t *testing.T) {

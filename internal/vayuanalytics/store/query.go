@@ -101,7 +101,7 @@ type SourceStat struct {
 // kAnonymityFloor is the smallest segment size any grouped report may reveal.
 // A city/source/page with fewer distinct visitors than this is suppressed
 // rather than reported: a segment of 1-4 visitors can single someone out
-// (audit A4 — "no k-anonymity floor, including on exports"). Applied at the
+// ("no k-anonymity floor, including on exports"). Applied at the
 // query layer via HAVING so every consumer — dashboard AND CSV export —
 // inherits it for free.
 const kAnonymityFloor = 5

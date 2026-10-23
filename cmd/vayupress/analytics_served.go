@@ -7,10 +7,9 @@ package main
 // Only pages VayuPress draws itself carry the beacon (vp-analytics.js). A site
 // that serves its own uploaded files (customsite) or a template website
 // (sitedoc) sent none, so on johal.in eleven of fourteen sites had never
-// recorded a visit, and each one's Analytics page read nothing at all (row 5,
-// step 0.0). Rather than write a script into a site's own files, the server
-// counts the view as it serves the page, which is design decision 2 of the
-// row 5 plan.
+// recorded a visit, and each one's Analytics page read nothing at all.
+// Rather than write a script into a site's own files, the server counts the
+// view as it serves the page.
 //
 // The beacon only ever ran in a browser, so the count here admits only what
 // VayuShield classifies as a person: a crawler fetches pages but never runs the
@@ -30,7 +29,7 @@ import (
 	"github.com/johalputt/vayupress/internal/vayushield/botdb"
 )
 
-// countsAsReader is the one rule for who analytics counts (row 5, audit A5):
+// countsAsReader is the one rule for who analytics counts:
 // every ingest path asks it, so "a visitor" means the same thing on every
 // page. An automated client never counts, verified crawler or not: a search
 // engine or an AI agent that runs a page's script is reading for its index,

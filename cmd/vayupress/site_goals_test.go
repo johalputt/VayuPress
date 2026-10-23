@@ -16,7 +16,7 @@ import (
 	vasession "github.com/johalputt/vayupress/internal/vayuanalytics/session"
 )
 
-// A goal belongs to a site (row 5, audit A2). A goal made on a site's own
+// A goal belongs to a site. A goal made on a site's own
 // Analytics counts that site's traffic alone; the install's goals, and every
 // goal made before goals had a site, count every site as they always did;
 // and a site's page can neither show nor remove another site's goal.

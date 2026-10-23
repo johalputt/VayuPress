@@ -15,7 +15,7 @@ import (
 
 // A site's own Analytics showed four figures and its busiest pages, and
 // called its visits its visitors. It is now the install's page for that site
-// alone (row 5, Phase 2): its visitors, visits, landing pages, referrers,
+// alone: its visitors, visits, landing pages, referrers,
 // audience and speed, and none of another site's.
 func TestASitesAnalyticsIsThatSitesAlone(t *testing.T) {
 	openMigratedDB(t)

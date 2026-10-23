@@ -31,7 +31,7 @@ import (
 // handleOSScopedAnalytics renders one site's Analytics: the install's page,
 // fed by the readers that take a site, so a client reads their own site with
 // the same figures, definitions and charts the operator reads for the
-// install (row 5, Phase 2).
+// install.
 func (a *App) handleOSScopedAnalytics(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())

@@ -15,7 +15,7 @@ import (
 	"github.com/johalputt/vayupress/internal/vayushield/botdb"
 )
 
-// One rule for who is counted (row 5, audit A5), stated whole: each client
+// One rule for who is counted, stated whole: each client
 // type, with and without the page's script having run.
 func TestWhoAnalyticsCounts(t *testing.T) {
 	for _, tc := range []struct {

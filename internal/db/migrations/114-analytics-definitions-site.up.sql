@@ -1,4 +1,4 @@
--- Migration 114: a site on every goal and funnel (row 5, audit A2).
+-- Migration 114: a site on every goal and funnel.
 --
 -- A goal or funnel belonged to no site, so a site's owner could not have one
 -- and the install's were counted over every site's traffic. Each definition
