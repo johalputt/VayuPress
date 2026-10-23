@@ -30,6 +30,30 @@ import (
 	"github.com/johalputt/vayupress/internal/vayushield/botdb"
 )
 
+// countsAsReader is the one rule for who analytics counts (row 5, audit A5):
+// every ingest path asks it, so "a visitor" means the same thing on every
+// page. An automated client never counts, verified crawler or not: a search
+// engine or an AI agent that runs a page's script is reading for its index,
+// not a person reading. VayuShield's Unknown band (signals between a person
+// and a bot) counts only when the page's own script ran, which a monitor or a
+// script fetching pages does not do; a bare fetch in that band is not
+// counted.
+func countsAsReader(ct botdb.ClientType, ranScript bool) bool {
+	switch ct {
+	case botdb.TypeHuman:
+		return true
+	case botdb.TypeUnknown:
+		return ranScript
+	}
+	return false
+}
+
+// automatedClient is the engagement store's bot flag: the client types
+// countsAsReader never counts, whatever ran.
+func automatedClient(ct botdb.ClientType) bool {
+	return ct != botdb.TypeHuman && ct != botdb.TypeUnknown
+}
+
 // recordServedPage counts one view of the page r asked for.
 func (a *App) recordServedPage(r *http.Request) {
 	if a.analytics == nil || a.vayuShield == nil || r.Method != http.MethodGet || dntHonored(r) {
@@ -39,7 +63,7 @@ func (a *App) recordServedPage(r *http.Request) {
 	if r.Header.Get("Sec-Purpose") != "" || r.Header.Get("Purpose") == "prefetch" {
 		return
 	}
-	if a.vayuShield.Classify(r).Result.ClientType != botdb.TypeHuman {
+	if !countsAsReader(a.vayuShield.Classify(r).Result.ClientType, false) {
 		return
 	}
 	geo := geoFromHeaders(r)

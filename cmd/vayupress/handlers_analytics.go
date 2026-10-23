@@ -17,7 +17,6 @@ import (
 	"github.com/johalputt/vayupress/internal/auth"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/settings"
-	"github.com/johalputt/vayupress/internal/vayushield/botdb"
 )
 
 // ── Ingest rate limiting ─────────────────────────────────────────────────────
@@ -173,12 +172,12 @@ func (a *App) handleAnalyticsCollect(w http.ResponseWriter, r *http.Request) {
 	// Geo is set server-side from trusted proxy headers, never from the beacon.
 	req.Geo = geoFromHeaders(r)
 	req.Lang = r.Header.Get("Accept-Language")
-	// A bad bot must never pollute analytics — same rule as the engagement
-	// ingest beside it. The two dashboards previously disagreed because this
-	// endpoint classified nobody: crawlers executing the page JS wrote
-	// browser=Chrome/device=Desktop rows into every card (audit A1).
+	// Only a reader is counted, by the rule every ingest path shares
+	// (countsAsReader). This beacon used to drop bad bots alone, so a
+	// verified crawler or an AI agent that ran the page's script was counted
+	// as a visitor here and not by the server's own count (row 5, audit A5).
 	if a.vayuShield != nil {
-		if verdict := a.vayuShield.Classify(r); verdict.Result.ClientType == botdb.TypeBadBot {
+		if !countsAsReader(a.vayuShield.Classify(r).Result.ClientType, true) {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}

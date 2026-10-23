@@ -538,8 +538,7 @@ func (a *App) handleVAEnter(w http.ResponseWriter, r *http.Request) {
 
 	verdict := a.vayuShield.Classify(r)
 	clientType := string(verdict.Result.ClientType)
-	isBot := verdict.Result.ClientType == botdb.TypeBadBot || verdict.Result.ClientType == botdb.TypeHeadless ||
-		verdict.Result.ClientType == botdb.TypeGoodBot || verdict.Result.ClientType == botdb.TypeAIAgent
+	isBot := automatedClient(verdict.Result.ClientType)
 
 	// A bad bot must never pollute analytics. Blocked bad bots never render (so
 	// never reach this beacon); this additionally drops any bad bot that still

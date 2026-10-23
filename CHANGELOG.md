@@ -34,6 +34,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   counts visitors, as every other figure does, and its pages and referrers
   are counted by reader too. A site's own Analytics has its own Right now,
   polling that site's last five minutes alone.
+- **One rule for who is counted.** The page-view script dropped only bad
+  bots, so a verified crawler or an AI agent that ran the page's script was a
+  visitor there and not in the server's own count. Every path now asks one
+  rule: no automated client counts, and a client between a person and a bot
+  counts only when the page's script ran.
 - **Retention says it cannot be measured.** A visitor is recognised by a
   hash that changes daily, so nobody can be seen to return in a later week.
   The API's retention report drew cohorts anyway: their later weeks were

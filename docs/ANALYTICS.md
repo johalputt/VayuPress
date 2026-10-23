@@ -13,10 +13,14 @@ One row per event in `analytics_pageviews`: a page view or a custom event,
 its time, its site, its path, the host that referred it, its visit and its
 visitor. A page view is recorded by the counting script on pages VayuPress
 draws, and by the server as it serves a site's own files or a template site,
-which carry no script. Either way only a person is counted: VayuShield's
-classification decides, and a crawler, a prefetch, a refused country and a
-reader who asked not to be tracked (Do Not Track, Global Privacy Control) are
-never recorded.
+which carry no script. Either way only a person is counted, by one rule
+every path shares: VayuShield's classification decides. An automated client
+is never counted, whether or not it ran the page's script: a verified search
+crawler, an AI agent, a headless browser or a bad bot. A client VayuShield
+places between a person and a bot is counted only when the page's own script
+ran, which a monitor or a script fetching pages does not do. A prefetch, a
+refused country and a reader who asked not to be tracked (Do Not Track,
+Global Privacy Control) are never recorded.
 
 No IP address, no User-Agent string and no cookie is stored. The time on every
 row is the server's: the script sends none.
