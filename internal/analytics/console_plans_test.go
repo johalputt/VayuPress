@@ -145,6 +145,7 @@ func TestNoConsoleReadWalksAWholeTable(t *testing.T) {
 			_, _ = s.AudienceScoped(ctx, "d1", col, days)
 		}
 		_, _ = s.GoalResults(ctx, days)
+		_, _ = s.GoalResultsScoped(ctx, "d1", days)
 		_, _ = s.PathFlows(ctx, days, 10)
 	}
 	_, _ = s.OverviewBetween(ctx, weekAgo, today)
@@ -158,6 +159,9 @@ func TestNoConsoleReadWalksAWholeTable(t *testing.T) {
 	_, _, _ = s.GetFunnel(ctx, fid)
 	_, _ = s.ListFunnels(ctx)
 	_, _ = s.ListGoals(ctx)
+	_, _, _ = s.GetFunnelScoped(ctx, "d1", fid)
+	_, _ = s.ListFunnelsScoped(ctx, "d1")
+	_, _ = s.ListGoalsScoped(ctx, "d1")
 
 	recorder.mu.Lock()
 	seen := recorder.seen

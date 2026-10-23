@@ -737,7 +737,13 @@ func osGeoSetupNote(full bool) string {
 // osGoalsSection renders the conversion-goals card: a create form, plus a table
 // of each goal's completions and conversion rate over the selected window.
 func (a *App) osGoalsSection(ctx context.Context, days int) string {
-	results, _ := a.analytics.GoalResults(ctx, days)
+	return a.osGoalsSectionScoped(ctx, analytics.ScopeAllDomains, "/os/api/analytics/goals", days)
+}
+
+// osGoalsSectionScoped is the Goals section for scope's goals, whose form and
+// Delete buttons write to base (the install's goals API, or one site's).
+func (a *App) osGoalsSectionScoped(ctx context.Context, scope, base string, days int) string {
+	results, _ := a.analytics.GoalResultsScoped(ctx, scope, days)
 	rows := `<tr><td colspan="6" class="muted">` + noGoalsYet + `</td></tr>`
 	if len(results) > 0 {
 		rows = ""
@@ -760,8 +766,8 @@ func (a *App) osGoalsSection(ctx context.Context, days int) string {
     <input id="goal-target" class="input" type="text" data-goal-target placeholder="/thank-you  or  signup" required></div>
   <div class="mt-3 sa-list__sheet-actions"><button class="btn btn--primary btn--sm" type="submit">Add goal</button></div>
 </form>`))
-	return string(ui.Section("Goals", "The share of visitors who reach a page or fire an event", ui.HTML(`<div data-goals>
-  <button type="button" class="btn btn--ghost btn--sm mb-3" data-sheet="goal-new">`+saIcon("plus")+` New goal</button>
+	return string(ui.Section("Goals", "The share of visitors who reach a page or fire an event", ui.HTML(`<div data-goals data-goal-base="`+esc(base)+`">
+  <button type="button" class="btn btn--ghost btn--sm" data-sheet="goal-new">`+saIcon("plus")+` New goal</button>
   <div class="table-wrap"><table class="table">
     <thead><tr><th>Goal</th><th>Reached by</th><th>Target</th><th>Completions</th><th>Conversion</th><th></th></tr></thead>
     <tbody>`+rows+`</tbody>

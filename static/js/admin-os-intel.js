@@ -60,6 +60,11 @@
   // will say (a new goal has no completions yet).
   var NO_GOALS = 'No goals yet. Add one with New goal: a page such as /thank-you, or a custom event such as signup.';
   function goalsBody() { return document.querySelector('[data-goals] tbody'); }
+  // The section names where its goals live: the install's, or one site's.
+  function goalBase() {
+    var g = document.querySelector('[data-goals]');
+    return (g && g.getAttribute('data-goal-base')) || '/os/api/analytics/goals';
+  }
   function cell(text, cls) {
     var td = document.createElement('td');
     if (cls) td.className = cls;
@@ -112,7 +117,7 @@
     var kind = (form.querySelector('[data-goal-kind]') || {}).value || 'path';
     var target = ((form.querySelector('[data-goal-target]') || {}).value || '').trim();
     if (!name || !target) { if (window.vpToast) window.vpToast('Name and target are required.', 'error'); return; }
-    fetch('/os/api/analytics/goals', {
+    fetch(goalBase(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
       body: JSON.stringify({ name: name, kind: kind, target: target })
@@ -137,7 +142,7 @@
       message: 'Delete this goal? Its conversions stop being counted.',
       confirm: 'Delete',
     }, function () {
-      fetch('/os/api/analytics/goals/' + encodeURIComponent(id), {
+      fetch(goalBase() + '/' + encodeURIComponent(id), {
         method: 'DELETE',
         headers: { 'X-CSRF-Token': csrf() }
       })

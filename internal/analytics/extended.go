@@ -741,14 +741,20 @@ type FunnelResult struct {
 
 // CreateFunnel stores a new funnel definition.
 func (s *Store) CreateFunnel(ctx context.Context, name string, steps []FunnelStep, timeWindow int) (string, error) {
+	return s.CreateFunnelScoped(ctx, ScopeAllDomains, name, steps, timeWindow)
+}
+
+// CreateFunnelScoped stores a funnel for one site (or the install's, for
+// ScopeAllDomains). A site's funnel walks only that site's visits.
+func (s *Store) CreateFunnelScoped(ctx context.Context, scope, name string, steps []FunnelStep, timeWindow int) (string, error) {
 	if timeWindow <= 0 {
 		timeWindow = 30
 	}
 	id := fmt.Sprintf("f%d", time.Now().UnixNano())
 	stepsJSON, _ := json.Marshal(steps)
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO analytics_funnels(id,name,steps_json,time_window,created_at) VALUES(?,?,?,?,?)`,
-		id, name, string(stepsJSON), timeWindow, time.Now().UTC())
+		`INSERT INTO analytics_funnels(id,name,steps_json,time_window,created_at,domain_id) VALUES(?,?,?,?,?,?)`,
+		id, name, string(stepsJSON), timeWindow, time.Now().UTC(), definitionSite(scope))
 	return id, err
 }
 
@@ -761,10 +767,17 @@ func (s *Store) CreateFunnel(ctx context.Context, name string, steps []FunnelSte
 // a step pointer on every match, so a visitor can only ever reach step N
 // after passing steps 0..N-1 IN ORDER.
 func (s *Store) GetFunnel(ctx context.Context, id string) (*Funnel, []FunnelResult, error) {
+	return s.GetFunnelScoped(ctx, ScopeAllDomains, id)
+}
+
+// GetFunnelScoped is one of scope's funnels and its conversion, over that
+// site's visits (or every site's, for the install's funnels). Another site's
+// funnel is not found from here.
+func (s *Store) GetFunnelScoped(ctx context.Context, scope, id string) (*Funnel, []FunnelResult, error) {
 	var f Funnel
 	var stepsJSON string
 	err := s.readDB().QueryRowContext(ctx,
-		`SELECT id,name,steps_json,time_window,created_at FROM analytics_funnels WHERE id=?`, id).
+		`SELECT id,name,steps_json,time_window,created_at FROM analytics_funnels WHERE id=? AND domain_id=?`, id, definitionSite(scope)).
 		Scan(&f.ID, &f.Name, &stepsJSON, &f.TimeWindow, &f.CreatedAt)
 	if err != nil {
 		return nil, nil, err
@@ -781,9 +794,10 @@ func (s *Store) GetFunnel(ctx context.Context, id string) (*Funnel, []FunnelResu
 		stepPaths[i] = normalizePathExtended(st.URLPath)
 	}
 
+	clause, carg := domainClause(scope)
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT session_id,url_path FROM analytics_pageviews WHERE created_at>=? AND event_type=1 ORDER BY session_id,created_at`,
-		since)
+		`SELECT session_id,url_path FROM analytics_pageviews WHERE created_at>=? AND event_type=1`+clause+` ORDER BY session_id,created_at`,
+		append([]any{since}, carg...)...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -825,10 +839,15 @@ func (s *Store) GetFunnel(ctx context.Context, id string) (*Funnel, []FunnelResu
 	return &f, results, nil
 }
 
-// ListFunnels returns all funnel definitions.
+// ListFunnels returns the install-wide funnels.
 func (s *Store) ListFunnels(ctx context.Context) ([]Funnel, error) {
+	return s.ListFunnelsScoped(ctx, ScopeAllDomains)
+}
+
+// ListFunnelsScoped returns one site's funnels (or the install's).
+func (s *Store) ListFunnelsScoped(ctx context.Context, scope string) ([]Funnel, error) {
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT id,name,time_window,created_at FROM analytics_funnels ORDER BY created_at DESC`)
+		`SELECT id,name,time_window,created_at FROM analytics_funnels WHERE domain_id=? ORDER BY created_at DESC`, definitionSite(scope))
 	if err != nil {
 		return nil, err
 	}

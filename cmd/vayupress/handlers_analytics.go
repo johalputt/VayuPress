@@ -615,6 +615,34 @@ func (a *App) handleAnalyticsGoals(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleAnalyticsCreateGoal(w http.ResponseWriter, r *http.Request) {
+	a.createGoal(w, r, analytics.ScopeAllDomains, "")
+}
+
+// handleOSScopedCreateGoal adds a goal to the site the URL names
+// (/os/d/{id}/analytics/goals): it counts only that site's traffic.
+func (a *App) handleOSScopedCreateGoal(w http.ResponseWriter, r *http.Request) {
+	d, ok := osScopedDomain(r)
+	if !ok {
+		writeAPIError(w, r, http.StatusNotFound, "no-site", "no such site", "")
+		return
+	}
+	a.createGoal(w, r, d.ID, d.Host)
+}
+
+// handleOSScopedDeleteGoal removes one of the URL's site's goals; another
+// site's goal, or the install's, is not found from here.
+func (a *App) handleOSScopedDeleteGoal(w http.ResponseWriter, r *http.Request) {
+	d, ok := osScopedDomain(r)
+	if !ok {
+		writeAPIError(w, r, http.StatusNotFound, "no-site", "no such site", "")
+		return
+	}
+	a.deleteGoal(w, r, d.ID, d.Host, chi.URLParam(r, "gid"))
+}
+
+// createGoal stores a goal for scope (a site, whose host is host, or the
+// install) from the request body.
+func (a *App) createGoal(w http.ResponseWriter, r *http.Request, scope, host string) {
 	if a.analytics == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "analytics-disabled", "Analytics not initialised", "")
 		return
@@ -628,29 +656,52 @@ func (a *App) handleAnalyticsCreateGoal(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, 400, "invalid_json", err.Error(), "")
 		return
 	}
-	id, err := a.analytics.CreateGoal(r.Context(), in.Name, in.Kind, in.Target)
+	id, err := a.analytics.CreateGoalScoped(r.Context(), scope, in.Name, in.Kind, in.Target)
 	if err != nil {
 		writeAPIError(w, r, 400, "validation_error", err.Error(), "")
 		return
 	}
-	a.refreshAnalyticsReports()
-	dbpkg.AuditLog("analytics.goal.create", dbpkg.AuditActor(r), id, in.Kind+" "+in.Target)
+	a.refreshGoalReports(scope, host)
+	dbpkg.AuditLog("analytics.goal.create", dbpkg.AuditActor(r), id, goalAuditSite(scope)+in.Kind+" "+in.Target)
 	writeJSON(w, r, 201, map[string]string{"id": id, "name": in.Name})
 }
 
 func (a *App) handleAnalyticsDeleteGoal(w http.ResponseWriter, r *http.Request) {
+	a.deleteGoal(w, r, analytics.ScopeAllDomains, "", chi.URLParam(r, "id"))
+}
+
+// deleteGoal removes scope's goal id. Inside /os/d/{id} the site holds {id},
+// so the scoped route names the goal {gid} and passes it here.
+func (a *App) deleteGoal(w http.ResponseWriter, r *http.Request, scope, host, id string) {
 	if a.analytics == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "analytics-disabled", "Analytics not initialised", "")
 		return
 	}
-	id := chi.URLParam(r, "id")
-	if err := a.analytics.DeleteGoal(r.Context(), id); err != nil {
+	if err := a.analytics.DeleteGoalScoped(r.Context(), scope, id); err != nil {
 		writeAPIError(w, r, 404, "not_found", err.Error(), "")
 		return
 	}
-	a.refreshAnalyticsReports()
-	dbpkg.AuditLog("analytics.goal.delete", dbpkg.AuditActor(r), id, "")
+	a.refreshGoalReports(scope, host)
+	dbpkg.AuditLog("analytics.goal.delete", dbpkg.AuditActor(r), id, goalAuditSite(scope))
 	writeJSON(w, r, 200, map[string]bool{"deleted": true})
+}
+
+// refreshGoalReports rebuilds the cached report that shows scope's goals:
+// the install's Analytics, or that site's (whose host is host).
+func (a *App) refreshGoalReports(scope, host string) {
+	if scope == analytics.ScopeAllDomains {
+		a.refreshAnalyticsReports()
+		return
+	}
+	a.refreshSiteAnalytics(scope, host)
+}
+
+// goalAuditSite names the site a goal change was made on, for the audit line.
+func goalAuditSite(scope string) string {
+	if scope == analytics.ScopeAllDomains {
+		return ""
+	}
+	return "site " + scope + ": "
 }
 
 // ── Visitor journey / path flows ─────────────────────────────────────────────

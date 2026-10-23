@@ -84,10 +84,14 @@ func TestASitesAnalyticsIsAnOverview(t *testing.T) {
 			t.Errorf("missing %q", want)
 		}
 	}
-	for _, not := range []string{"mon-acc", `class="card`, `class="badge`, "<form", "style="} {
+	for _, not := range []string{"mon-acc", `class="card`, `class="badge`, "style="} {
 		if strings.Contains(page, not) {
 			t.Errorf("the page carries %q", not)
 		}
+	}
+	// One form, the New goal sheet's: nothing else on the page is a form.
+	if forms, goal := strings.Count(page, "<form"), strings.Count(page, "<form data-goal-form>"); forms != 1 || goal != 1 {
+		t.Errorf("the page carries %d forms, %d of them the goal sheet; want only the goal sheet", forms, goal)
 	}
 	empty := siteAnalyticsPage(t, "d1")
 	if !strings.Contains(empty, "No visits to customer.example") || !strings.Contains(empty, "Visits to this site appear here") {

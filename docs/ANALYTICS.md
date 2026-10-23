@@ -61,7 +61,10 @@ averaged in as zero seconds; those visits are the bounces.
 path. A site's own hosts are never referrers.
 
 **Conversion.** A custom event, or a page view of a goal's path, counted
-against the visitors of the same range.
+against the visitors of the same range. A goal or funnel belongs to a site: one
+made on a site's own Analytics counts that site's traffic alone, and the
+install's goals and funnels count every site's. A funnel counts visits, each
+walked through its steps in order.
 
 **Retention.** Not measured. A visitor is the same only within a day, so
 nobody can be seen to come back on a later day, and a week-over-week cohort

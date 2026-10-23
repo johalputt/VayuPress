@@ -146,6 +146,20 @@ func (a *App) refreshAnalyticsReports() {
 	}
 }
 
+// refreshSiteAnalytics rebuilds every cached window of one site's Analytics,
+// after a change the page shows (a goal added or removed).
+func (a *App) refreshSiteAnalytics(site, host string) {
+	prefix := "site-analytics:" + site + ":"
+	for _, key := range adminDash.keys(prefix) {
+		days, err := strconv.Atoi(strings.TrimPrefix(key, prefix))
+		if err != nil {
+			continue
+		}
+		label := analyticsLabelForDays(days)
+		adminDash.warm(key, func(ctx context.Context) string { return a.renderSiteAnalyticsBody(ctx, site, host, days, label) })
+	}
+}
+
 // startDashboardWarmer keeps the default-window (30-day) Analytics and Bot
 // Shield engagement fragments hot in the background, so those tabs are ready
 // within moments of boot and never trigger an inline compute on a request. It

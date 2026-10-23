@@ -34,6 +34,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   counts visitors, as every other figure does, and its pages and referrers
   are counted by reader too. A site's own Analytics has its own Right now,
   polling that site's last five minutes alone.
+- **Goals and funnels belong to a site.** A site's own Analytics has its
+  Goals: one made there counts that site's traffic alone, and the page can
+  neither show nor remove another site's. The install's goals and funnels,
+  and every one made before (migration 114), count every site as before.
 - **One rule for who is counted.** The page-view script dropped only bad
   bots, so a verified crawler or an AI agent that ran the page's script was a
   visitor there and not in the server's own count. Every path now asks one

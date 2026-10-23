@@ -11,7 +11,7 @@ import (
 // (newExtStore only creates the session/pageview/event tables).
 func addGoalsTable(t *testing.T, s *Store) {
 	t.Helper()
-	if _, err := s.db.Exec(`CREATE TABLE analytics_goals(id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'path', target TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`); err != nil {
+	if _, err := s.db.Exec(`CREATE TABLE analytics_goals(id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'path', target TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, domain_id TEXT NOT NULL DEFAULT '*');`); err != nil {
 		t.Fatalf("goals ddl: %v", err)
 	}
 }

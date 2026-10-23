@@ -44,8 +44,27 @@ type GoalResult struct {
 	ConversionRate float64 `json:"conversion_rate"` // % of all visitors in window
 }
 
-// CreateGoal stores a new goal definition.
+// definitionsAll is the site a definition (goal, funnel) has when it counts
+// every site's traffic: the install's own, and every definition made before
+// definitions had a site (migration 114).
+const definitionsAll = "*"
+
+// definitionSite is the domain_id a definition is stored under for scope.
+func definitionSite(scope string) string {
+	if scope == ScopeAllDomains {
+		return definitionsAll
+	}
+	return scope
+}
+
+// CreateGoal stores a new install-wide goal.
 func (s *Store) CreateGoal(ctx context.Context, name, kind, target string) (string, error) {
+	return s.CreateGoalScoped(ctx, ScopeAllDomains, name, kind, target)
+}
+
+// CreateGoalScoped stores a new goal for one site (or the install, for
+// ScopeAllDomains). A site's goal counts only that site's traffic.
+func (s *Store) CreateGoalScoped(ctx context.Context, scope, name, kind, target string) (string, error) {
 	name = strings.TrimSpace(name)
 	target = strings.TrimSpace(target)
 	if name == "" || target == "" {
@@ -62,15 +81,20 @@ func (s *Store) CreateGoal(ctx context.Context, name, kind, target string) (stri
 	}
 	id := fmt.Sprintf("g%d", time.Now().UnixNano())
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO analytics_goals(id,name,kind,target,created_at) VALUES(?,?,?,?,?)`,
-		id, name, kind, target, time.Now().UTC())
+		`INSERT INTO analytics_goals(id,name,kind,target,created_at,domain_id) VALUES(?,?,?,?,?,?)`,
+		id, name, kind, target, time.Now().UTC(), definitionSite(scope))
 	return id, err
 }
 
-// ListGoals returns all goal definitions, newest first.
+// ListGoals returns the install-wide goals, newest first.
 func (s *Store) ListGoals(ctx context.Context) ([]Goal, error) {
+	return s.ListGoalsScoped(ctx, ScopeAllDomains)
+}
+
+// ListGoalsScoped returns one site's goals (or the install's), newest first.
+func (s *Store) ListGoalsScoped(ctx context.Context, scope string) ([]Goal, error) {
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT id,name,kind,target,created_at FROM analytics_goals ORDER BY created_at DESC`)
+		`SELECT id,name,kind,target,created_at FROM analytics_goals WHERE domain_id=? ORDER BY created_at DESC`, definitionSite(scope))
 	if err != nil {
 		return nil, err
 	}
@@ -86,9 +110,16 @@ func (s *Store) ListGoals(ctx context.Context) ([]Goal, error) {
 	return result, rows.Err()
 }
 
-// DeleteGoal removes a goal definition.
+// DeleteGoal removes an install-wide goal.
 func (s *Store) DeleteGoal(ctx context.Context, id string) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM analytics_goals WHERE id=?`, id)
+	return s.DeleteGoalScoped(ctx, ScopeAllDomains, id)
+}
+
+// DeleteGoalScoped removes one of scope's goals. Another site's goal, or the
+// install's, is "no such goal" from here: a site's page can only remove what
+// it shows.
+func (s *Store) DeleteGoalScoped(ctx context.Context, scope, id string) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM analytics_goals WHERE id=? AND domain_id=?`, id, definitionSite(scope))
 	if err != nil {
 		return err
 	}
@@ -102,19 +133,27 @@ func (s *Store) DeleteGoal(ctx context.Context, id string) error {
 // The conversion rate is the share of all unique visitors in the window who
 // completed the goal.
 func (s *Store) GoalResults(ctx context.Context, days int) ([]GoalResult, error) {
+	return s.GoalResultsScoped(ctx, ScopeAllDomains, days)
+}
+
+// GoalResultsScoped is GoalResults for one site's goals over that site's
+// traffic (or the install's goals over every site's).
+func (s *Store) GoalResultsScoped(ctx context.Context, scope string, days int) ([]GoalResult, error) {
 	if days <= 0 {
 		days = 30
 	}
-	goals, err := s.ListGoals(ctx)
+	goals, err := s.ListGoalsScoped(ctx, scope)
 	if err != nil {
 		return nil, err
 	}
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	clause, carg := domainClause(scope)
+	pclause, _ := domainClauseOn("p", scope)
 
 	// Denominator: distinct visitors active in the window.
 	totalVisitors := 0
 	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT +visitor_id) FROM analytics_pageviews WHERE created_at>=?`, from).
+		`SELECT COUNT(DISTINCT +visitor_id) FROM analytics_pageviews WHERE created_at>=?`+clause, append([]any{from}, carg...)...).
 		Scan(&totalVisitors)
 
 	results := make([]GoalResult, 0, len(goals))
@@ -143,7 +182,7 @@ func (s *Store) GoalResults(ctx context.Context, days int) ([]GoalResult, error)
 		_ = s.readDB().QueryRowContext(ctx,
 			`SELECT COUNT(1), COUNT(DISTINCT p.visitor_id)
 			 FROM analytics_pageviews p
-			 WHERE p.created_at>=? AND `+where, from, arg).
+			 WHERE p.created_at>=? AND `+where+pclause, append([]any{from, arg}, carg...)...).
 			Scan(&gr.Completions, &gr.UniqueVisitors)
 
 		if totalVisitors > 0 {
