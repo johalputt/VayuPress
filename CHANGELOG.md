@@ -24,16 +24,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   moved, or once a minute for the conditions no count follows.
 - **Authors and editors can mark the bell read.** Mark all read and Clear all
   were refused to them, because their endpoints fell to the
-  administrator-only default for console APIs. The bell is every viewer's own, and its
-  endpoints are now open to every signed-in level.
-
-### Added
-
-- **[docs/PIPELINE.md](docs/PIPELINE.md)**: work decided in outline and not
-  yet scheduled. VayuAgent, an open-source Go agent in one binary that runs
-  VayuPress from the Buzz mobile app over VayuMCP, from after January 2027;
-  and one data model rendered as both HTML for readers and Markdown for
-  agents, with VayuMCP as its main consumer.
+  administrator-only default for console APIs. The bell is every viewer's
+  own, and its endpoints are now open to every signed-in level.
 
 ### Security
 
