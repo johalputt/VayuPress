@@ -74,6 +74,10 @@ var capabilityRules = []capRule{
 	{prefix: "/api/v1/analytics/export", section: apikeys.SectionAnalytics, action: apikeys.ActionExport},
 	{prefix: "/api/v1/analytics", section: apikeys.SectionAnalytics},
 	{prefix: "/api/v1/admin/analytics", section: apikeys.SectionAnalytics},
+	// One site's analytics (api_site_analytics.go). The sites family is
+	// analytics alone today; a site-bound key reads only its own site, which
+	// the route's own middleware checks against the site it resolves.
+	{prefix: "/api/v1/sites/", section: apikeys.SectionAnalytics},
 	{prefix: "/os/api/analytics/export", section: apikeys.SectionAnalytics, action: apikeys.ActionExport},
 	{prefix: "/os/api/analytics", section: apikeys.SectionAnalytics},
 	{prefix: "/os/api/activity", section: apikeys.SectionAnalytics},

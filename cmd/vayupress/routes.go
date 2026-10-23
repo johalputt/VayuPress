@@ -574,6 +574,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		// Visitor journey / path-flow analysis.
 		r.Get("/api/v1/analytics/journey", a.handleAnalyticsJourney)
 
+		// One site's analytics, the family a site-bound key may read.
+		a.siteAnalyticsRoutes(r)
+
 		// Report export (CSV/JSON download) for every report.
 		r.Get("/api/v1/analytics/export", a.handleAnalyticsExport)
 

@@ -173,7 +173,16 @@ GET /api/v1/analytics/overview | pageviews | pages | referrers | browsers |
     devices | os | utm | events | realtime | sessions | funnels | retention |
     revenue | goals | journey
 GET /api/v1/analytics/export     (Parquet)
+GET /api/v1/sites/{site}/analytics/overview | realtime | pages | sources |
+    events | goals | funnels | funnels/{id} | performance
 ```
+
+The `/api/v1/analytics` family adds up every site, so a key bound to one site
+is refused it. The `/api/v1/sites/{site}/analytics` family reads one site,
+named by its id or its host, with the analytics grant: an install key reads
+any site, and a site-bound key reads its own site only. Any other site answers
+`404`, exactly as a site that does not exist. `?days=` sets the window (1 to
+365, 30 by default).
 
 No cookie is set, and no IP address or user agent is stored. A visit is keyed
 by a hash whose salt rotates daily, so a reader cannot be followed from one day

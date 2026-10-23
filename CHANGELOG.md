@@ -34,6 +34,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   counts visitors, as every other figure does, and its pages and referrers
   are counted by reader too. A site's own Analytics has its own Right now,
   polling that site's last five minutes alone.
+- **One site's analytics over the API.** `/api/v1/sites/{site}/analytics/…`
+  (overview, realtime, pages, sources, events, goals, funnels, performance)
+  reads one site by its id or host. A key bound to a site reads that site and
+  no other: another site answers 404, the same as no site at all.
 - **Goals and funnels belong to a site.** A site's own Analytics has its
   Goals: one made there counts that site's traffic alone, and the page can
   neither show nor remove another site's. The install's goals and funnels,
