@@ -8,6 +8,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+
+- **compress raised to v1.20.3.** Two High advisories in
+  `github.com/klauspost/compress` (pulled in by analytics' Parquet export)
+  are closed: an integer overflow in `s2.NewDict` that let a crafted
+  dictionary crash the process (GHSA-259r-337f-4rfw, CVE-2026-63209, fixed in
+  v1.18.7), and a two-block zstd frame that panicked the decoder instead of
+  returning an error (GHSA-fpmh-frq8-7rj8, fixed in v1.20.2).
+
 ## [3.18.11] — 2026-10-18
 
 A clean account page and panel for members: every control in one place, cancel renewal, delete account, pick a picture, VayuTalk for mailbox holders; and a logo that comes alive on hover.
