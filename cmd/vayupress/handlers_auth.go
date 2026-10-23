@@ -151,6 +151,11 @@ func osPathMinLevel(path string) int {
 	authorAPIAreas := []string{
 		"posts", "editor", "media", "embed", "diagram", "profile",
 		"vayumail", "talk", "activity", "cmd-index", "feed", "search", "totp", "vayuos",
+		// The bell is every viewer's own: its stream draws only what their
+		// level may open, and Mark all read and Clear all write only their own
+		// rows. Fail-closed to admin, an author's bell could be seen but not
+		// marked read, and could not go live.
+		"notifications",
 	}
 	// The per-domain console (/os/d/{id}/…) administers a HOSTED CUSTOMER'S site:
 	// its identity, its content, what it serves at "/", its theme code and its

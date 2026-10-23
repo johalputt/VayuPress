@@ -551,6 +551,9 @@ func (a *App) bootVayuOS() {
 	a.vayuMail.UseTOTPCodec(a.secrets)
 	// Transparent PGP decryption when serving mail over IMAP to the owner.
 	a.vayuMail.SetDecryptHook(a.pgpDecryptForAccount)
+	// Mail filed into a mailbox redraws the open bells at once: new mail is
+	// on the bell the moment it lands, not at the next page.
+	a.vayuMail.SetDeliveredHook(a.bellLive.fire)
 	// Retention sweeps (ADR-0130) land in the audit log like every other
 	// destructive mail action.
 	a.vayuMail.SetRetentionAudit(func(email string, count, days int) {

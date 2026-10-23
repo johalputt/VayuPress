@@ -242,7 +242,8 @@ type App struct {
 	vayuKeep    *vayukeep.Engine
 	vayuKeepErr string
 	keepSup     keepSupervisor
-	keepRun     keepRun // the backup the Backups page shows running (vayukeep_pace.go)
+	keepRun     keepRun   // the backup the Backups page shows running (vayukeep_pace.go)
+	bellLive    bellPulse // wakes the console's open bells (os_notif_live.go)
 
 	// VayuOS — native control layer (Phase 2): mail sovereignty + PGP privacy.
 	vayuKernel *vkernel.Bus

@@ -1179,39 +1179,43 @@ window.vpRelTime = relativeTime;
 /* ── Notification centre ─────────────────────────────────────── */
 /* The topbar bell opens an expandable panel of actionable notifications
  * (rendered server-side as plain links, so clicking a row navigates straight
- * to the page that clears it). This only toggles visibility — no fetch, no
- * innerHTML — keeping the strict CSP intact. */
+ * to the page that clears it). The bell is live: the page holds a stream
+ * (/os/api/notifications/stream) and the server sends the bell, drawn whole
+ * and escaped as on any page, each time it changes. The new bell's nodes take
+ * the old ones' place (DOMParser, never innerHTML), so every control below is
+ * wired on the bell's root and survives the swap. */
 (function initNotifications() {
   var wrap = $('[data-notif]');
   if (!wrap) return;
-  var btn = $('[data-notif-toggle]', wrap);
-  var panel = $('[data-notif-panel]', wrap);
-  if (!btn || !panel) return;
+  function btn() { return $('[data-notif-toggle]', wrap); }
+  function panel() { return $('[data-notif-panel]', wrap); }
+  function isOpen() { var p = panel(); return !!p && !p.hidden; }
   function open() {
-    panel.hidden = false;
-    if (window.vpOpenFrom) window.vpOpenFrom(panel, btn);
+    var p = panel(), b = btn();
+    if (!p || !b) return;
+    p.hidden = false;
+    if (window.vpOpenFrom) window.vpOpenFrom(p, b);
     wrap.classList.add('is-open');
-    btn.setAttribute('aria-expanded', 'true');
+    b.setAttribute('aria-expanded', 'true');
   }
   function close() {
-    panel.hidden = true;
+    var p = panel(), b = btn();
+    if (p) p.hidden = true;
     wrap.classList.remove('is-open');
-    btn.setAttribute('aria-expanded', 'false');
+    if (b) b.setAttribute('aria-expanded', 'false');
   }
-  on(btn, 'click', function (e) {
-    e.preventDefault();
-    e.stopPropagation();
-    panel.hidden ? open() : close();
-  });
-  // Dismiss on outside click or Escape.
-  on(document, 'click', function (e) { if (!wrap.contains(e.target)) close(); });
-  on(document, 'keydown', function (e) { if (e.key === 'Escape') close(); });
+  function needs() { return parseInt(wrap.getAttribute('data-notif-needs'), 10) || 0; }
+  function badgeCount() {
+    var badge = $('[data-notif-badge]', wrap);
+    return badge ? (parseInt((badge.textContent || '').replace(/\D/g, ''), 10) || 0) : 0;
+  }
 
   // Times in the viewer's clock, and the last day split into Today and
   // Yesterday by it: the server does not know the viewer's timezone, so it
   // sends UTC and a neutral "Last 24 hours".
-  var recent = $('[data-notif-recent]', wrap);
-  if (recent) {
+  function localize() {
+    var recent = $('[data-notif-recent]', wrap);
+    if (!recent) return;
     var today = new Date().toDateString();
     var label = $('.notif-group__label', recent);
     var firstDay = null;
@@ -1231,52 +1235,112 @@ window.vpRelTime = relativeTime;
       }
     });
   }
+  localize();
 
   // Mark all read clears the events; what needs the operator stays counted,
   // because a condition is not dealt with by being looked at.
-  var seen = $('[data-notif-seen]', wrap);
-  if (seen) on(seen, 'click', function (e) {
-    e.preventDefault();
-    e.stopPropagation();
+  function markRead(seen) {
     window.vpPost('/os/api/notifications/seen', {}, function () {
       $$('.notif-item.is-unread', wrap).forEach(function (r) { r.classList.remove('is-unread'); });
       seen.remove();
-      var needs = parseInt(wrap.getAttribute('data-notif-needs'), 10) || 0;
+      var n = needs();
       var badge = $('[data-notif-badge]', wrap);
       if (!badge) return;
-      if (needs > 0) { badge.textContent = needs > 99 ? '99+' : String(needs); return; }
+      if (n > 0) { badge.textContent = n > 99 ? '99+' : String(n); return; }
       badge.remove();
-      btn.classList.remove('topbar-notif__btn--active');
+      var b = btn();
+      if (b) b.classList.remove('topbar-notif__btn--active');
     });
-  });
+  }
 
   // Clear all empties the bell: the events leave, and each condition is
   // hidden until it changes or a day passes. The server holds both, so a
   // reload shows the same empty bell.
-  var clear = $('[data-notif-clear]', wrap);
-  if (clear) on(clear, 'click', function (e) {
-    e.preventDefault();
-    e.stopPropagation();
+  function clearAll(clear) {
     window.vpPost('/os/api/notifications/clear', {}, function () {
-      var needs = parseInt(wrap.getAttribute('data-notif-needs'), 10) || 0;
       var list = $('.topbar-notif__list', wrap);
       if (list) {
         var empty = document.createElement('div');
         empty.className = 'topbar-notif__empty';
         empty.setAttribute('data-notif-empty', '');
-        empty.textContent = needs > 0
+        empty.textContent = needs() > 0
           ? 'All cleared. What still needs you comes back when it changes, or tomorrow; Home lists it meanwhile.'
           : 'Nothing needs you, and nothing has happened in the last day.';
         list.replaceChildren(empty);
       }
       wrap.setAttribute('data-notif-needs', '0');
       clear.remove();
+      var seen = $('[data-notif-seen]', wrap);
       if (seen) seen.remove();
       var badge = $('[data-notif-badge]', wrap);
       if (badge) badge.remove();
-      btn.classList.remove('topbar-notif__btn--active');
+      var b = btn();
+      if (b) b.classList.remove('topbar-notif__btn--active');
     });
+  }
+
+  on(wrap, 'click', function (e) {
+    var t = e.target.closest('[data-notif-toggle], [data-notif-seen], [data-notif-clear]');
+    if (!t || !wrap.contains(t)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (t.hasAttribute('data-notif-toggle')) { isOpen() ? close() : open(); return; }
+    if (t.hasAttribute('data-notif-seen')) { markRead(t); return; }
+    clearAll(t);
   });
+  // Dismiss on outside click or Escape.
+  on(document, 'click', function (e) { if (!wrap.contains(e.target)) close(); });
+  on(document, 'keydown', function (e) { if (e.key === 'Escape') close(); });
+
+  // A new bell from the server takes the old one's place. An open panel stays
+  // open, and a badge that rose says so with a small pop.
+  function swap(html, sig) {
+    if (!html || sig === wrap.getAttribute('data-notif-sig')) return;
+    var next = new DOMParser().parseFromString(html, 'text/html').querySelector('[data-notif]');
+    if (!next) return;
+    var wasOpen = isOpen(), before = badgeCount();
+    wrap.replaceChildren.apply(wrap, Array.prototype.slice.call(next.childNodes));
+    wrap.setAttribute('data-notif-needs', next.getAttribute('data-notif-needs') || '0');
+    wrap.setAttribute('data-notif-sig', sig);
+    localize();
+    if (wasOpen) open();
+    var badge = $('[data-notif-badge]', wrap);
+    if (badge && badgeCount() > before) badge.classList.add('topbar-notif__badge--new');
+    document.dispatchEvent(new CustomEvent('vp:bell'));
+  }
+
+  // The stream. EventSource reconnects by itself after a dropped connection.
+  // A refused one closes for good: when it was never open (a session confined
+  // to mail or to a client's site, too many tabs) the page keeps the bell it
+  // drew; when it had been live (the server restarting behind a proxy) it is
+  // tried again a few times, further apart each time.
+  if (!window.EventSource) return;
+  var es = null, retry = null, wasLive = false, tries = 0;
+  function connect() {
+    if (es) es.close();
+    clearTimeout(retry);
+    es = new EventSource('/os/api/notifications/stream?sig=' + encodeURIComponent(wrap.getAttribute('data-notif-sig') || ''));
+    es.addEventListener('open', function () { window.vpBellLive = wasLive = true; tries = 0; });
+    es.addEventListener('bell', function (e) {
+      try { var b = JSON.parse(e.data); swap(b.html, b.sig); } catch (err) { /* a torn frame: the next one redraws */ }
+    });
+    es.addEventListener('error', function () {
+      if (es.readyState !== EventSource.CLOSED) return;
+      window.vpBellLive = false;
+      if (!wasLive || tries >= 5) return;
+      retry = setTimeout(connect, 5000 * Math.pow(2, tries++));
+    });
+  }
+  // Opened once the page has settled, not with it: the page's own loads come
+  // first, and a tool waiting for the network to go quiet still sees it go
+  // quiet. Nothing is missed meanwhile: the server compares the page's
+  // signature on connect and sends anything that moved since it was drawn.
+  function soon() { setTimeout(connect, 5000); }
+  if (document.readyState === 'complete') soon(); else window.addEventListener('load', soon, { once: true });
+  // Leaving the page closes the stream; coming back to it from the history
+  // cache opens a fresh one, which sends the bell at once if it moved.
+  window.addEventListener('pagehide', function () { if (es) es.close(); window.vpBellLive = false; });
+  window.addEventListener('pageshow', function (e) { if (e.persisted) connect(); });
 })();
 
 /* ── Login page shake on error ───────────────────────────────── */
@@ -1424,10 +1488,13 @@ window.vpRelTime = relativeTime;
   }
   function clearTitle() { titleCount = 0; document.title = baseTitle; }
   window.addEventListener('focus', clearTitle);
-  // Live-bump the topbar notification bell so new mail shows there in real time
-  // (the bell is otherwise only recomputed on a full page render). It reflects the
-  // combined count of all notification types, so we add the new-mail delta.
+  // Bump the topbar bell by the new-mail delta when the bell is not live (its
+  // stream refused, or a browser without EventSource): the bell reflects the
+  // combined count of all notification types.
   function bumpBell(delta) {
+    // A live bell already counts the new mail: the server redrew it the
+    // moment the mail was filed. Adding here would count it twice.
+    if (window.vpBellLive) return;
     var wrap = document.querySelector('[data-notif]');
     if (!wrap) return;
     var btn = wrap.querySelector('[data-notif-toggle]');
@@ -1472,6 +1539,15 @@ window.vpRelTime = relativeTime;
   // fine — the notification is exactly what a backgrounded operator wants.
   setTimeout(poll, 4000);
   setInterval(poll, POLL_MS);
+  // The live bell moves the moment mail is filed; asking then puts the desktop
+  // notification up with it instead of up to a minute later. Bursts of bell
+  // updates collapse into one ask.
+  var soon = null;
+  document.addEventListener('vp:bell', function () {
+    if (baseline === null) return; // the first poll has not set the baseline yet
+    clearTimeout(soon);
+    soon = setTimeout(poll, 250);
+  });
 })();
 
 /* ── Mailboxes, live ─────────────────────────────────────────────────────────

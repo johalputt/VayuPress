@@ -246,6 +246,7 @@ func (m *Maildir) DeliverTo(domain, username, folder string, raw []byte) (string
 	if err := os.Rename(tmpPath, newPath); err != nil {
 		return "", err
 	}
+	m.delivered()
 	return "new/" + name, nil
 }
 

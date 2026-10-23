@@ -63,6 +63,9 @@ type Engine struct {
 	// retentionAudit reports a completed retention sweep to the host's
 	// audit log (nil-safe; see SetRetentionAudit).
 	retentionAudit func(email string, count, days int)
+	// delivered is told each time a message is filed into a mailbox (nil-safe;
+	// see SetDeliveredHook).
+	delivered func()
 	// totpCodec seals mailbox TOTP seeds at rest (audit); stashed here by
 	// UseTOTPCodec and handed to the account store when it is created.
 	totpCodec SecretCodec
@@ -749,6 +752,11 @@ func mimeSanitizeFilename(s string) string {
 	return s
 }
 
+// SetDeliveredHook installs fn to be told each time a message is filed into
+// a mailbox: inbound mail, a local send, a copy saved to Sent. It runs on the
+// delivering goroutine, so it must return at once. Call it before Start.
+func (e *Engine) SetDeliveredHook(fn func()) { e.delivered = fn }
+
 // SetDecryptHook installs a transform applied to messages before they are
 // served over IMAP (used for transparent PGP decryption). Call before Start.
 func (e *Engine) SetDecryptHook(h DecryptHook) { e.decrypt = h }
@@ -791,6 +799,7 @@ func (e *Engine) Start(ctx context.Context) error {
 	}
 	e.dkim = dk
 	e.maildir = NewMaildir(e.cfg.StorageDir + "/maildir")
+	e.maildir.onDeliver = e.delivered
 	// Recover mail stranded by the address-case defect before any listener opens
 	// (Section 2 audit). Runs on every boot: it is a no-op on a clean store, and
 	// on an install that received a display-cased RCPT it moves those messages

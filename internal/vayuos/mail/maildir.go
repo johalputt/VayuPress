@@ -18,6 +18,10 @@ type Maildir struct {
 	base    string
 	counter uint64
 
+	// onDeliver is told each time a message is filed (see
+	// Engine.SetDeliveredHook). Set before the store is shared, never after.
+	onDeliver func()
+
 	// hdrFolders remembers each message file's parsed headers, validated by the
 	// file's (size, mtime), grouped by the directory the file lives in. Listing a
 	// folder used to re-read and re-parse every message on every poll, folder
@@ -305,7 +309,15 @@ func (m *Maildir) Deliver(domain, username string, raw []byte) (string, error) {
 	if err := os.Rename(tmpPath, newPath); err != nil {
 		return "", err
 	}
+	m.delivered()
 	return name, nil
+}
+
+// delivered tells the host a message was filed.
+func (m *Maildir) delivered() {
+	if m.onDeliver != nil {
+		m.onDeliver()
+	}
 }
 
 // AccountSize returns the total bytes used by an account across ALL folders,

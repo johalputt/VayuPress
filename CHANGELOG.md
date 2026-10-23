@@ -8,6 +8,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **The bell is live.** A console page left open showed the bell as it was
+  when the page loaded: a comment, a message, a new member or new mail
+  arrived and nothing moved until the operator went to another page. Each
+  open page now holds a stream, and the server redraws the viewer's bell and
+  sends it the moment it changes: mail as it is filed, a post as it is
+  created, changed or deleted, Mark all read and Clear all in every tab at
+  once, and comments, messages, members and updates within two seconds. An
+  open panel stays open across the redraw, and a badge that rose pops once.
+  The desktop notification for new mail comes with it, instead of up to a
+  minute later. The watcher behind it runs only while a bell is open and
+  reads a few indexed counts; the bell itself is redrawn only when something
+  moved, or once a minute for the conditions no count follows.
+- **Authors and editors can mark the bell read.** Mark all read and Clear all
+  were refused to them, because their endpoints fell to the
+  administrator-only default for console APIs. The bell is every viewer's own, and its
+  endpoints are now open to every signed-in level.
+
+### Added
+
+- **[docs/PIPELINE.md](docs/PIPELINE.md)**: work decided in outline and not
+  yet scheduled. VayuAgent, an open-source Go agent in one binary that runs
+  VayuPress from the Buzz mobile app over VayuMCP, from after January 2027;
+  and one data model rendered as both HTML for readers and Markdown for
+  agents, with VayuMCP as its main consumer.
+
 ### Security
 
 - **compress raised to v1.20.3.** Two High advisories in

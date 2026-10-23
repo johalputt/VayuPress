@@ -1196,6 +1196,16 @@
 .vp-os .theme-opt[aria-pressed="true"] { background: var(--brand-dim); color: var(--brand); }
 
 /* ── Notification bell badge ─────────────────────────────────── */
+/* A badge that rose while the page was open pops once (the live bell). */
+@keyframes vp-notif-pop { 0% { transform: scale(0.6); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
+
+.vp-os .topbar-notif__badge--new { animation: vp-notif-pop 0.45s ease-out; }
+
+.vp-os[data-ui="still-air"] .topbar-notif__badge--new { animation: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .vp-os .topbar-notif__badge--new { animation: none; }
+}
 
 /* ── Inline spinner ──────────────────────────────────────────── */
 @keyframes vp3-spin { to { transform: rotate(360deg); } }

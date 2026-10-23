@@ -33,6 +33,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"html"
 	htmpl "html/template"
 	"io/fs"
@@ -765,6 +766,9 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/seo/regenerate", a.handleSEORegenerate)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/seo/indexnow-test", a.handleOSIndexNowTest)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/settings", a.handleOSSettingsAPI)
+		// The bell, live (os_notif_live.go): a read-only stream of the
+		// viewer's own bell, redrawn when it changes.
+		pr.Get("/os/api/notifications/stream", a.handleOSNotificationsStream)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/notifications/seen", a.handleOSNotificationsSeen)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/notifications/clear", a.handleOSNotificationsClear)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/quick-create", refuseContentWrites(a.handleOSQuickCreatePost))
@@ -1034,6 +1038,14 @@ func osRecentItem(e osRecentEvent, unread bool) string {
 // first in full and the second until marked read. Each row is a direct link;
 // the toggle, the times and Mark all read are wired in admin-os.js.
 func osNotifBell(s *osSettings) string {
+	bell, _ := osNotifBellSig(s)
+	return bell
+}
+
+// osNotifBellSig is osNotifBell and the bell's signature, which the bell also
+// carries (data-notif-sig): the live stream (os_notif_live.go) sends a bell
+// only when its signature is not the one the page shows.
+func osNotifBellSig(s *osSettings) (bell, sig string) {
 	var notifs []osNotification
 	var recent []osRecentEvent
 	var seen time.Time
@@ -1109,7 +1121,7 @@ func osNotifBell(s *osSettings) string {
 	if list.Len() == 0 {
 		list.WriteString(notifEmpty(hidden))
 	}
-	return `<div class="topbar-notif" data-notif data-notif-needs="` + strconv.Itoa(needs) + `">
+	inner := `
   <button type="button" class="btn--icon topbar-notif__btn` + activeCls + `" data-notif-toggle aria-haspopup="true" aria-expanded="false">
     ` + iconBell + `<span class="vp-sr-only">Notifications</span>` + badge + `
   </button>
@@ -1117,7 +1129,17 @@ func osNotifBell(s *osSettings) string {
     <div class="topbar-notif__head"><span>Notifications</span><span class="topbar-notif__actions">` + markAll + clearAll + `</span></div>
     <div class="topbar-notif__list">` + list.String() + `</div>
   </div>
-</div>`
+`
+	needsAttr := strconv.Itoa(needs)
+	sig = bellSig(needsAttr + inner)
+	return `<div class="topbar-notif" data-notif data-notif-needs="` + needsAttr + `" data-notif-sig="` + sig + `">` + inner + `</div>`, sig
+}
+
+// bellSig is a short fingerprint of a drawn bell.
+func bellSig(bell string) string {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(bell))
+	return strconv.FormatUint(h.Sum64(), 36)
 }
 
 // notifEmpty is the bell with nothing to show. After Clear all it says what

@@ -191,6 +191,7 @@ func (a *App) handleOSNotificationsClear(w http.ResponseWriter, r *http.Request)
 		writeAPIError(w, r, http.StatusInternalServerError, "clear-failed", "could not clear notifications", "")
 		return
 	}
+	a.bellLive.fire() // the viewer's other tabs empty too
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -233,6 +234,7 @@ func (a *App) handleOSNotificationsSeen(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, http.StatusInternalServerError, "seen-failed", "could not mark notifications read", "")
 		return
 	}
+	a.bellLive.fire() // the viewer's other tabs read too
 	w.WriteHeader(http.StatusNoContent)
 }
 

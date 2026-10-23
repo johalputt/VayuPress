@@ -774,6 +774,21 @@ test("the bell dates what happened, Mark all read clears it for good, and Clear 
   await expect(row).toHaveCount(0);
 });
 
+// The bell is live: a page left open shows what arrives without a reload.
+test("an open page's bell shows a new post without a reload", async ({ page }) => {
+  await openConsole(page);
+  await page.waitForFunction(() => window.vpBellLive === true, null, { timeout: 15000 });
+  const slug = "live-bell-" + Date.now();
+  const made = await page.request.post("/api/v1/articles", { data: { title: "Live bell " + slug, slug, content: "<p>x</p>" } });
+  expect(made.ok()).toBeTruthy();
+  await page.locator("[data-notif-toggle]").click();
+  await expect(page.locator("[data-notif-panel]")).toBeVisible();
+  // The write is queued (202), so the post exists a moment later; the bell
+  // follows it, and the panel stays open across the redraw.
+  await expect(page.locator(".notif-item--event", { hasText: "Live bell " + slug })).toBeVisible({ timeout: 30000 });
+  await expect(page.locator("[data-notif-panel]")).toBeVisible();
+});
+
 // The command bar (render 03): results grouped Go to, Actions, Settings, the
 // query marked in each, the highlighted one previewed beside the list, Tab to
 // narrow to one kind, and an action that runs and says what the server said.

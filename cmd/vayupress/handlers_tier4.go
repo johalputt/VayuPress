@@ -47,6 +47,8 @@ func (a *App) handleEventStream(w http.ResponseWriter, r *http.Request) {
 // broadcastEvent sends a typed event to all connected SSE clients.
 // Called from registerEventHandlers after each article mutation.
 func (a *App) broadcastEvent(eventType string, payload interface{}) {
+	// A post created, changed or deleted can be news for the bell.
+	a.bellLive.fire()
 	if a.collab == nil {
 		return
 	}
