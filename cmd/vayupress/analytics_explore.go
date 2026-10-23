@@ -1,0 +1,427 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package main
+
+// analytics_explore.go — the Explorer page, for the install and for each
+// hosted site: one figure split by one dimension, filtered, over a range and
+// beside the range before, as a table or as bars, and as a CSV file.
+//
+// The question is the page's address (a GET form), so a result can be
+// bookmarked or sent, and a reload asks it again. The answer is counted off
+// the request in a cache of its own: the keys are whatever was asked, so it
+// keeps a bounded number of them, where the dashboards' cache keeps its few
+// windows for good.
+
+import (
+	"context"
+	"encoding/csv"
+	"fmt"
+	"html"
+	htmpl "html/template"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/johalputt/vayupress/internal/analytics"
+	"github.com/johalputt/vayupress/internal/csvsafe"
+	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/ui"
+)
+
+// exploreDash holds the Explorer's answers: one compute at a time, so a
+// burst of questions cannot take the read pool from the dashboards, and at
+// most 64 answers.
+var exploreDash = &adminFragmentCache{m: map[string]*adminFragment{}, sem: make(chan struct{}, 1), max: 64}
+
+// exploreTTL is how long an answer is shown before it is counted again.
+const exploreTTL = time.Minute
+
+// exploreAsk is the question a request asks, read from its address.
+type exploreAsk struct {
+	q     analytics.ExploreQuery
+	bars  bool
+	label string // the range, as the period selector says it
+}
+
+func exploreAskOf(r *http.Request, scope string) exploreAsk {
+	v := r.URL.Query()
+	days, label := analyticsPeriod(r)
+	q := analytics.ExploreQuery{Scope: scope, Metric: analytics.ExploreMetric(v.Get("metric")), By: v.Get("by"), Days: days, Compare: v.Get("compare") == "1"}
+	if q.Metric == "" {
+		q.Metric = analytics.ExploreViews
+	}
+	if !v.Has("by") {
+		// Opened without a question: page views by page, the split a reader
+		// of the Analytics page asks first. An empty "by" is the form's
+		// "Nothing: the total".
+		q.By = "path"
+	}
+	fd, fo, fv := v["fd"], v["fo"], v["fv"]
+	for i := range fd {
+		if fd[i] == "" {
+			continue // the form's empty row
+		}
+		f := analytics.ExploreFilter{Dim: fd[i]}
+		if i < len(fo) {
+			f.Op = fo[i]
+		}
+		if i < len(fv) {
+			f.Value = strings.TrimSpace(fv[i])
+		}
+		q.Filters = append(q.Filters, f)
+	}
+	return exploreAsk{q: q, bars: v.Get("view") == "bars", label: label}
+}
+
+// values is the question as an address's query, in one order, so one
+// question is one cache key.
+func (x exploreAsk) values() url.Values {
+	v := url.Values{}
+	v.Set("metric", string(x.q.Metric))
+	v.Set("by", x.q.By)
+	v.Set("days", strconv.Itoa(x.q.Days))
+	if x.q.Compare {
+		v.Set("compare", "1")
+	}
+	if x.bars {
+		v.Set("view", "bars")
+	}
+	for _, f := range x.q.Filters {
+		v.Add("fd", f.Dim)
+		v.Add("fo", f.Op)
+		v.Add("fv", f.Value)
+	}
+	return v
+}
+
+// handleOSExplore renders the Explorer for the install, or for the hosted
+// site in the address.
+func (a *App) handleOSExplore(w http.ResponseWriter, r *http.Request) {
+	nonce := render.CSPNonce(r)
+	cfg := a.getOSSettings(r.Context())
+	scope, base, title := analytics.ScopeAllDomains, "/os/analytics/explore", "Explorer"
+	if d, ok := osScopedDomain(r); ok {
+		scope, base, title = d.ID, "/os/d/"+d.ID+"/analytics/explore", "Explorer · "+d.Host
+	}
+	if a.analytics == nil {
+		writeOSHTML(w, r, adminOSLayout(nonce, title, "analytics", cfg, ui.Overview(ui.OverviewPage{Title: "Explorer"},
+			ui.Band{Title: "Explorer", Aside: ui.Empty("trend", "Analytics are off", "This install was started without the analytics store.", "")})))
+		return
+	}
+	ask := exploreAskOf(r, scope)
+	if r.URL.Query().Get("format") == "csv" {
+		a.exploreCSV(w, r, ask)
+		return
+	}
+	form := exploreForm(base, ask)
+	page := ui.OverviewPage{Title: "Explorer"}
+	if err := ask.q.Validate(); err != nil {
+		writeOSHTML(w, r, adminOSLayout(nonce, title, "analytics", cfg, ui.Overview(page,
+			ui.Band{Title: "The question", Chart: ui.Callout("warn", ui.Text(err.Error())), Aside: form})))
+		return
+	}
+	page.Actions = ui.HTML(`<a class="btn btn--sm" href="` + html.EscapeString(base+"?"+ask.values().Encode()+"&format=csv") + `" download>Download CSV</a>`)
+	band := ui.Band{Title: exploreMetricLabel(ask.q.Metric), Hint: exploreSentence(ask), Aside: form}
+	key := "explore:" + scope + ":" + ask.values().Encode()
+	body, ready := exploreDash.get(key, exploreTTL, func(ctx context.Context) string {
+		res, err := a.analytics.Explore(ctx, ask.q)
+		if err != nil {
+			// Shown for the TTL rather than retried on every reload: a
+			// question that cannot be counted now will not be in a second.
+			b := band
+			b.Chart = ui.Callout("danger", ui.Text("This could not be counted: "+err.Error()))
+			return string(ui.Overview(page, b))
+		}
+		total, split := exploreAnswer(ask, res)
+		b := band
+		b.Chart = total
+		return string(ui.Overview(page, b, split))
+	})
+	if !ready {
+		band.Chart = `<p class="table-empty">This is counted in the background; reload in a few seconds.</p>`
+		body = string(ui.Overview(page, band))
+	}
+	writeOSHTML(w, r, adminOSLayout(nonce, title, "analytics", cfg, htmpl.HTML(body)))
+}
+
+// exploreForm is the question, as the form that asks it.
+func exploreForm(base string, x exploreAsk) ui.HTML {
+	opt := func(value, label string, on bool) string {
+		s := ""
+		if on {
+			s = " selected"
+		}
+		return `<option value="` + html.EscapeString(value) + `"` + s + `>` + html.EscapeString(label) + `</option>`
+	}
+	var b strings.Builder
+	b.WriteString(`<form method="get" action="` + html.EscapeString(base) + `">`)
+	var fields []ui.Row
+	field := func(id, label, control string) {
+		fields = append(fields, ui.Row{Label: label, ID: id, Control: ui.HTML(control)})
+	}
+	var m strings.Builder
+	m.WriteString(`<select class="input" id="ex-metric" name="metric">`)
+	for _, o := range analytics.ExploreMetrics() {
+		m.WriteString(opt(o.ID, o.Label, o.ID == string(x.q.Metric)))
+	}
+	m.WriteString(`</select>`)
+	field("ex-metric", "Figure", m.String())
+	var by strings.Builder
+	by.WriteString(`<select class="input" id="ex-by" name="by">` + opt("", "Nothing: the total", x.q.By == ""))
+	for _, o := range analytics.ExploreDims() {
+		by.WriteString(opt(o.ID, exploreDimNote(o), o.ID == x.q.By))
+	}
+	by.WriteString(`</select>`)
+	field("ex-by", "Split by", by.String())
+	var days strings.Builder
+	days.WriteString(`<select class="input" id="ex-days" name="days">`)
+	for _, o := range analyticsPeriodOptions {
+		days.WriteString(opt(strconv.Itoa(o.Days), "Last "+o.Label, o.Days == x.q.Days))
+	}
+	days.WriteString(`</select>`)
+	field("ex-days", "Range", days.String())
+	checked := ""
+	if x.q.Compare {
+		checked = " checked"
+	}
+	field("ex-compare", "Beside the range before", `<input type="checkbox" id="ex-compare" name="compare" value="1"`+checked+`>`)
+	field("ex-view", "Show as", `<select class="input" id="ex-view" name="view">`+opt("", "Table", !x.bars)+opt("bars", "Bars", x.bars)+`</select>`)
+	b.WriteString(string(ui.Rows(fields...)))
+	// The filters set, and one empty row for another, up to the limit.
+	rows := append([]analytics.ExploreFilter(nil), x.q.Filters...)
+	if len(rows) < analytics.ExploreMaxFilters {
+		rows = append(rows, analytics.ExploreFilter{})
+	}
+	b.WriteString(`<fieldset class="sa-explore__filters"><legend class="settings-row-label">Only where</legend>`)
+	for i, f := range rows {
+		n := strconv.Itoa(i + 1)
+		b.WriteString(`<div class="sa-explore__filter"><select class="input" name="fd" aria-label="Filter ` + n + `: dimension">` + opt("", "Anything", f.Dim == ""))
+		for _, o := range analytics.ExploreDims() {
+			if o.ID != "day" {
+				b.WriteString(opt(o.ID, o.Label, o.ID == f.Dim))
+			}
+		}
+		b.WriteString(`</select><select class="input" name="fo" aria-label="Filter ` + n + `: how">` +
+			opt(analytics.FilterIs, "is", f.Op == analytics.FilterIs || f.Op == "") +
+			opt(analytics.FilterIsNot, "is not", f.Op == analytics.FilterIsNot) +
+			opt(analytics.FilterPrefix, "starts with", f.Op == analytics.FilterPrefix) +
+			`</select><input class="input" name="fv" maxlength="200" aria-label="Filter ` + n + `: value" value="` + html.EscapeString(f.Value) + `"></div>`)
+	}
+	b.WriteString(`<p class="settings-row-hint">A channel is direct, organic, ai_assisted, social, email, corporate or referral. Visits, bounce rate and average visit are counted per visit, so they split and filter by the visit's landing page, place and browser alone.</p></fieldset>`)
+	b.WriteString(`<div class="mt-3"><button type="submit" class="btn btn--primary btn--sm">Count</button></div></form>`)
+	return ui.Section("The question", "", ui.HTML(b.String()))
+}
+
+// exploreDimNote is a dimension as the split list offers it, saying which
+// figures it splits.
+func exploreDimNote(o analytics.ExploreOption) string {
+	if !o.Visit {
+		return o.Label + " (views, visitors, events)"
+	}
+	return o.Label
+}
+
+func exploreMetricLabel(m analytics.ExploreMetric) string {
+	for _, o := range analytics.ExploreMetrics() {
+		if o.ID == string(m) {
+			return o.Label
+		}
+	}
+	return string(m)
+}
+
+func exploreDimLabel(id string) string {
+	for _, o := range analytics.ExploreDims() {
+		if o.ID == id {
+			return o.Label
+		}
+	}
+	return id
+}
+
+// exploreSentence is the question in words.
+func exploreSentence(x exploreAsk) string {
+	s := strings.ToUpper(x.label[:1]) + x.label[1:]
+	if x.q.By != "" {
+		s += ", by " + strings.ToLower(exploreDimLabel(x.q.By))
+	}
+	for _, f := range x.q.Filters {
+		op := map[string]string{analytics.FilterIs: "is", analytics.FilterIsNot: "is not", analytics.FilterPrefix: "starts with"}[f.Op]
+		s += ", where " + strings.ToLower(exploreDimLabel(f.Dim)) + " " + op + " " + strconv.Quote(f.Value)
+	}
+	return s
+}
+
+// exploreValue is a figure as the page says it.
+func exploreValue(m analytics.ExploreMetric, v float64) string {
+	switch m {
+	case analytics.ExploreBounceRate:
+		return strconv.FormatFloat(v, 'f', 1, 64) + "%"
+	case analytics.ExploreAvgVisit:
+		return osDuration(v)
+	}
+	return strconv.FormatFloat(v, 'f', 0, 64)
+}
+
+// exploreChange is how a figure moved on the range before. A rate moves by
+// points, not by a percentage of itself.
+func exploreChange(m analytics.ExploreMetric, cur, prev float64, had bool) string {
+	switch {
+	case !had:
+		return "None before"
+	case cur == prev:
+		return "The same"
+	case m == analytics.ExploreBounceRate:
+		return fmt.Sprintf("%+.1f points", cur-prev)
+	case prev == 0:
+		return "None before"
+	}
+	return fmt.Sprintf("%+.1f%%", (cur-prev)/prev*100)
+}
+
+// exploreKey is a split's value as the page says it.
+func exploreKey(by, k string) string {
+	switch {
+	case k == "":
+		return "(not recorded)"
+	case by == "channel":
+		return analytics.ChannelLabel(k)
+	}
+	return k
+}
+
+// exploreAnswer is the result: the total, for the band, and the split, as
+// the section under it.
+func exploreAnswer(x exploreAsk, res *analytics.ExploreResult) (ui.HTML, ui.HTML) {
+	m := x.q.Metric
+	var b strings.Builder
+	// A figure that would read 0 is said in words instead.
+	switch {
+	case res.HasTotal && res.Total == 0 && m == analytics.ExploreBounceRate:
+		b.WriteString(`<p class="sa-overview__sentence">None of the visits counted bounced.</p>`)
+	case !res.HasTotal || res.Total == 0:
+		b.WriteString(`<p class="sa-overview__sentence">Nothing was counted in the ` + html.EscapeString(x.label) + ` that matches.</p>`)
+	default:
+		note := ""
+		if x.q.Compare {
+			note = exploreChange(m, res.Total, res.PrevTotal, res.HasPrevTotal) + " on the range before (" + exploreValue(m, res.PrevTotal) + ")"
+		}
+		b.WriteString(string(ui.Figure{Value: exploreValue(m, res.Total), Label: "Total", Note: note}.Cell()))
+	}
+	if x.q.By == "" {
+		return ui.HTML(b.String()), ""
+	}
+	hint := countOf(len(res.Rows), "value")
+	if res.Truncated {
+		hint = "The " + strconv.Itoa(len(res.Rows)) + " largest values; there are more"
+	}
+	var body string
+	if x.bars && m != analytics.ExploreBounceRate && m != analytics.ExploreAvgVisit {
+		bars := make([]osChartBar, 0, len(res.Rows))
+		for _, r := range res.Rows {
+			bars = append(bars, osChartBar{Label: exploreKey(x.q.By, r.Key), Value: int(r.Value)})
+		}
+		denom := osShareHidden()
+		if additive(m) && x.q.By != "day" {
+			denom = osShareOf(int(res.Total))
+		}
+		body = osBarList(bars, denom, "Nothing matches.")
+	} else {
+		headers := []string{exploreDimLabel(x.q.By), exploreMetricLabel(m)}
+		if additive(m) {
+			headers = append(headers, "Share")
+		}
+		if x.q.Compare {
+			headers = append(headers, "Before", "Change")
+		}
+		rows := make([][]ui.HTML, 0, len(res.Rows))
+		for _, r := range res.Rows {
+			cells := []ui.HTML{ui.Text(exploreKey(x.q.By, r.Key)), ui.Text(exploreValue(m, r.Value))}
+			if additive(m) {
+				cells = append(cells, ui.HTML(osShareLabel(int(r.Value), int(res.Total))))
+			}
+			if x.q.Compare {
+				before := "None"
+				if r.HasPrev {
+					before = exploreValue(m, r.Prev)
+				}
+				cells = append(cells, ui.Text(before), ui.Text(exploreChange(m, r.Value, r.Prev, r.HasPrev)))
+			}
+			rows = append(rows, cells)
+		}
+		body = `<div class="sa-explore__result">` + string(ui.Table(headers, rows, "Nothing matches.")) + `</div>`
+	}
+	return ui.HTML(b.String()), ui.Section("By "+strings.ToLower(exploreDimLabel(x.q.By)), hint, ui.HTML(body))
+}
+
+// additive says whether a figure's split adds up to its total, so a row's
+// share of it means something.
+func additive(m analytics.ExploreMetric) bool {
+	for _, o := range analytics.ExploreMetrics() {
+		if o.ID == string(m) {
+			return o.Additive
+		}
+	}
+	return false
+}
+
+// exploreCSV sends the answer as a file. It is counted for the download
+// itself, bounded as the cache's counts are.
+func (a *App) exploreCSV(w http.ResponseWriter, r *http.Request, x exploreAsk) {
+	if err := x.q.Validate(); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "invalid-question", err.Error(), "")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), adminFragmentComputeTimeout)
+	defer cancel()
+	res, err := a.analytics.Explore(ctx, x.q)
+	if err != nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "not-counted", "this could not be counted: "+err.Error(), "")
+		return
+	}
+	raw := func(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
+	dim := "total"
+	if x.q.By != "" {
+		dim = x.q.By
+	}
+	header := []string{dim, string(x.q.Metric)}
+	if x.q.Compare {
+		header = append(header, "before")
+	}
+	name := fmt.Sprintf("explore-%s-by-%s-%dd-%s.csv", x.q.Metric, dim, x.q.Days, time.Now().UTC().Format("20060102"))
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	cw := csv.NewWriter(w)
+	_ = cw.Write(header)
+	line := func(k string, v, prev float64, had, defined bool) {
+		rec := []string{k, ""}
+		if defined {
+			rec[1] = raw(v)
+		}
+		if x.q.Compare {
+			p := ""
+			if had {
+				p = raw(prev)
+			}
+			rec = append(rec, p)
+		}
+		_ = csvsafe.Write(cw, rec)
+	}
+	for _, row := range res.Rows {
+		k := row.Key
+		if x.q.By == "channel" {
+			k = analytics.ChannelLabel(k)
+		}
+		line(k, row.Value, row.Prev, row.HasPrev, true)
+	}
+	line("Total", res.Total, res.PrevTotal, res.HasPrevTotal, res.HasTotal)
+	cw.Flush()
+}
+
+// exploreButton opens the Explorer on the period the page shows.
+func exploreButton(base string, days int) ui.HTML {
+	return ui.HTML(` <a class="btn btn--sm" href="` + html.EscapeString(base+"?days="+strconv.Itoa(days)) + `">Explore</a>`)
+}

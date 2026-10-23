@@ -12,6 +12,8 @@ package classifier
 
 import (
 	"net/url"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -58,6 +60,10 @@ var searchEngines = map[string]string{
 	"baidu.com":        "Baidu",
 	"startpage.com":    "Startpage",
 	"qwant.com":        "Qwant",
+	"naver.com":        "Naver",
+	"seznam.cz":        "Seznam",
+	"sogou.com":        "Sogou",
+	"ask.com":          "Ask",
 }
 
 // aiSystems maps an AI referrer host substring to the AI system name.
@@ -93,6 +99,13 @@ var socialPlatforms = map[string]string{
 	"news.ycombinator.com": "Hacker News",
 	"t.me":                 "Telegram",
 	"whatsapp.com":         "WhatsApp",
+	"telegram.org":         "Telegram",
+	"youtu.be":             "YouTube",
+	"threads.net":          "Threads",
+	"tumblr.com":           "Tumblr",
+	"quora.com":            "Quora",
+	"vk.com":               "VK",
+	"lobste.rs":            "Lobsters",
 }
 
 // webmailHosts maps a webmail referrer host substring to the provider name.
@@ -169,33 +182,78 @@ func Classify(referrer, siteHost string, utm UTM, isBot bool) Result {
 		return res
 	}
 
-	// Precedence matters: a webmail host like mail.google.com would otherwise
-	// match the "google." search rule, so webmail (and corporate, e.g.
-	// outlook.office.com vs office.com) are resolved before search.
-	if name, ok := matchHost(host, aiSystems); ok {
-		res.Category, res.Detail = AIAssisted, name
-		return res
-	}
-	if name, ok := matchHost(host, webmailHosts); ok {
-		res.Category, res.Detail = Email, name
-		return res
-	}
-	if name, ok := matchHost(host, corporateHosts); ok {
-		res.Category, res.Detail = Corporate, name
-		return res
-	}
-	if name, ok := matchHost(host, socialPlatforms); ok {
-		res.Category, res.Detail = Social, name
-		return res
-	}
-	if name, ok := matchHost(host, searchEngines); ok {
-		res.Category, res.Detail = Organic, name
-		return res
-	}
-
-	res.Category = Referral
-	res.Detail = host
+	res.Category, res.Detail = hostCategory(host)
 	return res
+}
+
+// hostTables are the referrer hosts each category is recognised by, in the
+// order they are tried. Precedence matters: a webmail host like
+// mail.google.com would otherwise match the "google." search rule, so
+// webmail (and corporate, e.g. outlook.office.com vs office.com) are resolved
+// before search.
+var hostTables = []struct {
+	cat   Category
+	table map[string]string
+}{
+	{AIAssisted, aiSystems}, {Email, webmailHosts}, {Corporate, corporateHosts},
+	{Social, socialPlatforms}, {Organic, searchEngines},
+}
+
+// hostCategory is the category of an external referrer host, lowercased, and
+// the name of what it matched (the host itself for a referral).
+func hostCategory(host string) (Category, string) {
+	for _, t := range hostTables {
+		if name, ok := matchHost(host, t.table); ok {
+			return t.cat, name
+		}
+	}
+	return Referral, host
+}
+
+// HostCategory is the category of a referrer stored as its host alone, as
+// the event log keeps it: Direct when there is none, else what Classify
+// decides for an external host. A report reading the log has no UTM tags or
+// site host to weigh, and the log never stores the site's own hosts.
+func HostCategory(host string) Category {
+	h := strings.ToLower(strings.TrimSpace(host))
+	if h == "" {
+		return Direct
+	}
+	c, _ := hostCategory(h)
+	return c
+}
+
+// HostCategorySQL is HostCategory over the SQL column col, for the reports
+// that group or filter by it. The table keys are fixed hostnames with no
+// quote in them, so they are written into the expression as they are; a test
+// holds the two forms to the same answers.
+func HostCategorySQL(col string) string {
+	// Trimmed of what strings.TrimSpace trims in a host; SQL's trim alone
+	// takes spaces only.
+	h := "lower(trim(" + col + ",' '||char(9)||char(10)||char(13)))"
+	var b strings.Builder
+	b.WriteString("CASE WHEN " + h + "='' THEN '" + string(Direct) + "'")
+	for _, t := range hostTables {
+		keys := make([]string, 0, len(t.table))
+		for k := range t.table {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		terms := make([]string, 0, len(keys))
+		for _, k := range keys {
+			switch {
+			case strings.HasSuffix(k, "."):
+				terms = append(terms, "substr("+h+",1,"+strconv.Itoa(len(k))+")='"+k+"'", "instr("+h+",'."+k+"')>0")
+			case !strings.Contains(k, "."):
+				terms = append(terms, "instr('.'||"+h+"||'.','."+k+".')>0")
+			default:
+				terms = append(terms, h+"='"+k+"'", "substr("+h+",-"+strconv.Itoa(len(k)+1)+")='."+k+"'")
+			}
+		}
+		b.WriteString(" WHEN " + strings.Join(terms, " OR ") + " THEN '" + string(t.cat) + "'")
+	}
+	b.WriteString(" ELSE '" + string(Referral) + "' END")
+	return b.String()
 }
 
 // matchHost returns the label for the first table key that genuinely denotes

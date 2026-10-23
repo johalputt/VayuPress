@@ -60,6 +60,15 @@ averaged in as zero seconds; those visits are the bounces.
 **Referrer.** The host of the page that sent a page view, recorded without its
 path. A site's own hosts are never referrers.
 
+**Channel.** How a page view arrived, from its referrer's host: Direct when
+there is none or it is one of the install's own hosts (a reader moving
+between a site's pages), else AI assistants, Email, Workplace apps, Social,
+Organic search or Referral, tried in that order. The hosts each is known by
+are listed once, in `internal/vayuanalytics/classifier`, which the
+engagement store classifies by too, so a host is in one channel on every
+report. A host is matched by its labels and domain, never as a substring:
+`cnet.com` is not `t.co`.
+
 **Conversion.** A custom event, or a page view of a goal's path, counted
 against the visitors of the same range. A goal or funnel belongs to a site: one
 made on a site's own Analytics counts that site's traffic alone, and the
@@ -83,6 +92,24 @@ than drawing cohorts.
 A range is a set of UTC days. "Last 14 days" is today and the 13 days before
 it. A period comparison reads the range of equal length just before, by the
 same definitions.
+
+## Explorer
+
+The Explorer counts one figure (page views, visitors, visits, bounce rate,
+average visit or custom events) for a range of days, split by one dimension
+and kept to the events that pass up to five filters, each one that a
+dimension is, is not, or starts with a value. "Starts with" is matched
+exactly, with its case, and `%` or `_` in the value is that character. Each
+figure is counted as the overview counts it, from the same rows, and its total
+is counted over the filtered events, not added up from the split: a visitor
+who read two pages is one visitor, though one in each page's row. A visit has
+one landing page, place, device and browser but no one page, referrer,
+campaign or event, so visits, bounce rate and average visit split and filter
+by the visit's own columns alone, and the Explorer refuses the rest with the
+reason. Beside the range before, each value is compared with its own count
+there, a day with the day as far into that range. A split shows its 100
+largest values and says when there are more. The CSV file is the same answer
+with every value it shows and the total.
 
 ## Alerts
 

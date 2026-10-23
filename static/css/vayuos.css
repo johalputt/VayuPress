@@ -7343,3 +7343,13 @@
 .vp-os[data-ui="still-air"] .vm-apppw-secret { margin: var(--space-3) 0; font-size: 15px; letter-spacing: .04em; }
 .vp-os[data-ui="still-air"] .callout__body > .vm-row { margin: var(--space-2) 0; }
 .vp-os[data-ui="still-air"] .vm-outbox-table th { vertical-align: middle; }
+/* The Explorer's filters: what, how and the value on one line, the two
+   free-width parts sharing what is left; stacked on a phone. A fieldset
+   groups them for a screen reader, without the browser's frame. */
+.vp-os[data-ui="still-air"] .sa-explore__filters { border: 0; margin: var(--space-5) 0 0; padding: 0; min-width: 0; }
+.vp-os[data-ui="still-air"] .sa-explore__filter { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: var(--space-3); margin-top: var(--space-3); }
+@media (max-width: 599px) { .vp-os[data-ui="still-air"] .sa-explore__filter { grid-template-columns: minmax(0, 1fr); } }
+/* A value the Explorer splits by is shown whole, never cut: a path or a
+   referrer with no break in it wraps where it must rather than pushing the
+   table sideways. */
+.vp-os[data-ui="still-air"] .sa-explore__result td:first-child { overflow-wrap: anywhere; }

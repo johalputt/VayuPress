@@ -111,6 +111,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   kept: less than the install, which the privacy notice publishes, and never
   more, or inherited. Its purge runs with the install's, a few minutes after
   start and daily, and the page says when it last ran and what it removed.
+- **Explorer.** Analytics, the install's and each site's, has an Explorer:
+  one figure (page views, visitors, visits, bounce rate, average visit,
+  custom events) for a range, split by day, page, landing page, referrer,
+  channel, campaign, event, place, device, browser, system or language, kept
+  to the events that pass up to five filters (is, is not, starts with), beside
+  the range before if asked, as a table or as bars, and as a CSV file. Each
+  figure is counted by the overview's own definition, a visit by its own
+  columns alone; a question those cannot answer is refused with the reason.
+  The question is the page's address, so a result can be bookmarked or sent.
+- **Channels are counted by one rule.** The Analytics page's channels matched
+  referrers by substring, so `cnet.com` was Social (it holds `t.co`), as was
+  `dropbox.com` (`x.com`), and a reader moving between a site's own pages was a
+  Referral from it. They now use the engagement store's classifier, matching
+  a host by its labels and domain, and name AI assistants, email and
+  workplace apps as channels of their own; a site's own pages lead to Direct.
 - **Alerts.** The install's Analytics and each site's take alerts: a
   figure (page views, visitors, searches that found nothing, requests the
   shield refused, challenges issued) above or below a threshold over the last

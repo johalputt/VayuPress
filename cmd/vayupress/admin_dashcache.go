@@ -48,6 +48,10 @@ type adminFragmentCache struct {
 	mu  sync.Mutex
 	m   map[string]*adminFragment
 	sem chan struct{}
+	// max bounds the entries kept, where the keys are not a fixed set (the
+	// Explorer's, one per question asked); 0 keeps every key, as the
+	// dashboards' few windows need.
+	max int
 }
 
 func newAdminFragmentCache(maxConcurrent int) *adminFragmentCache {
@@ -78,6 +82,9 @@ func (c *adminFragmentCache) get(key string, ttl time.Duration, compute func(ctx
 	c.mu.Lock()
 	e := c.m[key]
 	if e == nil {
+		if c.max > 0 && len(c.m) >= c.max {
+			c.evictOldest()
+		}
 		e = &adminFragment{}
 		c.m[key] = e
 	}
@@ -111,6 +118,24 @@ func (c *adminFragmentCache) get(key string, ttl time.Duration, compute func(ctx
 	}
 	c.mu.Unlock()
 	return last, last != ""
+}
+
+// evictOldest drops the entry computed longest ago that is not computing
+// now. The caller holds c.mu.
+func (c *adminFragmentCache) evictOldest() {
+	var oldest string
+	var at time.Time
+	for k, e := range c.m {
+		if e.computing {
+			continue
+		}
+		if oldest == "" || e.at.Before(at) {
+			oldest, at = k, e.at
+		}
+	}
+	if oldest != "" {
+		delete(c.m, oldest)
+	}
 }
 
 // warm forces a background recompute regardless of freshness (used by the

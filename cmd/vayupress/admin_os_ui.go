@@ -301,6 +301,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/csp", a.handleOSServicesSave)
 			dr.Get("/analytics", a.handleOSScopedAnalytics)
 			dr.Get("/analytics/realtime", a.handleOSScopedRealtime)
+			dr.Get("/analytics/explore", a.handleOSExplore)
 			dr.Get("/shield", a.handleOSScopedShield)
 			dr.Get("/shield/feed", a.handleOSScopedShieldFeed)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/shield", a.handleOSScopedShieldSave)
@@ -539,6 +540,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/storage/refresh-status", a.handleOSStorageRefreshStatus)
 		pr.Get("/os/seo", a.handleOSSEONative)
 		pr.Get("/os/analytics", a.handleOSAnalytics)
+		pr.Get("/os/analytics/explore", a.handleOSExplore)
 		// VayuAnalytics: export downloads + goal management (session-authed).
 		pr.Get("/os/api/analytics/export", a.handleAnalyticsExport)
 		pr.Get("/os/api/analytics/export-parquet", a.handleAnalyticsParquetExport)

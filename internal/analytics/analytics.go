@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/vayuanalytics/classifier"
 	vasession "github.com/johalputt/vayupress/internal/vayuanalytics/session"
 )
 
@@ -198,6 +199,20 @@ func (s *Store) UseSelfHosts(fn func() []string) { s.selfHosts = fn }
 // every caller passes a constant column name and nothing derived from a request
 // reaches it. The VALUES are bound, never formatted.
 func (s *Store) selfHostExclusion(col string) (string, []any) {
+	hosts := s.ownHosts()
+	var b strings.Builder
+	args := make([]any, 0, len(hosts)*4)
+	for _, h := range hosts {
+		exact, sub, exactPort, subPort := selfHostPatterns(h)
+		b.WriteString(" AND LOWER(" + col + ")<>? AND LOWER(" + col + ") NOT LIKE ?" +
+			" AND LOWER(" + col + ") NOT LIKE ? AND LOWER(" + col + ") NOT LIKE ?")
+		args = append(args, exact, sub, exactPort, subPort)
+	}
+	return b.String(), args
+}
+
+// ownHosts is every host this install answers for, lowercased, once each.
+func (s *Store) ownHosts() []string {
 	seen := map[string]bool{}
 	var hosts []string
 	add := func(h string) {
@@ -217,16 +232,41 @@ func (s *Store) selfHostExclusion(col string) (string, []any) {
 			add(h)
 		}
 	}
+	return hosts
+}
 
-	var b strings.Builder
-	args := make([]any, 0, len(hosts)*4)
-	for _, h := range hosts {
-		exact, sub, exactPort, subPort := selfHostPatterns(h)
-		b.WriteString(" AND LOWER(" + col + ")<>? AND LOWER(" + col + ") NOT LIKE ?" +
-			" AND LOWER(" + col + ") NOT LIKE ? AND LOWER(" + col + ") NOT LIKE ?")
-		args = append(args, exact, sub, exactPort, subPort)
+// isOwnHost reports whether the stored referrer ref is one of this install's
+// own hosts, by the patterns selfHostExclusion excludes.
+func (s *Store) isOwnHost(ref string) bool {
+	r := strings.ToLower(strings.TrimSpace(ref))
+	for _, h := range s.ownHosts() {
+		if r == h || strings.HasSuffix(r, "."+h) || strings.HasPrefix(r, h+":") || strings.Contains(r, "."+h+":") {
+			return true
+		}
 	}
-	return b.String(), args
+	return false
+}
+
+// channelOf is a stored referrer's channel: a view one of this install's own
+// pages led to is internal navigation, so Direct, never a referral from
+// itself.
+func (s *Store) channelOf(ref string) string {
+	if s.isOwnHost(ref) {
+		return "Direct"
+	}
+	return ReferrerChannel(ref)
+}
+
+// channelSQL is channelOf over the column col, as an SQL expression of
+// classifier categories, with its bind arguments.
+func (s *Store) channelSQL(col string) (string, []any) {
+	excl, args := s.selfHostExclusion(col)
+	if excl == "" {
+		return classifier.HostCategorySQL(col), nil
+	}
+	// selfHostExclusion is the conditions a referrer that is NOT one of
+	// ours meets; failing any of them makes it ours.
+	return "CASE WHEN NOT (1" + excl + ") THEN '" + string(classifier.Direct) + "' ELSE " + classifier.HostCategorySQL(col) + " END", args
 }
 
 // PathCount is a path with its view total over the queried window.

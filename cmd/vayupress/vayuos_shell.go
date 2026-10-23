@@ -73,6 +73,7 @@ var saClearnetApps = []saApp{
 		{Label: "Members", Href: "/os/members", Icon: "audience"},
 		{Label: "Newsletter", Href: "/os/newsletter", Icon: "send"},
 		{Label: "Analytics", Href: "/os/analytics", Icon: "pulse"},
+		{Label: "Explorer", Href: "/os/analytics/explore", Icon: "chart"},
 		{Label: "Monetization", Href: "/os/monetization", Icon: "coin", Group: "Revenue"},
 		{Label: "Advertising", Href: "/os/ads", Icon: "megaphone"},
 	}},
@@ -142,6 +143,7 @@ var saTorApps = []saApp{
 	}},
 	{Key: "audience", Label: "Audience", Icon: "audience", Href: "/os/analytics", Sections: []saSection{
 		{Label: "Analytics", Href: "/os/analytics", Icon: "pulse"},
+		{Label: "Explorer", Href: "/os/analytics/explore", Icon: "chart"},
 	}},
 	saClearnetApps[3], // Mail
 	saClearnetApps[4], // Talk

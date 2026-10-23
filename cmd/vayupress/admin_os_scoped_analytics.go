@@ -74,7 +74,7 @@ func (a *App) handleOSScopedAnalytics(w http.ResponseWriter, r *http.Request) {
 // site's traffic.
 func (a *App) renderSiteAnalyticsBody(ctx context.Context, site, host string, days int, label string) string {
 	st := a.analytics
-	page := ui.OverviewPage{Title: "Visitors", Actions: osPeriodSelector("/os/d/"+site+"/analytics", days)}
+	page := ui.OverviewPage{Title: "Visitors", Actions: osPeriodSelector("/os/d/"+site+"/analytics", days) + exploreButton("/os/d/"+site+"/analytics/explore", days)}
 	ov, err := st.OverviewSinceScoped(ctx, site, days)
 	if err != nil {
 		page.State = ui.Text("The figures could not be read: " + err.Error())

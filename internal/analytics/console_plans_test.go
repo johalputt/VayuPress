@@ -161,6 +161,45 @@ func TestNoConsoleReadWalksAWholeTable(t *testing.T) {
 	if err := s.BuildDailyRollup(ctx, time.Now()); err != nil {
 		t.Fatalf("the daily rollup: %v", err)
 	}
+	// Every figure the Explorer counts, split by each dimension it allows and
+	// filtered by each, for one site and for the install, with the range
+	// before. Explore refuses a query that does not Validate, so each one
+	// here is one it runs.
+	// One visit with one view and one event, so each split has a row and
+	// the range before is counted for it.
+	for _, q := range []string{
+		`INSERT INTO analytics_sessions(id,visitor_id,domain_id,created_at,last_at,events,views,landing) VALUES('xv','xr','d1',datetime('now'),datetime('now'),2,1,'/')`,
+		`INSERT INTO analytics_pageviews(id,session_id,url_path,referrer,event_type,event_name,domain_id,created_at,visitor_id) VALUES('xp1','xv','/','x',1,'',` +
+			`'d1',datetime('now'),'xr'),('xp2','xv','/','x',2,'x','d1',datetime('now'),'xr')`,
+	} {
+		if _, err := dbpkg.DB.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, m := range ExploreMetrics() {
+		for _, d := range append([]ExploreOption{{}}, ExploreDims()...) {
+			if d.ID != "" && !(m.Visit && d.Visit || m.Event && d.Event) {
+				continue
+			}
+			var filters []ExploreFilter
+			if d.ID != "" && d.ID != "day" {
+				filters = []ExploreFilter{{Dim: d.ID, Op: FilterIs, Value: "x"}}
+				if d.Text {
+					filters = append(filters, ExploreFilter{Dim: d.ID, Op: FilterPrefix, Value: "/"})
+				}
+			}
+			for _, scope := range []string{"d1", ScopeAllDomains} {
+				for _, q := range []ExploreQuery{
+					{Scope: scope, Metric: ExploreMetric(m.ID), By: d.ID, Days: 30, Compare: true},
+					{Scope: scope, Metric: ExploreMetric(m.ID), Filters: filters, Days: 30},
+				} {
+					if _, err := s.Explore(ctx, q); err != nil {
+						t.Errorf("explore %+v: %v", q, err)
+					}
+				}
+			}
+		}
+	}
 	_, _, _ = s.GetFunnel(ctx, fid)
 	_, _ = s.ListFunnels(ctx)
 	_, _ = s.ListGoals(ctx)

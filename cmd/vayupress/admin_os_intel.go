@@ -420,7 +420,7 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 	if err != nil {
 		return ""
 	}
-	page := ui.OverviewPage{Title: "Analytics", Actions: osPeriodSelector("/os/analytics", days)}
+	page := ui.OverviewPage{Title: "Analytics", Actions: osPeriodSelector("/os/analytics", days) + exploreButton("/os/analytics/explore", days)}
 	sites, scope := a.analyticsScopeNote(ctx)
 	if sum == nil {
 		page.State = ui.Text("No visits recorded yet")

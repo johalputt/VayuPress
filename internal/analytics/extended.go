@@ -28,6 +28,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/vayuanalytics/classifier"
 )
 
 // coarseBrowser, coarseOS and coarseDevice reduce a User-Agent to a privacy-safe
@@ -421,37 +423,30 @@ func (s *Store) AudienceScoped(ctx context.Context, scope, column string, days i
 
 // ── Acquisition channels ─────────────────────────────────────────────────────
 
-// ReferrerChannel classifies a stored referrer host into a coarse acquisition
-// channel: Direct (no referrer), Organic search, Social, or Referral. The
-// classification is purely lexical over the host (no lookups, no PII) so it is
-// cheap and offline. Exported so it can be unit-tested independently.
+// channelLabels names each referrer category as the reports say it, in the
+// order they list them.
+var channelLabels = []struct {
+	cat   classifier.Category
+	label string
+}{
+	{classifier.Direct, "Direct"}, {classifier.Organic, "Organic search"}, {classifier.AIAssisted, "AI assistants"},
+	{classifier.Social, "Social"}, {classifier.Email, "Email"}, {classifier.Corporate, "Workplace apps"},
+	{classifier.Referral, "Referral"},
+}
+
+// ReferrerChannel is the acquisition channel of a stored referrer host:
+// Direct (no referrer), Organic search, AI assistants, Social, Email,
+// Workplace apps or Referral. It is the engagement store's classifier, so a
+// host is in the same channel on every report; matched by label and domain,
+// never by substring, so cnet.com is not t.co.
 func ReferrerChannel(host string) string {
-	h := strings.ToLower(strings.TrimSpace(host))
-	if h == "" {
-		return "Direct"
-	}
-	h = strings.TrimPrefix(h, "www.")
-	// Search engines → organic. Matched as substrings so regional TLDs
-	// (google.co.uk, bing.de, …) all fold into one bucket.
-	for _, s := range []string{
-		"google.", "bing.", "duckduckgo.", "yahoo.", "yandex.", "baidu.",
-		"ecosia.", "startpage.", "qwant.", "search.brave.", "naver.",
-		"seznam.", "sogou.", "ask.com", "search.marginalia",
-	} {
-		if strings.Contains(h, s) {
-			return "Organic search"
-		}
-	}
-	// Social / community platforms.
-	for _, s := range []string{
-		"facebook.", "fb.com", "instagram.", "t.co", "twitter.", "x.com",
-		"linkedin.", "lnkd.in", "reddit.", "youtube.", "youtu.be",
-		"pinterest.", "tiktok.", "mastodon", "threads.net", "t.me",
-		"telegram", "whatsapp", "vk.com", "tumblr.", "quora.",
-		"news.ycombinator.com", "lobste.rs", "bsky.app", "bluesky",
-	} {
-		if strings.Contains(h, s) {
-			return "Social"
+	return channelLabel(classifier.HostCategory(host))
+}
+
+func channelLabel(c classifier.Category) string {
+	for _, l := range channelLabels {
+		if l.cat == c {
+			return l.label
 		}
 	}
 	return "Referral"
@@ -484,15 +479,15 @@ func (s *Store) ChannelsScoped(ctx context.Context, scope string, days int) ([]A
 		if err := rows.Scan(&ref, &cnt); err != nil {
 			return nil, err
 		}
-		buckets[ReferrerChannel(ref)] += cnt
+		buckets[s.channelOf(ref)] += cnt
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	out := make([]AudienceStat, 0, 4)
-	for _, k := range []string{"Direct", "Organic search", "Social", "Referral"} {
-		if buckets[k] > 0 {
-			out = append(out, AudienceStat{Label: k, Count: buckets[k]})
+	out := make([]AudienceStat, 0, len(channelLabels))
+	for _, l := range channelLabels {
+		if buckets[l.label] > 0 {
+			out = append(out, AudienceStat{Label: l.label, Count: buckets[l.label]})
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Count > out[j].Count })
