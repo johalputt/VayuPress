@@ -784,18 +784,18 @@ func (a *App) osSearchesSection(ctx context.Context, scope string, days int) str
 		return string(ui.Section("Searches", "What readers looked for with the site's search",
 			ui.HTML(`<p class="table-empty">No searches yet. Searches made from the site's search page show here; a query that looks like an email address or a long number is never kept.</p>`)))
 	}
-	rows := ""
-	var empty []osChartBar
+	// Bars, as every other top list here: a four-column table did not fit
+	// its half of the section on a small laptop and scrolled sideways. The
+	// visitor counts are in the API's searches report.
+	var most, empty []osChartBar
 	for _, st := range stats {
-		rows += `<tr><td class="post-row__name">` + html.EscapeString(st.Query) + `</td><td>` + strconv.Itoa(st.Searches) +
-			`</td><td>` + strconv.Itoa(st.Visitors) + `</td><td>` + strconv.Itoa(st.Empty) + `</td></tr>`
+		most = append(most, osChartBar{Label: st.Query, Value: st.Searches})
 		if st.Empty > 0 {
 			empty = append(empty, osChartBar{Label: st.Query, Value: st.Empty})
 		}
 	}
-	table := `<div class="table-wrap"><table class="table"><thead><tr><th>Query</th><th>Searches</th><th>Visitors</th><th>Found nothing</th></tr></thead><tbody>` + rows + `</tbody></table></div>`
 	return string(ui.Section("Searches", "What readers looked for with the site's search", ui.HTML(analyticsCols(
-		analyticsPanel("Most searched", table),
+		analyticsPanel("Most searched", osBarList(most, osShareOfListed(), "")),
 		analyticsPanel("Found nothing", osBarList(empty, osShareHidden(), "Every search found something."))))))
 }
 
