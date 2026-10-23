@@ -303,6 +303,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			dr.Get("/analytics/realtime", a.handleOSScopedRealtime)
 			dr.Get("/shield", a.handleOSScopedShield)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/shield", a.handleOSScopedShieldSave)
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/shield/simulate", a.handleOSScopedShieldSimulate)
 			dr.With(auth.CSRFTokenMiddleware).Post("/analytics/goals", a.handleOSScopedCreateGoal)
 			dr.With(auth.CSRFTokenMiddleware).Delete("/analytics/goals/{gid}", a.handleOSScopedDeleteGoal)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/copy-from-primary", a.handleOSScopedCopyFromPrimary)
@@ -561,6 +562,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/agent-upgrade", a.handleOSShieldAgentUpgrade)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/fix", a.handleOSShieldFix)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/rescue", a.handleOSShieldRescue)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/simulate", a.handleOSShieldSimulate)
 		// VayuOS — native control layer (Phase 2): Publishing · Mail · PGP.
 		// GET pages are wrapped in CSRFTokenMiddleware so each load (re)issues the
 		// vp_csrf cookie the panel's POSTs read back; without this the token

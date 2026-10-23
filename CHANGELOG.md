@@ -71,6 +71,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   that moment and stops on time, without a save; the Security page names
   the entries that have ended, and an end that cannot be read leaves the
   entry out and says so rather than making it permanent.
+- **Try the shield's rules before saving them.** Beside the request rules,
+  on the install's Security page and each site's, a draft is replayed
+  against the readers' recorded page views of the last 7 days or today: how
+  many it would have refused or challenged, which line or list did, and the
+  most viewed pages it would have reached. A site's draft runs after the
+  install's saved rules and lists, on that site's readers alone. Nothing is
+  saved. Network lists and limits are not tried, since no reader's address
+  or pace is kept, and a rule on a score or a header is named as not judged.
 - **What readers search for.** A site's search page records each search:
   the query and whether it found anything. Analytics shows the most searched
   queries and the ones that found nothing, for the install and for each

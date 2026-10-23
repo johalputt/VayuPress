@@ -890,6 +890,7 @@ func (a *App) shieldPolicyBand(ctx context.Context, geoBlind bool) string {
 		rules, bad := a.vayuShield.OperatorRules()
 		b.WriteString(operatorRuleHits(rules, bad, time.Now()))
 	}
+	b.WriteString(shieldSimulateRow)
 	b.WriteString(`</div></div>`)
 
 	// Clustering, with its ceiling stated where the operator configures it rather

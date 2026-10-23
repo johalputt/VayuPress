@@ -103,32 +103,14 @@ func (a *App) applyShieldSiteSettings(ctx context.Context) map[string][]string {
 // applies them at once. The site is the path's; a body naming another is
 // refused. Only the keys of shieldSiteFields are written.
 func (a *App) handleOSScopedShieldSave(w http.ResponseWriter, r *http.Request) {
-	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
-		return
-	}
-	d, ok := osScopedDomain(r)
-	if !ok || d.IsPrimary {
-		writeAPIError(w, r, http.StatusNotFound, "unknown-domain", "no such hosted site", "")
-		return
-	}
-	var body struct {
-		DomainID string            `json:"domain_id"`
-		Settings map[string]string `json:"settings"`
-	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32*1024)).Decode(&body); err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "invalid JSON", "")
-		return
-	}
-	if !requireScopeMatchesPath(r, body.DomainID) {
-		writeAPIError(w, r, http.StatusBadRequest, "scope-mismatch",
-			"this request names a different site from the one in its address; nothing was saved", "")
+	d, posted, ok := a.scopedShieldBody(w, r)
+	if !ok {
 		return
 	}
 	kv := map[string]string{}
 	var changed []string
 	for _, f := range shieldSiteFields {
-		v, ok := body.Settings[f.Key]
+		v, ok := posted[f.Key]
 		if !ok {
 			continue
 		}
@@ -155,6 +137,35 @@ func (a *App) handleOSScopedShieldSave(w http.ResponseWriter, r *http.Request) {
 	}
 	issues := a.applyShieldSiteSettings(r.Context())
 	writeJSON(w, r, http.StatusOK, map[string]any{"status": "ok", "issues": issues[d.ID]})
+}
+
+// scopedShieldBody reads a site shield request: an administrator, the URL's
+// hosted site, and a body naming that same site. It answers the refusal
+// itself and reports false when there is one.
+func (a *App) scopedShieldBody(w http.ResponseWriter, r *http.Request) (domain.Domain, map[string]string, bool) {
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		return domain.Domain{}, nil, false
+	}
+	d, ok := osScopedDomain(r)
+	if !ok || d.IsPrimary {
+		writeAPIError(w, r, http.StatusNotFound, "unknown-domain", "no such hosted site", "")
+		return domain.Domain{}, nil, false
+	}
+	var body struct {
+		DomainID string            `json:"domain_id"`
+		Settings map[string]string `json:"settings"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32*1024)).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "invalid JSON", "")
+		return domain.Domain{}, nil, false
+	}
+	if !requireScopeMatchesPath(r, body.DomainID) {
+		writeAPIError(w, r, http.StatusBadRequest, "scope-mismatch",
+			"this request names a different site from the one in its address; nothing was saved", "")
+		return domain.Domain{}, nil, false
+	}
+	return d, body.Settings, true
 }
 
 // scopedShieldForm is the site's own settings, each beside what the install
@@ -199,7 +210,10 @@ func (a *App) scopedShieldForm(ctx context.Context, d domain.Domain) ui.HTML {
 	b.WriteString(expiredEntries(ended.Expired()))
 	b.WriteString(rules)
 	b.WriteString(`<div class="sa-list__sheet-actions"><button type="button" class="btn btn--primary btn--sm" data-shield-save>Save</button>` +
-		`<span class="text-xs muted" id="scoped-shield-status" role="status" aria-live="polite"></span></div>`)
+		`<button type="button" class="btn btn--ghost btn--sm" data-shield-try>Try on the last 7 days</button>` +
+		`<span class="text-xs muted" id="scoped-shield-status" role="status" aria-live="polite"></span></div>` +
+		`<p class="muted text-xs">Trying replays this site's recorded reader views against the rules and country lists as typed, after the install's, and saves nothing.</p>` +
+		`<div id="scoped-shield-sim"></div>`)
 	return ui.HTML(b.String())
 }
 
@@ -234,9 +248,22 @@ var ID=node?node.getAttribute('data-id'):'';
 var btn=document.querySelector('[data-shield-save]');
 var st=document.getElementById('scoped-shield-status');
 if(!ID||!btn)return;
+function draft(){var p={};document.querySelectorAll('[data-shield-key]').forEach(function(el){p[el.getAttribute('data-shield-key')]=el.value;});return p;}
+var tryBtn=document.querySelector('[data-shield-try]');
+var sim=document.getElementById('scoped-shield-sim');
+if(tryBtn&&sim)tryBtn.addEventListener('click',function(){
+  tryBtn.disabled=true; sim.textContent='Trying…';
+  fetch('/os/d/'+encodeURIComponent(ID)+'/api/shield/simulate',{method:'POST',
+    headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},
+    body:JSON.stringify({domain_id:ID,settings:draft()})})
+    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+    .then(function(res){tryBtn.disabled=false;
+      // The report is the server's own markup, every value in it escaped there.
+      if(res.ok&&res.j&&res.j.report){sim.innerHTML=res.j.report;}else{sim.textContent=(res.j&&res.j.message)||'Could not try it';}})
+    .catch(function(e){tryBtn.disabled=false; sim.textContent='Error: '+e;});
+});
 btn.addEventListener('click',function(){
-  var payload={};
-  document.querySelectorAll('[data-shield-key]').forEach(function(el){payload[el.getAttribute('data-shield-key')]=el.value;});
+  var payload=draft();
   btn.disabled=true; if(st)st.textContent='Saving…';
   fetch('/os/d/'+encodeURIComponent(ID)+'/api/shield',{method:'POST',
     headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},

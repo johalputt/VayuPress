@@ -216,3 +216,30 @@ func BenchmarkMatchAFullSetThatMisses(b *testing.B) {
 		s.Match(f, now)
 	}
 }
+
+// Would judges a draft as if every rule acted, test rules included, counts
+// nothing, and leaves out what a recorded view cannot answer: a log, a
+// limit, a score or a header.
+func TestWouldJudgesWithoutCounting(t *testing.T) {
+	s, bad := Parse("log path^=/\nlimit 1/min path^=/\nblock score<0.5 path^=/a\nallow header:X-Probe path^=/a\ntest block path^=/a\nchallenge country=IN")
+	if len(bad) != 0 {
+		t.Fatal(bad)
+	}
+	f := facts("/a/b")
+	if r := s.Would(f); r == nil || r.Line != 5 {
+		t.Fatalf("would %+v; want the test block on line 5", r)
+	}
+	if r := s.Would(facts("/x")); r == nil || r.Line != 6 {
+		t.Errorf("would %+v; want the challenge on line 6", r)
+	}
+	for _, r := range s.Rules() {
+		if n, _ := r.Hits(); n != 0 {
+			t.Errorf("line %d counted %d hits from Would", r.Line, n)
+		}
+	}
+	for i, want := range []bool{true, true, false, false, true, true} {
+		if got := s.Rules()[i].Judgeable(); got != want {
+			t.Errorf("line %d judgeable %v, want %v", i+1, got, want)
+		}
+	}
+}

@@ -106,7 +106,14 @@ type Rule struct {
 	lastHit atomic.Int64 // unix seconds
 	limiter *resilience.Limiter
 	refused atomic.Int64
+	// unseen is set when a condition tests something a recorded page view
+	// does not keep (the score, a header), so Would cannot judge the rule.
+	unseen bool
 }
+
+// Judgeable reports whether Would can decide this rule from the facts a
+// recorded page view keeps: its path, method, country and client.
+func (r *Rule) Judgeable() bool { return !r.unseen }
 
 // Hits is how many requests the rule has matched since it was compiled, and
 // when it last did (zero when never).
@@ -116,6 +123,25 @@ func (r *Rule) Hits() (int64, time.Time) {
 		return n, time.Unix(at, 0)
 	}
 	return n, time.Time{}
+}
+
+// Would is the rule that would decide f if every rule acted, test rules
+// included, counting nothing. Log and limit rules never decide here (a limit
+// depends on a source's pace, which a record does not keep), nor do rules
+// that are not Judgeable.
+func (s *Set) Would(f Facts) *Rule {
+	if s == nil {
+		return nil
+	}
+	for _, r := range s.rules {
+		if r.Action == Log || r.Action == Limit || r.unseen {
+			continue
+		}
+		if r.matches(f) {
+			return r
+		}
+	}
+	return nil
 }
 
 // Refused is how many requests a limit rule has refused (for a test rule,
@@ -243,6 +269,9 @@ func parseLine(line string) (*Rule, string) {
 			return nil, err
 		}
 		r.conds = append(r.conds, c)
+		if lw := strings.ToLower(w); strings.HasPrefix(lw, "score") || strings.HasPrefix(lw, "header:") {
+			r.unseen = true
+		}
 	}
 	return r, ""
 }
