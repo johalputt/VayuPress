@@ -473,6 +473,7 @@ The cross-compile matrix earned its place the same way. Every other Go gate runs
 - **[docs/MAIL-RECOVERY.md](docs/MAIL-RECOVERY.md)** — VayuMail account recovery: what to enrol before anyone is locked out, and every way back in.
 - **[docs/INSTALLATION.md](docs/INSTALLATION.md)**, **[docs/UPGRADING.md](docs/UPGRADING.md)**, **[docs/OPERATIONS.md](docs/OPERATIONS.md)** — running an install.
 - **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** and **[docs/RELEASES.md](docs/RELEASES.md)** — building and releasing it.
+- **[docs/PIPELINE.md](docs/PIPELINE.md)** — planned, not scheduled: the VayuAgent agent system driven from the Buzz app, and HTML plus Markdown from one model.
 - **[docs/LICENSING.md](docs/LICENSING.md)** — why Apache-2.0, why no CLA, and how the licence could change in future.
 - **[docs/CRA-READINESS.md](docs/CRA-READINESS.md)** — EU Cyber Resilience Act: scope assessment and gap analysis.
 - **[GOVERNANCE-CONSTITUTION.md](GOVERNANCE-CONSTITUTION.md)** and **[ETHICS.md](ETHICS.md)** — the binding rules, and the Ethical AI Charter.
