@@ -148,7 +148,9 @@ func (a *App) handleOSExplore(w http.ResponseWriter, r *http.Request) {
 	band := ui.Band{Title: exploreMetricLabel(ask.q.Metric), Hint: exploreSentence(ask), Aside: form}
 	// The answer is cached as its total and its split, joined by a byte no
 	// HTML holds; the page around them, the segments among it, is drawn per
-	// request, so a segment saved shows at once.
+	// request, so a segment saved shows at once. The count runs on the
+	// cache's goroutine, so it reads nothing this handler goes on to change:
+	// it once built on the band, which the lines below write, and raced.
 	key := "explore:" + scope + ":" + ask.values().Encode()
 	body, ready := exploreDash.get(key, exploreTTL, func(ctx context.Context) string {
 		res, err := a.analytics.Explore(ctx, ask.q)
