@@ -4,8 +4,10 @@ package analytics
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 )
@@ -15,8 +17,21 @@ import (
 // a search, and would read every view ever recorded.
 func TestViewsByPathCountryIsBoundedByItsWindow(t *testing.T) {
 	openTrendingDB(t)
+	type read struct {
+		q    string
+		args []any
+	}
+	var reads []read
 	for _, scope := range []string{ScopeAllDomains, "d1"} {
 		q, args := viewsByPathCountryQuery(scope, "2026-10-01", 10)
+		reads = append(reads, read{q, args})
+		for _, byDay := range []bool{false, true} {
+			q, args := viewsOverTimeQuery(scope, "2026-10-01 00:00:00", byDay)
+			reads = append(reads, read{q, args})
+		}
+	}
+	for _, rd := range reads {
+		q, args, scope := rd.q, rd.args, rd.args
 		rows, err := dbpkg.DB.Query("EXPLAIN QUERY PLAN "+q, args...)
 		if err != nil {
 			t.Fatal(err)
@@ -41,7 +56,7 @@ func TestViewsByPathCountryIsBoundedByItsWindow(t *testing.T) {
 			}
 		}
 		if !bounded {
-			t.Errorf("scope %q: the window does not bound the search: %s", scope, strings.Join(plan, " | "))
+			t.Errorf("%v: the window does not bound the search: %s\n%s", scope, strings.Join(plan, " | "), q)
 		}
 	}
 }
@@ -74,5 +89,51 @@ func TestViewsByPathCountryCountsViewsByPathSiteAndCountry(t *testing.T) {
 		if !want[g] {
 			t.Errorf("unexpected group %+v", g)
 		}
+	}
+}
+
+// Views are counted per hour within a day's window and per day beyond it,
+// for the site asked about alone.
+func TestViewsOverTimeBucketsBySite(t *testing.T) {
+	openTrendingDB(t)
+	now := time.Now().UTC()
+	for i, v := range []struct {
+		site string
+		ago  time.Duration
+		et   int
+	}{{"d1", time.Hour, 1}, {"d1", time.Hour, 1}, {"d1", 3 * time.Hour, 1}, {"d1", time.Hour, 3}, {"d2", time.Hour, 1}, {"d1", 50 * time.Hour, 1}} {
+		if _, err := dbpkg.DB.Exec(`INSERT INTO analytics_pageviews(id,session_id,url_path,event_type,domain_id,created_at) VALUES(?,?,?,?,?,?)`,
+			"o"+strconv.Itoa(i), "s", "/a", v.et, v.site, now.Add(-v.ago).Format("2006-01-02 15:04:05")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := New(dbpkg.DB)
+	hourly, err := s.ViewsOverTimeScoped(context.Background(), "d1", 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := hourly[now.Add(-time.Hour).Format("2006-01-02 15:00")]; got != 2 {
+		t.Errorf("an hour ago: %d views, want 2 (a search and another site's view are not views of d1): %v", got, hourly)
+	}
+	total := 0
+	for _, n := range hourly {
+		total += n
+	}
+	if total != 3 {
+		t.Errorf("the day holds %d views, want 3 (50 hours ago is outside it): %v", total, hourly)
+	}
+	daily, err := s.ViewsOverTimeScoped(context.Background(), "d1", 24*7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := 0
+	for k, n := range daily {
+		if len(k) != len("2006-01-02") {
+			t.Errorf("a week is bucketed by %q, want days", k)
+		}
+		sum += n
+	}
+	if sum != 4 {
+		t.Errorf("the week holds %d views, want 4", sum)
 	}
 }

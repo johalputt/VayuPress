@@ -115,7 +115,12 @@ func TestASitesShieldFormShowsWhatItInherits(t *testing.T) {
 		t.Fatal(err)
 	}
 	form := string(a.scopedShieldForm(ctx, d))
-	for _, want := range []string{`value="0.3"`, `placeholder="0.85"`, "Empty uses the install&#39;s 0.85", "Added to the install&#39;s 1 entry"} {
+	for _, want := range []string{`value="0.3"`, `placeholder="0.85"`,
+		"Set for this site, in place of the install&#39;s 0.4.", // the PoW threshold this site set
+		"Inherited: the install&#39;s 0.85.",                    // the refusal threshold it did not
+		"Inherited: the install&#39;s 1 entry apply here.",      // the install's deny list
+		"Inherited: the built-in header.",                       // a header left alone
+	} {
 		if !strings.Contains(form, want) {
 			t.Errorf("the form has no %q", want)
 		}

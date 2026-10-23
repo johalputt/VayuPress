@@ -302,6 +302,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			dr.Get("/analytics", a.handleOSScopedAnalytics)
 			dr.Get("/analytics/realtime", a.handleOSScopedRealtime)
 			dr.Get("/shield", a.handleOSScopedShield)
+			dr.Get("/shield/feed", a.handleOSScopedShieldFeed)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/shield", a.handleOSScopedShieldSave)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/shield/simulate", a.handleOSScopedShieldSimulate)
 			dr.With(auth.CSRFTokenMiddleware).Post("/analytics/goals", a.handleOSScopedCreateGoal)

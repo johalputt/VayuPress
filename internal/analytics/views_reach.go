@@ -2,7 +2,10 @@
 
 package analytics
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // PathCountryViews is how many page views one path had on one site from one
 // country (the visit's, empty when unknown) in a window.
@@ -47,4 +50,42 @@ func viewsByPathCountryQuery(scope, from string, limit int) (string, []any) {
 		 WHERE p.event_type=1 AND p.created_at>=?` + clause + `
 		 GROUP BY 1, 2, 3 ORDER BY 4 DESC LIMIT ?`,
 		append(append([]any{from}, carg...), limit)
+}
+
+// ViewsOverTimeScoped counts the page views of the last hours by hour
+// ("2006-01-02 15:00", UTC) or, past a day, by day ("2006-01-02"): the reader
+// side of a site's security beside its traffic.
+func (s *Store) ViewsOverTimeScoped(ctx context.Context, scope string, hours int) (map[string]int, error) {
+	if hours <= 0 {
+		hours = 24
+	}
+	from := s.now().UTC().Add(-time.Duration(hours) * time.Hour).Format("2006-01-02 15:04:05")
+	q, args := viewsOverTimeQuery(scope, from, hours > 24)
+	rows, err := s.readDB().QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var k string
+		var n int
+		if err := rows.Scan(&k, &n); err != nil {
+			return nil, err
+		}
+		out[k] = n
+	}
+	return out, rows.Err()
+}
+
+// viewsOverTimeQuery is the read, apart so its plan can be tested.
+func viewsOverTimeQuery(scope, from string, byDay bool) (string, []any) {
+	bucket := `strftime('%Y-%m-%d %H:00', p.created_at)`
+	if byDay {
+		bucket = `strftime('%Y-%m-%d', p.created_at)`
+	}
+	clause, carg := domainClauseOn("p", scope)
+	return `SELECT ` + bucket + ` AS b, COUNT(1) FROM analytics_pageviews p
+		 WHERE p.event_type=1 AND p.created_at>=?` + clause + ` GROUP BY b`,
+		append([]any{from}, carg...)
 }

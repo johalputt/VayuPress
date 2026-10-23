@@ -23,6 +23,7 @@ package botdb
 import (
 	"context"
 	"database/sql"
+	"math"
 	"sort"
 	"time"
 )
@@ -79,6 +80,12 @@ type Trail struct {
 	Reasons   []Count // why the shield refused
 	Paths     []Count // what was being hit
 	Countries []Count
+	Layers    []Count // which gate acted, on refusals and challenges issued
+	Classes   []Count // the client class of what was refused
+
+	// EvalP50 and EvalP95 are what deciding cost, in microseconds, over the
+	// events that recorded it (from migration 116); zero when none did.
+	EvalP50, EvalP95 int64
 
 	Hours []HourBucket
 
@@ -183,10 +190,67 @@ func (s *Store) ReadTrailScoped(ctx context.Context, site string, hours, topN, r
 	if t.Countries, err = s.topCounts(ctx, `country_code`, where, args, topN); err != nil {
 		return t, err
 	}
+	if t.Layers, err = s.counted(ctx, layersSQL+where+` AND (action IN ('block','rate_limit','tarpit') OR outcome='issued') AND layer<>'' GROUP BY k ORDER BY n DESC, k ASC LIMIT ?`, args, topN); err != nil {
+		return t, err
+	}
+	if t.Classes, err = s.counted(ctx, classesSQL+where+refused+` GROUP BY k ORDER BY n DESC, k ASC LIMIT ?`, args, topN); err != nil {
+		return t, err
+	}
+	if t.EvalP50, t.EvalP95, err = s.evalCost(ctx, where, args); err != nil {
+		return t, err
+	}
 	if t.Hours, err = s.hourly(ctx, where, args); err != nil {
 		return t, err
 	}
 	return t, nil
+}
+
+const (
+	layersSQL  = `SELECT layer AS k, COUNT(1) AS n FROM shield_events`
+	classesSQL = `SELECT COALESCE(NULLIF(classification,''),'(not recorded)') AS k, COUNT(1) AS n FROM shield_events`
+)
+
+// counted runs a "k, n" aggregate with its LIMIT appended to args.
+func (s *Store) counted(ctx context.Context, q string, args []any, topN int) ([]Count, error) {
+	rows, err := s.reader().QueryContext(ctx, q, append(append([]any{}, args...), topN)...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []Count
+	for rows.Next() {
+		var c Count
+		if err := rows.Scan(&c.Key, &c.Count); err != nil {
+			return out, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// evalCost is the median and 95th percentile of what deciding cost over the
+// window's events that recorded it. Each is one row read at its offset, in
+// eval_us order, from the window's events: the window bounds the sort.
+func (s *Store) evalCost(ctx context.Context, where string, args []any) (p50, p95 int64, err error) {
+	var n int64
+	if err = s.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM shield_events`+where+` AND eval_us>0`, args...).Scan(&n); err != nil || n == 0 {
+		return 0, 0, err
+	}
+	at := func(q float64) (int64, error) {
+		var v int64
+		// Nearest rank: the smallest value with at least q of them at or
+		// below it. Interpolating down from n-1 reads a p95 of three samples
+		// as the middle one.
+		off := int64(math.Ceil(q*float64(n))) - 1
+		err := s.reader().QueryRowContext(ctx, `SELECT eval_us FROM shield_events`+where+` AND eval_us>0 ORDER BY eval_us LIMIT 1 OFFSET ?`,
+			append(append([]any{}, args...), off)...).Scan(&v)
+		return v, err
+	}
+	if p50, err = at(0.50); err != nil {
+		return 0, 0, err
+	}
+	p95, err = at(0.95)
+	return p50, p95, err
 }
 
 // topCounts returns the top N values of a column over the window's refusals.

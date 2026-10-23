@@ -269,3 +269,51 @@ func TestTopNIsClamped(t *testing.T) {
 		t.Errorf("topN=5 returned %d rows (err=%v), want exactly 5", len(tr.Paths), err)
 	}
 }
+
+// The trail says which gate acted, on whom, and what deciding cost; a
+// challenge solved, a gate never named and an event with no cost recorded
+// are left out of each.
+func TestTrailNamesGatesClassesAndCost(t *testing.T) {
+	s := trailStore(t)
+	at := time.Now().UTC().Add(-time.Hour).Format("2006-01-02 15:04:05")
+	for i, e := range []struct {
+		action, outcome, layer, class string
+		us                            int
+	}{
+		{"block", "", "operator_rule", "BadBot", 100},
+		{"block", "", "operator_rule", "BadBot", 200},
+		{"rate_limit", "", "operator_rule", "Human", 300},
+		{"block", "", "block", "Headless", 400},
+		{"challenge", "issued", "challenge", "Unknown", 500},
+		{"challenge", "solved", "challenge", "", 0},
+		{"block", "", "", "", 0},
+	} {
+		if _, err := s.db.Exec(`INSERT INTO shield_events(action,outcome,layer,classification,eval_us,ip_hash,created_at) VALUES(?,?,?,?,?,?,?)`,
+			e.action, e.outcome, e.layer, e.class, e.us, strconv.Itoa(i), at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tr, err := s.ReadTrail(context.Background(), 24, 8, 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := func(name string, got []Count, w []Count) {
+		t.Helper()
+		if len(got) != len(w) {
+			t.Fatalf("%s = %+v, want %+v", name, got, w)
+		}
+		for i := range w {
+			if got[i] != w[i] {
+				t.Errorf("%s = %+v, want %+v", name, got, w)
+				return
+			}
+		}
+	}
+	want("gates", tr.Layers, []Count{{"operator_rule", 3}, {"block", 1}, {"challenge", 1}})
+	want("classes", tr.Classes, []Count{{"BadBot", 2}, {"(not recorded)", 1}, {"Headless", 1}, {"Human", 1}})
+	// Nearest rank over 100, 200, 300, 400, 500: the median is the third,
+	// the 95th percentile the fifth.
+	if tr.EvalP50 != 300 || tr.EvalP95 != 500 {
+		t.Errorf("cost p50 %d, p95 %d; want 300 and 500 µs over the five events that recorded one", tr.EvalP50, tr.EvalP95)
+	}
+}

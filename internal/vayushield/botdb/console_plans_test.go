@@ -45,6 +45,9 @@ func TestTheShieldConsoleReadsItsIndexes(t *testing.T) {
 		{"one site's refusals", `SELECT COUNT(1) FROM shield_events` + siteW + refused, "USING COVERING INDEX idx_shield_events_site", siteA},
 		{"one site's paths", `SELECT path AS k, COUNT(1) FROM shield_events` + siteW + refused + ` GROUP BY k`, "USING INDEX idx_shield_events_site", siteA},
 		{"one site's newest refusals", recentBlocksSQL, "USING INDEX idx_shield_events_site", []any{"d1", 50}},
+		{"the trail's gates", layersSQL + allW + ` AND layer<>'' GROUP BY k`, "USING INDEX idx_shield_events_created", allA},
+		{"one site's client classes", classesSQL + siteW + refused + ` GROUP BY k`, "USING INDEX idx_shield_events_site", siteA},
+		{"one site's deciding cost", `SELECT eval_us FROM shield_events` + siteW + ` AND eval_us>0 ORDER BY eval_us LIMIT 1 OFFSET 0`, "USING INDEX idx_shield_events_site", siteA},
 	} {
 		args, many := c.arg.([]any)
 		if !many {

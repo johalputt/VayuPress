@@ -162,6 +162,13 @@ const (
 	authLockDuration = 1 * time.Hour
 )
 
+// LockoutPolicy is the sign-in lockout as enforced: failures, within window,
+// lock an address out for lock. The console states it from here, so the page
+// and the gate cannot disagree.
+func LockoutPolicy() (failures int, window, lock time.Duration) {
+	return authFailMax, authFailWindow, authLockDuration
+}
+
 func getAuthFailBucket(ip string) *authFailBucket {
 	authFailMu.Lock()
 	defer authFailMu.Unlock()

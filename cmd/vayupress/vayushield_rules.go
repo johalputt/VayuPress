@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/vayushield"
 	"github.com/johalputt/vayupress/internal/vayushield/oprules"
 )
@@ -100,4 +101,14 @@ func expiredEntries(list []string) string {
 	}
 	b.WriteString(`</ul></div>`)
 	return b.String()
+}
+
+// otherLimitsNote states the two limits that guard the install outside the
+// shield, with the values the gates enforce, so the page that holds the
+// shield's limits is not silent about them.
+func otherLimitsNote() string {
+	fails, window, lock := auth.LockoutPolicy()
+	return `<div class="vs-feat"><p class="text-sm"><strong>Limits set elsewhere.</strong> Sign-in: ` + strconv.Itoa(fails) +
+		` failed attempts within ` + humanizeWindow(window) + ` lock that address out for ` + humanizeWindow(lock) +
+		`. API keys: ` + strconv.Itoa(apiKeyDefaultRatePerMin()) + ` requests a minute each, unless a key sets its own on <a href="/os/apikeys">API keys</a>. Neither is affected by anything on this page.</p></div>`
 }

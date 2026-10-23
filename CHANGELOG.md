@@ -97,6 +97,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   Security page read it; refusals now include an operator limit's 429.
   Cheap early refusals (the jail, shedding, the rate limiter) are counted
   in memory as before, never as rows, so a flood still costs no writes.
+- **A site's Security says who acted and what it cost.** Each site's
+  Security page now shows which gate acted (your rules, your lists, the
+  challenge ladder, the jail and the rest), the client class of what was
+  refused, what deciding cost at the 95th percentile, and the site's reader
+  views beside its refusals and challenges, by hour or by day, without
+  drawing a conclusion from them. The newest refusals refresh every 15
+  seconds. Every setting on the page says whether it is inherited from the
+  install or set for the site. The install's Security page states the
+  sign-in lockout and the API-key budget, with the values those gates use.
 - **What readers search for.** A site's search page records each search:
   the query and whether it found anything. Analytics shows the most searched
   queries and the ones that found nothing, for the install and for each

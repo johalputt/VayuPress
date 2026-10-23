@@ -201,6 +201,7 @@ func (a *App) scopedShieldForm(ctx context.Context, d domain.Domain) ui.HTML {
 		}
 		var control string
 		hint := f.Hint
+		set := strings.TrimSpace(own) != ""
 		if f.Choices != nil {
 			var opts strings.Builder
 			for _, c := range f.Choices {
@@ -211,14 +212,31 @@ func (a *App) scopedShieldForm(ctx context.Context, d domain.Domain) ui.HTML {
 				opts.WriteString(`<option value="` + esc(c.Value) + `"` + sel + `>` + esc(c.Label) + `</option>`)
 			}
 			control = `<select id="` + id + `" class="select" data-shield-key="` + esc(f.Key) + `">` + opts.String() + `</select>`
+			if set {
+				hint = "Set for this site. " + hint
+			} else {
+				hint = "Inherited: the built-in header. " + hint
+			}
 		} else if f.Threshold {
 			control = `<input id="` + id + `" type="text" inputmode="decimal" class="input" data-shield-key="` + esc(f.Key) +
 				`" value="` + esc(own) + `" placeholder="` + esc(inst) + `">`
-			hint += " Empty uses the install's " + inst + "."
+			if set {
+				hint = "Set for this site, in place of the install's " + inst + ". " + hint
+			} else {
+				hint = "Inherited: the install's " + inst + ". " + hint
+			}
 		} else {
 			control = `<textarea id="` + id + `" class="input" rows="3" data-shield-key="` + esc(f.Key) + `">` + esc(own) + `</textarea>`
-			if n := len(policyLines(inst)); n > 0 {
-				hint += " Added to the install's " + countOf(n, "entry") + "."
+			n := len(policyLines(inst))
+			switch {
+			case set && n > 0:
+				hint = "Set for this site, added to the install's " + countOf(n, "entry") + ". " + hint
+			case set:
+				hint = "Set for this site. " + hint
+			case n > 0:
+				hint = "Inherited: the install's " + countOf(n, "entry") + " apply here. " + hint
+			default:
+				hint = "Nothing set here or for the install. " + hint
 			}
 		}
 		rows = append(rows, ui.Row{Label: f.Label, Hint: hint, ID: id, Control: ui.HTML(control)})
