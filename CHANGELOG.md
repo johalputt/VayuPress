@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.12] — 2026-10-23
+
+The bell is live, and a High advisory in a compression library is closed.
+
 ### Fixed
 
 - **The bell is live.** A console page left open showed the bell as it was
@@ -29,6 +33,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **Release audit.** Everything above was attacked before release. Mail and
+  the contact form are open to anyone, and each one wakes every open bell:
+  a flood of mail redrew each open tab's whole bell, every mailbox counted
+  and every hosted site checked, several times a second. A bell is now
+  redrawn at most once every two seconds however fast the news comes. The
+  stream holds against the rest: it is behind the console's sign-in and its
+  per-role path gate, sessions confined to mail or to a client's site are
+  refused it, each item is gated to what the viewer may open as on a page,
+  and it ends when the session does.
 - **compress raised to v1.20.3.** Two High advisories in
   `github.com/klauspost/compress` (pulled in by analytics' Parquet export)
   are closed: an integer overflow in `s2.NewDict` that let a crafted
