@@ -111,7 +111,7 @@ func (a *App) applyShieldSiteSettings(ctx context.Context) map[string][]string {
 // applies them at once. The site is the path's; a body naming another is
 // refused. Only the keys of shieldSiteFields are written.
 func (a *App) handleOSScopedShieldSave(w http.ResponseWriter, r *http.Request) {
-	d, posted, ok := a.scopedShieldBody(w, r)
+	d, posted, ok := a.scopedSiteBody(w, r)
 	if !ok {
 		return
 	}
@@ -151,10 +151,10 @@ func (a *App) handleOSScopedShieldSave(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]any{"status": "ok", "issues": issues[d.ID]})
 }
 
-// scopedShieldBody reads a site shield request: an administrator, the URL's
-// hosted site, and a body naming that same site. It answers the refusal
+// scopedSiteBody reads a request that sets a hosted site's own settings: an
+// administrator, the URL's hosted site, and a body naming that same site. It answers the refusal
 // itself and reports false when there is one.
-func (a *App) scopedShieldBody(w http.ResponseWriter, r *http.Request) (domain.Domain, map[string]string, bool) {
+func (a *App) scopedSiteBody(w http.ResponseWriter, r *http.Request) (domain.Domain, map[string]string, bool) {
 	if !a.isAdminRequest(r) {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
 		return domain.Domain{}, nil, false

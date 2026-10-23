@@ -60,6 +60,9 @@ func (a *App) handleOSScopedAnalytics(w http.ResponseWriter, r *http.Request) {
 			Actions: osPeriodSelector("/os/d/"+id+"/analytics", days)},
 			ui.Band{Title: "Visitors", Chart: `<p class="table-empty">This is counted in the background; reload in a few seconds.</p>`}))
 	}
+	// The setting is read off the request, not the cache, so a save shows at
+	// once.
+	body += a.siteRetentionSection(r.Context(), d, nonce)
 	// The live panel's poller; the body above is cached, the script is not.
 	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js?v=` + assetVer("js/admin-os-intel.js") + `"></script>`
 	writeOSHTML(w, r, adminOSLayout(nonce, title, "optimize", cfg, htmpl.HTML(body)))

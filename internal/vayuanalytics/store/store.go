@@ -381,6 +381,29 @@ func (s *Store) flushBatch(batch []ingestEvent) {
 // short so the writer interleaves with live ingest.
 const purgeChunk = 5000
 
+// PurgeSite deletes one hosted site's engagement rows older than retainDays,
+// chunked as Purge is. site must name a hosted site.
+func (s *Store) PurgeSite(ctx context.Context, site string, retainDays int) (int64, error) {
+	if s == nil || s.db == nil || site == "" || retainDays <= 0 {
+		return 0, nil
+	}
+	cutoff := time.Now().UTC().AddDate(0, 0, -retainDays)
+	var total int64
+	for {
+		res, err := s.db.ExecContext(ctx,
+			`DELETE FROM vayuanalytics_sessions WHERE id IN (SELECT id FROM vayuanalytics_sessions WHERE domain_id=? AND entry_time<? LIMIT ?)`,
+			site, cutoff, purgeChunk)
+		if err != nil {
+			return total, err
+		}
+		n, _ := res.RowsAffected()
+		total += n
+		if n < purgeChunk {
+			return total, nil
+		}
+	}
+}
+
 // Purge deletes engagement rows older than retainDays (measured from entry_time).
 // Returns the number of rows removed. A retainDays <= 0 is a no-op ("forever").
 // Deletion runs in rowid-bounded chunks; between chunks the writer lock is

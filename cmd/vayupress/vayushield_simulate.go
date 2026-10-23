@@ -172,7 +172,7 @@ func (a *App) handleOSShieldSimulate(w http.ResponseWriter, r *http.Request) {
 // against that site's readers: the install's lists and rules as saved, then
 // the site's, as the shield runs them there.
 func (a *App) handleOSScopedShieldSimulate(w http.ResponseWriter, r *http.Request) {
-	d, posted, ok := a.scopedShieldBody(w, r)
+	d, posted, ok := a.scopedSiteBody(w, r)
 	if !ok {
 		return
 	}

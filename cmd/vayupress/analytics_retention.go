@@ -31,6 +31,8 @@ func (a *App) purgeExpiredAnalytics(ctx context.Context) {
 			logging.LogInfo("vayuanalytics", fmt.Sprintf("purged %d engagement rows older than %dd", n, days))
 		}
 	}
+	// Then the sites that keep their data for less time than the install.
+	a.purgeSitesAnalytics(ctx)
 }
 
 // startAnalyticsRetention runs the purge two minutes after start and daily

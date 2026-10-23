@@ -204,3 +204,29 @@ func TestRealtime(t *testing.T) {
 		t.Fatalf("country DE want 5 got %v", rt2.ByCountry)
 	}
 }
+
+// A site's purge removes that site's old engagement rows alone.
+func TestPurgeSiteRemovesOnlyThatSitesOldRows(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	old := time.Now().UTC().AddDate(0, 0, -40)
+	for _, e := range []struct {
+		id, site string
+		at       time.Time
+	}{{"o1", "s1", old}, {"n1", "s1", time.Now().UTC()}, {"o2", "s2", old}} {
+		ev := enter(e.id, "/a", "direct", "typed", "human", e.at)
+		ev.DomainID = e.site
+		if err := s.RecordEnter(ctx, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err := s.PurgeSite(ctx, "s1", 30)
+	if err != nil || n != 1 {
+		t.Fatalf("removed %d (err %v), want site one's old row alone", n, err)
+	}
+	var left int
+	_ = s.db.QueryRow(`SELECT COUNT(1) FROM vayuanalytics_sessions`).Scan(&left)
+	if left != 2 {
+		t.Errorf("%d rows left, want 2", left)
+	}
+}

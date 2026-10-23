@@ -137,3 +137,43 @@ func TestViewsOverTimeBucketsBySite(t *testing.T) {
 		t.Errorf("the week holds %d views, want 4", sum)
 	}
 }
+
+// A site's purge removes that site's rows older than its window from every
+// table that holds a visitor, and nothing of another site's or newer.
+func TestPurgeSiteRemovesOnlyThatSitesOldRows(t *testing.T) {
+	openTrendingDB(t)
+	old := time.Now().UTC().AddDate(0, 0, -40)
+	recent := time.Now().UTC().AddDate(0, 0, -5)
+	f := func(t time.Time) string { return t.Format("2006-01-02 15:04:05") }
+	for _, q := range []struct {
+		sql  string
+		args []any
+	}{
+		{`INSERT INTO analytics_sessions(id,visitor_id,domain_id,created_at) VALUES('so','v','s1',?),('sn','v','s1',?),('to','v','s2',?),('po0','v','',?)`, []any{f(old), f(recent), f(old), f(old)}},
+		{`INSERT INTO analytics_pageviews(id,session_id,url_path,event_type,domain_id,created_at) VALUES('po','so','/a',1,'s1',?),('pn','sn','/a',1,'s1',?),('qo','to','/a',1,'s2',?)`, []any{f(old), f(recent), f(old)}},
+		{`INSERT INTO analytics_event_data(event_id,property_key,property_value,created_at) VALUES('po','k','v',?),('pn','k','v',?),('qo','k','v',?)`, []any{f(old), f(recent), f(old)}},
+		{`INSERT INTO analytics_revenue(id,session_id,amount,currency,created_at) VALUES('ro','so',100,'INR',?),('rn','sn',100,'INR',?),('xo','to',100,'INR',?)`, []any{f(old), f(recent), f(old)}},
+		{`INSERT INTO analytics_rollup_daily(day,domain_id,uniques_hll) VALUES(?,'s1',x''),(?,'s1',x''),(?,'s2',x'')`, []any{old.Format("2006-01-02"), recent.Format("2006-01-02"), old.Format("2006-01-02")}},
+	} {
+		if _, err := dbpkg.DB.Exec(q.sql, q.args...); err != nil {
+			t.Fatalf("%s: %v", q.sql, err)
+		}
+	}
+	n, err := New(dbpkg.DB).PurgeSite(context.Background(), "s1", 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 5 {
+		t.Errorf("removed %d rows, want 5: site one's old view, its property, its visit, its revenue and its sketch", n)
+	}
+	for table, want := range map[string]int{"analytics_sessions": 3, "analytics_pageviews": 2, "analytics_event_data": 2, "analytics_revenue": 2, "analytics_rollup_daily": 2} {
+		var got int
+		_ = dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM ` + table).Scan(&got)
+		if got != want {
+			t.Errorf("%s keeps %d rows, want %d (site one's recent and site two's old)", table, got, want)
+		}
+	}
+	if n, _ := New(dbpkg.DB).PurgeSite(context.Background(), "", 30); n != 0 {
+		t.Errorf("a purge naming no site removed %d rows of the primary's: its retention is the install's", n)
+	}
+}

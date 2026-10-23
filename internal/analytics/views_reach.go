@@ -89,3 +89,38 @@ func viewsOverTimeQuery(scope, from string, byDay bool) (string, []any) {
 		 WHERE p.event_type=1 AND p.created_at>=?` + clause + ` GROUP BY b`,
 		append([]any{from}, carg...)
 }
+
+// PurgeSite deletes one hosted site's analytics older than retainDays: its
+// views and visits, each view's properties and each visit's revenue, and the
+// site's daily visitor sketches. The install-wide totals (analytics_daily,
+// analytics_referrers) hold no visitor and stay under the install's own
+// retention. site must name a hosted site: the primary's retention is the
+// install's.
+func (s *Store) PurgeSite(ctx context.Context, site string, retainDays int) (int64, error) {
+	if site == "" || site == ScopeAllDomains || retainDays <= 0 {
+		return 0, nil
+	}
+	cutoff := s.now().UTC().AddDate(0, 0, -retainDays)
+	at, day := cutoff.Format("2006-01-02 15:04:05"), cutoff.Format("2006-01-02")
+	var total int64
+	for _, q := range []struct {
+		sql  string
+		args []any
+	}{
+		// Children first, while their parents still say which site they were.
+		{`DELETE FROM analytics_event_data WHERE event_id IN (SELECT id FROM analytics_pageviews WHERE domain_id=? AND created_at<?)`, []any{site, at}},
+		{`DELETE FROM analytics_revenue WHERE session_id IN (SELECT id FROM analytics_sessions WHERE domain_id=? AND created_at<?)`, []any{site, at}},
+		{`DELETE FROM analytics_pageviews WHERE domain_id=? AND created_at<?`, []any{site, at}},
+		{`DELETE FROM analytics_sessions WHERE domain_id=? AND created_at<?`, []any{site, at}},
+		{`DELETE FROM analytics_rollup_daily WHERE domain_id=? AND day<?`, []any{site, day}},
+	} {
+		res, err := s.db.ExecContext(ctx, q.sql, q.args...)
+		if err != nil {
+			return total, err
+		}
+		if n, e := res.RowsAffected(); e == nil {
+			total += n
+		}
+	}
+	return total, nil
+}

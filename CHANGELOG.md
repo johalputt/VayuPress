@@ -106,6 +106,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   seconds. Every setting on the page says whether it is inherited from the
   install or set for the site. The install's Security page states the
   sign-in lockout and the API-key budget, with the values those gates use.
+- **How long each site keeps its data.** A hosted site's Analytics page
+  sets how many days its readers' views, visits, events and engagement are
+  kept: less than the install, which the privacy notice publishes, and never
+  more, or inherited. Its purge runs with the install's, a few minutes after
+  start and daily, and the page says when it last ran and what it removed.
 - **What readers search for.** A site's search page records each search:
   the query and whether it found anything. Analytics shows the most searched
   queries and the ones that found nothing, for the install and for each

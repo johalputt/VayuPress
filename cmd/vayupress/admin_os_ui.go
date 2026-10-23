@@ -306,6 +306,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/shield", a.handleOSScopedShieldSave)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/shield/simulate", a.handleOSScopedShieldSimulate)
 			dr.With(auth.CSRFTokenMiddleware).Post("/analytics/goals", a.handleOSScopedCreateGoal)
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/analytics/retention", a.handleOSScopedRetention)
 			dr.With(auth.CSRFTokenMiddleware).Delete("/analytics/goals/{gid}", a.handleOSScopedDeleteGoal)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/copy-from-primary", a.handleOSScopedCopyFromPrimary)
 		})

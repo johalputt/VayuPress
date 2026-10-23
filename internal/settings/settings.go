@@ -370,6 +370,12 @@ const (
 	KeySiteAllowGeo     = "headers.allow_geolocation"
 	KeySiteAllowPayment = "headers.allow_payment"
 
+	// A hosted site's own analytics retention, in days, kept shorter than the
+	// install's (which the privacy disclosure publishes) or empty to inherit
+	// it; and when its purge last ran, "RFC3339 rows", written by the purge.
+	KeyAnalyticsSiteRetainDays = "analytics.site_retain_days"
+	KeyAnalyticsSiteRetainLast = "analytics.site_retain_last"
+
 	// KeyAnalyticsBeacon toggles the VayuAnalytics engagement beacon (time on
 	// page / scroll depth) injected on public pages. Default ON — it is
 	// cookieless and stores no PII, the same posture as the existing view
@@ -626,6 +632,8 @@ var NotPortable = map[string]bool{
 	KeySiteAllowMic:                 true,
 	KeySiteAllowGeo:                 true,
 	KeySiteAllowPayment:             true,
+	KeyAnalyticsSiteRetainDays:      true,
+	KeyAnalyticsSiteRetainLast:      true,
 	KeyAnalyticsBeacon:              true,
 	KeyVeilEnabled:                  true,
 	KeyVayuKeepEnabled:              true,
@@ -663,6 +671,8 @@ var AllKeys = map[string]bool{
 	KeySiteAllowMic:                 true,
 	KeySiteAllowGeo:                 true,
 	KeySiteAllowPayment:             true,
+	KeyAnalyticsSiteRetainDays:      true,
+	KeyAnalyticsSiteRetainLast:      true,
 	KeyNoFollowLinks:                true,
 	KeyPageCache:                    true,
 	KeyThemeStudioDraft:             true,
