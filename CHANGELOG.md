@@ -34,6 +34,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   counts visitors, as every other figure does, and its pages and referrers
   are counted by reader too. A site's own Analytics has its own Right now,
   polling that site's last five minutes alone.
+- **Each site has its own Security.** Every block and challenge now records
+  the site it was on and the request that drew it (migration 115). A site's
+  console has a Security page: what VayuShield refused there and why, what
+  was asked for, where from, by hour, and the newest refusals with the
+  request id that leads to each log line. No address is ever shown. Events
+  recorded before this name no site and count only on the install's Shield
+  page.
 - **What readers search for.** A site's search page records each search:
   the query and whether it found anything. Analytics shows the most searched
   queries and the ones that found nothing, for the install and for each

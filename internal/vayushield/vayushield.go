@@ -199,9 +199,15 @@ type Config struct {
 	// the number the operator is looking at when they write a country rule. A
 	// control must act on the fact its operator saw. See internal/geoip.Resolve.
 	CountryFn func(r *http.Request, ip string) string
-	ClientIP  func(r *http.Request) string  // trusted-proxy-aware client IP
-	OnEvent   func(a Action, score float64) // charge the error budget, emit metrics
-	Now       func() time.Time
+	ClientIP  func(r *http.Request) string // trusted-proxy-aware client IP
+	// SiteFn names the site a request is for ("" for the primary, else a
+	// hosted site's id), and RequestIDFn the request's id: both are recorded
+	// on every block and challenge, so an event says which site it was on and
+	// leads back to its log line.
+	SiteFn      func(r *http.Request) string
+	RequestIDFn func(r *http.Request) string
+	OnEvent     func(a Action, score float64) // charge the error budget, emit metrics
+	Now         func() time.Time
 
 	// PressureFn reports external saturation (e.g. the Aegis L0 sovereignty
 	// lane nearing its cap). When it returns true the L2 pre-filter fair-sheds
@@ -2512,10 +2518,22 @@ func (m *Manager) recordChallenge(r *http.Request, v Verdict, ctype, outcome str
 	if m.cfg.CountryFn != nil {
 		country = m.cfg.CountryFn(r, ip)
 	}
+	site, reqID := m.eventIDs(r)
 	m.recordExec(r.Context(), `INSERT INTO vayushield_challenges
-(session_hash,challenge_type,bot_score,fingerprint_hash,outcome,time_to_solve_ms,ip_hash,country_code)
-VALUES('',?,?,?,?,?,?,?)`,
-		ctype, v.Result.BotScore, v.Composite.FingerprintHash, outcome, solveMS, m.hashIP(ip), country)
+(session_hash,challenge_type,bot_score,fingerprint_hash,outcome,time_to_solve_ms,ip_hash,country_code,domain_id,request_id)
+VALUES('',?,?,?,?,?,?,?,?,?)`,
+		ctype, v.Result.BotScore, v.Composite.FingerprintHash, outcome, solveMS, m.hashIP(ip), country, site, reqID)
+}
+
+// eventIDs is the site and the request id an event is recorded under.
+func (m *Manager) eventIDs(r *http.Request) (site, reqID string) {
+	if m.cfg.SiteFn != nil {
+		site = m.cfg.SiteFn(r)
+	}
+	if m.cfg.RequestIDFn != nil {
+		reqID = m.cfg.RequestIDFn(r)
+	}
+	return site, reqID
 }
 
 // recordChallengeSolved writes the one outcome the trail was missing.
@@ -2534,9 +2552,10 @@ func (m *Manager) recordChallengeSolved(r *http.Request) {
 	if m.cfg.CountryFn != nil {
 		country = m.cfg.CountryFn(r, ip)
 	}
+	site, reqID := m.eventIDs(r)
 	m.recordExec(r.Context(), `INSERT INTO vayushield_challenges
-(session_hash,challenge_type,bot_score,fingerprint_hash,outcome,time_to_solve_ms,ip_hash,country_code)
-VALUES('','pow',0,'','solved',0,?,?)`, m.hashIP(ip), country)
+(session_hash,challenge_type,bot_score,fingerprint_hash,outcome,time_to_solve_ms,ip_hash,country_code,domain_id,request_id)
+VALUES('','pow',0,'','solved',0,?,?,?,?)`, m.hashIP(ip), country, site, reqID)
 }
 
 func (m *Manager) recordBlock(r *http.Request, v Verdict) {
@@ -2556,10 +2575,11 @@ func (m *Manager) recordBlock(r *http.Request, v Verdict) {
 	// header once claimed (audit). Nothing in the trail dashboards reads this
 	// column, so the blocked table now stores only the coarse uaFamily bucket;
 	// PurgeBlocked still bounds the row's lifetime.
+	site, reqID := m.eventIDs(r)
 	m.recordExec(r.Context(), `INSERT INTO vayushield_blocked
-(fingerprint_hash,ja3_hash,ip_hash,user_agent,request_path,block_reason,bot_score,country_code)
-VALUES(?,?,?,?,?,?,?,?)`,
-		v.Composite.FingerprintHash, v.Composite.JA3, m.hashIP(ip), uaFamily(v.Signals.UserAgent), r.URL.Path, reason, v.Result.BotScore, country)
+(fingerprint_hash,ja3_hash,ip_hash,user_agent,request_path,block_reason,bot_score,country_code,domain_id,request_id)
+VALUES(?,?,?,?,?,?,?,?,?,?)`,
+		v.Composite.FingerprintHash, v.Composite.JA3, m.hashIP(ip), uaFamily(v.Signals.UserAgent), r.URL.Path, reason, v.Result.BotScore, country, site, reqID)
 }
 
 // hostOf extracts the lowercase host from a referrer URL.

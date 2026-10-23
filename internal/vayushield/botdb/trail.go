@@ -114,9 +114,40 @@ const (
 		        COALESCE(SUM(CASE WHEN outcome='issued' THEN 1 ELSE 0 END),0),
 		        COALESCE(SUM(CASE WHEN outcome='solved' THEN 1 ELSE 0 END),0)
 		 FROM vayushield_challenges WHERE created_at>=? GROUP BY h`
+
+	// One site's: the same reads, answered from the site's index
+	// (idx_challenges_domain_created_outcome, migration 115).
+	challengeOutcomesSiteSQL = `SELECT COALESCE(SUM(CASE WHEN outcome='issued' THEN 1 ELSE 0 END),0),
+		        COALESCE(SUM(CASE WHEN outcome='solved' THEN 1 ELSE 0 END),0)
+		 FROM vayushield_challenges WHERE domain_id=? AND created_at>=?`
+	challengeHoursSiteSQL = `SELECT strftime('%Y-%m-%d %H:00', created_at) AS h,
+		        COALESCE(SUM(CASE WHEN outcome='issued' THEN 1 ELSE 0 END),0),
+		        COALESCE(SUM(CASE WHEN outcome='solved' THEN 1 ELSE 0 END),0)
+		 FROM vayushield_challenges WHERE domain_id=? AND created_at>=? GROUP BY h`
 )
 
+// AllSites asks the trail for every site's events together.
+const AllSites = "\x00*all*"
+
+// trailScope is the WHERE clause and its arguments for one site's rows (or
+// every site's) since cut.
+func trailScope(site, cut string) (string, []any) {
+	if site == AllSites {
+		return ` WHERE created_at>=?`, []any{cut}
+	}
+	return ` WHERE domain_id=? AND created_at>=?`, []any{site, cut}
+}
+
+// ReadTrail is the whole install's trail; see ReadTrailScoped.
 func (s *Store) ReadTrail(ctx context.Context, hours, topN, retentionDays int) (Trail, error) {
+	return s.ReadTrailScoped(ctx, AllSites, hours, topN, retentionDays)
+}
+
+// ReadTrailScoped computes the aggregate report over the last hours for one
+// site ("" is the primary, else a hosted site's id) or, for AllSites, every
+// site. Events recorded before sites were (migration 115) belong to no site
+// and appear only in the AllSites report.
+func (s *Store) ReadTrailScoped(ctx context.Context, site string, hours, topN, retentionDays int) (Trail, error) {
 	if s == nil || s.reader() == nil {
 		return Trail{}, nil
 	}
@@ -135,12 +166,16 @@ func (s *Store) ReadTrail(ctx context.Context, hours, topN, retentionDays int) (
 	}
 
 	db := s.reader()
-	row := db.QueryRowContext(ctx, `SELECT COUNT(1) FROM vayushield_blocked WHERE created_at>=?`, cut)
+	where, args := trailScope(site, cut)
+	row := db.QueryRowContext(ctx, `SELECT COUNT(1) FROM vayushield_blocked`+where, args...)
 	if err := row.Scan(&t.TotalBlocks); err != nil && err != sql.ErrNoRows {
 		return t, err
 	}
-	row = db.QueryRowContext(ctx,
-		challengeOutcomesSQL, cut)
+	outcomes := challengeOutcomesSQL
+	if site != AllSites {
+		outcomes = challengeOutcomesSiteSQL
+	}
+	row = db.QueryRowContext(ctx, outcomes, args...)
 	if err := row.Scan(&t.TotalChallenges, &t.TotalSolved); err != nil && err != sql.ErrNoRows {
 		return t, err
 	}
@@ -149,16 +184,16 @@ func (s *Store) ReadTrail(ctx context.Context, hours, topN, retentionDays int) (
 	// COALESCE + NULLIF collapses empty strings into one "(not recorded)" bucket
 	// rather than letting them masquerade as a real value at the top of the list.
 	// country_code is empty whenever no geo lookup is wired, which is the default.
-	if t.Reasons, err = s.topCounts(ctx, `block_reason`, cut, topN); err != nil {
+	if t.Reasons, err = s.topCounts(ctx, `block_reason`, where, args, topN); err != nil {
 		return t, err
 	}
-	if t.Paths, err = s.topCounts(ctx, `request_path`, cut, topN); err != nil {
+	if t.Paths, err = s.topCounts(ctx, `request_path`, where, args, topN); err != nil {
 		return t, err
 	}
-	if t.Countries, err = s.topCounts(ctx, `country_code`, cut, topN); err != nil {
+	if t.Countries, err = s.topCounts(ctx, `country_code`, where, args, topN); err != nil {
 		return t, err
 	}
-	if t.Hours, err = s.hourly(ctx, cut); err != nil {
+	if t.Hours, err = s.hourly(ctx, site, where, args); err != nil {
 		return t, err
 	}
 	return t, nil
@@ -169,7 +204,7 @@ func (s *Store) ReadTrail(ctx context.Context, hours, topN, retentionDays int) (
 // The column name is NOT a parameter in the SQL sense — SQLite cannot bind an
 // identifier — so it is chosen from a fixed set here and never taken from a
 // caller's input. Every call site passes a literal.
-func (s *Store) topCounts(ctx context.Context, column, cut string, topN int) ([]Count, error) {
+func (s *Store) topCounts(ctx context.Context, column, where string, args []any, topN int) ([]Count, error) {
 	var expr string
 	switch column {
 	case "block_reason":
@@ -183,8 +218,8 @@ func (s *Store) topCounts(ctx context.Context, column, cut string, topN int) ([]
 		return nil, nil
 	}
 	rows, err := s.reader().QueryContext(ctx,
-		`SELECT `+expr+` AS k, COUNT(1) AS n FROM vayushield_blocked
-		 WHERE created_at>=? GROUP BY k ORDER BY n DESC, k ASC LIMIT ?`, cut, topN)
+		`SELECT `+expr+` AS k, COUNT(1) AS n FROM vayushield_blocked`+where+`
+		 GROUP BY k ORDER BY n DESC, k ASC LIMIT ?`, append(append([]any{}, args...), topN)...)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +240,7 @@ func (s *Store) topCounts(ctx context.Context, column, cut string, topN int) ([]
 // separately and merged in Go rather than joined: a full outer join in SQLite
 // means a UNION of two correlated subqueries, which is more SQL to be wrong in
 // for a merge of at most a few hundred rows.
-func (s *Store) hourly(ctx context.Context, cut string) ([]HourBucket, error) {
+func (s *Store) hourly(ctx context.Context, site, where string, args []any) ([]HourBucket, error) {
 	byHour := map[string]*HourBucket{}
 	get := func(h string) *HourBucket {
 		if b, ok := byHour[h]; ok {
@@ -218,7 +253,7 @@ func (s *Store) hourly(ctx context.Context, cut string) ([]HourBucket, error) {
 
 	rows, err := s.reader().QueryContext(ctx,
 		`SELECT strftime('%Y-%m-%d %H:00', created_at) AS h, COUNT(1)
-		 FROM vayushield_blocked WHERE created_at>=? GROUP BY h`, cut)
+		 FROM vayushield_blocked`+where+` GROUP BY h`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -237,8 +272,11 @@ func (s *Store) hourly(ctx context.Context, cut string) ([]HourBucket, error) {
 	}
 	_ = rows.Close()
 
-	rows, err = s.reader().QueryContext(ctx,
-		challengeHoursSQL, cut)
+	hoursSQL := challengeHoursSQL
+	if site != AllSites {
+		hoursSQL = challengeHoursSiteSQL
+	}
+	rows, err = s.reader().QueryContext(ctx, hoursSQL, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -269,4 +307,44 @@ func (s *Store) hourly(ctx context.Context, cut string) ([]HourBucket, error) {
 		out = append(out, *byHour[k])
 	}
 	return out, nil
+}
+
+// BlockEvent is one refusal as a site's Security page lists it: when, what
+// was asked for, why it was refused, and the request id that leads to its
+// log line. Never an address: the trail stores only a salted hash of one, and
+// it is not selected here.
+type BlockEvent struct {
+	At        string
+	Path      string
+	Reason    string
+	Country   string
+	RequestID string
+}
+
+// recentBlocksSQL is one site's newest refusals, from the site's index.
+const recentBlocksSQL = `SELECT created_at, request_path, block_reason, country_code, request_id
+	FROM vayushield_blocked WHERE domain_id=? ORDER BY created_at DESC LIMIT ?`
+
+// RecentBlocks is one site's newest refusals, newest first.
+func (s *Store) RecentBlocks(ctx context.Context, site string, limit int) ([]BlockEvent, error) {
+	if s == nil || s.reader() == nil {
+		return nil, nil
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := s.reader().QueryContext(ctx, recentBlocksSQL, site, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []BlockEvent
+	for rows.Next() {
+		var e BlockEvent
+		if err := rows.Scan(&e.At, &e.Path, &e.Reason, &e.Country, &e.RequestID); err != nil {
+			return out, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }

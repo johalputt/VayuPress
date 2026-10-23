@@ -35,8 +35,16 @@ func TestTheShieldConsoleReadsItsIndexes(t *testing.T) {
 		{"signatures learned in 24 h", learnedSinceSQL, "USING COVERING INDEX idx_signatures_learned", "2026-09-25"},
 		{"the trail's challenge counts", challengeOutcomesSQL, "USING COVERING INDEX idx_challenges_created_outcome", "2026-09-25"},
 		{"the trail's hourly challenges", challengeHoursSQL, "USING COVERING INDEX idx_challenges_created_outcome", "2026-09-25"},
+		{"one site's challenge counts", challengeOutcomesSiteSQL, "USING COVERING INDEX idx_challenges_domain_created_outcome", []any{"d1", "2026-09-25"}},
+		{"one site's hourly challenges", challengeHoursSiteSQL, "USING COVERING INDEX idx_challenges_domain_created_outcome", []any{"d1", "2026-09-25"}},
+		{"one site's refusals", `SELECT COUNT(1) FROM vayushield_blocked WHERE domain_id=? AND created_at>=?`, "USING COVERING INDEX idx_blocked_domain_created", []any{"d1", "2026-09-25"}},
+		{"one site's newest refusals", recentBlocksSQL, "USING INDEX idx_blocked_domain_created", []any{"d1", 50}},
 	} {
-		rows, err := dbpkg.DB.Query("EXPLAIN QUERY PLAN "+c.sql, c.arg)
+		args, many := c.arg.([]any)
+		if !many {
+			args = []any{c.arg}
+		}
+		rows, err := dbpkg.DB.Query("EXPLAIN QUERY PLAN "+c.sql, args...)
 		if err != nil {
 			t.Fatalf("%s: %v", c.name, err)
 		}
@@ -59,7 +67,7 @@ func TestTheShieldConsoleReadsItsIndexes(t *testing.T) {
 		}
 		// The queue must come off the index in order; a sort means every
 		// unverified signature is read first.
-		if c.name == "the review queue" && strings.Contains(p, "TEMP B-TREE") {
+		if (c.name == "the review queue" || c.name == "one site's newest refusals") && strings.Contains(p, "TEMP B-TREE") {
 			t.Errorf("the review queue sorts instead of reading its index in order: %s", p)
 		}
 	}

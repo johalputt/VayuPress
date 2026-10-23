@@ -67,6 +67,8 @@ var scopedTools = []scopedTool{
 		Desc: "This site's own traffic, counted server-side"},
 	{Key: "services", Path: "/os/d/%s/services", Icon: "shield", Title: "Outside services", Live: true,
 		Desc: "What this site's pages may load from elsewhere"},
+	{Key: "shield", Path: "/os/d/%s/shield", Icon: "shield", Title: "Security", Live: true,
+		Desc: "What VayuShield refused on this site, and why"},
 }
 
 // scopedToolChip is one navigation row's state, in the grammar every other row

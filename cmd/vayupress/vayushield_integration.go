@@ -247,6 +247,8 @@ func (a *App) bootVayuShield() {
 		SessionCookieName: "vayushield",
 		CountryFn:         requestCountry,
 		ClientIP:          auth.ClientIP,
+		SiteFn:            a.contentScope,
+		RequestIDFn:       getRequestID,
 		CookieSecure:      auth.CSRFCookieSecure(),
 		// Tor Space: never issue a browser challenge (crypto.subtle is undefined
 		// on the plain-http .onion, so it would lock every visitor out).
