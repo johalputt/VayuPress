@@ -111,6 +111,9 @@ type CollectRequest struct {
 	// Lang is the request's Accept-Language, server-side like Geo: one input
 	// of the visitor hash, never stored.
 	Lang string `json:"-"`
+	// search marks a search, set by RecordSearch alone (searches.go). It is
+	// unexported so that no beacon body can set it.
+	search *searchMark
 }
 
 // GeoInfo carries coarse, proxy-supplied location for a visit.

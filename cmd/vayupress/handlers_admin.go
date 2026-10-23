@@ -467,6 +467,9 @@ func (a *App) handleSearchPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	in.Hits = hits
+	if q != "" && a.search != nil {
+		a.recordSearch(r, q, len(hits))
+	}
 	if halcyon && q != "" && len(hits) == 0 && in.Topic == "" {
 		key, _, _, count := a.halcyonScope(r)
 		in.Topics, in.TopicTotal = a.halcyonTopics(key, count)

@@ -108,7 +108,10 @@ func (s *Store) buildCollectEvent(req CollectRequest, ip, ua, domainID string) *
 	now := s.now().UTC()
 
 	et := req.EventType
-	if et != 2 {
+	switch {
+	case req.search != nil:
+		et = eventSearch
+	case et != 2:
 		et = 1
 	}
 	hit := s.visits.Observe(domainID, ip, ua, req.Lang, path, et == 1, now)
@@ -134,6 +137,9 @@ func (s *Store) buildCollectEvent(req CollectRequest, ip, ua, domainID string) *
 		pvArgs: []any{eventID, hit.Session, path, query, trunc(req.PageTitle, 300), referrerHostExtended(req.Referrer), trunc(host, 200),
 			trunc(req.UTMSource, 100), trunc(req.UTMMedium, 100), trunc(req.UTMCampaign, 100),
 			trunc(req.UTMContent, 100), trunc(req.UTMTerm, 100), et, name, now, domainID, hit.Visitor},
+	}
+	if req.search != nil {
+		ev.eventRows = append(ev.eventRows, searchResults(req.search, now, eventID))
 	}
 	if et == 2 && len(req.EventData) > 0 {
 		n := 0

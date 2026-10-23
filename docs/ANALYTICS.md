@@ -66,6 +66,13 @@ made on a site's own Analytics counts that site's traffic alone, and the
 install's goals and funnels count every site's. A funnel counts visits, each
 walked through its steps in order.
 
+**Search.** A search made from a site's search page, recorded by the server
+as it answers: the query and how many results it found. It is an event, not a
+page view, so a visit with a search is not a bounce. A query is lowercased and
+trimmed, and one that looks like an email address or holds five or more digits
+in a row is not kept at all. Searches in the instant search box are answered in
+the reader's browser and are not counted.
+
 **Retention.** Not measured. A visitor is the same only within a day, so
 nobody can be seen to come back on a later day, and a week-over-week cohort
 would be empty by construction. The API's `retention` route says so rather

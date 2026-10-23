@@ -174,7 +174,7 @@ GET /api/v1/analytics/overview | pageviews | pages | referrers | browsers |
     revenue | goals | journey
 GET /api/v1/analytics/export     (Parquet)
 GET /api/v1/sites/{site}/analytics/overview | realtime | pages | sources |
-    events | goals | funnels | funnels/{id} | performance
+    events | searches | goals | funnels | funnels/{id} | performance
 ```
 
 The `/api/v1/analytics` family adds up every site, so a key bound to one site

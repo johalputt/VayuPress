@@ -96,6 +96,36 @@ func (a *App) recordServedPage(r *http.Request) {
 	a.analytics.CollectAsync(req, ip, r.UserAgent(), a.contentScope(r))
 }
 
+// recordSearch counts one search of the site's search page: what was looked
+// for (q) and how many results it found. The rules are recordServedPage's:
+// a person's GET only, never an opt-out, a prefetch or a refused country,
+// within the beacon's per-address budget, on the site this install resolved.
+func (a *App) recordSearch(r *http.Request, q string, results int) {
+	if a.analytics == nil || a.vayuShield == nil || r.Method != http.MethodGet || dntHonored(r) {
+		return
+	}
+	if r.Header.Get("Sec-Purpose") != "" || r.Header.Get("Purpose") == "prefetch" {
+		return
+	}
+	if !countsAsReader(a.vayuShield.Classify(r).Result.ClientType, false) {
+		return
+	}
+	geo := geoFromHeaders(r)
+	if a.analyticsGeoRefused(geo.Country) {
+		return
+	}
+	ip := loginClientIP(r)
+	if !analyticsLimiter.allow(ip) {
+		return
+	}
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	a.analytics.RecordSearch(analytics.CollectRequest{URL: r.URL.Path, Referrer: r.Referer(), Hostname: host,
+		Geo: geo, Lang: r.Header.Get("Accept-Language")}, q, results, ip, r.UserAgent(), a.contentScope(r))
+}
+
 // isPagePath reports whether an uploaded site's path names a page rather than
 // one of its assets: a directory (its index.html), or an .html file.
 func isPagePath(p string) bool {

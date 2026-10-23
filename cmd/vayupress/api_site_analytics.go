@@ -44,6 +44,7 @@ func (a *App) siteAnalyticsRoutes(r chi.Router) {
 		sr.Get("/pages", a.handleSiteAnalyticsPages)
 		sr.Get("/sources", a.handleSiteAnalyticsSources)
 		sr.Get("/events", a.handleSiteAnalyticsEvents)
+		sr.Get("/searches", a.handleSiteAnalyticsSearches)
 		sr.Get("/goals", a.handleSiteAnalyticsGoals)
 		sr.Get("/funnels", a.handleSiteAnalyticsFunnels)
 		sr.Get("/funnels/{fid}", a.handleSiteAnalyticsFunnel)
@@ -189,6 +190,19 @@ func (a *App) handleSiteAnalyticsEvents(w http.ResponseWriter, r *http.Request) 
 		siteHead
 		Events []analytics.EventStat `json:"events"`
 	}{headOf(sc, days), events})
+}
+
+func (a *App) handleSiteAnalyticsSearches(w http.ResponseWriter, r *http.Request) {
+	sc, days := siteScopeOf(r), siteDays(r)
+	stats, err := a.analytics.SearchesScoped(r.Context(), sc.scope, days, 100)
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, struct {
+		siteHead
+		Searches []analytics.SearchStat `json:"searches"`
+	}{headOf(sc, days), stats})
 }
 
 func (a *App) handleSiteAnalyticsGoals(w http.ResponseWriter, r *http.Request) {

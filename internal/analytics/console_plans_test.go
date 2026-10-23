@@ -146,6 +146,8 @@ func TestNoConsoleReadWalksAWholeTable(t *testing.T) {
 		}
 		_, _ = s.GoalResults(ctx, days)
 		_, _ = s.GoalResultsScoped(ctx, "d1", days)
+		_, _ = s.SearchesScoped(ctx, "d1", days, 20)
+		_, _ = s.SearchesScoped(ctx, ScopeAllDomains, days, 20)
 		_, _ = s.PathFlows(ctx, days, 10)
 	}
 	_, _ = s.OverviewBetween(ctx, weekAgo, today)

@@ -34,8 +34,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   counts visitors, as every other figure does, and its pages and referrers
   are counted by reader too. A site's own Analytics has its own Right now,
   polling that site's last five minutes alone.
+- **What readers search for.** A site's search page records each search:
+  the query and whether it found anything. Analytics shows the most searched
+  queries and the ones that found nothing, for the install and for each
+  site, and the API serves them. A query that looks like an email address
+  or holds a long number is never kept, and the page-view script cannot
+  forge a search.
 - **One site's analytics over the API.** `/api/v1/sites/{site}/analytics/…`
-  (overview, realtime, pages, sources, events, goals, funnels, performance)
+  (overview, realtime, pages, sources, events, searches, goals, funnels, performance)
   reads one site by its id or host. A key bound to a site reads that site and
   no other: another site answers 404, the same as no site at all.
 - **Goals and funnels belong to a site.** A site's own Analytics has its

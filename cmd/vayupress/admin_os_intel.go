@@ -513,6 +513,7 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 		ui.Section("Campaigns", "", ui.HTML(campaigns)),
 		ui.Section("Events", "What you track with data-vp-event or VayuPress.track()",
 			ui.HTML(bars(eventBars, osShareHidden(), "No custom events yet."))),
+		ui.HTML(a.osSearchesSection(ctx, analytics.ScopeAllDomains, days)),
 		ui.HTML(a.osGoalsSection(ctx, days)),
 		ui.HTML(a.osJourneySection(ctx, days)),
 		ui.HTML(osExportSection(days)),
@@ -772,6 +773,30 @@ func (a *App) osGoalsSectionScoped(ctx context.Context, scope, base string, days
     <thead><tr><th>Goal</th><th>Reached by</th><th>Target</th><th>Completions</th><th>Conversion</th><th></th></tr></thead>
     <tbody>`+rows+`</tbody>
   </table></div></div>`))) + string(sheet)
+}
+
+// osSearchesSection is what readers searched scope's site for over the
+// window: the most searched queries, and those that found nothing, which is
+// where a site is missing what its readers come for.
+func (a *App) osSearchesSection(ctx context.Context, scope string, days int) string {
+	stats, _ := a.analytics.SearchesScoped(ctx, scope, days, 20)
+	if len(stats) == 0 {
+		return string(ui.Section("Searches", "What readers looked for with the site's search",
+			ui.HTML(`<p class="table-empty">No searches yet. Searches made from the site's search page show here; a query that looks like an email address or a long number is never kept.</p>`)))
+	}
+	rows := ""
+	var empty []osChartBar
+	for _, st := range stats {
+		rows += `<tr><td class="post-row__name">` + html.EscapeString(st.Query) + `</td><td>` + strconv.Itoa(st.Searches) +
+			`</td><td>` + strconv.Itoa(st.Visitors) + `</td><td>` + strconv.Itoa(st.Empty) + `</td></tr>`
+		if st.Empty > 0 {
+			empty = append(empty, osChartBar{Label: st.Query, Value: st.Empty})
+		}
+	}
+	table := `<div class="table-wrap"><table class="table"><thead><tr><th>Query</th><th>Searches</th><th>Visitors</th><th>Found nothing</th></tr></thead><tbody>` + rows + `</tbody></table></div>`
+	return string(ui.Section("Searches", "What readers looked for with the site's search", ui.HTML(analyticsCols(
+		analyticsPanel("Most searched", table),
+		analyticsPanel("Found nothing", osBarList(empty, osShareHidden(), "Every search found something."))))))
 }
 
 // noGoalsYet is the goals table's empty row; the script writes the same words
