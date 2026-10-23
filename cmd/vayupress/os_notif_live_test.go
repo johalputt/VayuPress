@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/auth"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 )
 
@@ -34,12 +35,16 @@ func TestTheBellCarriesItsOwnSignature(t *testing.T) {
 }
 
 // bellStream opens the stream against a running server and returns its
-// events, one per receive, until the test ends.
-func bellStream(t *testing.T, a *App, sig string) <-chan bellOut {
+// events, one per receive; the channel closes when the server ends the
+// stream. cookie, when given, is sent as the console's session.
+func bellStream(t *testing.T, a *App, sig string, cookie ...string) <-chan bellOut {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(a.handleOSNotificationsStream))
 	ctx, cancel := context.WithCancel(context.Background())
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/os/api/notifications/stream?sig="+sig, nil)
+	if len(cookie) > 0 {
+		req.AddCookie(&http.Cookie{Name: auth.SessionCookie, Value: cookie[0]})
+	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -50,6 +55,7 @@ func bellStream(t *testing.T, a *App, sig string) <-chan bellOut {
 	t.Cleanup(func() { cancel(); _ = res.Body.Close(); srv.Close() })
 	out := make(chan bellOut, 8)
 	go func() {
+		defer close(out)
 		sc := bufio.NewScanner(res.Body)
 		sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
 		event := ""
@@ -218,5 +224,36 @@ func TestAFloodOfPulsesCannotDriveTheBellFasterThanItsGap(t *testing.T) {
 	}
 	if n := len(events); n > 1 {
 		t.Errorf("%d redraws inside one gap of %v under a flood of pulses; want at most 1", n, bellMinGap)
+	}
+}
+
+// Signed out in another tab, the open bell stops: the stream ends with the
+// session and draws nothing for a sign-in that is gone, however much news
+// arrives after.
+func TestTheBellStopsWhenItsSessionEnds(t *testing.T) {
+	openMigratedDB(t)
+	a := &App{sessions: auth.NewSessionStore(dbpkg.DB)}
+	ctx := context.Background()
+	token, err := a.sessions.Create(ctx, "op")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, sig := osNotifBellSig(a.getOSSettings(ctx))
+	events := bellStream(t, a, sig, token)
+	time.Sleep(100 * time.Millisecond)
+	if err := a.sessions.Destroy(ctx, token); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dbpkg.DB.Exec(`INSERT INTO contact_messages(id,name,email,message,created_at) VALUES('m1','Priya','p@example.net','hi',?)`, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	a.bellLive.fire()
+	select {
+	case b, open := <-events:
+		if open {
+			t.Fatalf("a bell was drawn for a session that had ended:\n%s", b.HTML)
+		}
+	case <-time.After(bellMinGap + 2*time.Second):
+		t.Fatal("the stream stayed open after its session ended")
 	}
 }
