@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/alerts"
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
@@ -401,6 +402,9 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 		frag = string(ui.Overview(ui.OverviewPage{Title: "Analytics", State: ui.Text("Counting the last " + periodLabel), Actions: osPeriodSelector("/os/analytics", days)},
 			ui.Band{Title: "Visitors", Hint: "Last " + periodLabel, Chart: `<p class="table-empty">This is counted in the background; reload in a few seconds.</p>`}))
 	}
+	// The alerts are read off the request, not the cache, so a change shows
+	// at once.
+	frag += a.alertsSection(r.Context(), alerts.Install, "/os/api/analytics/alerts", cfg.AccessLevel >= accessAdmin, nonce)
 	body := frag + "\n" + `<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js?v=` + assetVer("js/admin-os-intel.js") + `"></script>`
 	writeOSHTML(w, r, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
 }

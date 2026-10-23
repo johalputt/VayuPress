@@ -63,6 +63,7 @@ func (a *App) handleOSScopedAnalytics(w http.ResponseWriter, r *http.Request) {
 	// The setting is read off the request, not the cache, so a save shows at
 	// once.
 	body += a.siteRetentionSection(r.Context(), d, nonce)
+	body += a.alertsSection(r.Context(), d.ID, "/os/d/"+d.ID+"/api/analytics/alerts", cfg.AccessLevel >= accessAdmin, nonce)
 	// The live panel's poller; the body above is cached, the script is not.
 	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js?v=` + assetVer("js/admin-os-intel.js") + `"></script>`
 	writeOSHTML(w, r, adminOSLayout(nonce, title, "optimize", cfg, htmpl.HTML(body)))

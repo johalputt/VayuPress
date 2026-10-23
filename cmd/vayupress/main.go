@@ -31,6 +31,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/ads"
 	"github.com/johalputt/vayupress/internal/aiassist"
+	"github.com/johalputt/vayupress/internal/alerts"
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/anonaudit"
 	"github.com/johalputt/vayupress/internal/api"
@@ -895,6 +896,7 @@ func main() {
 
 	// Privacy-first analytics + outbound webhooks + social posting (Tier 2).
 	a.analytics = analytics.New(dbpkg.DB)
+	a.alerts = alerts.New(dbpkg.DB, dbpkg.Reader())
 	// Route the admin Analytics panel's heavy aggregate reads at the WAL read
 	// pool so they never serialise behind the pageview write stream on the single
 	// writer connection (which made the Analytics tab 502). Writes stay on the

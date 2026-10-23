@@ -397,6 +397,7 @@ func (a *App) bootVayuShield() {
 	})
 
 	a.startAnalyticsRetention(queue.DoneCh)
+	a.startAlerts(queue.DoneCh)
 }
 
 // shieldChargeAt is the last unix-second the shield charged the governance

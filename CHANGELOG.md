@@ -111,6 +111,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   kept: less than the install, which the privacy notice publishes, and never
   more, or inherited. Its purge runs with the install's, a few minutes after
   start and daily, and the page says when it last ran and what it removed.
+- **Alerts.** The install's Analytics and each site's take alerts: a
+  figure (page views, visitors, searches that found nothing, requests the
+  shield refused, challenges issued) above or below a threshold over the last
+  5 minutes to a day, checked every minute, with a cooldown before it fires
+  again and a severity. A firing is a line in the bell, live in every open
+  tab, until it is marked seen, and is mailed to the alert's address when it
+  has one. Each alert shows its last count and when it last fired, and the
+  history keeps every firing with its count and what became of its mail.
+  Adding and deleting alerts is for administrators, and audited; one site's
+  page can neither see nor change another's (migration 117).
 - **What readers search for.** A site's search page records each search:
   the query and whether it found anything. Analytics shows the most searched
   queries and the ones that found nothing, for the install and for each

@@ -83,3 +83,30 @@ than drawing cohorts.
 A range is a set of UTC days. "Last 14 days" is today and the 13 days before
 it. A period comparison reads the range of equal length just before, by the
 same definitions.
+
+## Alerts
+
+An alert counts one figure over the last 5 minutes to 1 day, once a minute,
+for one hosted site or for the whole install. It fires when the count is
+above its threshold, or below it, and then waits out its cooldown before it
+may fire again, however long the count stays past the threshold. A firing is
+a line in the console's bell, in the alert's severity, until it is marked
+seen, and it is mailed to the alert's address when it has one and the install
+can send mail. Each firing stays in the alert's history with the count, the
+rule as it read then, and what became of its mail. Only an administrator adds
+or deletes an alert, because an alert mails the address it is given. The
+code is `internal/alerts`.
+
+The figures are counted from the same rows the reports read:
+
+- **Page views**: page views in the window.
+- **Visitors**: people with any event in the window, as the live panel counts
+  its readers, once however many tabs or visits.
+- **Searches that found nothing**: searches whose result count was 0.
+- **Requests the shield refused**: blocks and operator limits' 429s, the
+  refusals the Security page counts.
+- **Challenges issued**: challenges the shield served, solved or not.
+
+A window ends at the minute the check runs, and each count reads a range of
+an index, so a check costs what its window holds. A site that is removed stops
+being checked.

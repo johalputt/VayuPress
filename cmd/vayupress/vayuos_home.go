@@ -146,6 +146,8 @@ func saNotifIcon(kind string) string {
 		return "disk"
 	case "mode":
 		return "pulse"
+	case "alert":
+		return "bell"
 	case "member":
 		return "user"
 	case "post":

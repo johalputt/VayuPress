@@ -307,6 +307,9 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/shield/simulate", a.handleOSScopedShieldSimulate)
 			dr.With(auth.CSRFTokenMiddleware).Post("/analytics/goals", a.handleOSScopedCreateGoal)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/analytics/retention", a.handleOSScopedRetention)
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/analytics/alerts", a.handleOSAlertCreate)
+			dr.With(auth.CSRFTokenMiddleware).Delete("/api/analytics/alerts/{aid}", a.handleOSAlertDelete)
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/analytics/alerts/seen", a.handleOSAlertsSeen)
 			dr.With(auth.CSRFTokenMiddleware).Delete("/analytics/goals/{gid}", a.handleOSScopedDeleteGoal)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/copy-from-primary", a.handleOSScopedCopyFromPrimary)
 		})
@@ -542,6 +545,9 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/api/analytics/realtime", a.handleAnalyticsRealtime)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/analytics/goals", a.handleAnalyticsCreateGoal)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/analytics/goals/{id}", a.handleAnalyticsDeleteGoal)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/analytics/alerts", a.handleOSAlertCreate)
+		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/analytics/alerts/{aid}", a.handleOSAlertDelete)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/analytics/alerts/seen", a.handleOSAlertsSeen)
 		// VayuShield operator panel (admin-gated).
 		// Both the page load AND the section poll re-issue the vp_csrf cookie
 		// (CSRFTokenMiddleware) so it never goes stale while the panel is open.
@@ -1605,7 +1611,7 @@ type osNotification struct {
 	Detail string
 	Href   string
 	Count  int
-	Kind   string // "mail" | "comment" | "message" | "domain" | "update" | "backup" | "jobs" | "storage" | "mode"
+	Kind   string // "mail" | "comment" | "message" | "domain" | "update" | "backup" | "jobs" | "storage" | "mode" | "alert"
 	// Severity (Wave 2.2): "" / "info" is a todo, "warn" needs attention soon,
 	// "danger" is something failing NOW. Drives the badge colour on the bell and
 	// the dashboard attention strip, so "3 pending comments" never screams the
@@ -1770,6 +1776,10 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 	}
 	if dbpkg.DB == nil {
 		return out
+	}
+	// Alerts that fired and are not yet marked seen, a line per site.
+	for _, n := range a.alertNotices(ctx) {
+		add(n.Href, n.Title, n.Detail, n.Kind, n.Count, n.Severity)
 	}
 	rdb := dbpkg.Reader()
 	// Unread contact-form mail (already counted for the sidebar badge).

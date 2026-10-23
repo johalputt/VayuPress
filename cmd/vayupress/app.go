@@ -23,6 +23,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/ads"
 	"github.com/johalputt/vayupress/internal/aiassist"
+	"github.com/johalputt/vayupress/internal/alerts"
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/apikeys"
@@ -207,6 +208,8 @@ type App struct {
 
 	// Privacy-first analytics (Tier 2).
 	analytics *analytics.Store
+	// Alerts on a site's traffic and on what its shield refused.
+	alerts *alerts.Store
 
 	// Outbound webhooks (Tier 2).
 	webhooks *webhooks.Store
