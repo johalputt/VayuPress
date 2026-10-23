@@ -1,0 +1,216 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package main
+
+// vayushield_sites.go — a hosted site's own VayuShield settings: read from the
+// site's scope, compiled into the shield, edited on the site's Security page.
+//
+// The rules of combination are the shield's (vayushield/site_policy.go):
+// a threshold set here replaces the install's on this site; a list here is
+// added to the install's, so the install's refusals hold on every site.
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"strconv"
+	"strings"
+
+	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/domain"
+	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/ui"
+	"github.com/johalputt/vayupress/internal/vayushield"
+	"github.com/johalputt/vayupress/internal/vayushield/policy"
+)
+
+// shieldSiteField is one of a site's own shield settings.
+type shieldSiteField struct {
+	Key, Label, Hint string
+	Threshold        bool   // a number in (0, 1]; otherwise a list
+	Install          string // the install's key it stands beside
+}
+
+// shieldSiteFields are the settings a site may set, in the order the page shows.
+var shieldSiteFields = []shieldSiteField{
+	{settings.KeyShieldSitePoW, "Silent proof-of-work at", "A score at or above this is asked for a proof of work.", true, settings.KeyShieldPoW},
+	{settings.KeyShieldSiteJS, "Visible check at", "A score at or above this is shown the check page.", true, settings.KeyShieldJS},
+	{settings.KeyShieldSiteBlock, "Refuse at", "A score at or above this is refused.", true, settings.KeyShieldBlock},
+	{settings.KeyShieldSiteDenyCIDRs, "Refuse these networks", "Addresses or CIDR ranges, one per line, refused on this site.", false, settings.KeyShieldDenyCIDRs},
+	{settings.KeyShieldSiteAllowCIDRs, "Always serve these networks", "Never challenged on this site. The install's refusals still apply.", false, settings.KeyShieldAllowCIDRs},
+	{settings.KeyShieldSiteDenyCountries, "Refuse these countries", "Two-letter codes, one per line.", false, settings.KeyShieldDenyCountries},
+	{settings.KeyShieldSiteChallengeCountries, "Challenge these countries", "Served a proof of work rather than refused.", false, settings.KeyShieldChallengeCountries},
+	{settings.KeyShieldSiteAllowCountries, "Serve only these countries", "When set, every other country is refused on this site.", false, settings.KeyShieldAllowCountries},
+}
+
+// siteShieldSettings is one site's own settings as the shield takes them, and
+// whether it sets anything at all.
+func (a *App) siteShieldSettings(ctx context.Context, id string) (vayushield.SiteSettings, bool) {
+	sc := settings.ForDomain(id)
+	g := func(k string) string { return strings.TrimSpace(a.siteSettings.Get(ctx, sc, k)) }
+	num := func(k string) float64 {
+		f, err := strconv.ParseFloat(g(k), 64)
+		if err != nil {
+			return 0
+		}
+		return f
+	}
+	s := vayushield.SiteSettings{
+		PoWThreshold:   num(settings.KeyShieldSitePoW),
+		JSThreshold:    num(settings.KeyShieldSiteJS),
+		BlockThreshold: num(settings.KeyShieldSiteBlock),
+		Policy: policy.Config{
+			AllowCIDRs:         policyLines(g(settings.KeyShieldSiteAllowCIDRs)),
+			DenyCIDRs:          policyLines(g(settings.KeyShieldSiteDenyCIDRs)),
+			AllowCountries:     policyLines(g(settings.KeyShieldSiteAllowCountries)),
+			DenyCountries:      policyLines(g(settings.KeyShieldSiteDenyCountries)),
+			ChallengeCountries: policyLines(g(settings.KeyShieldSiteChallengeCountries)),
+		},
+	}
+	set := s.PoWThreshold > 0 || s.JSThreshold > 0 || s.BlockThreshold > 0 ||
+		len(s.Policy.AllowCIDRs)+len(s.Policy.DenyCIDRs)+len(s.Policy.AllowCountries)+len(s.Policy.DenyCountries)+len(s.Policy.ChallengeCountries) > 0
+	return s, set
+}
+
+// applyShieldSiteSettings gives the shield every hosted site's own settings,
+// and returns the entries it could not parse, per site.
+func (a *App) applyShieldSiteSettings(ctx context.Context) map[string][]string {
+	if a.vayuShield == nil || a.domains == nil || a.siteSettings == nil {
+		return nil
+	}
+	list, err := a.domains.List(ctx)
+	if err != nil {
+		return nil
+	}
+	sites := map[string]vayushield.SiteSettings{}
+	for _, d := range list {
+		if d.IsPrimary {
+			continue // the primary's settings are the install's
+		}
+		if s, ok := a.siteShieldSettings(ctx, d.ID); ok {
+			sites[d.ID] = s
+		}
+	}
+	return a.vayuShield.SetSiteSettings(sites)
+}
+
+// handleOSScopedShieldSave stores the URL's site's own shield settings and
+// applies them at once. The site is the path's; a body naming another is
+// refused. Only the keys of shieldSiteFields are written.
+func (a *App) handleOSScopedShieldSave(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		return
+	}
+	d, ok := osScopedDomain(r)
+	if !ok || d.IsPrimary {
+		writeAPIError(w, r, http.StatusNotFound, "unknown-domain", "no such hosted site", "")
+		return
+	}
+	var body struct {
+		DomainID string            `json:"domain_id"`
+		Settings map[string]string `json:"settings"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32*1024)).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "invalid JSON", "")
+		return
+	}
+	if !requireScopeMatchesPath(r, body.DomainID) {
+		writeAPIError(w, r, http.StatusBadRequest, "scope-mismatch",
+			"this request names a different site from the one in its address; nothing was saved", "")
+		return
+	}
+	kv := map[string]string{}
+	var changed []string
+	for _, f := range shieldSiteFields {
+		v, ok := body.Settings[f.Key]
+		if !ok {
+			continue
+		}
+		v = strings.TrimSpace(v)
+		if f.Threshold && v != "" {
+			n, err := strconv.ParseFloat(v, 64)
+			if err != nil || n <= 0 || n > 1 {
+				writeAPIError(w, r, http.StatusBadRequest, "invalid-threshold",
+					f.Label+" must be a number above 0 and at most 1, or empty to use the install's", "")
+				return
+			}
+			v = strconv.FormatFloat(n, 'f', -1, 64)
+		}
+		kv[f.Key] = v
+		changed = append(changed, f.Key)
+	}
+	if len(kv) > 0 {
+		if err := a.siteSettings.SetMany(r.Context(), settings.ForDomain(d.ID), kv); err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "save-failed", err.Error(), "")
+			return
+		}
+		// Keys, never values: an address list is the operator's own business.
+		dbpkg.AuditLog("vayushield.site_settings", dbpkg.AuditActor(r), d.Host, strings.Join(changed, ", "))
+	}
+	issues := a.applyShieldSiteSettings(r.Context())
+	writeJSON(w, r, http.StatusOK, map[string]any{"status": "ok", "issues": issues[d.ID]})
+}
+
+// scopedShieldForm is the site's own settings, each beside what the install
+// uses, so it is never a guess whether a value is the site's or inherited.
+func (a *App) scopedShieldForm(ctx context.Context, d domain.Domain) ui.HTML {
+	if a.siteSettings == nil || d.IsPrimary {
+		return ""
+	}
+	sc := settings.ForDomain(d.ID)
+	var b strings.Builder
+	b.WriteString(`<div id="scoped-shield-ctx" data-id="` + esc(d.ID) + `"></div>`)
+	rows := make([]ui.Row, 0, len(shieldSiteFields))
+	for _, f := range shieldSiteFields {
+		own := a.siteSettings.Get(ctx, sc, f.Key)
+		inst := strings.TrimSpace(a.siteSettings.Get(ctx, settings.ForPrimary(), f.Install))
+		id := "ss-" + strings.ReplaceAll(f.Key, ".", "-")
+		var control string
+		hint := f.Hint
+		if f.Threshold {
+			control = `<input id="` + id + `" type="text" inputmode="decimal" class="input" data-shield-key="` + esc(f.Key) +
+				`" value="` + esc(own) + `" placeholder="` + esc(inst) + `">`
+			hint += " Empty uses the install's " + inst + "."
+		} else {
+			control = `<textarea id="` + id + `" class="input" rows="3" data-shield-key="` + esc(f.Key) + `">` + esc(own) + `</textarea>`
+			if n := len(policyLines(inst)); n > 0 {
+				hint += " Added to the install's " + countOf(n, "entry") + "."
+			}
+		}
+		rows = append(rows, ui.Row{Label: f.Label, Hint: hint, ID: id, Control: ui.HTML(control)})
+	}
+	b.WriteString(string(ui.Rows(rows...)))
+	b.WriteString(`<div class="sa-list__sheet-actions"><button type="button" class="btn btn--primary btn--sm" data-shield-save>Save</button>` +
+		`<span class="text-xs muted" id="scoped-shield-status" role="status" aria-live="polite"></span></div>`)
+	return ui.HTML(b.String())
+}
+
+// scopedShieldScript saves the form; the server answers with the entries it
+// could not parse, which the status line names.
+func scopedShieldScript(nonce string) string {
+	return `<script nonce="` + nonce + `">
+(function(){'use strict';
+function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):'';}
+var node=document.getElementById('scoped-shield-ctx');
+var ID=node?node.getAttribute('data-id'):'';
+var btn=document.querySelector('[data-shield-save]');
+var st=document.getElementById('scoped-shield-status');
+if(!ID||!btn)return;
+btn.addEventListener('click',function(){
+  var payload={};
+  document.querySelectorAll('[data-shield-key]').forEach(function(el){payload[el.getAttribute('data-shield-key')]=el.value;});
+  btn.disabled=true; if(st)st.textContent='Saving…';
+  fetch('/os/d/'+encodeURIComponent(ID)+'/api/shield',{method:'POST',
+    headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},
+    body:JSON.stringify({domain_id:ID,settings:payload})})
+    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+    .then(function(res){btn.disabled=false; if(!st)return;
+      if(!res.ok){st.textContent=(res.j&&res.j.message)||'Could not save';return;}
+      var bad=(res.j&&res.j.issues)||[];
+      st.textContent=bad.length?('Saved. Not understood, so not applied: '+bad.join(', ')):'Saved and applied';})
+    .catch(function(e){btn.disabled=false; if(st)st.textContent='Error: '+e;});
+});
+})();
+</script>`
+}

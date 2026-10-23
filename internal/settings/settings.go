@@ -337,6 +337,21 @@ const (
 	// fetching, displayed as healthy, and connected to nothing.
 	KeyShieldIntelFeeds = "shield.intel_feeds"
 
+	// A hosted site's own VayuShield settings, stored in that site's scope.
+	// They are keys of their own, with no defaults, because empty has to mean
+	// "inherits the install": read through the install's keys, an unset site
+	// threshold would come back as the product's default and override the
+	// operator's own value. Thresholds replace the install's when set; the
+	// lists are added to the install's (vayushield/site_policy.go).
+	KeyShieldSitePoW                = "shield.site_pow_threshold"
+	KeyShieldSiteJS                 = "shield.site_js_threshold"
+	KeyShieldSiteBlock              = "shield.site_block_threshold"
+	KeyShieldSiteAllowCIDRs         = "shield.site_allow_cidrs"
+	KeyShieldSiteDenyCIDRs          = "shield.site_deny_cidrs"
+	KeyShieldSiteAllowCountries     = "shield.site_allow_countries"
+	KeyShieldSiteDenyCountries      = "shield.site_deny_countries"
+	KeyShieldSiteChallengeCountries = "shield.site_challenge_countries"
+
 	// KeyAnalyticsBeacon toggles the VayuAnalytics engagement beacon (time on
 	// page / scroll depth) injected on public pages. Default ON — it is
 	// cookieless and stores no PII, the same posture as the existing view
@@ -595,10 +610,19 @@ var NotPortable = map[string]bool{
 
 // AllKeys is the canonical set of settings keys accepted by Set/SetMany.
 var AllKeys = map[string]bool{
-	KeyNoFollowLinks:    true,
-	KeyPageCache:        true,
-	KeyThemeStudioDraft: true,
-	KeyTalkHost:         true,
+	// A hosted site's own VayuShield settings (vayushield/site_policy.go).
+	KeyShieldSitePoW:                true,
+	KeyShieldSiteJS:                 true,
+	KeyShieldSiteBlock:              true,
+	KeyShieldSiteAllowCIDRs:         true,
+	KeyShieldSiteDenyCIDRs:          true,
+	KeyShieldSiteAllowCountries:     true,
+	KeyShieldSiteDenyCountries:      true,
+	KeyShieldSiteChallengeCountries: true,
+	KeyNoFollowLinks:                true,
+	KeyPageCache:                    true,
+	KeyThemeStudioDraft:             true,
+	KeyTalkHost:                     true,
 	// The startup-duration ring (ADR-0155 P4). Written by the process itself on
 	// every boot, which is the only way it can be true.
 	KeyStartupMillis: true,

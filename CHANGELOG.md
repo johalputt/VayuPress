@@ -34,6 +34,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   counts visitors, as every other figure does, and its pages and referrers
   are counted by reader too. A site's own Analytics has its own Right now,
   polling that site's last five minutes alone.
+- **Each site has its own shield rules.** A hosted site's Security page
+  sets its own challenge and refusal thresholds, and its own lists of
+  networks and countries to refuse, challenge, always serve or serve alone.
+  A threshold set there replaces the install's on that site; a list is added
+  to the install's, so the install's refusals hold on every site and a site
+  can never lift one. Each value is shown beside the install's, saving
+  applies at once, entries that cannot be read are named, and every save is
+  audited by key.
 - **Each site has its own Security.** Every block and challenge now records
   the site it was on and the request that drew it (migration 115). A site's
   console has a Security page: what VayuShield refused there and why, what

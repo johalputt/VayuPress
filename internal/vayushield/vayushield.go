@@ -395,6 +395,10 @@ type Manager struct {
 	// away is worse than one it refused loudly.
 	policyIssues atomic.Pointer[[]string]
 
+	// Hosted sites' own settings (site_policy.go): as given, and compiled.
+	siteCfg atomic.Pointer[map[string]SiteSettings]
+	sites   atomic.Pointer[map[string]*sitePolicy]
+
 	// inspectHits counts compiled-in inspection findings by tier (foreign-stack,
 	// traversal, payload). Split rather than totalled because the tiers mean
 	// very different things: a count that is nearly all payload is most likely
@@ -668,6 +672,9 @@ func (m *Manager) ApplySettings(s Settings) {
 	s.BlockThreshold = clamp(s.BlockThreshold, 0.8)
 	s.RatePerMinute, s.Burst, s.AutoBlockJailMinutes = rpm, burst, jm
 	m.curSettings.Store(&s)
+	// A site's lists are merged with the install's: recompile them against
+	// the install's lists as they now are.
+	m.compileSites()
 }
 
 // CurrentSettings returns the effective settings (for rendering the panel).
@@ -913,7 +920,7 @@ func (m *Manager) RouteCost(r *http.Request) int {
 	if m == nil || r == nil || r.URL == nil {
 		return 1
 	}
-	pol := m.Policy()
+	pol := m.policyFor(r)
 	if pol.Empty() {
 		return 1
 	}
@@ -1290,7 +1297,7 @@ func (m *Manager) Decide(r *http.Request, v Verdict) Action {
 	if m.hasValidSession(r) {
 		return ActionAllow
 	}
-	pow, js, block := lc.pow, lc.js, lc.block
+	pow, js, block := m.thresholdsFor(r, lc.pow, lc.js, lc.block)
 	// Aegis L4 self-calibration: when the observed challenge pass rate says we
 	// have been challenging real browsers, a loosen-only bias raises the
 	// challenge thresholds so borderline humans are allowed instead. It can
@@ -1513,7 +1520,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// meant to be an exemption from the operator's own orders: the two DENY
 		// verdicts are evaluated first, and only then does the bypass get its
 		// say — followed by the ALLOW escape hatch.
-		pol := m.Policy()
+		pol := m.policyFor(r)
 		if !pol.Empty() {
 			switch pol.Source(ipKey) {
 			case policy.VerdictDeny:
@@ -1858,7 +1865,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// resolve somewhere other than where the person is — so the worst it can
 		// cost anyone is one puzzle.
 		if !verified && m.cfg.CountryFn != nil {
-			if pol := m.Policy(); !pol.Empty() && pol.GeoActive() {
+			if pol := m.policyFor(r); !pol.Empty() && pol.GeoActive() {
 				if pol.Country(m.cfg.CountryFn(r, ipKey)) == policy.VerdictChallenge &&
 					!m.observing(lc, GateGeoChallenge) {
 					if m.serveChallenge(w, r, Verdict{}, challenge.DefaultDifficulty, false) {

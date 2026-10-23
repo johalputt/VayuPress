@@ -46,6 +46,9 @@ func (a *App) handleOSScopedShield(w http.ResponseWriter, r *http.Request) {
 		scope = ""
 	}
 	body := a.renderSiteShieldBody(r.Context(), d.ID, scope, d.Host, shieldTrailHours(r))
+	if form := a.scopedShieldForm(r.Context(), d); form != "" {
+		body += string(ui.Section("This site's rules", "Thresholds replace the install's; lists add to them", form)) + scopedShieldScript(nonce)
+	}
 	writeOSHTML(w, r, adminOSLayout(nonce, "Security · "+d.Host, "optimize", cfg, htmpl.HTML(body)))
 }
 

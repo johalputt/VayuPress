@@ -345,6 +345,8 @@ func (a *App) bootVayuShield() {
 	// toggles). All default OFF; the panel writes these and applies them live, so
 	// nothing here throttles or challenges a real visitor until opted in.
 	a.vayuShield.ApplySettings(a.shieldSettings(context.Background()))
+	// Each hosted site's own settings, on top of the install's.
+	a.applyShieldSiteSettings(context.Background())
 	// "Behind Cloudflare/CDN" real-visitor-IP trust: enable if EITHER the env
 	// (TRUST_CLOUDFLARE, applied in config.Init) OR the persisted panel toggle is
 	// on. Without it, a Cloudflare-fronted site pools its whole audience onto
