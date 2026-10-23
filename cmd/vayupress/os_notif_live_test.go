@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -186,5 +187,36 @@ func TestEveryViewerMayOpenTheirOwnBell(t *testing.T) {
 		if got := osPathMinLevel(p); got != accessAuthor {
 			t.Errorf("osPathMinLevel(%s) = %d, want accessAuthor: the bell is every viewer's own", p, got)
 		}
+	}
+}
+
+// Audit, 3.18.12: anyone can send mail or fill in the contact form, and each
+// one pulses every open bell. Unbounded, a flood of mail made each open tab
+// redraw the whole bell (every mailbox counted, every hosted site checked)
+// about three times a second. A bell is redrawn at most once per
+// bellMinGap, however fast the pulses come.
+func TestAFloodOfPulsesCannotDriveTheBellFasterThanItsGap(t *testing.T) {
+	openMigratedDB(t)
+	a := &App{}
+	_, sig := osNotifBellSig(a.getOSSettings(context.Background()))
+	events := bellStream(t, a, sig)
+	time.Sleep(100 * time.Millisecond) // subscribed
+	stop := time.After(bellMinGap - 200*time.Millisecond)
+	for i := 0; ; i++ {
+		// Each pulse brings real news, so every redraw would be sent.
+		if _, err := dbpkg.DB.Exec(`INSERT INTO contact_messages(id,name,email,message,created_at) VALUES(?,?,?,?,?)`,
+			"flood"+strconv.Itoa(i), "Flood "+strconv.Itoa(i), "f@example.net", "x", time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+		a.bellLive.fire()
+		select {
+		case <-stop:
+		case <-time.After(100 * time.Millisecond):
+			continue
+		}
+		break
+	}
+	if n := len(events); n > 1 {
+		t.Errorf("%d redraws inside one gap of %v under a flood of pulses; want at most 1", n, bellMinGap)
 	}
 }

@@ -33,7 +33,7 @@
 
 ## About
 
-> **Live install:** **[johal.in](https://johal.in)** — **234,727 posts**, **14 sites** and a full mail server, all on **one Contabo VPS 10**, on VayuPress 3.18.7. [See the numbers →](#running-in-production--johalin)
+> **Live install:** **[johal.in](https://johal.in)** — **234,997 posts**, **14 sites** and a full mail server, all on **one Contabo VPS 10**, on VayuPress 3.18.11. [See the numbers →](#running-in-production--johalin)
 
 **Vayu** is Sanskrit for *wind* — the invisible force that moves everything and is owned by no one. VayuPress moves your online presence the same way: entirely under your control, seen by no third party.
 
@@ -293,11 +293,11 @@ Benchmarks are easy to stage. This is a live install you can open right now and 
 | | |
 |---|---|
 | **Site** | **[johal.in](https://johal.in)** — a working blog, publicly reachable |
-| **Published posts** | **234,727**, in one SQLite database |
+| **Published posts** | **234,997**, in one SQLite database |
 | **Hardware** | A single **Contabo VPS&nbsp;10** — one box, nothing else |
 | **Running on it** | **14 sites** across `johal.in` and `vayupress.com` (3 blogs, 10 hand-built sites, 1 business template), every certificate live, **+** the mail server (SMTP, IMAP, POP3, DKIM, WKD) |
 | **VayuShield** | Protecting, with 41 inspection rules and three datacenter range feeds |
-| **Version** | VayuPress 3.18.7 |
+| **Version** | VayuPress 3.18.11 |
 
 ### Google PageSpeed Insights
 
@@ -327,7 +327,7 @@ A second, independent Lighthouse run (Cloudflare Synthetic Monitoring, from Iowa
 
 **0 ms blocking time is a design outcome, not a tuning trick.** There is no third-party analytics, tag manager, font CDN or tracking pixel to block on, because the platform ships its own analytics and serves every byte from your origin. The pages are fast largely because nothing else is invited onto them.
 
-> The version, sites, post count and shield state were read from johal.in's own API on 16 October 2026. The PageSpeed figures are from 27 September 2026, the home page and an article (`/vayupress-for-privacy`); the article's 97 on desktop was small touch targets. The time to first byte is from Cloudflare Synthetic Monitoring, Iowa, 27–28 July 2026. Your numbers will depend on your content, VPS and network. [Benchmarks →](docs/BENCHMARKS.md)
+> The version, sites, post count and shield state were read from johal.in's own API on 23 October 2026. The PageSpeed figures are from 27 September 2026, the home page and an article (`/vayupress-for-privacy`); the article's 97 on desktop was small touch targets. The time to first byte is from Cloudflare Synthetic Monitoring, Iowa, 27–28 July 2026. Your numbers will depend on your content, VPS and network. [Benchmarks →](docs/BENCHMARKS.md)
 
 ---
 

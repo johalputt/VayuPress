@@ -44,6 +44,12 @@ const (
 	// bellSettle gathers a burst of pulses (a bulk import, a batch of mail)
 	// into one redraw.
 	bellSettle = 300 * time.Millisecond
+	// bellMinGap is the least time between two redraws of one bell. Mail and
+	// the contact form are open to anyone, and each pulses every bell: without
+	// it a flood of mail redrew each open tab's whole bell several times a
+	// second. It matches the watcher's period, so nothing waits longer than a
+	// count would anyway.
+	bellMinGap = bellWatchEvery
 	// bellStreamsPerUser bounds one account's open bells. A tab past it is
 	// refused and keeps the bell its page drew.
 	bellStreamsPerUser = 12
@@ -223,7 +229,9 @@ func (a *App) handleOSNotificationsStream(w http.ResponseWriter, r *http.Request
 	ctx := r.Context()
 	sent := r.URL.Query().Get("sig")
 	token := auth.SessionTokenFromRequest(r)
+	var drawn time.Time
 	send := func() bool {
+		drawn = time.Now()
 		// Signed out in another tab: the stream ends with the session, and
 		// never draws a bell for a sign-in that is gone.
 		if token != "" && a.sessions != nil {
@@ -259,11 +267,13 @@ func (a *App) handleOSNotificationsStream(w http.ResponseWriter, r *http.Request
 		case <-life.C:
 			return
 		case <-pulse:
-			// Let a burst settle, then draw once.
+			// Let a burst settle, and keep the gap since the last draw; the
+			// pulses that arrive meanwhile are this one draw's.
+			wait := max(bellSettle, bellMinGap-time.Since(drawn))
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(bellSettle):
+			case <-time.After(wait):
 			}
 			if !send() {
 				return
