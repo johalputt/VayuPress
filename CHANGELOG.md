@@ -8,6 +8,38 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+
+- **Analytics counts one way, everywhere.** Every figure the console shows
+  comes from one set of definitions (`docs/ANALYTICS.md`): a visit ends after
+  30 minutes without an event, carries across midnight, and is decided by
+  one sessionizer for every site; a visitor is counted from the site's own
+  rows, where a site's "visitors" used to be its visit count; a period's
+  change compares the same definition with itself. An accuracy contract of
+  known events pins every figure.
+- **A visit is one row.** Each visit keeps its site, landing page, last
+  event and its event and view counts, kept current as events arrive, so the
+  30-day overview reads in about 51 ms where it took 150 ms (on 426k views;
+  migration 113 fills it in, about 9 s at that size).
+- **A site's own Analytics is the whole page.** A hosted site's Visitors
+  page showed four figures; it is now the install's Analytics for that site:
+  visitors, views, visits, bounce rate and average visit against the period
+  before, the trend, top and landing pages, referrers, channels, devices,
+  browsers, systems, location, Core Web Vitals at p75 and events. It is
+  counted in the background cache, as the install's page is. Engagement and
+  Core Web Vitals now record the site that served the page, never the one a
+  beacon names.
+
+### Security
+
+- **A key bound to one site cannot read the install-wide analytics**, whatever
+  it was granted: those figures add up every site. Only the exports refused
+  it before.
+- **Analytics changes are audited.** A goal or funnel made, a goal deleted
+  and a console setting changed each leave an audit record (a setting by its
+  key alone, since some keys are credentials). The request log line names
+  the site it served.
+
 ## [3.18.12] — 2026-10-23
 
 The bell is live, and a High advisory in a compression library is closed.
