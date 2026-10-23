@@ -4,49 +4,73 @@ package botdb
 
 import (
 	"context"
+	"database/sql"
+	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
-const challengesSchema = `CREATE TABLE vayushield_challenges(id INTEGER PRIMARY KEY AUTOINCREMENT,session_hash TEXT NOT NULL DEFAULT '',challenge_type TEXT NOT NULL,bot_score REAL NOT NULL DEFAULT 0,fingerprint_hash TEXT NOT NULL DEFAULT '',outcome TEXT NOT NULL DEFAULT '',time_to_solve_ms INTEGER NOT NULL DEFAULT 0,ip_hash TEXT NOT NULL DEFAULT '',country_code TEXT NOT NULL DEFAULT '',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`
-
-// trailStore builds a store with both audit-trail tables present.
+// trailStore builds a store with the event table as migration 116 makes it.
 func trailStore(t *testing.T) *Store {
 	t.Helper()
 	s := testStore(t)
-	for _, ddl := range []string{blockedSchema, challengesSchema} {
-		if _, err := s.db.Exec(ddl); err != nil {
-			// blockedSchema may already exist in testStore; only challenges is new.
-			t.Logf("schema: %v", err)
+	createEvents(t, s.db)
+	return s
+}
+
+// createEvents runs migration 116's own CREATE statements, so the trail is
+// tested against the table the product has, never a copy of it.
+func createEvents(t *testing.T, db *sql.DB) {
+	t.Helper()
+	src, err := os.ReadFile("../../db/migrations/116-shield-events.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, line := range strings.Split(string(src), "\n") {
+		if strings.HasPrefix(line, "CREATE ") {
+			if _, err := db.Exec(line); err != nil {
+				t.Fatalf("%s: %v", line, err)
+			}
+			n++
 		}
 	}
-	return s
+	if n == 0 {
+		t.Fatal("migration 116 creates nothing; the fixture is not the product's table")
+	}
 }
 
 func insertBlock(t *testing.T, s *Store, at time.Time, reason, path, country string) {
 	t.Helper()
 	if _, err := s.db.Exec(
-		`INSERT INTO vayushield_blocked(ip_hash,request_path,block_reason,country_code,created_at) VALUES(?,?,?,?,?)`,
+		`INSERT INTO shield_events(action,ip_hash,path,reason,country_code,created_at) VALUES('block',?,?,?,?,?)`,
 		"hash", path, reason, country, at.UTC().Format("2006-01-02 15:04:05")); err != nil {
 		t.Fatalf("insert block: %v", err)
 	}
 }
 
+// insertChallenge records an event of the given action and outcome, as the
+// manager writes them: a challenge issued or solved, a tarpit delayed.
 func insertChallenge(t *testing.T, s *Store, at time.Time, outcome string) {
 	t.Helper()
+	action := "challenge"
+	if outcome == "delayed" {
+		action = "tarpit"
+	}
 	if _, err := s.db.Exec(
-		`INSERT INTO vayushield_challenges(challenge_type,outcome,created_at) VALUES('pow',?,?)`,
-		outcome, at.UTC().Format("2006-01-02 15:04:05")); err != nil {
+		`INSERT INTO shield_events(action,challenge_type,outcome,created_at) VALUES(?,'pow',?,?)`,
+		action, outcome, at.UTC().Format("2006-01-02 15:04:05")); err != nil {
 		t.Fatalf("insert challenge: %v", err)
 	}
 }
 
-// TestTrailAggregatesTheWindow — both tables have been written on every event
-// since they were introduced and read by nothing but a DELETE purge. These are
-// the aggregates that make that data worth keeping.
+// TestTrailAggregatesTheWindow — the events were long written on every event
+// and read by nothing but a DELETE purge. These are the aggregates that make
+// that data worth keeping.
 func TestTrailAggregatesTheWindow(t *testing.T) {
 	s := trailStore(t)
 	now := time.Now().UTC()
@@ -63,28 +87,32 @@ func TestTrailAggregatesTheWindow(t *testing.T) {
 	// Seeded with the outcomes the manager ACTUALLY writes. The first version of
 	// this fixture used "solved" and "abandoned" against a one-row-per-challenge
 	// model where the outcome is later mutated — a schema that was designed and
-	// never built. recordChallenge only ever INSERTs, and only ever with
-	// "issued", "blocked" or "delayed". So this test passed for months while the
-	// live panel reported "0% of challenges passed" every hour of every day: it
-	// was asserting over data the production path cannot produce.
+	// never built. The manager only ever INSERTs. So this test once passed for
+	// months while the live panel reported "0% of challenges passed" every hour
+	// of every day: it was asserting over data the production path cannot
+	// produce.
 	for i := 0; i < 15; i++ {
 		insertChallenge(t, s, now.Add(-time.Hour), "issued")
 	}
 	for i := 0; i < 10; i++ {
 		insertChallenge(t, s, now.Add(-time.Hour), "solved")
 	}
-	// Blocks and tarpit delays share this table and are NOT invitations, so they
-	// must not reach the denominator of a pass rate.
-	insertChallenge(t, s, now.Add(-time.Hour), "blocked")
+	// A tarpit delay shares the table and is NOT an invitation, so it must not
+	// reach the denominator of a pass rate.
 	insertChallenge(t, s, now.Add(-time.Hour), "delayed")
+	// An operator limit's 429 is a refusal, counted with the blocks.
+	if _, err := s.db.Exec(`INSERT INTO shield_events(action,reason,path,created_at) VALUES('rate_limit','operator rule line 1: limit 2/min path=/s','/s',?)`,
+		now.Add(-time.Hour).Format("2006-01-02 15:04:05")); err != nil {
+		t.Fatal(err)
+	}
 
 	tr, err := s.ReadTrail(context.Background(), 24, 8, 30)
 	if err != nil {
 		t.Fatalf("ReadTrail: %v", err)
 	}
 
-	if tr.TotalBlocks != 8 {
-		t.Errorf("TotalBlocks = %d, want 8 (the 48h-old row is outside the window)", tr.TotalBlocks)
+	if tr.TotalBlocks != 9 {
+		t.Errorf("TotalBlocks = %d, want 9: 8 blocks and the limit's refusal (the 48h-old row is outside the window)", tr.TotalBlocks)
 	}
 	if tr.TotalChallenges != 15 || tr.TotalSolved != 10 {
 		t.Errorf("challenges = %d solved = %d, want 15 / 10", tr.TotalChallenges, tr.TotalSolved)

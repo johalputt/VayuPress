@@ -12,8 +12,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// seedChallengeTrail builds the minimum schema the trail reads and fills it with
-// one hour's worth of the outcomes the manager actually writes.
+// seedChallengeTrail builds the product's event table and fills it with one
+// hour's worth of the events the manager actually writes, by outcome: an
+// issued or solved challenge, a block, a tarpit delay.
 func seedChallengeTrail(t *testing.T, outcomes []string) *Store {
 	t.Helper()
 	db, err := sql.Open("sqlite3", "file:"+t.TempDir()+"/trail.db")
@@ -21,21 +22,14 @@ func seedChallengeTrail(t *testing.T, outcomes []string) *Store {
 		t.Fatalf("open: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	for _, ddl := range []string{
-		`CREATE TABLE vayushield_blocked(created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-		  block_reason TEXT, request_path TEXT, country_code TEXT, ip_hash TEXT)`,
-		`CREATE TABLE vayushield_challenges(created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-		  session_hash TEXT, challenge_type TEXT, bot_score REAL, fingerprint_hash TEXT,
-		  outcome TEXT, time_to_solve_ms INTEGER, ip_hash TEXT, country_code TEXT)`,
-	} {
-		if _, err := db.Exec(ddl); err != nil {
-			t.Fatalf("ddl: %v", err)
-		}
-	}
+	createEvents(t, db)
+	action := map[string]string{"issued": "challenge", "solved": "challenge", "blocked": "block", "delayed": "tarpit"}
 	for _, o := range outcomes {
-		if _, err := db.Exec(`INSERT INTO vayushield_challenges
-		  (session_hash,challenge_type,bot_score,fingerprint_hash,outcome,time_to_solve_ms,ip_hash,country_code)
-		  VALUES('','pow',0,'',?,0,'h','')`, o); err != nil {
+		out := o
+		if o == "blocked" {
+			out = ""
+		}
+		if _, err := db.Exec(`INSERT INTO shield_events(action,outcome,challenge_type,ip_hash) VALUES(?,?,'pow','h')`, action[o], out); err != nil {
 			t.Fatalf("insert %s: %v", o, err)
 		}
 	}
@@ -53,7 +47,7 @@ func seedChallengeTrail(t *testing.T, outcomes []string) *Store {
 // delay — events that were never an invitation and could not be accepted.
 func TestChallengeTrailCountsInvitationsAndSolves(t *testing.T) {
 	// What a real hour looks like: some invitations, some of them solved, plus
-	// the block and tarpit rows that share this table.
+	// the blocks and tarpit delays that share the table.
 	s := seedChallengeTrail(t, []string{
 		"issued", "issued", "issued", "issued",
 		"solved", "solved",
@@ -150,10 +144,14 @@ func TestTrailOutcomeVocabularyMatchesWhatIsWritten(t *testing.T) {
 	}
 	// And the reverse direction: an outcome the manager writes which the trail
 	// silently ignores is a gap worth seeing, even when it is deliberate.
-	for _, outcome := range []string{"blocked", "delayed"} {
-		if !writes(outcome) {
-			t.Errorf("expected the manager to still write %q; if it stopped, the trail's "+
-				"exclusion of it from the challenge count needs revisiting", outcome)
+	if !writes("delayed") {
+		t.Error("expected the manager to still write \"delayed\"; if it stopped, the trail's " +
+			"exclusion of it from the challenge count needs revisiting")
+	}
+	// The actions the trail counts must be ones the manager writes.
+	for _, action := range []string{"challenge", "block", "rate_limit", "tarpit"} {
+		if !strings.Contains(s, `action: "`+action+`"`) {
+			t.Errorf("the trail reasons about action %q, but the manager never records it", action)
 		}
 	}
 

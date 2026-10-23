@@ -447,11 +447,12 @@ func (s *Store) ForgetAllLearned(ctx context.Context) (int64, error) {
 	}
 }
 
-// PurgeBlocked ages out old rows from vayushield_blocked. That table is a hashed,
-// non-PII record of hard blocks kept only for aggregate counts (there is no live
-// per-IP list any more, ADR-0137), so it must not grow forever. Chunked and
-// index-driven (idx_blocked_created). Returns the number of rows removed.
-func (s *Store) PurgeBlocked(ctx context.Context, retainDays int) (int64, error) {
+// PurgeEvents ages out old rows from shield_events. The table is a hashed,
+// non-PII record kept for aggregate counts (there is no live per-IP list any
+// more, ADR-0137), and every issued challenge writes a row, so a site under
+// sustained probe traffic would grow it forever. Chunked and index-driven
+// (idx_shield_events_created). Returns the number of rows removed.
+func (s *Store) PurgeEvents(ctx context.Context, retainDays int) (int64, error) {
 	if s == nil || s.db == nil || retainDays <= 0 {
 		return 0, nil
 	}
@@ -459,40 +460,7 @@ func (s *Store) PurgeBlocked(ctx context.Context, retainDays int) (int64, error)
 	var total int64
 	for {
 		res, err := s.db.ExecContext(ctx,
-			`DELETE FROM vayushield_blocked WHERE rowid IN (SELECT rowid FROM vayushield_blocked WHERE created_at<? LIMIT ?)`,
-			cutoff, purgeChunk)
-		if err != nil {
-			return total, err
-		}
-		n, _ := res.RowsAffected()
-		total += n
-		if n < purgeChunk {
-			return total, nil
-		}
-		select {
-		case <-ctx.Done():
-			return total, ctx.Err()
-		default:
-		}
-	}
-}
-
-// PurgeChallenges ages out old rows from vayushield_challenges — the one trail
-// table the maintenance cycle forgot (audit): every issued challenge writes a
-// row and nothing ever removed them, so a site under sustained probe traffic
-// grew that table forever. The data is aggregate-only (hashed IP, coarse
-// outcome), but unbounded growth is still a liability; the daily learning cycle
-// now trims it on the same schedule as the block log. Chunked and index-driven
-// (idx_challenges_created_outcome).
-func (s *Store) PurgeChallenges(ctx context.Context, retainDays int) (int64, error) {
-	if s == nil || s.db == nil || retainDays <= 0 {
-		return 0, nil
-	}
-	cutoff := time.Now().UTC().AddDate(0, 0, -retainDays)
-	var total int64
-	for {
-		res, err := s.db.ExecContext(ctx,
-			`DELETE FROM vayushield_challenges WHERE rowid IN (SELECT rowid FROM vayushield_challenges WHERE created_at<? LIMIT ?)`,
+			`DELETE FROM shield_events WHERE rowid IN (SELECT rowid FROM shield_events WHERE created_at<? LIMIT ?)`,
 			cutoff, purgeChunk)
 		if err != nil {
 			return total, err

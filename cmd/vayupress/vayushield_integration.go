@@ -547,8 +547,8 @@ func (a *App) handleVAEnter(w http.ResponseWriter, r *http.Request) {
 	// A bad bot must never pollute analytics. Blocked bad bots never render (so
 	// never reach this beacon); this additionally drops any bad bot that still
 	// managed to fire a beacon — e.g. a headless scraper that executed the page
-	// JS. The detection/block itself is recorded in the VayuShield block list
-	// (vayushield_blocked), not in the engagement analytics.
+	// JS. The detection/block itself is recorded in the shield's events
+	// (shield_events), not in the engagement analytics.
 	if verdict.Result.ClientType == botdb.TypeBadBot {
 		w.WriteHeader(http.StatusNoContent)
 		return

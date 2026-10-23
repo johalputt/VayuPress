@@ -1141,6 +1141,14 @@ type Verdict struct {
 	// the scan already ran inside Classify, and a second pass on every
 	// classified request doubles its cost for nothing.
 	InspectClass int
+
+	// Start is when the shield began on this request, so an event can record
+	// what deciding cost; Layer is the gate that acted (a GateNames value) and
+	// RuleID the operator rule, when one did. All three are set by the
+	// middleware, never by Classify.
+	Start  time.Time
+	Layer  string
+	RuleID string
 }
 
 // Classify runs the full fingerprint → static/adaptive lookup → score pipeline
@@ -1517,6 +1525,7 @@ func VerdictFrom(ctx context.Context) (Verdict, bool) {
 // everything is disabled it is a transparent pass-through with near-zero cost.
 func (m *Manager) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
 		lc := m.live()
 		// With PressureFn wired, the L2 pre-filter stays live even when every
 		// operator toggle is off: it observes each public request (a few atomic
@@ -1849,7 +1858,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			// challenges out of the L4 ladder self-tuning. If the challenge cannot
 			// be issued (no signer / issue error) serveChallenge reports false and
 			// we fail OPEN — never an empty response.
-			if m.serveChallenge(w, r, Verdict{}, challenge.HardDifficulty, false) {
+			if m.serveChallenge(w, r, Verdict{Start: start, Layer: GateNames[GateSurge]}, challenge.HardDifficulty, false) {
 				m.surgeServed.Add(1)
 				reqclass.MarkShielded(r.Context())
 				return
@@ -1888,7 +1897,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			if pol := m.policyFor(r); !pol.Empty() && pol.GeoActive() {
 				if pol.Country(m.cfg.CountryFn(r, ipKey)) == policy.VerdictChallenge &&
 					!m.observing(lc, GateGeoChallenge) {
-					if m.serveChallenge(w, r, Verdict{}, challenge.DefaultDifficulty, false) {
+					if m.serveChallenge(w, r, Verdict{Start: start, Layer: GateNames[GateGeoChallenge]}, challenge.DefaultDifficulty, false) {
 						reqclass.MarkShielded(r.Context())
 						return
 					}
@@ -1908,6 +1917,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// The hostile gate above already looked this source up; carry the answer
 		// down so the feed function runs once per request, not twice.
 		v := m.ClassifyWithIntel(r, intelKind)
+		v.Start = start
 		// Count the inspection finding exactly once, on the request path, from
 		// the verdict Classify already produced — not by running inspect.Scan a
 		// second time (which is what this block used to do, doubling the scan
@@ -1927,7 +1937,11 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		action := m.Decide(r, v)
 		// The operator's own rules, last: a fact stated by the operator
 		// outranks the shield's inference about the same request.
-		if rule := m.matchRule(r, v, enfKey); rule != nil {
+		// The rule is named on the event only where it decided; where the
+		// ladder's own verdict stands, the ladder is the layer.
+		if rule, ruleID := m.matchRule(r, v, enfKey); rule != nil {
+			ruled := v
+			ruled.Layer, ruled.RuleID = GateNames[GateRule], ruleID
 			switch rule.Action {
 			case oprules.Limit:
 				// Throttled, like the install's own rate limit, and counted as
@@ -1937,6 +1951,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 				if !m.observing(lc, GateRateLimit) {
 					reqclass.MarkShielded(r.Context())
 					m.onEvent(ActionBlock, 1.0)
+					m.recordEvent(r, ruled, shieldEvent{action: "rate_limit", reason: "operator rule " + ruleID + ": " + rule.Text, status: http.StatusTooManyRequests})
 					m.serveThrottled(w, r, http.StatusTooManyRequests, "rate-limited", strconv.Itoa(rule.RetryAfter))
 					return
 				}
@@ -1946,18 +1961,28 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 					// learned fingerprint: a rule names a request, not a source,
 					// and a reader who followed one bad link must not lose the
 					// whole site for it.
-					v.Result.Reasons = []string{"operator rule, line " + strconv.Itoa(rule.Line) + ": " + rule.Text}
+					ruled.Result.Reasons = []string{"operator rule " + ruleID + ": " + rule.Text}
 					reqclass.MarkShielded(r.Context())
 					m.onEvent(ActionBlock, 1.0)
-					m.serveBlock(w, r, v)
+					m.serveBlock(w, r, ruled)
 					return
 				}
 			case oprules.Challenge:
 				if action == ActionAllow {
 					action = ActionChallengePoW
+					v = ruled
 				}
 			case oprules.Allow:
 				action = ActionAllow
+			}
+		}
+		// The ladder's own decision, when no operator rule took it.
+		if v.Layer == "" {
+			switch action {
+			case ActionChallengePoW, ActionChallengeJS:
+				v.Layer = GateNames[GateChallenge]
+			case ActionBlock, ActionTarpit:
+				v.Layer = GateNames[GateBlock]
 			}
 		}
 		m.onEvent(action, v.Result.BotScore)
@@ -2064,6 +2089,12 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 // (the redeem budget); every other request, plus any request during an active
 // flood or without a signer, gets the cheap flat rejection. This preserves both
 // properties: real users redeem within seconds, hammering bots cost ~nothing.
+// jailLayer names the gate behind each reason serveJailed is given.
+var jailLayer = map[string]string{
+	"operator policy": GateNames[GatePolicyDeny], "operator geo policy": GateNames[GateGeoDeny],
+	"blocked": GateNames[GateBlocklist], "reputation": GateNames[GateReputation],
+}
+
 func (m *Manager) serveJailed(w http.ResponseWriter, r *http.Request, ipKey, reason string) {
 	// A top-level browser navigation is always offered the solvable challenge
 	// while there is no active flood: solving it both issues the session cookie
@@ -2074,7 +2105,7 @@ func (m *Manager) serveJailed(w http.ResponseWriter, r *http.Request, ipKey, rea
 	// under attack, so a flood is still answered by the cheap rejection.
 	navigation := acceptsHTML(r)
 	if m.cfg.Signer != nil && !m.controller.UnderAttack() && (navigation || m.redeem.Allow(m.EnforcementKey(ipKey))) {
-		if m.serveChallenge(w, r, Verdict{}, challenge.DefaultDifficulty, false) {
+		if m.serveChallenge(w, r, Verdict{Layer: jailLayer[reason]}, challenge.DefaultDifficulty, false) {
 			return
 		}
 	}
@@ -2328,7 +2359,7 @@ func (m *Manager) serveChallenge(w http.ResponseWriter, r *http.Request, v Verdi
 	if feedCalib {
 		m.calib.Served()
 	}
-	m.recordChallenge(r, v, actionType(difficulty), "issued", 0)
+	m.recordEvent(r, v, shieldEvent{action: "challenge", outcome: "issued", ctype: actionType(difficulty), status: http.StatusServiceUnavailable})
 	payload, _ := json.Marshal(pow)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
@@ -2352,7 +2383,6 @@ func actionType(difficulty int) string {
 // serveBlock returns a clean 403 page and records the block for operator review.
 func (m *Manager) serveBlock(w http.ResponseWriter, r *http.Request, v Verdict) {
 	m.recordBlock(r, v)
-	m.recordChallenge(r, v, "block", "blocked", 0)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-VayuShield", "block")
@@ -2468,7 +2498,7 @@ func (m *Manager) softenForNavigation(w http.ResponseWriter, r *http.Request, v 
 }
 
 func (m *Manager) serveTarpit(w http.ResponseWriter, r *http.Request, v Verdict, next http.Handler) {
-	m.recordChallenge(r, v, "tarpit", "delayed", 0)
+	m.recordEvent(r, v, shieldEvent{action: "tarpit", outcome: "delayed", ctype: "tarpit"})
 	delay := 5 * time.Second
 	select {
 	case <-time.After(delay):
@@ -2571,7 +2601,17 @@ func (m *Manager) SessionCookie(token string) *http.Cookie {
 
 // ── Recording ─────────────────────────────────────────────────────────────────
 
-func (m *Manager) recordChallenge(r *http.Request, v Verdict, ctype, outcome string, solveMS int) {
+// shieldEvent is what one recorded event says beyond its verdict.
+type shieldEvent struct {
+	action, outcome, reason, ctype string
+	status                         int
+}
+
+// recordEvent writes one row of shield_events: what the shield did to r,
+// which gate and rule did it, what it answered and what deciding cost. The
+// address is stored only as the shield's salted hash, the User-Agent only as
+// its family.
+func (m *Manager) recordEvent(r *http.Request, v Verdict, e shieldEvent) {
 	if m.cfg.DB == nil {
 		return
 	}
@@ -2580,11 +2620,16 @@ func (m *Manager) recordChallenge(r *http.Request, v Verdict, ctype, outcome str
 	if m.cfg.CountryFn != nil {
 		country = m.cfg.CountryFn(r, ip)
 	}
+	var evalUS int64
+	if !v.Start.IsZero() {
+		evalUS = time.Since(v.Start).Microseconds()
+	}
 	site, reqID := m.eventIDs(r)
-	m.recordExec(r.Context(), `INSERT INTO vayushield_challenges
-(session_hash,challenge_type,bot_score,fingerprint_hash,outcome,time_to_solve_ms,ip_hash,country_code,domain_id,request_id)
-VALUES('',?,?,?,?,?,?,?,?,?)`,
-		ctype, v.Result.BotScore, v.Composite.FingerprintHash, outcome, solveMS, m.hashIP(ip), country, site, reqID)
+	m.recordExec(r.Context(), `INSERT INTO shield_events
+(domain_id,request_id,layer,rule_id,action,outcome,reason,classification,path,status,eval_us,bot_score,challenge_type,fingerprint_hash,ja3_hash,ip_hash,ua_family,country_code)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		site, reqID, v.Layer, v.RuleID, e.action, e.outcome, e.reason, string(v.Result.ClientType), r.URL.Path, e.status, evalUS,
+		v.Result.BotScore, e.ctype, v.Composite.FingerprintHash, v.Composite.JA3, m.hashIP(ip), uaFamily(v.Signals.UserAgent), country)
 }
 
 // eventIDs is the site and the request id an event is recorded under.
@@ -2606,42 +2651,15 @@ func (m *Manager) eventIDs(r *http.Request) (site, reqID string) {
 // row and invite exactly the reading it does not support. The columns that
 // cannot be filled truthfully are left empty rather than filled plausibly.
 func (m *Manager) recordChallengeSolved(r *http.Request) {
-	if m.cfg.DB == nil {
-		return
-	}
-	ip := m.cfg.ClientIP(r)
-	country := ""
-	if m.cfg.CountryFn != nil {
-		country = m.cfg.CountryFn(r, ip)
-	}
-	site, reqID := m.eventIDs(r)
-	m.recordExec(r.Context(), `INSERT INTO vayushield_challenges
-(session_hash,challenge_type,bot_score,fingerprint_hash,outcome,time_to_solve_ms,ip_hash,country_code,domain_id,request_id)
-VALUES('','pow',0,'','solved',0,?,?,?,?)`, m.hashIP(ip), country, site, reqID)
+	m.recordEvent(r, Verdict{Layer: GateNames[GateChallenge]}, shieldEvent{action: "challenge", outcome: "solved", ctype: "pow"})
 }
 
 func (m *Manager) recordBlock(r *http.Request, v Verdict) {
-	if m.cfg.DB == nil {
-		return
-	}
-	ip := m.cfg.ClientIP(r)
-	country := ""
-	if m.cfg.CountryFn != nil {
-		country = m.cfg.CountryFn(r, ip)
-	}
 	reason := "bot_score>=block_threshold"
 	if len(v.Result.Reasons) > 0 {
 		reason = strings.Join(v.Result.Reasons, "; ")
 	}
-	// The full User-Agent is a fingerprint, not "not PII" as migration 055's
-	// header once claimed (audit). Nothing in the trail dashboards reads this
-	// column, so the blocked table now stores only the coarse uaFamily bucket;
-	// PurgeBlocked still bounds the row's lifetime.
-	site, reqID := m.eventIDs(r)
-	m.recordExec(r.Context(), `INSERT INTO vayushield_blocked
-(fingerprint_hash,ja3_hash,ip_hash,user_agent,request_path,block_reason,bot_score,country_code,domain_id,request_id)
-VALUES(?,?,?,?,?,?,?,?,?,?)`,
-		v.Composite.FingerprintHash, v.Composite.JA3, m.hashIP(ip), uaFamily(v.Signals.UserAgent), r.URL.Path, reason, v.Result.BotScore, country, site, reqID)
+	m.recordEvent(r, v, shieldEvent{action: "block", reason: reason, status: http.StatusForbidden})
 }
 
 // hostOf extracts the lowercase host from a referrer URL.

@@ -12,8 +12,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-const blockedSchema = `CREATE TABLE vayushield_blocked(id INTEGER PRIMARY KEY AUTOINCREMENT,fingerprint_hash TEXT NOT NULL DEFAULT '',ja3_hash TEXT NOT NULL DEFAULT '',ip_hash TEXT NOT NULL DEFAULT '',user_agent TEXT NOT NULL DEFAULT '',request_path TEXT NOT NULL DEFAULT '',block_reason TEXT NOT NULL DEFAULT '',bot_score REAL NOT NULL DEFAULT 0,country_code TEXT NOT NULL DEFAULT '',operator_reviewed INTEGER NOT NULL DEFAULT 0,false_positive INTEGER NOT NULL DEFAULT 0,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`
-
 // TestPurgeStaleChunkedRemovesAll: a large backlog of stale one-off candidates
 // (well over one chunk) is fully removed across chunks, and fresh/recurring rows
 // survive — so a swarm's one-off fingerprints never accumulate.
@@ -45,32 +43,30 @@ func TestPurgeStaleChunkedRemovesAll(t *testing.T) {
 	}
 }
 
-func TestPurgeBlockedRetention(t *testing.T) {
+func TestPurgeEventsRetention(t *testing.T) {
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	if _, err := db.Exec(blockedSchema); err != nil {
-		t.Fatal(err)
-	}
+	createEvents(t, db)
 	s := New(db)
 	old := time.Now().UTC().AddDate(0, 0, -30)
 	for i := 0; i < 700; i++ {
-		_, _ = db.Exec(`INSERT INTO vayushield_blocked(ip_hash,created_at) VALUES(?,?)`, "h"+strconv.Itoa(i), old)
+		_, _ = db.Exec(`INSERT INTO shield_events(action,ip_hash,created_at) VALUES('block',?,?)`, "h"+strconv.Itoa(i), old)
 	}
-	_, _ = db.Exec(`INSERT INTO vayushield_blocked(ip_hash,created_at) VALUES('recent',?)`, time.Now().UTC())
+	_, _ = db.Exec(`INSERT INTO shield_events(action,ip_hash,created_at) VALUES('challenge','recent',?)`, time.Now().UTC())
 
-	n, err := s.PurgeBlocked(context.Background(), 7)
+	n, err := s.PurgeEvents(context.Background(), 7)
 	if err != nil {
-		t.Fatalf("purge blocked: %v", err)
+		t.Fatalf("purge events: %v", err)
 	}
 	if n != 700 {
 		t.Fatalf("expected 700 old rows removed, got %d", n)
 	}
 	var remaining int
-	_ = db.QueryRow(`SELECT COUNT(1) FROM vayushield_blocked`).Scan(&remaining)
+	_ = db.QueryRow(`SELECT COUNT(1) FROM shield_events`).Scan(&remaining)
 	if remaining != 1 {
-		t.Fatalf("recent block must survive, got %d", remaining)
+		t.Fatalf("the recent event must survive, got %d", remaining)
 	}
 }

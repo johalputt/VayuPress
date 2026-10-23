@@ -4,10 +4,9 @@ package main
 
 // vayushield_trail.go — the audit-trail section of /os/vayushield.
 //
-// vayushield_blocked and vayushield_challenges have been INSERTed on every event
-// since they were introduced, and the only other SQL touching either table was a
-// DELETE purge. Every event the shield has ever recorded was written and never
-// read.
+// The shield's events (shield_events; before migration 116, two tables) were
+// long written on every event and touched by nothing else but a DELETE purge:
+// every event the shield had recorded was written and never read.
 //
 // ADR-0137 was right to remove the old scrolling per-IP list — a page of hashed
 // addresses was stale the moment it rendered, because the live jail is in memory,

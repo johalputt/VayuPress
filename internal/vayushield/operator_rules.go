@@ -15,23 +15,25 @@ package vayushield
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/johalputt/vayupress/internal/vayushield/oprules"
 )
 
-// matchRule is the rule that decides r, or nil: the install's rules first,
+// matchRule is the rule that decides r, or nil, and how an event names it
+// ("line 3", or "site line 3" for the site's own): the install's rules first,
 // then r's site's, so a site can add rules and never override the install's.
 // source is who a limit rule counts r against.
-func (m *Manager) matchRule(r *http.Request, v Verdict, source string) *oprules.Rule {
+func (m *Manager) matchRule(r *http.Request, v Verdict, source string) (*oprules.Rule, string) {
 	install := m.opRules.Load()
 	var site *oprules.Set
 	if sp := m.siteFor(r); sp != nil {
 		site = sp.opRules
 	}
 	if len(install.Rules()) == 0 && len(site.Rules()) == 0 {
-		return nil
+		return nil, ""
 	}
 	f := oprules.Facts{
 		Path:   r.URL.Path,
@@ -52,9 +54,12 @@ func (m *Manager) matchRule(r *http.Request, v Verdict, source string) *oprules.
 	}
 	now := time.Now()
 	if rule := install.Match(f, now); rule != nil {
-		return rule
+		return rule, "line " + strconv.Itoa(rule.Line)
 	}
-	return site.Match(f, now)
+	if rule := site.Match(f, now); rule != nil {
+		return rule, "site line " + strconv.Itoa(rule.Line)
+	}
+	return nil, ""
 }
 
 // OperatorRules is the install's compiled request rules, with their hit

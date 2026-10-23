@@ -19,10 +19,10 @@ func TestASitesSecurityIsThatSitesAlone(t *testing.T) {
 	openMigratedDB(t)
 	ctx := context.Background()
 	for _, q := range []string{
-		`INSERT INTO vayushield_blocked(request_path,block_reason,domain_id,request_id) VALUES('/s1-probe','scanner path','s1','req-s1')`,
-		`INSERT INTO vayushield_blocked(request_path,block_reason,domain_id,request_id) VALUES('/s2-probe','scanner path','s2','req-s2')`,
-		`INSERT INTO vayushield_blocked(request_path,block_reason) VALUES('/before-sites','old rule')`,
-		`INSERT INTO vayushield_challenges(challenge_type,outcome,domain_id) VALUES('pow','issued','s1')`,
+		`INSERT INTO shield_events(action,path,reason,domain_id,request_id) VALUES('block','/s1-probe','scanner path','s1','req-s1')`,
+		`INSERT INTO shield_events(action,path,reason,domain_id,request_id) VALUES('block','/s2-probe','scanner path','s2','req-s2')`,
+		`INSERT INTO shield_events(action,path,reason) VALUES('block','/before-sites','old rule')`,
+		`INSERT INTO shield_events(action,challenge_type,outcome,domain_id) VALUES('challenge','pow','issued','s1')`,
 	} {
 		if _, err := dbpkg.DB.Exec(q); err != nil {
 			t.Fatal(err)

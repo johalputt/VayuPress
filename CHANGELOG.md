@@ -88,6 +88,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   choices reach the site's public pages only: never the console, the API,
   sign-in or a page that carries a session, never the primary, and never
   an onion. A page that refuses framing for itself keeps its refusal.
+- **One record of what VayuShield did.** Blocks, challenges, tarpit delays,
+  solved proofs and operator limits are now one table, `shield_events`, in
+  one shape: the site and request, the gate that acted and the operator
+  rule if one did, the action and outcome, the reason, the client class,
+  the path, the status answered and what deciding cost in microseconds. A
+  block is one row where it used to write two. Reports and each site's
+  Security page read it; refusals now include an operator limit's 429.
+  Cheap early refusals (the jail, shedding, the rate limiter) are counted
+  in memory as before, never as rows, so a flood still costs no writes.
 - **What readers search for.** A site's search page records each search:
   the query and whether it found anything. Analytics shows the most searched
   queries and the ones that found nothing, for the install and for each
@@ -128,6 +137,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   and a console setting changed each leave an audit record (a setting by its
   key alone, since some keys are credentials). The request log line names
   the site it served.
+
+### Upgrade Notes
+
+- **Migration 116 moves the shield's events into one table at start-up.**
+  It copies the rows the block and challenge tables hold (they are kept
+  only within the purge window) and drops the two tables. On 4.3 million
+  challenge rows and 287 thousand blocks it took 17 s, during which the
+  service is starting and does not answer. The down migration recreates
+  the two tables empty.
 
 ## [3.18.12] — 2026-10-23
 
