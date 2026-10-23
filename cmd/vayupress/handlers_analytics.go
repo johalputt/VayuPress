@@ -661,7 +661,7 @@ func (a *App) createGoal(w http.ResponseWriter, r *http.Request, scope, host str
 		writeAPIError(w, r, 400, "validation_error", err.Error(), "")
 		return
 	}
-	a.refreshGoalReports(scope, host)
+	a.refreshDefinitionReports(scope, host)
 	dbpkg.AuditLog("analytics.goal.create", dbpkg.AuditActor(r), id, goalAuditSite(scope)+in.Kind+" "+in.Target)
 	writeJSON(w, r, 201, map[string]string{"id": id, "name": in.Name})
 }
@@ -681,14 +681,14 @@ func (a *App) deleteGoal(w http.ResponseWriter, r *http.Request, scope, host, id
 		writeAPIError(w, r, 404, "not_found", err.Error(), "")
 		return
 	}
-	a.refreshGoalReports(scope, host)
+	a.refreshDefinitionReports(scope, host)
 	dbpkg.AuditLog("analytics.goal.delete", dbpkg.AuditActor(r), id, goalAuditSite(scope))
 	writeJSON(w, r, 200, map[string]bool{"deleted": true})
 }
 
-// refreshGoalReports rebuilds the cached report that shows scope's goals:
-// the install's Analytics, or that site's (whose host is host).
-func (a *App) refreshGoalReports(scope, host string) {
+// refreshDefinitionReports rebuilds the cached report that shows scope's goals
+// and segments: the install's Analytics, or that site's (whose host is host).
+func (a *App) refreshDefinitionReports(scope, host string) {
 	if scope == analytics.ScopeAllDomains {
 		a.refreshAnalyticsReports()
 		return

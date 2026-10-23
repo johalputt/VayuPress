@@ -67,34 +67,70 @@ type exploreDim struct {
 	event     string // over an event row, its visit joined as s; "" when an event has none
 	visit     string // over a visit row; "" when a visit has none
 	text      bool   // offers "starts with"
+	kind      dimKind
 }
 
+// dimKind is what a dimension's values are, which decides how it is
+// filtered and in what order its split is listed.
+type dimKind uint8
+
+const (
+	dimWords  dimKind = iota // matched whole; split largest first
+	dimNumber                // also "at least" and "at most"; split in order
+	dimFlag                  // yes or no
+)
+
+// The visit's own facts, over its row s, so they split and filter every
+// figure: an event's visit is joined. A visit's referrer is its first page
+// view's, the one it arrived by; "returning" is the same visitor's earlier
+// visit to the same site, which can only be the same day, as a visitor is
+// recognised for a day (docs/ANALYTICS.md); "converted" is a custom event in
+// the visit.
+const (
+	visitFirstView  = `FROM analytics_pageviews f WHERE f.session_id=s.id AND f.event_type=1 ORDER BY f.created_at, f.id LIMIT 1`
+	visitReturning  = `CASE WHEN EXISTS(SELECT 1 FROM analytics_sessions r WHERE r.visitor_id=s.visitor_id AND r.domain_id=s.domain_id AND (r.created_at<s.created_at OR (r.created_at=s.created_at AND r.id<s.id))) THEN 'yes' ELSE 'no' END`
+	visitConverted  = `CASE WHEN EXISTS(SELECT 1 FROM analytics_pageviews c WHERE c.session_id=s.id AND c.event_type=2) THEN 'yes' ELSE 'no' END`
+	visitLengthSecs = `CAST(COALESCE(round((julianday(s.last_at)-julianday(s.created_at))*86400.0),0) AS INTEGER)`
+)
+
 var exploreDims = []exploreDim{
-	{"day", "Day", "date(p.created_at)", "date(s.created_at)", false},
-	{"path", "Page", "p.url_path", "", true},
-	{"landing", "Landing page", "s.landing", "s.landing", true},
-	{"referrer", "Referrer", "p.referrer", "", true},
-	{"channel", "Channel", "p.referrer", "", false}, // through Store.channelSQL
-	{"utm_source", "Campaign source", "p.utm_source", "", false},
-	{"utm_medium", "Campaign medium", "p.utm_medium", "", false},
-	{"utm_campaign", "Campaign", "p.utm_campaign", "", false},
-	{"event", "Event", "p.event_name", "", false},
-	{"country", "Country", "s.country", "s.country", false},
-	{"region", "Region", "s.region", "s.region", false},
-	{"city", "City", "s.city", "s.city", false},
-	{"device", "Device", "s.device", "s.device", false},
-	{"browser", "Browser", "s.browser", "s.browser", false},
-	{"os", "Operating system", "s.os", "s.os", false},
-	{"language", "Language", "s.language", "s.language", false},
+	{"day", "Day", "date(p.created_at)", "date(s.created_at)", false, dimWords},
+	{"path", "Page", "p.url_path", "", true, dimWords},
+	{"landing", "Landing page", "s.landing", "s.landing", true, dimWords},
+	{"referrer", "Referrer", "p.referrer", "", true, dimWords},
+	{"channel", "Channel", "p.referrer", "", false, dimWords}, // through Store.channelSQL
+	{"utm_source", "Campaign source", "p.utm_source", "", false, dimWords},
+	{"utm_medium", "Campaign medium", "p.utm_medium", "", false, dimWords},
+	{"utm_campaign", "Campaign", "p.utm_campaign", "", false, dimWords},
+	{"event", "Event", "p.event_name", "", false, dimWords},
+	{"country", "Country", "s.country", "s.country", false, dimWords},
+	{"region", "Region", "s.region", "s.region", false, dimWords},
+	{"city", "City", "s.city", "s.city", false, dimWords},
+	{"device", "Device", "s.device", "s.device", false, dimWords},
+	{"browser", "Browser", "s.browser", "s.browser", false, dimWords},
+	{"os", "Operating system", "s.os", "s.os", false, dimWords},
+	{"language", "Language", "s.language", "s.language", false, dimWords},
+	{"visit_channel", "Visit's channel", "s.id", "s.id", false, dimWords}, // s.id marks it usable; Store.dimSQL writes it
+	{"visit_referrer", "Visit's referrer", "COALESCE((SELECT f.referrer " + visitFirstView + "),'')", "COALESCE((SELECT f.referrer " + visitFirstView + "),'')", true, dimWords},
+	{"returning", "Returning the same day", visitReturning, visitReturning, false, dimFlag},
+	{"converted", "Visit with a custom event", visitConverted, visitConverted, false, dimFlag},
+	{"visit_views", "Page views in the visit", "s.views", "s.views", false, dimNumber},
+	{"visit_events", "Events in the visit", "s.events", "s.events", false, dimNumber},
+	{"visit_length", "Visit length, seconds", visitLengthSecs, visitLengthSecs, false, dimNumber},
 }
 
 // dimSQL is d's column for a figure counted from visits or from events, as
 // an expression with its bind arguments.
 func (s *Store) dimSQL(d exploreDim, visit bool) (string, []any) {
-	if visit {
+	switch {
+	case d.id == "visit_channel":
+		// Classified inside the lookup, so the visit's first view is found
+		// once, not once for each host the rule names.
+		ch, args := s.channelSQL("f.referrer")
+		return "COALESCE((SELECT " + ch + " " + visitFirstView + "),'')", args
+	case visit:
 		return d.visit, nil
-	}
-	if d.id == "channel" {
+	case d.id == "channel":
 		return s.channelSQL(d.event)
 	}
 	return d.event, nil
@@ -124,6 +160,8 @@ type ExploreOption struct {
 	Visit     bool // usable with the visit figures
 	Event     bool // usable with the event figures
 	Text      bool // offers "starts with"
+	Number    bool // offers "at least" and "at most"
+	Flag      bool // is yes or no
 	Additive  bool // a figure whose split adds up to its total
 }
 
@@ -140,7 +178,8 @@ func ExploreMetrics() []ExploreOption {
 func ExploreDims() []ExploreOption {
 	out := make([]ExploreOption, 0, len(exploreDims))
 	for _, d := range exploreDims {
-		out = append(out, ExploreOption{ID: d.id, Label: d.label, Visit: d.visit != "", Event: d.event != "", Text: d.text})
+		out = append(out, ExploreOption{ID: d.id, Label: d.label, Visit: d.visit != "", Event: d.event != "", Text: d.text,
+			Number: d.kind == dimNumber, Flag: d.kind == dimFlag})
 	}
 	return out
 }
@@ -151,14 +190,18 @@ func ChannelLabel(c string) string { return channelLabel(classifier.Category(c))
 // ExploreFilter keeps the events (or visits) whose dimension is, is not, or
 // starts with a value.
 type ExploreFilter struct {
-	Dim, Op, Value string
+	Dim   string `json:"dim"`
+	Op    string `json:"op"`
+	Value string `json:"value"`
 }
 
 // The filter operators.
 const (
-	FilterIs     = "is"
-	FilterIsNot  = "not"
-	FilterPrefix = "prefix"
+	FilterIs      = "is"
+	FilterIsNot   = "not"
+	FilterPrefix  = "prefix"
+	FilterAtLeast = "atleast"
+	FilterAtMost  = "atmost"
 )
 
 // ExploreMaxFilters bounds a query's filters; ExploreMaxRows its split.
@@ -173,8 +216,55 @@ type ExploreQuery struct {
 	Metric  ExploreMetric
 	By      string // a dimension, or "" for the total alone
 	Filters []ExploreFilter
+	// Segment is a saved segment's filters, held with Filters: the events
+	// counted pass both.
+	Segment []ExploreFilter
 	Days    int
 	Compare bool // also count the range of equal length before
+}
+
+// ValidFilter says, in words, why f cannot be applied to any figure.
+func ValidFilter(f ExploreFilter) error {
+	d, ok := findDim(f.Dim)
+	if !ok || f.Dim == "day" {
+		return errors.New("a filter is on one of the listed dimensions; the range sets the days")
+	}
+	name := strings.ToLower(d.label)
+	whole := func() error {
+		if _, err := strconv.Atoi(f.Value); err != nil {
+			return fmt.Errorf("%s is a whole number", name)
+		}
+		return nil
+	}
+	switch f.Op {
+	case FilterIs, FilterIsNot:
+		switch d.kind {
+		case dimFlag:
+			if f.Value != "yes" && f.Value != "no" {
+				return fmt.Errorf("%s is yes or no", name)
+			}
+		case dimNumber:
+			return whole()
+		}
+	case FilterPrefix:
+		if !d.text {
+			return fmt.Errorf("%s is matched whole, not by its start", name)
+		}
+		if f.Value == "" {
+			return errors.New("a start is not empty")
+		}
+	case FilterAtLeast, FilterAtMost:
+		if d.kind != dimNumber {
+			return fmt.Errorf("%s is not a number", name)
+		}
+		return whole()
+	default:
+		return errors.New("a filter is, is not, starts with, at least or at most")
+	}
+	if len([]rune(f.Value)) > 200 {
+		return errors.New("a filter's value is up to 200 characters")
+	}
+	return nil
 }
 
 // Validate says, in words, why the query cannot be answered as asked.
@@ -196,28 +286,19 @@ func (q ExploreQuery) Validate() error {
 			return fmt.Errorf("%s is counted per visit, and a visit has no one %s", m.label, strings.ToLower(d.label))
 		}
 	}
-	if len(q.Filters) > ExploreMaxFilters {
+	if len(q.Filters) > ExploreMaxFilters || len(q.Segment) > ExploreMaxFilters {
 		return fmt.Errorf("at most %d filters", ExploreMaxFilters)
 	}
-	for _, f := range q.Filters {
-		d, ok := findDim(f.Dim)
-		if !ok || f.Dim == "day" {
-			return errors.New("a filter is on one of the listed dimensions; the range sets the days")
+	for i, f := range append(append([]ExploreFilter(nil), q.Segment...), q.Filters...) {
+		in := ""
+		if i < len(q.Segment) {
+			in = "the segment: "
 		}
-		if !usable(d) {
-			return fmt.Errorf("%s is counted per visit, and a visit has no one %s to filter by", m.label, strings.ToLower(d.label))
+		if err := ValidFilter(f); err != nil {
+			return errors.New(in + err.Error())
 		}
-		switch f.Op {
-		case FilterIs, FilterIsNot:
-		case FilterPrefix:
-			if !d.text {
-				return fmt.Errorf("%s is matched whole, not by its start", strings.ToLower(d.label))
-			}
-		default:
-			return errors.New("a filter is, is not, or starts with")
-		}
-		if len([]rune(f.Value)) > 200 || (f.Op == FilterPrefix && f.Value == "") {
-			return errors.New("a filter's value is up to 200 characters, and a start is not empty")
+		if d, _ := findDim(f.Dim); !usable(d) {
+			return fmt.Errorf("%s%s is counted per visit, and a visit has no one %s to filter by", in, m.label, strings.ToLower(d.label))
 		}
 	}
 	return nil
@@ -333,16 +414,25 @@ func (s *Store) exploreFrom(m exploreMetric, q ExploreQuery, from, to string) (s
 	if m.where != "" {
 		b.WriteString(" AND " + m.where)
 	}
-	for _, f := range q.Filters {
+	for _, f := range append(append([]ExploreFilter(nil), q.Segment...), q.Filters...) {
 		d, _ := findDim(f.Dim)
 		c, cargs := s.dimSQL(d, m.visit)
+		// A number's value is bound as written: every count is a column or a
+		// CAST, whose integer affinity compares '3' as 3.
+		value := f.Value
 		switch f.Op {
 		case FilterIs:
 			b.WriteString(" AND (" + c + ")=?")
-			args = append(append(args, cargs...), f.Value)
+			args = append(append(args, cargs...), value)
 		case FilterIsNot:
 			b.WriteString(" AND (" + c + ")<>?")
-			args = append(append(args, cargs...), f.Value)
+			args = append(append(args, cargs...), value)
+		case FilterAtLeast:
+			b.WriteString(" AND (" + c + ")>=?")
+			args = append(append(args, cargs...), value)
+		case FilterAtMost:
+			b.WriteString(" AND (" + c + ")<=?")
+			args = append(append(args, cargs...), value)
 		case FilterPrefix:
 			// substr, not LIKE: LIKE ignores case and reads % and _ in the
 			// value as wildcards.
@@ -380,6 +470,8 @@ func (s *Store) exploreSplit(ctx context.Context, m exploreMetric, q ExploreQuer
 		order = ""
 	case q.By == "day":
 		order = " ORDER BY 1" // every day of the range, at most 1095
+	case d.kind == dimNumber:
+		order = " ORDER BY 1 LIMIT " + strconv.Itoa(ExploreMaxRows+1) // a distribution, in order
 	}
 	// The key is grouped through a unary +, so SQLite reads the time index's
 	// range and groups it, never an index on the key walked end to end

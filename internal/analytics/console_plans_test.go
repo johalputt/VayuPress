@@ -183,7 +183,17 @@ func TestNoConsoleReadWalksAWholeTable(t *testing.T) {
 			}
 			var filters []ExploreFilter
 			if d.ID != "" && d.ID != "day" {
-				filters = []ExploreFilter{{Dim: d.ID, Op: FilterIs, Value: "x"}}
+				v := "x"
+				switch {
+				case d.Flag:
+					v = "yes"
+				case d.Number:
+					v = "2"
+				}
+				filters = []ExploreFilter{{Dim: d.ID, Op: FilterIs, Value: v}}
+				if d.Number {
+					filters = append(filters, ExploreFilter{Dim: d.ID, Op: FilterAtLeast, Value: "1"})
+				}
 				if d.Text {
 					filters = append(filters, ExploreFilter{Dim: d.ID, Op: FilterPrefix, Value: "/"})
 				}

@@ -140,6 +140,7 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, site, host string, da
 			ui.HTML(bars(eventBars, osShareHidden(), "No custom events yet."))),
 		ui.HTML(a.osSearchesSection(ctx, site, days)),
 		ui.HTML(a.osGoalsSectionScoped(ctx, site, "/os/d/"+site+"/analytics/goals", days)),
+		ui.HTML(a.osSegmentsSection(ctx, site, "/os/d/"+site+"/analytics/explore", days)),
 		ui.Explain(ui.HTML(`<p>These are this site's own figures: every count reads only the visits recorded for ` + esc(host) +
 			`. A visit is a reader's pages with no 30-minute gap; a visitor is recognised within a day by a salted hash that changes daily, so "visitors" over a week counts a person once for each day they came. Nothing here uses a cookie, and nothing leaves this server. <a href="/docs/ANALYTICS" target="_blank" rel="noopener">What each figure means</a>.</p>`)),
 	}

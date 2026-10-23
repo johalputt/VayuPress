@@ -120,6 +120,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   figure is counted by the overview's own definition, a visit by its own
   columns alone; a question those cannot answer is refused with the reason.
   The question is the page's address, so a result can be bookmarked or sent.
+- **Segments.** A set of Explorer filters is saved as a segment, for one
+  site or for the install, and applied from the Explorer with its own
+  filters; the Analytics page lists each with the visitors in it and their
+  share. The Explorer offers the usual ones to start from (organic search,
+  returning the same day, mobile, one country, a section, engaged visits,
+  converted). A visit's own facts now split and filter every figure: its
+  channel and referrer (its first page view's), whether it returned the same
+  day, whether it had a custom event, and its page views, events and length,
+  with "at least" and "at most" (migration 118).
 - **Channels are counted by one rule.** The Analytics page's channels matched
   referrers by substring, so `cnet.com` was Social (it holds `t.co`), as was
   `dropbox.com` (`x.com`), and a reader moving between a site's own pages was a

@@ -17,7 +17,6 @@ import (
 	"encoding/csv"
 	"fmt"
 	"html"
-	htmpl "html/template"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -40,9 +39,11 @@ const exploreTTL = time.Minute
 
 // exploreAsk is the question a request asks, read from its address.
 type exploreAsk struct {
-	q     analytics.ExploreQuery
-	bars  bool
-	label string // the range, as the period selector says it
+	q       analytics.ExploreQuery
+	bars    bool
+	label   string // the range, as the period selector says it
+	seg     string // a saved segment's id, applied with the filters
+	segName string
 }
 
 func exploreAskOf(r *http.Request, scope string) exploreAsk {
@@ -72,7 +73,7 @@ func exploreAskOf(r *http.Request, scope string) exploreAsk {
 		}
 		q.Filters = append(q.Filters, f)
 	}
-	return exploreAsk{q: q, bars: v.Get("view") == "bars", label: label}
+	return exploreAsk{q: q, bars: v.Get("view") == "bars", label: label, seg: v.Get("seg")}
 }
 
 // values is the question as an address's query, in one order, so one
@@ -88,6 +89,9 @@ func (x exploreAsk) values() url.Values {
 	if x.bars {
 		v.Set("view", "bars")
 	}
+	if x.seg != "" {
+		v.Set("seg", x.seg)
+	}
 	for _, f := range x.q.Filters {
 		v.Add("fd", f.Dim)
 		v.Add("fo", f.Op)
@@ -101,9 +105,9 @@ func (x exploreAsk) values() url.Values {
 func (a *App) handleOSExplore(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
-	scope, base, title := analytics.ScopeAllDomains, "/os/analytics/explore", "Explorer"
+	scope, base, api, site, title := analytics.ScopeAllDomains, "/os/analytics/explore", "/os/api/analytics/segments", "", "Explorer"
 	if d, ok := osScopedDomain(r); ok {
-		scope, base, title = d.ID, "/os/d/"+d.ID+"/analytics/explore", "Explorer · "+d.Host
+		scope, base, api, site, title = d.ID, "/os/d/"+d.ID+"/analytics/explore", "/os/d/"+d.ID+"/api/analytics/segments", d.ID, "Explorer · "+d.Host
 	}
 	if a.analytics == nil {
 		writeOSHTML(w, r, adminOSLayout(nonce, title, "analytics", cfg, ui.Overview(ui.OverviewPage{Title: "Explorer"},
@@ -111,43 +115,61 @@ func (a *App) handleOSExplore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ask := exploreAskOf(r, scope)
+	segments, segErr := a.analytics.ListSegments(r.Context(), scope)
+	invalid := segErr
+	if ask.seg != "" && segErr == nil {
+		invalid = analytics.ErrNoSegment
+		for _, g := range segments {
+			if g.ID == ask.seg {
+				ask.q.Segment, ask.segName, invalid = g.Filters, g.Name, nil
+			}
+		}
+	}
+	if invalid == nil {
+		invalid = ask.q.Validate()
+	}
 	if r.URL.Query().Get("format") == "csv" {
+		if invalid != nil {
+			writeAPIError(w, r, http.StatusBadRequest, "invalid-question", invalid.Error(), "")
+			return
+		}
 		a.exploreCSV(w, r, ask)
 		return
 	}
-	form := exploreForm(base, ask)
+	form := exploreForm(base, ask, segments)
 	page := ui.OverviewPage{Title: "Explorer"}
-	if err := ask.q.Validate(); err != nil {
+	segs := ui.HTML(exploreSegments(base, api, site, segments, ask, nonce))
+	if invalid != nil {
 		writeOSHTML(w, r, adminOSLayout(nonce, title, "analytics", cfg, ui.Overview(page,
-			ui.Band{Title: "The question", Chart: ui.Callout("warn", ui.Text(err.Error())), Aside: form})))
+			ui.Band{Title: "The question", Chart: ui.Callout("warn", ui.Text(invalid.Error())), Aside: form}, segs)))
 		return
 	}
 	page.Actions = ui.HTML(`<a class="btn btn--sm" href="` + html.EscapeString(base+"?"+ask.values().Encode()+"&format=csv") + `" download>Download CSV</a>`)
 	band := ui.Band{Title: exploreMetricLabel(ask.q.Metric), Hint: exploreSentence(ask), Aside: form}
+	// The answer is cached as its total and its split, joined by a byte no
+	// HTML holds; the page around them, the segments among it, is drawn per
+	// request, so a segment saved shows at once.
 	key := "explore:" + scope + ":" + ask.values().Encode()
 	body, ready := exploreDash.get(key, exploreTTL, func(ctx context.Context) string {
 		res, err := a.analytics.Explore(ctx, ask.q)
 		if err != nil {
 			// Shown for the TTL rather than retried on every reload: a
 			// question that cannot be counted now will not be in a second.
-			b := band
-			b.Chart = ui.Callout("danger", ui.Text("This could not be counted: "+err.Error()))
-			return string(ui.Overview(page, b))
+			return string(ui.Callout("danger", ui.Text("This could not be counted: "+err.Error()))) + "\x00"
 		}
 		total, split := exploreAnswer(ask, res)
-		b := band
-		b.Chart = total
-		return string(ui.Overview(page, b, split))
+		return string(total) + "\x00" + string(split)
 	})
+	total, split, _ := strings.Cut(body, "\x00")
+	band.Chart = ui.HTML(total)
 	if !ready {
 		band.Chart = `<p class="table-empty">This is counted in the background; reload in a few seconds.</p>`
-		body = string(ui.Overview(page, band))
 	}
-	writeOSHTML(w, r, adminOSLayout(nonce, title, "analytics", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, title, "analytics", cfg, ui.Overview(page, band, ui.HTML(split), segs)))
 }
 
 // exploreForm is the question, as the form that asks it.
-func exploreForm(base string, x exploreAsk) ui.HTML {
+func exploreForm(base string, x exploreAsk, segments []analytics.Segment) ui.HTML {
 	opt := func(value, label string, on bool) string {
 		s := ""
 		if on {
@@ -175,6 +197,15 @@ func exploreForm(base string, x exploreAsk) ui.HTML {
 	}
 	by.WriteString(`</select>`)
 	field("ex-by", "Split by", by.String())
+	if len(segments) > 0 {
+		var sg strings.Builder
+		sg.WriteString(`<select class="input" id="ex-seg" name="seg">` + opt("", "Everyone", x.seg == ""))
+		for _, g := range segments {
+			sg.WriteString(opt(g.ID, g.Name, g.ID == x.seg))
+		}
+		sg.WriteString(`</select>`)
+		field("ex-seg", "Segment", sg.String())
+	}
 	var days strings.Builder
 	days.WriteString(`<select class="input" id="ex-days" name="days">`)
 	for _, o := range analyticsPeriodOptions {
@@ -207,9 +238,11 @@ func exploreForm(base string, x exploreAsk) ui.HTML {
 			opt(analytics.FilterIs, "is", f.Op == analytics.FilterIs || f.Op == "") +
 			opt(analytics.FilterIsNot, "is not", f.Op == analytics.FilterIsNot) +
 			opt(analytics.FilterPrefix, "starts with", f.Op == analytics.FilterPrefix) +
+			opt(analytics.FilterAtLeast, "at least", f.Op == analytics.FilterAtLeast) +
+			opt(analytics.FilterAtMost, "at most", f.Op == analytics.FilterAtMost) +
 			`</select><input class="input" name="fv" maxlength="200" aria-label="Filter ` + n + `: value" value="` + html.EscapeString(f.Value) + `"></div>`)
 	}
-	b.WriteString(`<p class="settings-row-hint">A channel is direct, organic, ai_assisted, social, email, corporate or referral. Visits, bounce rate and average visit are counted per visit, so they split and filter by the visit's landing page, place and browser alone.</p></fieldset>`)
+	b.WriteString(`<p class="settings-row-hint">A channel is direct, organic, ai_assisted, social, email, corporate or referral; returning and a visit with a custom event are yes or no; the counts in a visit are whole numbers, and only they take at least and at most. Visits, bounce rate and average visit are counted per visit, so they split and filter by the visit's own facts alone.</p></fieldset>`)
 	b.WriteString(`<div class="mt-3"><button type="submit" class="btn btn--primary btn--sm">Count</button></div></form>`)
 	return ui.Section("The question", "", ui.HTML(b.String()))
 }
@@ -247,9 +280,11 @@ func exploreSentence(x exploreAsk) string {
 	if x.q.By != "" {
 		s += ", by " + strings.ToLower(exploreDimLabel(x.q.By))
 	}
+	if x.segName != "" {
+		s += ", in the segment " + strconv.Quote(x.segName)
+	}
 	for _, f := range x.q.Filters {
-		op := map[string]string{analytics.FilterIs: "is", analytics.FilterIsNot: "is not", analytics.FilterPrefix: "starts with"}[f.Op]
-		s += ", where " + strings.ToLower(exploreDimLabel(f.Dim)) + " " + op + " " + strconv.Quote(f.Value)
+		s += ", where " + filterWords(f)
 	}
 	return s
 }

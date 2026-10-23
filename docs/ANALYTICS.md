@@ -108,7 +108,22 @@ campaign or event, so visits, bounce rate and average visit split and filter
 by the visit's own columns alone, and the Explorer refuses the rest with the
 reason. Beside the range before, each value is compared with its own count
 there, a day with the day as far into that range. A split shows its 100
-largest values and says when there are more. The CSV file is the same answer
+largest values and says when there are more; a count (page views in the
+visit, its events, its length in seconds) is listed in order instead, as a
+distribution.
+
+A visit's own facts split and filter every figure, an event's through its
+visit: its channel and referrer are its first page view's, the one it arrived
+by; "returning the same day" is a visit after the same visitor's earlier one
+to the same site, which can only be that day, as a visitor is recognised for
+a day; "a visit with a custom event" is one with any; and its page views,
+events and length are the whole visit's, counted as at least or at most a
+number.
+
+A segment is a name for up to five filters, saved from the Explorer for one
+site or for the install, as goals are. Applied in the Explorer, its filters
+hold with the Explorer's own. The Analytics page lists each segment with the
+visitors in it over the period and their share of all of them. The CSV file is the same answer
 with every value it shows and the total.
 
 ## Alerts

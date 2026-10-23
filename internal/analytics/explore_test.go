@@ -202,7 +202,13 @@ func TestTheExplorerRefusesWhatItCannotCount(t *testing.T) {
 		{ExploreQuery{Metric: ExploreBounceRate, Days: 7, Filters: []ExploreFilter{{"referrer", FilterIs, "x"}}}, "no one referrer to filter by"},
 		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{"day", FilterIs, "2026-01-01"}}}, "the range sets the days"},
 		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{"country", FilterPrefix, "I"}}}, "matched whole"},
-		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{"path", "contains", "a"}}}, "is, is not, or starts with"},
+		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{"path", "contains", "a"}}}, "is, is not, starts with, at least or at most"},
+		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{"returning", FilterIs, "maybe"}}}, "yes or no"},
+		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{"visit_views", FilterAtLeast, "two"}}}, "whole number"},
+		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{"visit_views", FilterIs, "2.5"}}}, "whole number"},
+		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{"country", FilterAtLeast, "3"}}}, "not a number"},
+		{ExploreQuery{Metric: ExploreVisits, Days: 7, Segment: []ExploreFilter{{"path", FilterIs, "/a"}}}, "the segment: Visits is counted per visit"},
+		{ExploreQuery{Metric: ExploreViews, Days: 7, Segment: make([]ExploreFilter, ExploreMaxFilters+1)}, "at most"},
 		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{"path", FilterPrefix, ""}}}, "not empty"},
 		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{"path", FilterIs, strings.Repeat("a", 201)}}}, "200 characters"},
 		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: make([]ExploreFilter, ExploreMaxFilters+1)}, "at most"},
@@ -210,5 +216,81 @@ func TestTheExplorerRefusesWhatItCannotCount(t *testing.T) {
 		if err := c.q.Validate(); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%+v: %v, want the reason to say %q", c.q, err, c.want)
 		}
+	}
+}
+
+// The visit's own facts, over the contract's five visits counted by hand:
+// A (R1 from a search, 09:00-09:04, two views), B (R2, two views, 20 s),
+// C (R2 again, one view), D (R3 from a link, a view and a signup, 30 s),
+// E (R1 again across midnight, two views, 20 s).
+func TestTheExplorerSplitsByTheVisit(t *testing.T) {
+	s, _ := contractStore(t)
+	for _, c := range []struct {
+		by   string
+		want map[string]float64
+	}{
+		{"visit_channel", map[string]float64{"direct": 3, "organic": 1, "social": 1}},
+		{"visit_referrer", map[string]float64{"": 3, "www.google.com": 1, "news.ycombinator.com": 1}},
+		{"returning", map[string]float64{"yes": 2, "no": 3}},
+		{"converted", map[string]float64{"yes": 1, "no": 4}},
+		{"visit_views", map[string]float64{"1": 2, "2": 3}},
+		{"visit_length", map[string]float64{"0": 1, "20": 2, "30": 1, "240": 1}},
+	} {
+		got := split(explore(t, s, ExploreQuery{Metric: ExploreVisits, By: c.by}))
+		if len(got) != len(c.want) {
+			t.Errorf("visits by %s = %v, want %v", c.by, got, c.want)
+			continue
+		}
+		for k, v := range c.want {
+			if got[k] != v {
+				t.Errorf("visits by %s = %v, want %v", c.by, got, c.want)
+				break
+			}
+		}
+	}
+	// A distribution is listed in order, not by its largest value.
+	if rows := explore(t, s, ExploreQuery{Metric: ExploreVisits, By: "visit_length"}).Rows; len(rows) != 4 || rows[0].Key != "0" || rows[3].Key != "240" {
+		t.Errorf("visit lengths are listed %+v, want 0 to 240 in order", rows)
+	}
+	for _, c := range []struct {
+		q    ExploreQuery
+		want float64
+	}{
+		{ExploreQuery{Metric: ExploreVisits, Filters: []ExploreFilter{{"visit_views", FilterAtLeast, "2"}}}, 3},
+		{ExploreQuery{Metric: ExploreVisits, Filters: []ExploreFilter{{"visit_views", FilterAtMost, "1"}}}, 2},
+		{ExploreQuery{Metric: ExploreVisits, Filters: []ExploreFilter{{"visit_views", FilterIs, "1"}}}, 2},
+		{ExploreQuery{Metric: ExploreVisits, Filters: []ExploreFilter{{"visit_length", FilterAtLeast, "30"}}}, 2},
+		{ExploreQuery{Metric: ExploreViews, Filters: []ExploreFilter{{"returning", FilterIs, "yes"}}}, 3},
+		{ExploreQuery{Metric: ExploreViews, Filters: []ExploreFilter{{"visit_channel", FilterIs, "organic"}}}, 2},
+		{ExploreQuery{Metric: ExploreVisitors, Filters: []ExploreFilter{{"converted", FilterIs, "yes"}}}, 1},
+		// A segment and a filter both hold.
+		{ExploreQuery{Metric: ExploreViews, Segment: []ExploreFilter{{"returning", FilterIs, "yes"}}, Filters: []ExploreFilter{{"path", FilterIs, "/"}}}, 1},
+	} {
+		if got := explore(t, s, c.q).Total; got != c.want {
+			t.Errorf("%+v = %v, want %v", c.q, got, c.want)
+		}
+	}
+}
+
+// A visitor's earlier visit to another site of the install does not make
+// their first visit to this one a return.
+func TestReturningIsToTheSameSite(t *testing.T) {
+	s := newExtStore(t)
+	at := func(h int) string {
+		return time.Now().UTC().Truncate(24 * time.Hour).Add(time.Duration(h) * time.Minute).Format("2006-01-02 15:04:05")
+	}
+	for _, q := range []struct {
+		sql  string
+		args []any
+	}{
+		{`INSERT INTO analytics_sessions(id,visitor_id,domain_id,created_at,events,views) VALUES('a','x','s2',?,1,1),('b','x','s1',?,1,1)`, []any{at(1), at(2)}},
+		{`INSERT INTO analytics_pageviews(id,session_id,url_path,event_type,domain_id,created_at,visitor_id) VALUES('p1','a','/',1,'s2',?,'x'),('p2','b','/',1,'s1',?,'x')`, []any{at(1), at(2)}},
+	} {
+		if _, err := s.db.Exec(q.sql, q.args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := split(explore(t, s, ExploreQuery{Metric: ExploreVisits, By: "returning", Days: 1})); len(got) != 1 || got["no"] != 1 {
+		t.Errorf("site one's first visit = %v, want one, not returning", got)
 	}
 }
