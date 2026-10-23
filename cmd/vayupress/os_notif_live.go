@@ -122,13 +122,6 @@ func (p *bellPulse) fire() {
 	}
 }
 
-// open is how many bells are streaming.
-func (p *bellPulse) open() int {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return len(p.subs)
-}
-
 // bellWatchSQL are the counts the watcher follows: the tables the bell reads,
 // each as its newest row and the tally the bell shows. MAX(rowid) is the
 // table's last key, and the tallies are the bell's own indexed counts. Each
