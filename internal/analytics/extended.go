@@ -592,19 +592,30 @@ type RealtimePage struct {
 // Realtime returns stats for the last 5 minutes: active visitors, the pages
 // they're on, plus where they are (country) and how they arrived (referrer).
 func (s *Store) Realtime(ctx context.Context) (*RealtimeStats, error) {
-	since := time.Now().UTC().Add(-5 * time.Minute).Format("2006-01-02 15:04:05")
+	return s.RealtimeScoped(ctx, ScopeAllDomains)
+}
+
+// RealtimeScoped is the last five minutes on one site (or every site, for
+// ScopeAllDomains). Active readers are counted as visitors, by the
+// definition every other figure uses: one person reading two tabs, or back
+// after a 30-minute pause, is one reader right now, not two.
+func (s *Store) RealtimeScoped(ctx context.Context, scope string) (*RealtimeStats, error) {
+	since := s.now().UTC().Add(-5 * time.Minute).Format("2006-01-02 15:04:05")
 	rs := &RealtimeStats{
 		ActivePages:     []RealtimePage{},
 		ActiveCountries: []AudienceStat{},
 		ActiveReferrers: []AudienceStat{},
 		WindowMinutes:   5,
 	}
+	clause, carg := domainClause(scope)
+	pclause, _ := domainClauseOn("p", scope)
+	args := append([]any{since}, carg...)
 	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT +session_id) FROM analytics_pageviews WHERE created_at>=?`, since).
+		`SELECT COUNT(DISTINCT visitor_id) FROM analytics_pageviews WHERE created_at>=?`+clause, args...).
 		Scan(&rs.ActiveVisitors)
 
 	if rows, err := s.readDB().QueryContext(ctx,
-		`SELECT url_path,COUNT(1) FROM analytics_pageviews WHERE created_at>=? GROUP BY +url_path ORDER BY 2 DESC LIMIT 10`, since); err == nil {
+		`SELECT url_path,COUNT(DISTINCT visitor_id) FROM analytics_pageviews WHERE created_at>=?`+clause+` AND event_type=1 GROUP BY +url_path ORDER BY 2 DESC LIMIT 10`, args...); err == nil {
 		for rows.Next() {
 			var p RealtimePage
 			if err := rows.Scan(&p.Path, &p.Count); err == nil {
@@ -614,9 +625,9 @@ func (s *Store) Realtime(ctx context.Context) (*RealtimeStats, error) {
 		rows.Close()
 	}
 
-	// Where active visitors are (proxy-supplied country only; empty otherwise).
+	// Where active readers are (proxy-supplied country only; empty otherwise).
 	if rows, err := s.readDB().QueryContext(ctx,
-		`SELECT s.country,COUNT(DISTINCT p.session_id) FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id WHERE p.created_at>=? AND s.country!='' GROUP BY s.country ORDER BY 2 DESC LIMIT 10`, since); err == nil {
+		`SELECT s.country,COUNT(DISTINCT p.visitor_id) FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id WHERE p.created_at>=?`+pclause+` AND s.country!='' GROUP BY s.country ORDER BY 2 DESC LIMIT 10`, args...); err == nil {
 		for rows.Next() {
 			var a AudienceStat
 			if err := rows.Scan(&a.Label, &a.Count); err == nil {
@@ -626,19 +637,19 @@ func (s *Store) Realtime(ctx context.Context) (*RealtimeStats, error) {
 		rows.Close()
 	}
 
-	// Active visitors with no proxy-supplied country are bucketed as "Unknown"
+	// Active readers with no proxy-supplied country are bucketed as "Unknown"
 	// (Label empty) so the live panel still accounts for everyone rather than
 	// silently dropping them. VayuPress does no GeoIP — country is only known
 	// when a reverse proxy sets a geo header.
 	var unknownCountry int
 	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT +p.session_id) FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id WHERE p.created_at>=? AND COALESCE(s.country,'')=''`, since).
+		`SELECT COUNT(DISTINCT p.visitor_id) FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id WHERE p.created_at>=?`+pclause+` AND COALESCE(s.country,'')=''`, args...).
 		Scan(&unknownCountry)
 	if unknownCountry > 0 {
 		rs.ActiveCountries = append(rs.ActiveCountries, AudienceStat{Label: "", Count: unknownCountry})
 	}
 
-	// How active visitors arrived (referrer host, recorded at ingest).
+	// How active readers arrived (referrer host, recorded at ingest).
 	//
 	// The self-host exclusion belongs here for the same reason as the other two
 	// referrer lists: internal navigation is not a referral. This is the third
@@ -647,10 +658,10 @@ func (s *Store) Realtime(ctx context.Context) (*RealtimeStats, error) {
 	// copy of the WHERE clause.
 	liveNotSelf, liveSelfArgs := s.selfHostExclusion("referrer")
 	if rows, err := s.readDB().QueryContext(ctx,
-		`SELECT referrer,COUNT(1) FROM analytics_pageviews
-		 WHERE created_at>=? AND referrer!=''`+liveNotSelf+
+		`SELECT referrer,COUNT(DISTINCT visitor_id) FROM analytics_pageviews
+		 WHERE created_at>=?`+clause+` AND referrer!=''`+liveNotSelf+
 			` GROUP BY +referrer ORDER BY 2 DESC LIMIT 10`,
-		append([]any{since}, liveSelfArgs...)...); err == nil {
+		append(args, liveSelfArgs...)...); err == nil {
 		for rows.Next() {
 			var a AudienceStat
 			if err := rows.Scan(&a.Label, &a.Count); err == nil {
@@ -1115,6 +1126,14 @@ func domainClause(scope string) (string, []any) {
 		return "", nil
 	}
 	return " AND domain_id=?", []any{scope}
+}
+
+// domainClauseOn is domainClause for a column of the table aliased as alias.
+func domainClauseOn(alias, scope string) (string, []any) {
+	if scope == ScopeAllDomains {
+		return "", nil
+	}
+	return " AND " + alias + ".domain_id=?", []any{scope}
 }
 
 // OverviewSinceScoped is OverviewSince for one domain.

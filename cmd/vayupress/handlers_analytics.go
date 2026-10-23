@@ -393,11 +393,29 @@ func (a *App) handleAnalyticsEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleAnalyticsRealtime(w http.ResponseWriter, r *http.Request) {
+	a.writeRealtime(w, r, analytics.ScopeAllDomains)
+}
+
+// handleOSScopedRealtime is one site's last five minutes, for the live panel
+// on that site's Analytics (/os/d/{id}/analytics). The site is the URL's,
+// resolved as every per-site page resolves it; the route is admin-only with
+// the rest of /os/d.
+func (a *App) handleOSScopedRealtime(w http.ResponseWriter, r *http.Request) {
+	d, ok := osScopedDomain(r)
+	if !ok {
+		writeAPIError(w, r, http.StatusNotFound, "no-site", "no such site", "")
+		return
+	}
+	a.writeRealtime(w, r, d.ID)
+}
+
+// writeRealtime answers the live panel for scope.
+func (a *App) writeRealtime(w http.ResponseWriter, r *http.Request, scope string) {
 	if a.analytics == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "analytics-disabled", "Analytics not initialised", "")
 		return
 	}
-	data, err := a.analytics.Realtime(r.Context())
+	data, err := a.analytics.RealtimeScoped(r.Context(), scope)
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
 		return

@@ -94,3 +94,23 @@ func TestASitesAnalyticsIsAnOverview(t *testing.T) {
 		t.Error("a site with no traffic does not say so")
 	}
 }
+
+// A site's page has its own Right now: the live panel polls that site's
+// realtime, never the install's, and the route sits with the rest of the
+// per-site console, admin-only.
+func TestASitesLivePanelPollsThatSite(t *testing.T) {
+	openMigratedDB(t)
+	st := analytics.New(dbpkg.DB)
+	st.UseVisits(vasession.NewMasterHasher([]byte("live")))
+	a := &App{analytics: st}
+	page := a.renderSiteAnalyticsBody(context.Background(), "s1", "one.test", 30, "last 30 days")
+	if !strings.Contains(page, `data-live-src="/os/d/s1/analytics/realtime"`) {
+		t.Errorf("site one's live panel does not poll site one:\n%s", page)
+	}
+	if strings.Contains(page, `data-live-src="/os/api/analytics/realtime"`) {
+		t.Error("site one's live panel polls the install's figures")
+	}
+	if got := osPathMinLevel("/os/d/s1/analytics/realtime"); got != accessAdmin {
+		t.Errorf("osPathMinLevel(site realtime) = %d, want accessAdmin", got)
+	}
+}

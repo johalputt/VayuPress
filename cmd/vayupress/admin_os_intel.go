@@ -519,7 +519,7 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 		ui.Explain(ui.HTML(`<p>Everything here is counted and kept on this server: no cookies, no personal data, and no request to anyone else. A visitor is recognised within a day by a salted hash that changes daily, so nobody can be followed from one day to the next.</p>`)),
 	}
 	return string(ui.Overview(page, ui.Band{Title: "Visitors", Hint: "Last " + periodLabel, Figures: figs, Chart: chart + scope,
-		Aside: ui.Section("Right now", "", ui.HTML(osLiveCard()))}, sections...))
+		Aside: ui.Section("Right now", "", ui.HTML(osLiveCard("/os/api/analytics/realtime")))}, sections...))
 }
 
 // analyticsFigures is the band's figure group: visitors and pageviews, which
@@ -635,12 +635,12 @@ func osPeriodSelector(base string, days int) ui.HTML {
 	return `<div data-period>` + ui.Segments("Period", segs...) + `</div>`
 }
 
-// osLiveCard renders the live-visitors panel; admin-os-intel.js polls
-// /os/api/analytics/realtime every few seconds and fills it in. It shows the
-// active-visitor count plus where they are (country), what they're viewing,
-// and how they arrived (referrer).
-func osLiveCard() string {
-	return `<div class="vm-liveview" data-live>
+// osLiveCard renders the live-visitors panel; admin-os-intel.js polls src
+// (the install's realtime endpoint, or one site's) every few seconds and
+// fills it in. It shows the active-visitor count plus where they are
+// (country), what they're viewing, and how they arrived (referrer).
+func osLiveCard(src string) string {
+	return `<div class="vm-liveview" data-live data-live-src="` + esc(src) + `">
   <div class="vm-live-hero mb-4">
     <div class="vm-live-hero__main">
       <div class="vm-live-badge"><span class="live-dot"></span> LIVE</div>

@@ -296,7 +296,10 @@
   }
 
   function poll() {
-    fetch('/os/api/analytics/realtime', { headers: { 'Accept': 'application/json' } })
+    // The card names its source: the install's figures, or one site's.
+    var card = document.querySelector('[data-live]');
+    var src = (card && card.getAttribute('data-live-src')) || '/os/api/analytics/realtime';
+    fetch(src, { headers: { 'Accept': 'application/json' } })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
       .then(render)
       .catch(function () { /* transient; keep last view */ });

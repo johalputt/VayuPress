@@ -72,7 +72,7 @@ func TestTrendChartLongWindowStaysLight(t *testing.T) {
 // strictly CSP-safe (no inline styles/scripts). The bar containers are .vp-bars
 // so the poller can render the same coloured bars the server renders elsewhere.
 func TestLiveCardStructureCSPSafe(t *testing.T) {
-	out := osLiveCard()
+	out := osLiveCard("/os/api/analytics/realtime")
 	assertCSPSafe(t, "osLiveCard", out)
 	for _, want := range []string{
 		`data-live`,

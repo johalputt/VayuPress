@@ -60,6 +60,8 @@ func (a *App) handleOSScopedAnalytics(w http.ResponseWriter, r *http.Request) {
 			Actions: osPeriodSelector("/os/d/"+id+"/analytics", days)},
 			ui.Band{Title: "Visitors", Chart: `<p class="table-empty">This is counted in the background; reload in a few seconds.</p>`}))
 	}
+	// The live panel's poller; the body above is cached, the script is not.
+	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js?v=` + assetVer("js/admin-os-intel.js") + `"></script>`
 	writeOSHTML(w, r, adminOSLayout(nonce, title, "optimize", cfg, htmpl.HTML(body)))
 }
 
@@ -135,7 +137,8 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, site, host string, da
 		ui.Explain(ui.HTML(`<p>These are this site's own figures: every count reads only the visits recorded for ` + esc(host) +
 			`. A visit is a reader's pages with no 30-minute gap; a visitor is recognised within a day by a salted hash that changes daily, so "visitors" over a week counts a person once for each day they came. Nothing here uses a cookie, and nothing leaves this server. <a href="/docs/ANALYTICS" target="_blank" rel="noopener">What each figure means</a>.</p>`)),
 	}
-	return string(ui.Overview(page, ui.Band{Title: "Visitors", Hint: "The " + label, Figures: figs, Chart: ui.HTML(chart)}, sections...))
+	return string(ui.Overview(page, ui.Band{Title: "Visitors", Hint: "The " + label, Figures: figs, Chart: ui.HTML(chart),
+		Aside: ui.Section("Right now", "", ui.HTML(osLiveCard("/os/d/"+site+"/analytics/realtime")))}, sections...))
 }
 
 // siteVisitFigures adds what a site's owner asks first after "how many":

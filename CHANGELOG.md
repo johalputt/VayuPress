@@ -29,6 +29,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   counted in the background cache, as the install's page is. Engagement and
   Core Web Vitals now record the site that served the page, never the one a
   beacon names.
+- **Right now counts readers, per site.** The live panel counted visits, so
+  one person reading two of the install's sites was two readers; it now
+  counts visitors, as every other figure does, and its pages and referrers
+  are counted by reader too. A site's own Analytics has its own Right now,
+  polling that site's last five minutes alone.
 
 ### Security
 
