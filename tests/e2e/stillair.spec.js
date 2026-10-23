@@ -312,6 +312,15 @@ test("every element of every page is on the Still Air scale, in both schemes", a
     for (const href of hrefs) {
       await page.goto(href);
       await page.waitForLoadState("load");
+      // Colours are judged at rest. A button fades its colour when a page's
+      // own script re-enables it (Updates checks for a release as it opens),
+      // and read mid-fade it is a colour between two tokens: under the full
+      // suite's load the check ended during the read, and the lint failed a
+      // page that is on the scale. Finite animations finish first; endless
+      // ones (a spinner) are left running.
+      await page.evaluate(() => Promise.all(document.getAnimations()
+        .filter((a) => a.effect && a.effect.getComputedTiming().endTime !== Infinity)
+        .map((a) => a.finished.catch(() => {}))));
       for (const f of await page.evaluate(scaleLint, tokens)) findings.push(`${scheme} ${width}px ${href}: ${f}`);
       // An icon name outside the set draws the dashed missing mark; Posts and
       // Messages shipped one on their date button ("calendar") in 3.17.92,
