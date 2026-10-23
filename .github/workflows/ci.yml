@@ -413,8 +413,12 @@ jobs:
           "$(go env GOPATH)/bin/golangci-lint" run ./...
       - name: gosec (fail on HIGH severity + HIGH confidence — Prompt 9/10 gate)
         run: |
-          # Built as staticcheck is above (scripts/build-analyser.sh).
-          scripts/build-analyser.sh github.com/securego/gosec/v2/cmd/gosec
+          # Built as staticcheck is above (scripts/build-analyser.sh), at
+          # v2.29.0: v2.30.0 (2026-10-23) loads cmd/vayupress as a list of
+          # files and reports type errors in every package that imports it,
+          # on commits 2.29.0 passes clean. Raise it once a release loads
+          # this module again.
+          scripts/build-analyser.sh github.com/securego/gosec/v2/cmd/gosec v2.29.0
           # Excluded rule classes are documented in the audit remediation:
           #  - G104 covered by errcheck (golangci-lint)
           #  - G115 conversions are provably bounded
