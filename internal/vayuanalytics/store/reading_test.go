@@ -53,7 +53,8 @@ func TestReadingDepthCountsMeasuredReadings(t *testing.T) {
 	}
 }
 
-// The depth is read from a range of the time index, never a whole index.
+// The depth and the engagement are read from a range of the time index,
+// never a whole index.
 func TestReadingDepthReadsARange(t *testing.T) {
 	prev := config.Cfg.DBPath
 	config.Cfg.DBPath = filepath.Join(t.TempDir(), "va.db")
@@ -67,26 +68,31 @@ func TestReadingDepthReadsARange(t *testing.T) {
 		if site != AllDomains {
 			clause, args = " AND domain_id=?", append(args, site)
 		}
-		rows, err := s.db.Query(`EXPLAIN QUERY PLAN `+readingDepthSQL(clause), append(args, 10)...)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var plan []string
-		for rows.Next() {
-			var id, parent, notused int
-			var detail string
-			if err := rows.Scan(&id, &parent, &notused, &detail); err != nil {
+		for _, q := range []struct {
+			sql  string
+			args []any
+		}{{readingDepthSQL(clause), append(args, 10)}, {pageEngagementSQL(clause), args}} {
+			rows, err := s.db.Query(`EXPLAIN QUERY PLAN `+q.sql, q.args...)
+			if err != nil {
 				t.Fatal(err)
 			}
-			plan = append(plan, detail)
-		}
-		if err := rows.Err(); err != nil {
-			t.Fatal(err)
-		}
-		_ = rows.Close()
-		for _, l := range plan {
-			if strings.HasPrefix(l, "SCAN vayuanalytics_sessions") {
-				t.Errorf("%q walks the table: %s", site, strings.Join(plan, " | "))
+			var plan []string
+			for rows.Next() {
+				var id, parent, notused int
+				var detail string
+				if err := rows.Scan(&id, &parent, &notused, &detail); err != nil {
+					t.Fatal(err)
+				}
+				plan = append(plan, detail)
+			}
+			if err := rows.Err(); err != nil {
+				t.Fatal(err)
+			}
+			_ = rows.Close()
+			for _, l := range plan {
+				if strings.HasPrefix(l, "SCAN vayuanalytics_sessions") {
+					t.Errorf("%q walks the table: %s", site, strings.Join(plan, " | "))
+				}
 			}
 		}
 	}
@@ -156,5 +162,43 @@ func TestALayoutShiftOfZeroIsAReading(t *testing.T) {
 	}
 	if v.SamplesINP != 0 || v.SamplesLCP != 4 || v.Samples != 4 {
 		t.Errorf("readings: LCP %d, INP %d, most %d; want 4, 0, 4", v.SamplesLCP, v.SamplesINP, v.Samples)
+	}
+}
+
+// A page's engagement counts the readings measured as the reader left, a
+// person's alone, on its own site, and of them those that stayed 30 seconds
+// and scrolled a quarter of the page, both exactly.
+func TestPageEngagementCountsEngagedReadings(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	now := time.Now().UTC()
+	read := func(sess, site, ct string, secs, depth int, beacon bool) {
+		t.Helper()
+		in := enter(sess, "/a", "direct", "", ct, now)
+		in.DomainID = site
+		if err := s.RecordEnter(ctx, in); err != nil {
+			t.Fatal(err)
+		}
+		if beacon {
+			if err := s.RecordBeacon(ctx, BeaconInput{SessionHash: sess, PagePath: "/a", TimeOnPage: secs, ScrollDepth: depth, Now: now}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	read("e1", "s1", "human", 30, 25, true) // engaged, on both thresholds
+	read("e2", "s1", "human", 29, 100, true)
+	read("e3", "s1", "human", 100, 24, true)
+	read("e4", "s1", "human", 0, 0, false)     // left before its beacon
+	read("e5", "s1", "BadBot", 100, 100, true) // not a reader
+	read("e6", "s2", "human", 100, 100, true)  // another site
+	got, err := s.PageEngagement(ctx, "s1", 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != (PageEngaged{Path: "/a", Readings: 3, Engaged: 1}) {
+		t.Errorf("site one's /a = %+v, want 3 readings, 1 engaged", got)
+	}
+	if all, _ := s.PageEngagement(ctx, AllDomains, 7); len(all) != 1 || all[0].Readings != 4 || all[0].Engaged != 2 {
+		t.Errorf("every site's /a = %+v, want 4 readings, 2 engaged", all)
 	}
 }

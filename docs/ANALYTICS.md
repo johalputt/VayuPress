@@ -132,6 +132,29 @@ with its mean server time, which is the render time where the two differ.
 Counts are kept in memory and written every minute; a stop writes them
 first.
 
+**What the content did.** Each page sorted into what was measured of it
+over the range, never called good or bad: each category is a rule, and each
+page in it says its figures and the threshold they met.
+
+- *Many views, little engagement*; *many views, much engagement*; *few
+  views, much engagement*: against the site's other pages with 20 views and
+  10 readings or more, "many" and "few" the top and bottom quarter of their
+  views, "much" and "little" the top and bottom quarter of the share of
+  their readings that were engaged (the reader stayed 30 seconds and
+  scrolled a quarter of the page). A quarter is taken of 8 pages or more, and
+  a page on the median is neither side, so pages all alike have none.
+- *Falling*: down by a third or more against the range before, from 20 views
+  or more. *Rising*: up by half or more, to 20 views or more.
+- *Arrives from search*: half or more of its views, from 20, arrived from a
+  search engine. How often a search engine showed the page is counted by the
+  search engine, not here.
+- *Converts*: the top quarter of the pages viewed in 20 visits or more, by
+  the share of those visits with a custom event.
+
+A category the site's pages are too few for says so instead of listing
+none. A reading is matched to its page's views by the page's path, without a
+trailing slash.
+
 **Retention.** Not measured. A visitor is the same only within a day, so
 nobody can be seen to come back on a later day, and a week-over-week cohort
 would be empty by construction. The API's `retention` route says so rather

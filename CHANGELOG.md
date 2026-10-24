@@ -137,6 +137,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   of 0, a page that never shifted, was read as not reported and left out, so
   the shift figure read worse than readers saw; the script now says when it
   measured one. A vital no reader reported reads "not reported", not 0.
+- **What the content did.** Analytics, the install's and each site's, sorts
+  its pages by what was measured of them: many views and little engagement,
+  many and much, few and much, falling, rising, arriving from search, and
+  converting. No page is called good or bad; each says the figures that put
+  it in its category and the threshold they met, and a category the site's
+  pages are too few to compare says so. The API's `content` report gives the
+  same.
+- **A page's readings meet its views.** The reading beacon kept a page's
+  path with its trailing slash ("/post/") where its views dropped it
+  ("/post"), so the two never matched; it records the path as the views do.
 - **What followed a search.** Analytics' Searches says how many searches
   were followed in their visit by a page, by another search, or by nothing,
   which pages readers opened after searching, and which queries they tried

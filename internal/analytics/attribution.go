@@ -44,7 +44,7 @@ func goalPredicate(g Goal) (string, interface{}) {
 		if strings.HasSuffix(g.Target, "*") {
 			return `p.event_type=1 AND p.url_path LIKE ?`, strings.TrimSuffix(g.Target, "*") + "%"
 		}
-		return `p.event_type=1 AND p.url_path=?`, normalizePathExtended(g.Target)
+		return `p.event_type=1 AND p.url_path=?`, NormalizePath(g.Target)
 	}
 }
 

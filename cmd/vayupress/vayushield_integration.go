@@ -32,6 +32,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/budget"
@@ -1509,19 +1510,14 @@ func ftoa2(f float64) string { return strconv.FormatFloat(f, 'f', 2, 64) }
 
 func pct(rate float64) string { return strconv.FormatFloat(rate*100, 'f', 1, 64) + "%" }
 
-// vaNormalizePath trims query/fragment and caps a beacon-supplied path.
+// vaNormalizePath is a beacon-supplied path as analytics records the same
+// page (analytics.NormalizePath), or "" when it is not a path: a page's
+// readings kept "/post/" while its views were "/post", so the two never met.
 func vaNormalizePath(p string) string {
-	if i := strings.IndexAny(p, "?#"); i >= 0 {
-		p = p[:i]
-	}
-	p = strings.TrimSpace(p)
-	if p == "" || p[0] != '/' {
+	if p = strings.TrimSpace(p); p == "" || p[0] != '/' {
 		return ""
 	}
-	if len(p) > 512 {
-		p = p[:512]
-	}
-	return p
+	return analytics.NormalizePath(p)
 }
 
 // parseUTM extracts campaign parameters from a raw location.search string.

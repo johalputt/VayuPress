@@ -175,7 +175,7 @@ func (s *Store) GoalResultsScoped(ctx context.Context, scope string, days int) (
 				arg = strings.TrimSuffix(g.Target, "*") + "%"
 			} else {
 				where = `p.event_type=1 AND p.url_path=?`
-				arg = normalizePathExtended(g.Target)
+				arg = NormalizePath(g.Target)
 			}
 		}
 

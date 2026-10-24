@@ -55,3 +55,44 @@ func readingDepthSQL(clause string) string {
 		FROM vayuanalytics_sessions WHERE entry_time>=?` + clause + ` AND exit_time IS NOT NULL AND ` + human + `
 		GROUP BY +page_path ORDER BY 2 DESC, 1 LIMIT ?`
 }
+
+// PageEngaged is a page's readings over a range (page loads measured as the
+// reader left, as PageDepth's) and how many of them were engaged: the reader
+// stayed engagedThresholdSec and scrolled engagedThresholdScroll per cent.
+type PageEngaged struct {
+	Path     string
+	Readings int64
+	Engaged  int64
+}
+
+// PageEngagement is every page's readings over the trailing days, for one
+// site, or for every site when domainID is AllDomains. Each path is as it was
+// recorded: rows from before paths lost their trailing slash are their own,
+// and the caller merges them.
+func (s *Store) PageEngagement(ctx context.Context, domainID string, days int) ([]PageEngaged, error) {
+	clause, args := "", []any{fromTime(days)}
+	if domainID != AllDomains {
+		clause, args = " AND domain_id=?", append(args, domainID)
+	}
+	rows, err := s.readDB().QueryContext(ctx, pageEngagementSQL(clause), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PageEngaged
+	for rows.Next() {
+		var p PageEngaged
+		if err := rows.Scan(&p.Path, &p.Readings, &p.Engaged); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// pageEngagementSQL is PageEngagement's query with its site clause, grouped
+// through a unary + as readingDepthSQL is.
+func pageEngagementSQL(clause string) string {
+	return `SELECT page_path, COUNT(1), SUM(engaged) FROM vayuanalytics_sessions WHERE entry_time>=?` + clause +
+		` AND exit_time IS NOT NULL AND ` + human + ` GROUP BY +page_path`
+}

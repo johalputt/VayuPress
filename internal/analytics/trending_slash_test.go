@@ -204,8 +204,8 @@ func TestNormalizePathExtendedCollapsesTrailingSlash(t *testing.T) {
 		{"", "/"},    // empty normalises to root, not to ""
 		{"   ", "/"}, // whitespace-only likewise
 	} {
-		if got := normalizePathExtended(tc.in); got != tc.want {
-			t.Errorf("normalizePathExtended(%q) = %q, want %q", tc.in, got, tc.want)
+		if got := NormalizePath(tc.in); got != tc.want {
+			t.Errorf("NormalizePath(%q) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
 }

@@ -789,7 +789,7 @@ func (s *Store) GetFunnelScoped(ctx context.Context, scope, id string) (*Funnel,
 	// Pre-normalize step paths once; row paths are normalized to match.
 	stepPaths := make([]string, len(f.Steps))
 	for i, st := range f.Steps {
-		stepPaths[i] = normalizePathExtended(st.URLPath)
+		stepPaths[i] = NormalizePath(st.URLPath)
 	}
 
 	clause, carg := domainClause(scope)
@@ -816,7 +816,7 @@ func (s *Store) GetFunnelScoped(ctx context.Context, scope, id string) (*Funnel,
 		if curStep >= len(stepPaths) {
 			continue // already converted; later pages cannot re-enter earlier steps
 		}
-		if normalizePathExtended(path) == stepPaths[curStep] {
+		if NormalizePath(path) == stepPaths[curStep] {
 			reached[curStep]++
 			curStep++
 		}
@@ -954,7 +954,10 @@ func (s *Store) PurgeOlderThan(ctx context.Context, retentionDays int) (int64, e
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-func normalizePathExtended(p string) string {
+// NormalizePath is a page's path as analytics records it: without its query
+// or fragment, capped, and without a trailing slash. The reading beacon keys
+// its rows by it too, so one page's views and readings meet.
+func NormalizePath(p string) string {
 	if i := strings.IndexAny(p, "?#"); i >= 0 {
 		p = p[:i]
 	}

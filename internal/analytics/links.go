@@ -36,7 +36,7 @@ func linkTarget(raw, pageHost string, download bool) (string, bool) {
 		return "", false
 	}
 	host := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
-	path := normalizePathExtended(u.EscapedPath())
+	path := NormalizePath(u.EscapedPath())
 	if download && strings.EqualFold(host, strings.TrimSpace(pageHost)) {
 		return trunc(path, 200), true
 	}

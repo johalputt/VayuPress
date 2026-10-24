@@ -7353,3 +7353,5 @@
    referrer with no break in it wraps where it must rather than pushing the
    table sideways. */
 .vp-os[data-ui="still-air"] .sa-explore__result td:first-child { overflow-wrap: anywhere; }
+/* A page's path is one long word; it wraps rather than pushing its reason off the panel. */
+.vp-os[data-ui="still-air"] .sa-editorial td:first-child { overflow-wrap: anywhere; }

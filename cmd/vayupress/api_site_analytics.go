@@ -51,6 +51,7 @@ func (a *App) siteAnalyticsRoutes(r chi.Router) {
 		sr.Get("/funnels", a.handleSiteAnalyticsFunnels)
 		sr.Get("/funnels/{fid}", a.handleSiteAnalyticsFunnel)
 		sr.Get("/performance", a.handleSiteAnalyticsPerformance)
+		sr.Get("/content", a.handleSiteAnalyticsContent)
 	})
 }
 

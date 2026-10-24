@@ -521,6 +521,7 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 		ui.HTML(a.osGoalsSection(ctx, days)),
 		ui.HTML(a.osSegmentsSection(ctx, analytics.ScopeAllDomains, "/os/analytics/explore", days)),
 		ui.HTML(a.osBehaviourSection(ctx, analytics.ScopeAllDomains, "/os/analytics/explore", days)),
+		ui.HTML(a.osContentSection(ctx, analytics.ScopeAllDomains, "/os/analytics/explore", days)),
 		ui.HTML(a.osPerformanceSection(ctx, analytics.ScopeAllDomains, days)),
 		ui.HTML(a.osJourneySection(ctx, days)),
 		ui.HTML(osExportSection(days)),

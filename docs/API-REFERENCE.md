@@ -174,7 +174,8 @@ GET /api/v1/analytics/overview | pageviews | pages | referrers | browsers |
     revenue | goals | journey
 GET /api/v1/analytics/export     (Parquet)
 GET /api/v1/sites/{site}/analytics/overview | realtime | pages | sources |
-    events | searches | goals | funnels | funnels/{id} | performance
+    events | searches | goals | funnels | funnels/{id} | performance |
+    content
 ```
 
 The `/api/v1/analytics` family adds up every site, so a key bound to one site
@@ -192,7 +193,10 @@ and `server_by_day`: the site's requests by status and its pages' server
 time (the mean, and p50, p75 and p95 as the bound of their bucket,
 `_at_most`), with the pages the page cache answered and those it rendered,
 each with its mean (`cached_pages`, `cached_mean_ms`, `rendered_pages`,
-`rendered_mean_ms`).
+`rendered_mean_ms`). `content` gives each of the seven categories of
+what the content did (docs/ANALYTICS.md) with its rule, its `total`, the 25
+pages it lists first with their figures and `reason`, or `not_compared` when
+the site's pages were too few for it.
 
 No cookie is set, and no IP address or user agent is stored. A visit is keyed
 by a hash whose salt rotates daily, so a reader cannot be followed from one day

@@ -96,7 +96,7 @@ func (s *Store) CollectAsync(req CollectRequest, ip, ua, domainID string) {
 // when the event must not be stored: no identity can be derived (no salt), or
 // it is the visit's last page view delivered again.
 func (s *Store) buildCollectEvent(req CollectRequest, ip, ua, domainID string) *collectEvent {
-	path := normalizePathExtended(req.URL)
+	path := NormalizePath(req.URL)
 	query := ""
 	if i := strings.IndexAny(req.URL, "?#"); i >= 0 && i+1 < len(req.URL) {
 		query = req.URL[i+1:]
