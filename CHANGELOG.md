@@ -120,6 +120,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   figure is counted by the overview's own definition, a visit by its own
   columns alone; a question those cannot answer is refused with the reason.
   The question is the page's address, so a result can be bookmarked or sent.
+- **What followed a search.** Analytics' Searches says how many searches
+  were followed in their visit by a page, by another search, or by nothing,
+  which pages readers opened after searching, and which queries they tried
+  again in other words; the API's searches report gives the same. The
+  results page's own view is not counted as what followed.
 - **What readers did.** Analytics, the install's and each site's, shows
   where visits ended, the links readers followed off the site, the files they
   fetched, and how far down each of the most read pages they scrolled (the

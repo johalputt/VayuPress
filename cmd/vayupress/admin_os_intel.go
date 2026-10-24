@@ -800,9 +800,29 @@ func (a *App) osSearchesSection(ctx context.Context, scope string, days int) str
 			empty = append(empty, osChartBar{Label: st.Query, Value: st.Empty})
 		}
 	}
-	return string(ui.Section("Searches", "What readers looked for with the site's search", ui.HTML(analyticsCols(
+	body := analyticsCols(
 		analyticsPanel("Most searched", osBarList(most, osShareOfListed(), "")),
-		analyticsPanel("Found nothing", osBarList(empty, osShareHidden(), "Every search found something."))))))
+		analyticsPanel("Found nothing", osBarList(empty, osShareHidden(), "Every search found something.")))
+	if next, err := a.analytics.SearchFollowUpsScoped(ctx, scope, days, 10); err == nil && next.Searches > 0 {
+		left := next.Searches - next.Opened - next.Refined
+		// Set as counts beside their labels, not a sentence: "1 were
+		// followed" is the grammar a count in prose gets wrong.
+		lead := `<p class="settings-row-hint">What followed a search in its visit: a page, ` + strconv.Itoa(next.Opened) + ` (` + osShareLabel(next.Opened, next.Searches) +
+			`); another search, ` + strconv.Itoa(next.Refined) + ` (` + osShareLabel(next.Refined, next.Searches) + `); nothing, ` + strconv.Itoa(left) + ` (` + osShareLabel(left, next.Searches) +
+			`). A page opened next is usually, not always, a result.</p>`
+		pages := make([]osChartBar, 0, len(next.Pages))
+		for _, p := range next.Pages {
+			pages = append(pages, osChartBar{Label: prettyPathText(p.Label), Value: p.Count})
+		}
+		again := make([]osChartBar, 0, len(next.Refinements))
+		for _, rf := range next.Refinements {
+			again = append(again, osChartBar{Label: rf.From + " → " + rf.To, Value: rf.Count})
+		}
+		body += lead + analyticsCols(
+			analyticsPanel("Opened after searching", osBarList(pages, osShareOf(next.Opened), "No search has been followed by a page yet.")),
+			analyticsPanel("Searched again as", osBarList(again, osShareOf(next.Refined), "No search has been tried again in other words yet.")))
+	}
+	return string(ui.Section("Searches", "What readers looked for with the site's search", ui.HTML(body)))
 }
 
 // noGoalsYet is the goals table's empty row; the script writes the same words

@@ -199,10 +199,16 @@ func (a *App) handleSiteAnalyticsSearches(w http.ResponseWriter, r *http.Request
 		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
 		return
 	}
+	next, err := a.analytics.SearchFollowUpsScoped(r.Context(), sc.scope, days, 100)
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
+		return
+	}
 	writeJSON(w, r, http.StatusOK, struct {
 		siteHead
-		Searches []analytics.SearchStat `json:"searches"`
-	}{headOf(sc, days), stats})
+		Searches []analytics.SearchStat     `json:"searches"`
+		FollowUp *analytics.SearchFollowUps `json:"follow_up"`
+	}{headOf(sc, days), stats, next})
 }
 
 func (a *App) handleSiteAnalyticsGoals(w http.ResponseWriter, r *http.Request) {

@@ -82,6 +82,15 @@ trimmed, and one that looks like an email address or holds five or more digits
 in a row is not kept at all. Searches in the instant search box are answered in
 the reader's browser and are not counted.
 
+**What followed a search.** The next event in the search's visit that says
+what came of it: a view of another page (the reader opened something), or
+another search first (the reader tried again in other words, a refinement
+from the first query to the second). The results page's own view is not it,
+since the page counts itself as it is shown. A search with neither after it
+in its visit was followed by nothing. A page opened next is usually a result
+and not always one, so the figure is named "followed by a page", not "clicked
+a result".
+
 **Link out and download.** A click on a link to another host is a link out;
 a click on a link to a file (a document, an archive, a recording, or any link
 marked `download`) is a download, wherever the file is. The counting script

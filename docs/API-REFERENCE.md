@@ -182,7 +182,11 @@ is refused it. The `/api/v1/sites/{site}/analytics` family reads one site,
 named by its id or its host, with the analytics grant: an install key reads
 any site, and a site-bound key reads its own site only. Any other site answers
 `404`, exactly as a site that does not exist. `?days=` sets the window (1 to
-365, 30 by default).
+365, 30 by default). A site's `searches` gives each query's searches,
+visitors and searches that found nothing, and `follow_up`: how many of the
+window's searches were followed in their visit by a page, by another search
+first, or by nothing, the pages opened after searching, and the queries tried
+again as others.
 
 No cookie is set, and no IP address or user agent is stored. A visit is keyed
 by a hash whose salt rotates daily, so a reader cannot be followed from one day
