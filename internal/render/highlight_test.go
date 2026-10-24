@@ -56,3 +56,19 @@ func TestRenderContentPlaceholderForgery(t *testing.T) {
 		t.Errorf("unexpected script injection: %s", out)
 	}
 }
+
+// A code block is an element, so "<pre><code>" written inside an attribute's
+// value is text and is not highlighted there: chroma's markup is never put
+// back inside an attribute. Its entities, decoded by the parser, are read
+// once: "&lt;" in the source is "<" in the highlighted code, not "&lt;".
+func TestACodeBlockIsAnElementNotAPattern(t *testing.T) {
+	policy = bluemonday.UGCPolicy()
+	out := renderContentHTML(`<p><a href="/x" title='<pre><code class="language-go">package main</code></pre>'>x</a></p>`)
+	if strings.Contains(out, "chroma") || strings.Contains(out, "data-lang") {
+		t.Errorf("a code block inside an attribute was highlighted:\n%s", out)
+	}
+	out = renderContentHTML(`<pre><code class="language-go">if a &lt; b &amp;&amp; c {}</code></pre>`)
+	if !strings.Contains(out, `class="chroma"`) || strings.Contains(out, "&amp;lt;") || !strings.Contains(out, "&lt;") {
+		t.Errorf("a code block's entities were not read once:\n%s", out)
+	}
+}

@@ -1655,11 +1655,6 @@ type RelatedArticle struct {
 	Shared []string
 }
 
-// codeBlockRe matches <pre><code class="language-LANG"> or <pre><code class="lang-LANG">
-// (class optional). It runs against the RAW, pre-sanitised content so the
-// language hint on the class attribute is still present.
-var codeBlockRe = regexp.MustCompile(`(?s)<pre><code(?:\s+class="(?:language-|lang-)([^"]+)")?>([^<]*(?:<[^/][^<]*)*)</code></pre>`)
-
 // renderContentHTML produces the final, safe article body HTML. It must be the
 // single entry point for turning stored article content into rendered HTML.
 //
@@ -1672,24 +1667,8 @@ var codeBlockRe = regexp.MustCompile(`(?s)<pre><code(?:\s+class="(?:language-|la
 // back in afterwards. This keeps the strict-CSP posture (style-src 'self') and
 // the XSS posture (all user prose still passes through bluemonday) intact.
 func renderContentHTML(raw string) string {
-	highlighted := map[string]string{}
 	nonce := newNonce()
-	i := 0
-
-	withPlaceholders := codeBlockRe.ReplaceAllStringFunc(raw, func(match string) string {
-		sub := codeBlockRe.FindStringSubmatch(match)
-		if sub == nil {
-			return match
-		}
-		out, ok := highlightOne(sub[1], sub[2])
-		if !ok {
-			return match // leave the original block for bluemonday to sanitise
-		}
-		token := "VAYUCODE" + nonce + strconv.Itoa(i) + "ENDVAYUCODE"
-		i++
-		highlighted[token] = out
-		return token
-	})
+	withPlaceholders, highlighted := liftCodeBlocks(raw, nonce)
 
 	// Inline <svg> diagrams the same way, by their own policy (svg_content.go).
 	withPlaceholders, drawings := liftDiagrams(withPlaceholders, nonce)
@@ -1710,15 +1689,9 @@ func renderContentHTML(raw string) string {
 
 // highlightOne renders a single code block with chroma. It returns the
 // `<pre><code>…</code></pre>` HTML and true on success, or ("", false) when the
-// block should be left untouched (and sanitised normally).
+// block should be left untouched (and sanitised normally). code is the
+// block's text, its entities already decoded by the parser.
 func highlightOne(lang, code string) (string, bool) {
-	// Undo the entity-encoding goldmark applies inside code fences.
-	code = strings.ReplaceAll(code, "&lt;", "<")
-	code = strings.ReplaceAll(code, "&gt;", ">")
-	code = strings.ReplaceAll(code, "&#34;", `"`)
-	code = strings.ReplaceAll(code, "&#39;", "'")
-	code = strings.ReplaceAll(code, "&amp;", "&") // must be last
-
 	lexer := lexers.Get(lang)
 	if lexer == nil {
 		// No usable language hint → don't pretend to highlight; let bluemonday

@@ -16,6 +16,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   only a caller of the API or a script could send one. Any header holding
   a line break is now refused, and a Subject that is not plain ASCII is
   encoded (RFC 2047), as mail servers expect.
+- **Code blocks are found as elements, not by a pattern.** Highlighting
+  found `<pre><code>` with a pattern that also matched the same text written
+  inside an attribute's value, and put the highlighter's markup back inside
+  that attribute. Nothing could be injected through it (the highlighter
+  writes fixed class names and escaped text), but a post is now parsed as a
+  browser parses it, and a code block is a `<pre>` holding one `<code>`.
 
 ## [3.18.13] — 2026-10-24
 
