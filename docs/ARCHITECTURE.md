@@ -52,7 +52,7 @@ Every HTTP request passes the same chain (`cmd/vayupress/routes.go`):
 7. **Aegis L0, the sovereignty lane** — caps public concurrency so the console
    keeps headroom under load, before any classification or database work.
 8. **VayuShield** — classifies the request: fair-shed, reputation, inspection
-   rules, challenges.
+   rules, challenges, the operator's request rules (`docs/VAYUSHIELD.md`).
 9. **Release mirror, CORS**, then the router.
 
 ## Pages
@@ -114,6 +114,25 @@ graph LR
 - Search is **VayuFind**, built in (`internal/search`, ADR-0101): no external
   service, maintained by those events, its index snapshotted to disk so a
   restart restores rather than rebuilds.
+
+## Telemetry
+
+Page views, collected events, reading engagement and the shield's events are
+never written on the request. Each is counted into a bounded queue in memory
+and written in batches by one writer (`internal/dbbatch`, and the view
+recorder in `internal/analytics`), so a flood costs memory up to a cap, never
+the write connection.
+
+- **Full**: a new event is dropped and counted.
+- **Refused** by the database: the batch is kept and retried, and counted as
+  lost after `dbbatch.MaxAttempts` (3) refusals in a row.
+- **Read-only mode** (`mode.Mode.HoldsTelemetry`): the queues hold, and write
+  when the mode returns.
+- **Shutdown**: `flushTelemetry` writes what they hold after the shutdown
+  channel closes and before the database does.
+
+System › Monitoring › Telemetry shows each queue's count, cap, drops and
+losses (`cmd/vayupress/telemetry_queues.go`).
 
 ## The database
 

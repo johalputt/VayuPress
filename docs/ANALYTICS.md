@@ -291,3 +291,30 @@ minutes that began within it, each once it has ended and been written.
 A window ends at the minute the check runs, and each count reads a range of
 an index, so a check costs what its window holds. A site that is removed stops
 being checked.
+
+## When recording fails
+
+Page views, collected events and reading engagement are counted in memory
+and written in batches, never on the request, by bounded queues. What each
+queue holds, and what it has dropped and lost since boot, is on
+**System › Monitoring › Telemetry**.
+
+- **The queue is full.** A new event is dropped and counted as dropped. The
+  page is served as ever.
+- **The database refuses a batch** (a lock held past the flush's deadline, a
+  failing disk). The batch stays at the front of its queue and is tried again
+  on the next flush. After three refusals in a row it is discarded and
+  counted as lost, so one row the database will never take cannot hold every
+  row behind it. While a batch waits, new events back up into the queue,
+  where an overflow is dropped and counted.
+- **Read-only mode** (entered when the disk is failing). The queues hold
+  their events, up to their caps, and write them when the mode returns.
+- **A restart.** Shutdown writes what the queues hold before the database
+  closes. A crash loses what was waiting, at most a few seconds' events.
+- **A row whose time is not a date** (a mangled restore, a hand edit; no
+  writer stores one). Daily groupings leave it out, so the trend and the
+  Explorer's split by day still draw, and the daily purge removes it with its
+  properties: no retention cutoff would ever reach it.
+
+What the reads cost at a million and three million events is in
+[BENCHMARKS.md](BENCHMARKS.md#21-analytics-at-scale).

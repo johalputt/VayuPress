@@ -239,6 +239,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   sources read now. Journeys lists the ways from one page to another. An
   export is one sheet: the report and the format. The shortest range is
   Today, the day so far in UTC, where it said 24 hours.
+- **The shield and the install's records are documented.** `docs/VAYUSHIELD.md`
+  is the operator's guide to the shield: the order it decides in, what is
+  exempt and why, the rules language and its limits, what is recorded, what
+  it cannot do, how it fails and what it costs. `docs/OBSERVABILITY.md`
+  follows one request across the log line, the shield's record and the
+  audit log. `docs/BENCHMARKS.md` gains Analytics at one and three million
+  events and the shield at 1,000, 5,000 and 20,000 requests a second;
+  `docs/ANALYTICS.md` what happens when recording fails;
+  `docs/OPERATIONS.md` runbooks for gaps in the record and for a reader
+  the shield refuses.
 
 ### Fixed
 

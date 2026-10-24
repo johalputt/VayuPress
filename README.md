@@ -470,6 +470,7 @@ The cross-compile matrix earned its place the same way. Every other Go gate runs
 - **[docs/API-REFERENCE.md](docs/API-REFERENCE.md)** and **[docs/compatibility/vayuapi.md](docs/compatibility/vayuapi.md)** — the API, its keys, permissions and rate limits.
 - **[docs/compatibility/mcp.md](docs/compatibility/mcp.md)** — connecting Claude and any MCP client.
 - **[docs/compatibility/vcb.md](docs/compatibility/vcb.md)** — the Vayu Compatibility Bible: how to build a compatible plugin, theme or tool.
+- **[docs/VAYUSHIELD.md](docs/VAYUSHIELD.md)**, **[docs/ANALYTICS.md](docs/ANALYTICS.md)** and **[docs/OBSERVABILITY.md](docs/OBSERVABILITY.md)** — the request filter, what each figure means, and what the install records about itself.
 - **[docs/MAIL-RECOVERY.md](docs/MAIL-RECOVERY.md)** — VayuMail account recovery: what to enrol before anyone is locked out, and every way back in.
 - **[docs/INSTALLATION.md](docs/INSTALLATION.md)**, **[docs/UPGRADING.md](docs/UPGRADING.md)**, **[docs/OPERATIONS.md](docs/OPERATIONS.md)** — running an install.
 - **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** and **[docs/RELEASES.md](docs/RELEASES.md)** — building and releasing it.

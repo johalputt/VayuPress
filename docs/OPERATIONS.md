@@ -169,6 +169,36 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/metrics -H "X-API
 
 A key is sent as `X-API-Key: <key>` or `Authorization: Bearer <key>`.
 
+### RB-10: Analytics or the shield's record has gaps
+
+Page views, events, reading engagement and the shield's events are written
+in batches by bounded queues (`docs/ANALYTICS.md`, "When recording fails").
+
+1. **System › Monitoring › Telemetry**: each queue's waiting count against its
+   cap, and what it dropped (full) and lost (refused) since boot, with the
+   database's last refusal.
+2. Losses with a refusal named: the database is refusing writes. Check
+   **Write connection** on the same page and RB-06; a held lock or a full disk is
+   the usual cause. A refused batch is tried three times before it is lost.
+3. Drops without losses: more traffic than the queue's cap between flushes.
+   Enforcement and pages are unaffected; only the record thins.
+4. The system mode reads read-only: the queues are holding, not losing. They
+   write when the mode returns.
+
+### RB-11: The shield refuses a real reader
+
+1. Ask for the time and the page. The site's Security page, under **Newest
+   refusals**, lists each with the request id its log line carries, and
+   **Why it was refused** and **Which gate acted** name the rule or signal.
+2. A rule (`line N` or `site line N`): change it, or put `test` in front to
+   watch it without acting. A site's Security page replays the site's
+   recorded views against the rules as typed, before saving.
+3. The jail or reputation: release the address on VayuOS → Shield.
+4. A country rule: the country comes from the proxy's headers when trusted,
+   or the embedded table; check what the request carried.
+5. To never challenge or refuse an address, add it to the allow list. An
+   allow is never jailed.
+
 ---
 
 ## Metrics

@@ -90,6 +90,52 @@ go test -bench=. -benchmem -run=^$ ./...
 and all metrics recording allocate nothing per call — they impose no
 GC pressure under sustained load.
 
+## 2.1 Analytics at scale
+
+`internal/analytics/bench_test.go` writes a store through the ingest path
+itself and times the reads the console makes of it: fourteen sites over
+thirty days, a few sites taking most of the traffic and a few pages most of
+each site's views, visits of one to six views, one event in ten a custom
+event (24 October 2026, 4 vCPU Xeon @ 2.10 GHz).
+
+| Read | 1,000,000 events | 3,000,000 events |
+|------|-----------------:|-----------------:|
+| Ingest, one event (batch path) | 139 µs (7,182/s) | 108 µs (9,255/s) |
+| One site's 30-day overview | 54 ms | 182 ms |
+| The busiest site's 30-day overview | 305 ms | 1.28 s |
+| Every site's 30-day overview | 1.28 s | 4.83 s |
+| One site's top pages, 30 days | 136 ms | 407 ms |
+| Realtime (last five minutes) | 0.66 ms | 0.76 ms |
+
+A million events in thirty days is about ten times johal.in's rate. The
+overview reads grow a little faster than the events in their range (3.4 to
+4.2 times for three times the events), most of it the exact count of
+distinct visitors; realtime reads only its five minutes and does not grow. This is
+why the Analytics pages are counted in a background cache and never on the
+request: the page is served from the last count while the next one runs.
+Ten million events was not run (the store would not fit the disk of the
+host measured on); growing as from 1M to 3M, it would put one site's
+overview near 0.7 s and every site's near 18 s, both in the background.
+That is an extrapolation, not a measurement.
+
+## 2.2 VayuShield under load
+
+`internal/vayushield/load_test.go` drives the shield's middleware at a fixed
+rate with recording on, rate limits, the jail and twenty operator rules,
+over a mix of readers on two thousand addresses, crawlers, scripts,
+scanners and a few flooding addresses. The time is the middleware's own,
+per request.
+
+| Rate | Sent | Late | p50 | p95 | p99 | CPU | Heap growth | Events dropped / lost |
+|------|-----:|-----:|----:|----:|----:|----:|------------:|----------------------:|
+| 1,000 req/s for 20 s | 20,000 | 0 | 26 µs | 56 µs | 80 µs | 8% of a core | 13 MiB | 0 / 0 |
+| 5,000 req/s for 20 s | 100,000 | 0 | 17 µs | 51 µs | 73 µs | 19% of a core | 63 MiB | 0 / 0 |
+| 20,000 req/s for 5 s | 100,000 | 0 | 14 µs | 40 µs | 61 µs | 41% of a core | 64 MiB | 0 / 0 |
+
+The costliest rule set the shield accepts, 100 rules of 16 conditions with
+every condition tested and none matching, costs 15 µs a request
+(`BenchmarkMatchTheCostliestSetThatMisses`, `internal/vayushield/oprules`).
+
 ---
 
 ## 3. Reproducing
@@ -100,6 +146,12 @@ make bench
 
 # Full sweep with allocation accounting
 go test -bench=. -benchmem -run=^$ ./...
+
+# Analytics at a million events (VP_BENCH_EVENTS, default 200,000)
+VP_BENCH_EVENTS=1000000 go test -run '^$' -bench . -benchtime 20x ./internal/analytics/
+
+# The shield under load (VP_SHIELD_RATES and VP_SHIELD_SECONDS to change the runs)
+VP_SHIELD_LOAD=1 go test -run TestTheShieldUnderLoad -v ./internal/vayushield/
 
 # Live end-to-end load against a running server
 API_KEY=... DB_PATH=/tmp/bench.db ./vayupress &

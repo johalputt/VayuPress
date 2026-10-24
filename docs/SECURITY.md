@@ -117,6 +117,32 @@ redirect into it.
   authors is administrator-only by default.
 - **`noindex`.** Console pages tell search engines not to index them.
 
+### One site's console is that site's
+
+A hosted site's pages and API live under `/os/d/{id}`, and every route there
+runs behind the site scope (`scopedDomainMiddleware`): an id that names no
+hosted site is not routed, and an API key bound to one site is refused at
+another's, whatever grants it carries. The role a path needs is checked as
+everywhere else in the console (`osPathMinLevel`). `site_scope_routes_test.go` walks the router and
+fails on any `/os/d/{id}` route registered without the scope, so a new page
+cannot be added outside it.
+
+## Paths are judged as they are served
+
+A handler that cleans its path serves `/api/../page.html` as `/page.html`.
+Every decision made on a path reads it both as it arrived and as cleaned
+(`path.Clean`):
+
+- **Exemptions** (the shield's exempt prefixes and feed shapes, maintenance
+  mode's and the crawler block's): a path is exempt only when both readings
+  are (`isBypassed`, `maintenancePathExempt`).
+- **The operator's rules**: a refusal holds when either reading matches; an
+  allow only when both do (`oprules`).
+
+`path_reading_integration_test.go` sends each shape (`/x/../p`, `//p`,
+`/./p`, `/p/`, an exempt prefix walked back) through the real router to an
+uploaded site, and fails on any that serves the refused page.
+
 ---
 
 ## Plugin feature endpoints

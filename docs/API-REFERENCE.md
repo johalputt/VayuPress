@@ -205,6 +205,25 @@ to the next. For the same reason `retention` answers
 no visitor can be seen to return on a later day, so there are no cohorts to
 report.
 
+## VayuShield
+
+The shield is set from the console, so its endpoints are the console's: a
+signed-in administrator's session, with the CSRF token on every write, for
+the install's and for each site's (`docs/VAYUSHIELD.md`).
+
+```text
+GET  /os/api/shield/export              the shield's settings and lists
+POST /os/api/shield/settings            save the install's settings and rules
+POST /os/api/shield/simulate            replay recorded views against a draft
+POST /os/api/shield/release             release a jailed address
+POST /os/d/{id}/api/shield              save one site's settings and rules
+POST /os/d/{id}/api/shield/simulate     replay that site's views against a draft
+GET  /os/d/{id}/shield/feed             that site's newest refusals
+```
+
+A client with a key reads the shield through MCP: `vayushield_status`,
+`vayushield_posture`, `vayushield_settings` and `vayushield_history`.
+
 ## Operations
 
 ```text
