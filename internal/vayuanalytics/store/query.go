@@ -341,7 +341,7 @@ COALESCE(SUM(CASE WHEN client_type='AIAgent' THEN 1 ELSE 0 END),0),
 COALESCE(SUM(CASE WHEN client_type='Headless' THEN 1 ELSE 0 END),0),
 COALESCE(SUM(CASE WHEN client_type='BadBot' THEN 1 ELSE 0 END),0),
 COALESCE(AVG(bot_score),0)
-FROM vayuanalytics_sessions WHERE entry_time>=? GROUP BY date(entry_time) ORDER BY date(entry_time)`, from)
+FROM vayuanalytics_sessions WHERE entry_time>=? GROUP BY date(entry_time) HAVING date(entry_time) IS NOT NULL ORDER BY date(entry_time)`, from)
 	if err != nil {
 		return nil, err
 	}

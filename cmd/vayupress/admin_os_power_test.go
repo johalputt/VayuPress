@@ -85,3 +85,17 @@ func TestTheMaintenanceMessageIsLimitedInCharacters(t *testing.T) {
 		t.Fatalf("the page shows %d characters of the message, want %d", got, maintenanceMessageMax)
 	}
 }
+
+// A path stays reachable during maintenance only when it is exempt both as
+// it arrived and as path.Clean reads it: "/health/../page" read as exempt and
+// was served as /page by a handler that cleans its path.
+func TestAMaintenanceExemptionHoldsForBothReadings(t *testing.T) {
+	for p, want := range map[string]bool{
+		"/os/login": true, "/os": true, "/health/live": true, "/favicon.ico": true,
+		"/health/../private.html": false, "/os/../private.html": false, "/x/../favicon.ico": false, "/private.html": false,
+	} {
+		if got := maintenancePathExempt(p); got != want {
+			t.Errorf("%s exempt %v, want %v", p, got, want)
+		}
+	}
+}

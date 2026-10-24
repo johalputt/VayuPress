@@ -73,12 +73,7 @@ func (s *Store) CreateGoalScoped(ctx context.Context, scope, name, kind, target 
 	if kind != GoalKindEvent && kind != GoalKindPath {
 		return "", errors.New("kind must be 'event' or 'path'")
 	}
-	if len(name) > 200 {
-		name = name[:200]
-	}
-	if len(target) > 512 {
-		target = target[:512]
-	}
+	name, target = trunc(name, 200), trunc(target, 512)
 	id := fmt.Sprintf("g%d", time.Now().UnixNano())
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO analytics_goals(id,name,kind,target,created_at,domain_id) VALUES(?,?,?,?,?,?)`,

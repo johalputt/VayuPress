@@ -28,6 +28,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/johalputt/vayupress/internal/vayuanalytics/classifier"
 )
@@ -147,11 +148,16 @@ func (s *Store) Collect(ctx context.Context, req CollectRequest, ip, ua, domainI
 	return s.applyCollectBatch(ctx, []collectEvent{*ev})
 }
 
+// trunc caps s at n bytes, cut where a character starts: a cut through a
+// character stored a broken one, which every page and export then showed.
 func trunc(s string, n int) string {
-	if len(s) > n {
-		return s[:n]
+	if len(s) <= n {
+		return s
 	}
-	return s
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
 
 // ── Overview ─────────────────────────────────────────────────────────────────
@@ -258,7 +264,7 @@ func (s *Store) PageviewSeriesScoped(ctx context.Context, scope string, days int
 	from := s.now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
 	clause, carg := domainClause(scope)
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT DATE(created_at) as d,SUM(event_type=1),COUNT(DISTINCT visitor_id) FROM analytics_pageviews WHERE created_at>=?`+clause+` GROUP BY d ORDER BY d`, append([]any{from}, carg...)...)
+		`SELECT DATE(created_at) as d,SUM(event_type=1),COUNT(DISTINCT visitor_id) FROM analytics_pageviews WHERE created_at>=?`+clause+` GROUP BY d HAVING d IS NOT NULL ORDER BY d`, append([]any{from}, carg...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -895,7 +901,7 @@ func (s *Store) RevenueStats(ctx context.Context, days int) (map[string]interfac
 		Scan(&totalRevenue, &totalTransactions, &avgOrderValue)
 
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT DATE(created_at),SUM(amount),COUNT(1),AVG(amount),MAX(currency) FROM analytics_revenue WHERE created_at>=? GROUP BY DATE(created_at) ORDER BY DATE(created_at)`, from)
+		`SELECT DATE(created_at),SUM(amount),COUNT(1),AVG(amount),MAX(currency) FROM analytics_revenue WHERE created_at>=? GROUP BY DATE(created_at) HAVING DATE(created_at) IS NOT NULL ORDER BY DATE(created_at)`, from)
 	daily := []RevenueStat{}
 	if err == nil {
 		defer rows.Close()
@@ -942,6 +948,25 @@ func (s *Store) PurgeOlderThan(ctx context.Context, retentionDays int) (int64, e
 	}
 	cutoff := time.Now().UTC().AddDate(0, 0, -retentionDays)
 	var total int64
+	// A row whose time is not a date sorts after every date, so every range
+	// counted it and no cutoff ever reached it. No writer stores one; it is a
+	// corrupted row (a mangled restore, a hand edit), and goes here, found
+	// through the time indexes as everything from ":" (the character after
+	// "9") on. A property goes with its view.
+	for _, q := range []string{
+		`DELETE FROM analytics_event_data WHERE event_id IN (SELECT id FROM analytics_pageviews WHERE created_at>=?)`,
+		`DELETE FROM analytics_pageviews WHERE created_at>=?`,
+		`DELETE FROM analytics_sessions WHERE created_at>=?`,
+		`DELETE FROM analytics_revenue WHERE created_at>=?`,
+	} {
+		res, err := s.db.ExecContext(ctx, q, notADate)
+		if err != nil {
+			return total, err
+		}
+		if n, e := res.RowsAffected(); e == nil {
+			total += n
+		}
+	}
 	for _, q := range []string{
 		`DELETE FROM analytics_event_data WHERE created_at<?`,
 		`DELETE FROM analytics_pageviews WHERE created_at<?`,
@@ -960,6 +985,11 @@ func (s *Store) PurgeOlderThan(ctx context.Context, retentionDays int) (int64, e
 	return total, nil
 }
 
+// notADate is where a time that is not a date starts: ":" follows "9", so
+// every stored time ("2026-…") sorts before it and any text that is not one
+// (a letter, a symbol) sorts at or after it.
+const notADate = ":"
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 // NormalizePath is a page's path as analytics records it: without its query
@@ -973,9 +1003,7 @@ func NormalizePath(p string) string {
 	if p == "" {
 		p = "/"
 	}
-	if len(p) > 512 {
-		p = p[:512]
-	}
+	p = trunc(p, 512)
 	// Collapse the trailing slash so one page is one row. "/post" and "/post/"
 	// are the same article, and storing both split its traffic in two: each
 	// spelling got its own count, "Top pages" listed the page twice at partial

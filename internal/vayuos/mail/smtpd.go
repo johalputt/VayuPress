@@ -208,6 +208,7 @@ func (s *SMTPServer) acceptLoop() {
 		go func() {
 			defer s.wg.Done()
 			defer release()
+			defer endPanickedSession("smtp", conn)
 			s.handle(conn)
 		}()
 	}

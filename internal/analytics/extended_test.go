@@ -16,7 +16,7 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 )
 
-func newExtStore(t *testing.T) *Store {
+func newExtStore(t testing.TB) *Store {
 	t.Helper()
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {

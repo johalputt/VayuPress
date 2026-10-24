@@ -31,6 +31,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"path"
 	"runtime"
 	"strconv"
 	"strings"
@@ -1376,15 +1377,23 @@ func (m *Manager) Decide(r *http.Request, v Verdict) Action {
 // public URL that merely starts with those characters (e.g. a blog post at
 // "/oslo-guide" or "/static-site-generators"). A bare HasPrefix would silently
 // disable bot protection for such posts — this must not happen.
+//
+// A path is exempt only when it is exempt both as it arrived and as
+// path.Clean reads it, which is how a handler that cleans it serves it: the
+// raw path alone let "/api/../private.html" skip every gate, the operator's
+// rules included, and an uploaded site's file server serve /private.html.
 func (m *Manager) isBypassed(r *http.Request) bool {
-	p := r.URL.Path
-	for _, pre := range m.cfg.BypassPrefixes {
-		if pre == "" {
-			continue
+	p, clean := r.URL.Path, path.Clean("/"+r.URL.Path)
+	under := func(p string) bool {
+		for _, pre := range m.cfg.BypassPrefixes {
+			if pre != "" && (p == pre || strings.HasPrefix(p, pre+"/")) {
+				return true
+			}
 		}
-		if p == pre || strings.HasPrefix(p, pre+"/") {
-			return true
-		}
+		return false
+	}
+	if under(p) && under(clean) {
+		return true
 	}
 	// A dynamic bypass for machine endpoints whose path is not a fixed prefix —
 	// today the site-root IndexNow verification file, whose name IS the operator's
@@ -1401,7 +1410,7 @@ func (m *Manager) isBypassed(r *http.Request) bool {
 	// /index.xml and WordPress /feed/). These are cheap, cacheable, and still
 	// bounded by the L0 public-concurrency lane, so bypassing the shield's
 	// challenge for them is safe.
-	return isFeedLikePath(p)
+	return isFeedLikePath(p) && isFeedLikePath(clean)
 }
 
 // IsFeedLikePath reports whether a path is a feed/sitemap/robots endpoint by

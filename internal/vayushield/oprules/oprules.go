@@ -32,6 +32,7 @@ package oprules
 
 import (
 	"math"
+	"path"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -74,6 +75,13 @@ func (a Action) String() string {
 
 // MaxRules is the most rules a set holds; lines past it are refused, by name.
 const MaxRules = 100
+
+// MaxConditions is the most conditions a rule holds. With MaxRules it is
+// what bounds a request's cost: 100 rules of 16 conditions, each tested, is
+// the most any request pays (15 µs on four cores,
+// BenchmarkMatchTheCostliestSetThatMisses), where the 32 KiB a save takes
+// held 4,000 conditions, 33 µs. A rule has eight things to test.
+const MaxConditions = 16
 
 // limitKeys bounds the sources one limit rule tracks, so a hundred of them
 // over a spray of addresses stays a few tens of megabytes; past it the
@@ -189,7 +197,39 @@ func (s *Set) Match(f Facts, now time.Time) *Rule {
 	return nil
 }
 
+// matches reports whether the rule holds for the request, by every reading
+// of its path a handler might serve. The path is matched as it arrived and
+// as path.Clean makes it ("//p", "/./p", "/x/../p" and "/p/" are all "/p"),
+// since a handler that cleans it serves the cleaned page: an uploaded site's
+// file server did, so "block path=/p.html" was walked around by "/p.html/".
+// A refusal (block, challenge, limit, log) holds when either reading
+// matches; an allow only when both do, so it cannot be widened by a path
+// that reads as allowed and is served as something else.
 func (r *Rule) matches(f Facts) bool {
+	clean := cleanPath(f.Path)
+	if clean == f.Path {
+		return r.matchesAs(f)
+	}
+	raw := r.matchesAs(f)
+	if raw && r.Action != Allow {
+		return true
+	}
+	if !raw && r.Action == Allow {
+		return false
+	}
+	f.Path = clean
+	return r.matchesAs(f)
+}
+
+// cleanPath is p as path.Clean reads it from the root.
+func cleanPath(p string) string {
+	if p == "" {
+		return p
+	}
+	return path.Clean("/" + p)
+}
+
+func (r *Rule) matchesAs(f Facts) bool {
 	for _, c := range r.conds {
 		if !c(f) {
 			return false
@@ -262,6 +302,9 @@ func parseLine(line string) (*Rule, string) {
 		// A rule with no condition matches everything; that is the whole site,
 		// and is far more likely a slip than an intent.
 		return nil, "has no condition; a rule that matches every request is not accepted"
+	}
+	if len(words)-1 > MaxConditions {
+		return nil, "has " + strconv.Itoa(len(words)-1) + " conditions; a rule holds at most " + strconv.Itoa(MaxConditions)
 	}
 	for _, w := range words[1:] {
 		c, err := parseCond(w)

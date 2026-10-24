@@ -83,3 +83,30 @@ func TestQueueSynchronousFallback(t *testing.T) {
 		t.Fatalf("synchronous fallback did not persist: views=%d", o.Views)
 	}
 }
+
+// A reading whose time is not a date breaks no daily report, and the purge,
+// which no cutoff of its reached, removes it.
+func TestAReadingWhoseTimeIsNotADateIsPurged(t *testing.T) {
+	s := fileStore(t)
+	ctx := context.Background()
+	for _, q := range []string{
+		`INSERT INTO vayuanalytics_sessions(session_hash,page_path,entry_time,client_type) VALUES('ok','/ok',datetime('now'),'human')`,
+		`INSERT INTO vayuanalytics_sessions(session_hash,page_path,entry_time,client_type) VALUES('bad','/bad','not a date','human')`,
+	} {
+		if _, err := s.db.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.BotShare(ctx, 7); err != nil {
+		t.Errorf("the daily bot share failed on a corrupted reading: %v", err)
+	}
+	if _, err := s.Purge(ctx, 30); err != nil {
+		t.Fatal(err)
+	}
+	var bad, ok int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM vayuanalytics_sessions WHERE session_hash='bad'`).Scan(&bad)
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM vayuanalytics_sessions WHERE session_hash='ok'`).Scan(&ok)
+	if bad != 0 || ok != 1 {
+		t.Errorf("after the purge: %d corrupted, %d valid; want 0 and 1", bad, ok)
+	}
+}

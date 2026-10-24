@@ -25,6 +25,7 @@ import (
 	htmpl "html/template"
 	"net/http"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"syscall"
@@ -56,16 +57,24 @@ var maintenanceExemptPrefixes = []string{
 // keep working and the operator can always turn maintenance back off from the
 // web. The prefix match is segment-aware ("/os" matches "/os" and "/os/…" but
 // never a public page like "/osborne").
+//
+// A path is exempt only when it is exempt both as it arrived and as
+// path.Clean reads it, which is how a handler that cleans it serves it:
+// "/health/../page" read as exempt and was served as /page by an uploaded
+// site's file server while the site was down, or to a blocked crawler.
 func maintenancePathExempt(p string) bool {
-	if p == "/favicon.ico" {
-		return true
-	}
-	for _, pre := range maintenanceExemptPrefixes {
-		if p == pre || strings.HasPrefix(p, pre+"/") {
+	exempt := func(p string) bool {
+		if p == "/favicon.ico" {
 			return true
 		}
+		for _, pre := range maintenanceExemptPrefixes {
+			if p == pre || strings.HasPrefix(p, pre+"/") {
+				return true
+			}
+		}
+		return false
 	}
-	return false
+	return exempt(p) && exempt(path.Clean("/"+p))
 }
 
 // maintenanceModeOn reports whether the operator has taken the public site down.

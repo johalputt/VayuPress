@@ -406,6 +406,16 @@ func (s *Store) Purge(ctx context.Context, retainDays int) (int64, error) {
 			break // range exhausted
 		}
 	}
+	// A reading whose time is not a date sorts after every date: every range
+	// counted it and no cutoff reached it. It is a corrupted row, found
+	// through the time index as everything from ":" (the character after
+	// "9") on.
+	res, err := s.db.ExecContext(ctx, `DELETE FROM vayuanalytics_sessions WHERE entry_time>=?`, ":")
+	if err != nil {
+		return total, err
+	}
+	n, _ := res.RowsAffected()
+	total += n
 	// Fold the WAL back after a big removal so readers do not churn through
 	// dead pages for hours afterwards.
 	_, _ = s.db.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`)

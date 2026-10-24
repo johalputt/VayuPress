@@ -4,8 +4,10 @@ package policy
 
 import (
 	"net/http"
+	"net/netip"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestDenyWinsOverAllow is the ordering decision, and it is the one that matters
@@ -321,5 +323,47 @@ func TestChallengeCountriesAreInertInTorMode(t *testing.T) {
 	if !onion.Empty() {
 		t.Error("a Tor Space compiled challenge countries into a non-empty rule set, so the " +
 			"per-request path pays for a rule that can never fire")
+	}
+}
+
+// FuzzCompile holds every address entry to one of three outcomes: kept as a
+// valid, masked, native prefix (one that can match a peer), named as bad, or
+// set aside as ended. An entry kept as anything else is a rule that is shown
+// and silently matches nothing.
+func FuzzCompile(f *testing.F) {
+	for _, s := range []string{
+		"198.51.100.0/24", "2001:db8::/48", "::ffff:198.51.100.7", "::ffff:198.51.100.0/120",
+		"::ffff:0.0.0.0/80", "203.0.113.9 until 2026-11-01", "203.0.113.9 until 2020-01-01", "x", "", "# note",
+	} {
+		f.Add(s)
+	}
+	now := time.Date(2026, 10, 24, 0, 0, 0, 0, time.UTC)
+	f.Fuzz(func(t *testing.T, entry string) {
+		r, bad := Compile(Config{AllowCIDRs: []string{entry}, DenyCIDRs: []string{entry}, Now: now})
+		for _, p := range append(append([]netip.Prefix{}, r.allow...), r.deny...) {
+			if !p.IsValid() || p != p.Masked() || p.Addr().Is4In6() {
+				t.Errorf("%q kept as %v, which no peer can match", entry, p)
+			}
+		}
+		s := strings.TrimSpace(entry)
+		if s != "" && !strings.HasPrefix(s, "#") && len(r.allow)+len(r.deny) == 0 && len(bad) == 0 && len(r.expired) == 0 {
+			t.Errorf("%q was neither kept, named nor set aside as ended", entry)
+		}
+	})
+}
+
+// An entry holding a character whose lower case is longer ("Ⱥ" is two
+// bytes, "ⱥ" three) or a byte that is not UTF-8 made the " until " index fall
+// past the entry's end, and the slice panicked: on save, and at every start
+// after. Such an entry is now read like any other, and its end is found in
+// any case.
+func TestAnEntryWhoseCaseChangesLengthIsRead(t *testing.T) {
+	now := time.Date(2026, 10, 24, 0, 0, 0, 0, time.UTC)
+	r, bad := Compile(Config{DenyCIDRs: []string{"ȺȺ until 1", "\xe1 until 0", "198.51.100.7 UNTIL 2026-11-01"}, Now: now})
+	if len(bad) != 2 || !strings.Contains(bad[0], "ȺȺ until 1") {
+		t.Errorf("issues %q, want the two unreadable entries named", bad)
+	}
+	if len(r.deny) != 1 || r.NextExpiry() != time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC) {
+		t.Errorf("deny %v ending %v, want 198.51.100.7 until 1 November", r.deny, r.NextExpiry())
 	}
 }

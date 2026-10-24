@@ -618,10 +618,7 @@ func normalizePath(p string) string {
 	if p == "" {
 		p = "/"
 	}
-	if len(p) > 512 {
-		p = p[:512]
-	}
-	return p
+	return trunc(p, 512)
 }
 
 // referrerHost extracts the host from a referrer URL, returning "" for empty or

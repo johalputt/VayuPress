@@ -41,6 +41,7 @@ package policy
 
 import (
 	"net/netip"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -149,6 +150,13 @@ func (r Rules) Expired() []string { return r.expired }
 // has an end.
 func (r Rules) NextExpiry() time.Time { return r.nextExpiry }
 
+// untilSep finds " until " in any case, at its place in the entry itself.
+// The index used to come from strings.ToLower(entry), which is not the
+// entry's length when it holds a character whose lower case is longer ("Ⱥ")
+// or a byte that is not UTF-8: slicing the entry by it panicked, on save and
+// at every start after.
+var untilSep = regexp.MustCompile(`(?i) until `)
+
 // untilLayouts are the forms an entry's end may take, all UTC.
 var untilLayouts = []string{"2006-01-02T15:04", "2006-01-02 15:04", "2006-01-02"}
 
@@ -156,11 +164,11 @@ var untilLayouts = []string{"2006-01-02T15:04", "2006-01-02 15:04", "2006-01-02"
 // whether it is still in force at now, and a reason when the end cannot be
 // read; an end still ahead is folded into *next.
 func live(s string, now time.Time, next *time.Time) (entry string, ok bool, bad string) {
-	i := strings.Index(strings.ToLower(s), " until ")
-	if i < 0 {
+	m := untilSep.FindStringIndex(s)
+	if m == nil {
 		return s, true, ""
 	}
-	entry, when := strings.TrimSpace(s[:i]), strings.TrimSpace(s[i+len(" until "):])
+	entry, when := strings.TrimSpace(s[:m[0]]), strings.TrimSpace(s[m[1]:])
 	var end time.Time
 	for _, l := range untilLayouts {
 		if t, err := time.ParseInLocation(l, when, time.UTC); err == nil {

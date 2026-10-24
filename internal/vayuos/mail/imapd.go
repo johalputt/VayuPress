@@ -11,11 +11,14 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/logging"
 )
 
 // DecryptHook optionally transforms a stored message before it is served to a
@@ -205,6 +208,7 @@ func (s *IMAPServer) acceptLoop() {
 		go func() {
 			defer s.wg.Done()
 			defer release()
+			defer endPanickedSession("imap", conn)
 			c := conn
 			if s.implicitTLS && s.tls != nil {
 				c = tls.Server(conn, s.tls)
@@ -1436,6 +1440,19 @@ func parseLoginArgs(arg string) (user, pass string) {
 // previous parser treated the selection-options group as the reference, leaving
 // the pattern empty — which made LIST return only the hierarchy delimiter and no
 // INBOX, so clients found no folders and never synced.
+// endPanickedSession ends a session whose handler panicked, and only that
+// session: run deferred on each connection's goroutine. Without it one
+// command the server mishandled took the process down, and with it the
+// site, the console and every other mail session (a LIST argument did).
+func endPanickedSession(proto string, conn net.Conn) {
+	if v := recover(); v != nil {
+		_ = conn.Close()
+		logging.LogError("vayumail", proto+" session ended by a fault", fmt.Sprint(v))
+	}
+}
+
+var listReturn = regexp.MustCompile(`(?i) RETURN `)
+
 func parseListArgs(arg string) (reference, pattern string) {
 	arg = strings.TrimSpace(arg)
 	// Drop a leading parenthesised selection-options group: "(SUBSCRIBED) ...".
@@ -1444,9 +1461,12 @@ func parseListArgs(arg string) (reference, pattern string) {
 			arg = strings.TrimSpace(arg[i+1:])
 		}
 	}
-	// Drop a trailing "RETURN (...)" group (case-insensitive).
-	if i := strings.Index(strings.ToUpper(arg), " RETURN "); i >= 0 {
-		arg = strings.TrimSpace(arg[:i])
+	// Drop a trailing "RETURN (...)" group (case-insensitive). The index is
+	// the argument's own: one taken from strings.ToUpper(arg) was past its
+	// end when the argument held a character whose upper case is longer
+	// ("ɐ") or a byte that is not UTF-8, and the slice panicked.
+	if m := listReturn.FindStringIndex(arg); m != nil {
+		arg = strings.TrimSpace(arg[:m[0]])
 	}
 	toks := tokenizeQuoted(arg)
 	if len(toks) >= 1 {

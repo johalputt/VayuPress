@@ -243,3 +243,61 @@ func TestWouldJudgesWithoutCounting(t *testing.T) {
 		}
 	}
 }
+
+// The costliest set: a hundred rules of MaxConditions conditions that all
+// hold but the last, so every one is tested on every request. This, not a
+// set that misses on its first condition, is the most a request can pay.
+func BenchmarkMatchTheCostliestSetThatMisses(b *testing.B) {
+	var lines []string
+	for i := 0; i < MaxRules; i++ {
+		lines = append(lines, "log"+strings.Repeat(" path^=/", MaxConditions-1)+" method=POST")
+	}
+	s, bad := Parse(strings.Join(lines, "\n"))
+	if len(bad) != 0 {
+		b.Fatal(bad)
+	}
+	f := facts("/article/a-long-enough-slug")
+	now := time.Now()
+	b.ReportAllocs()
+	for b.Loop() {
+		if s.Match(f, now) != nil {
+			b.Fatal("a rule matched")
+		}
+	}
+}
+
+// A rule holds at most MaxConditions conditions; one more is named, and the
+// rest of the set stands.
+func TestARuleIsCappedInConditions(t *testing.T) {
+	at := "log" + strings.Repeat(" path^=/", MaxConditions)
+	over := at + " method=GET"
+	s, bad := Parse(at + "\n" + over)
+	if len(bad) != 1 || !strings.Contains(bad[0], "line 2: has 17 conditions; a rule holds at most 16") {
+		t.Errorf("issues %v, want line 2 named", bad)
+	}
+	if n := len(s.Rules()); n != 1 {
+		t.Errorf("%d rules kept, want the one at the cap", n)
+	}
+}
+
+// A rule reads a path as it arrived and as a handler that cleans it serves
+// it. A refusal holds when either reading matches, so "/p.html/" and
+// "/x/../p.html" are refused with "/p.html"; an allow holds only when both
+// do, so "/public/../admin" is not allowed by an allow for /public.
+func TestARuleReadsAPathAsItIsServed(t *testing.T) {
+	s, bad := Parse("allow path^=/public\nblock path=/p.html")
+	if len(bad) != 0 {
+		t.Fatal(bad)
+	}
+	for p, want := range map[string]Action{
+		"/p.html": Block, "/p.html/": Block, "//p.html": Block, "/./p.html": Block, "/x/../p.html": Block,
+		"/public/a": Allow, "/public/a/": Allow,
+	} {
+		if r := s.Match(facts(p), time.Now()); r == nil || r.Action != want {
+			t.Errorf("%s matched %v, want %s", p, r, want)
+		}
+	}
+	if r := s.Match(facts("/public/../admin"), time.Now()); r != nil {
+		t.Errorf("/public/../admin, served as /admin, was allowed by %q", r.Text)
+	}
+}

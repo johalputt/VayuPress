@@ -86,7 +86,7 @@ func viewsOverTimeQuery(scope, from string, byDay bool) (string, []any) {
 	}
 	clause, carg := domainClauseOn("p", scope)
 	return `SELECT ` + bucket + ` AS b, COUNT(1) FROM analytics_pageviews p
-		 WHERE p.event_type=1 AND p.created_at>=?` + clause + ` GROUP BY b`,
+		 WHERE p.event_type=1 AND p.created_at>=?` + clause + ` GROUP BY b HAVING b IS NOT NULL`,
 		append([]any{from}, carg...)
 }
 

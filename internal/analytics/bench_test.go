@@ -37,7 +37,22 @@ var (
 	benchStore *Store
 	benchErr   error
 	benchSeeds int
+	benchDir   string // removed by TestMain once every benchmark has run
 )
+
+// TestMain removes the benchmark's database when the run ends: it is shared
+// by every benchmark, so no one benchmark's cleanup can, and at a million
+// events each run left 850 MB in the temporary directory.
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if benchDir != "" {
+		if dbpkg.DB != nil {
+			_ = dbpkg.DB.Close()
+		}
+		_ = os.RemoveAll(benchDir)
+	}
+	os.Exit(code)
+}
 
 func benchEvents() int {
 	if n, err := strconv.Atoi(os.Getenv("VP_BENCH_EVENTS")); err == nil && n > 0 {
@@ -67,6 +82,7 @@ func openBenchStore(b *testing.B) *Store {
 			benchErr = err
 			return
 		}
+		benchDir = dir
 		config.Cfg.DBPath = filepath.Join(dir, "bench.db")
 		if benchErr = dbpkg.Init(); benchErr != nil {
 			return

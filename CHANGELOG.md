@@ -242,6 +242,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Text is cut where a character starts.** A page's path over 512 bytes,
+  a title over 300, a query, a campaign tag, an event's name or a goal's
+  name or target was cut at its byte limit, through a character when it
+  fell inside one, and the broken character was stored and shown on every
+  page and export. Found by fuzzing the page-view beacon.
+- **A row whose time is not a date breaks no report.** Such a row (a
+  mangled restore, a hand edit; no writer stores one) made the traffic
+  chart's query fail, so the chart vanished, and was counted in every
+  range, since text sorts after every date. Daily groupings now leave it
+  out, and the daily purge removes it, with its properties, from the views,
+  visits, revenue and readings: no retention cutoff ever reached it.
 - **Telemetry survives a database that refuses it, and a restart.** Page
   views, collected events, reading engagement and the shield's events are
   each counted in memory and written in batches. A batch the database
@@ -259,6 +270,32 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **The shield could be walked around through an exempt path.** A request
+  is exempt from the shield under a few prefixes (/api, /static, /health,
+  feeds, the console), judged on the path as it arrived. A handler that
+  cleans its path serves "/api/../page.html" as /page.html: an uploaded
+  site's file server did, so every gate, the operator's own rules
+  included, was skipped. A path is now exempt only when it is exempt both
+  as it arrived and as cleaned. Maintenance mode and the crawler block,
+  which exempt the console and the health checks the same way, follow the
+  same rule.
+- **A rule reads a path as it is served.** "block path=/page.html" did not
+  refuse "/page.html/", "//page.html" or "/x/../page.html", which an
+  uploaded site's file server serves as /page.html. A refusal now holds
+  when the path matches as it arrived or as cleaned; an allow only when it
+  matches both, so "/public/../admin" is not allowed by an allow for
+  /public. A rule holds at most 16 conditions, which bounds what a request
+  pays for a full set at 15 µs.
+- **One IMAP command could stop the server.** A LIST argument holding a
+  character whose upper case is longer in UTF-8 made the parser slice past
+  its end. The panic was not recovered on the connection's goroutine, so
+  any mailbox holder could take the whole process down, the site and the
+  console with it. The argument is now read in place, and a panic in an
+  IMAP or SMTP session ends that session alone.
+- **A shield entry could stop the install from starting.** An address list
+  entry with " until " and a character whose lower case is longer panicked
+  the policy compiler, on save and on every start after. It is read in
+  place, and named as unreadable when it is.
 - **Go 1.27.3.** The toolchain the binary is built with moves from 1.27.2
   to 1.27.3, whose `crypto/x509` distrusts intermediate certificates known
   to be compromised (GO-2026-6809). VayuMail's S/MIME check verifies a

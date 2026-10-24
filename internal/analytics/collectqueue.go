@@ -107,10 +107,7 @@ func (s *Store) buildCollectEvent(req CollectRequest, ip, ua, domainID string) *
 	path := NormalizePath(req.URL)
 	query := ""
 	if i := strings.IndexAny(req.URL, "?#"); i >= 0 && i+1 < len(req.URL) {
-		query = req.URL[i+1:]
-		if len(query) > 512 {
-			query = query[:512]
-		}
+		query = trunc(req.URL[i+1:], 512)
 	}
 	host := strings.TrimSpace(req.Hostname)
 	now := s.now().UTC()

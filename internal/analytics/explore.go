@@ -484,7 +484,7 @@ func (s *Store) exploreSplit(ctx context.Context, m exploreMetric, q ExploreQuer
 	// The key is grouped through a unary +, so SQLite reads the time index's
 	// range and groups it, never an index on the key walked end to end
 	// (console_plans_test.go).
-	rows, err := s.readDB().QueryContext(ctx, `SELECT +(`+col+`) AS k, `+m.agg+where+` GROUP BY k HAVING `+m.agg+` IS NOT NULL`+order, args...)
+	rows, err := s.readDB().QueryContext(ctx, `SELECT +(`+col+`) AS k, `+m.agg+where+` GROUP BY k HAVING k IS NOT NULL AND `+m.agg+` IS NOT NULL`+order, args...)
 	if err != nil {
 		return nil, err
 	}
