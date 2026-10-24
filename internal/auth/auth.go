@@ -425,6 +425,7 @@ func StartBucketSweeper(ctx context.Context) {
 					}
 				}
 				authFailMu.Unlock()
+				sweepAccounts(now)
 				discoveryMu.Lock()
 				for ip, b := range discoveryBuckets {
 					if now.After(b.resetAt) {

@@ -10,6 +10,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
+- **Sign-in attempts are limited per account, at every door.** The lockout
+  counted per address, so many addresses could guess one account without
+  end, and each door (the site, the console, mail apps over IMAP, POP3 and
+  SMTP, VayuTalk, recovery codes) counted on its own. Now 5 failures within
+  15 minutes on one account, from any address and any door, pause its
+  sign-ins for 15 minutes; each further pause doubles, up to 24 hours, and a
+  correct sign-in resets it. The page says when to try again; a mail app is
+  told "try again later" in its protocol's words rather than that its
+  password is wrong. Sessions already signed in are not touched, so a pause
+  cannot sign its owner out. The owner is told by mail, at the account's
+  address and its confirmed backup address, with where the attempts came
+  from; an address with no account here is never mailed. Shield lists the
+  paused accounts, with Lift and Lift all. The per-address lockout stays as
+  it was.
+
 - **API and MCP limits are yours to set, unlimited included.** Agents were
   cut off within minutes: behind the key check, every API and MCP call was
   also held to 100 an hour from one address, whatever the key's own budget

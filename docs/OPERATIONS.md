@@ -199,6 +199,20 @@ in batches by bounded queues (`docs/ANALYTICS.md`, "When recording fails").
 5. To never challenge or refuse an address, add it to the allow list. An
    allow is never jailed.
 
+### RB-12: An account cannot sign in: "Too many failed sign-in attempts"
+
+Five failures within 15 minutes on one account, from any address and any
+door, pause its sign-ins for 15 minutes, doubling with each pause to 24
+hours. Its owner was mailed, with where the attempts came from.
+
+1. **VayuOS → Shield**, "Limits set elsewhere", lists the paused accounts
+   and until when.
+2. If the attempts were the owner's (an old password in a phone's mail app
+   is the usual cause), fix that first, then **Lift** the account. Lifting
+   is recorded in the audit log (`account.unlock`).
+3. If they were not, leave the pause to run, and suggest a new password.
+   The owner's sessions already signed in are unaffected.
+
 ---
 
 ## Metrics

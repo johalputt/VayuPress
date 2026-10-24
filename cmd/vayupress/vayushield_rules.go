@@ -109,7 +109,11 @@ func expiredEntries(list []string) string {
 // shield's limits is not silent about them.
 func (a *App) otherLimitsNote(ctx context.Context) string {
 	fails, window, lock := auth.LockoutPolicy()
+	afails, awindow, afirst, amax := auth.AccountLockoutPolicy()
 	return `<div class="vs-feat"><p class="text-sm"><strong>Limits set elsewhere.</strong> Sign-in: ` + strconv.Itoa(fails) +
 		` failed attempts within ` + humanizeWindow(window) + ` lock that address out for ` + humanizeWindow(lock) +
-		`. API and MCP keys: ` + rateLabel(a.apiDefaultRatePerMin(ctx)) + ` each, unless a key sets its own, on <a href="/os/apikeys">API keys</a>. Neither is affected by anything on this page.</p></div>`
+		`; ` + strconv.Itoa(afails) + ` within ` + humanizeWindow(awindow) + ` on one account, from any address and any door (the site, the console, mail apps, the app, recovery and two-factor codes), pause its sign-ins for ` +
+		humanizeWindow(afirst) + `, doubling with each pause to ` + strconv.Itoa(int(amax.Hours())) + ` hours, and its owner is told. API and MCP keys: ` +
+		rateLabel(a.apiDefaultRatePerMin(ctx)) + ` each, unless a key sets its own, on <a href="/os/apikeys">API keys</a>. None is affected by anything on this page.</p>` +
+		lockedAccountsRows() + `</div>`
 }

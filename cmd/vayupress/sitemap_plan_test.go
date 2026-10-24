@@ -21,6 +21,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 )
@@ -43,6 +44,10 @@ func openMigratedDB(t *testing.T) {
 	if err := dbpkg.Init(); err != nil {
 		t.Fatalf("db init: %v", err)
 	}
+	// The account lockout is the process's, keyed by address, and tests
+	// reuse addresses: each starts and ends with none.
+	auth.LiftAllAccountLockouts()
+	t.Cleanup(auth.LiftAllAccountLockouts)
 	t.Cleanup(func() {
 		// Anything that lists media starts a scan off the request path; it
 		// must not be reading the pools as they close.

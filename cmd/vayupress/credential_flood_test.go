@@ -106,10 +106,14 @@ func TestMailboxLoginLockoutDoesNotSpillOntoTheAPIOrTheConsole(t *testing.T) {
 	}
 }
 
-// The control, and it matters more than the test above: an install where a
-// wrong password once locks the mailbox out is worse than the flood. The
-// lockout is keyed on the SOURCE, so a second person on a different address
-// must be unaffected by the first one's mistakes.
+// The control, and it matters more than the test above: an install where one
+// person's wrong passwords lock other people out is worse than the flood.
+// Another mailbox, from another address, is unaffected by the first one's
+// mistakes. The same mailbox is paused, from any address: that is the
+// account lockout (auth.CheckAccountLockout), approved so that many
+// addresses cannot guess one account without end, and kept from being an
+// outage by its terms: a short wait that doubles, the owner's sessions
+// untouched, the owner told, and the operator able to lift it.
 func TestMailboxLoginLockoutDoesNotPunishABystander(t *testing.T) {
 	a := credentialFloodApp(t)
 	const attacker, honest = "198.51.100.45", "203.0.113.77"
@@ -117,10 +121,14 @@ func TestMailboxLoginLockoutDoesNotPunishABystander(t *testing.T) {
 	for i := 0; i < 12; i++ {
 		postVayuMailLogin(t, a, attacker, "boss@example.com", "wrong")
 	}
-	if rec := postVayuMailLogin(t, a, honest, "boss@example.com", "also-wrong"); rec.Code == http.StatusTooManyRequests {
-		t.Error("someone else's failed attempts locked out an unrelated address.\n\n" +
+	if rec := postVayuMailLogin(t, a, honest, "other@example.com", "also-wrong"); rec.Code == http.StatusTooManyRequests {
+		t.Error("someone else's failed attempts on one mailbox refused another mailbox from an unrelated address.\n\n" +
 			"That turns the control into the outage: anyone can lock every reader out of " +
 			"sign-in by guessing badly on purpose.")
+	}
+	rec := postVayuMailLogin(t, a, honest, "boss@example.com", "also-wrong")
+	if rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), "account-locked") {
+		t.Errorf("the guessed mailbox was not paused from another address (%d): %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -254,6 +262,8 @@ func TestMagicLinkRefusalIsIndistinguishable(t *testing.T) {
 // while passing alone.
 func credentialFloodApp(t *testing.T) *App {
 	t.Helper()
+	auth.LiftAllAccountLockouts()
+	t.Cleanup(auth.LiftAllAccountLockouts)
 	dir := t.TempDir()
 	t.Setenv("DB_PATH", filepath.Join(dir, "flood.db"))
 	t.Setenv("API_KEY", "test-key")

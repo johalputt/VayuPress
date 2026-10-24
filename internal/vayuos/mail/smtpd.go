@@ -334,10 +334,13 @@ func (s *SMTPServer) handle(conn net.Conn) {
 			// accrues no per-mailbox delay at all, because each address has its
 			// own counter.
 			recordSource := throttleSource(conn.RemoteAddr())
-			if ok, user := s.runAuth(br, write, arg); ok {
+			if ok, user, locked := s.runAuth(br, write, arg); ok {
 				recordSource(true)
 				authed, authUser = true, user
 				write("235 2.7.0 Authentication successful")
+			} else if locked {
+				recordSource(false)
+				write("454 4.7.0 Too many failed sign-ins; try again later")
 			} else {
 				recordSource(false)
 				write("535 5.7.8 Authentication credentials invalid")
@@ -491,9 +494,11 @@ func (s *SMTPServer) handle(conn net.Conn) {
 // (true, authenticated-username) only when the bridge verifies the credentials,
 // and (false, "") otherwise. The username is retained for the sender-login
 // binding (audit M5).
-func (s *SMTPServer) runAuth(br *bufio.Reader, write func(string), arg string) (bool, string) {
+// runAuth runs one AUTH exchange: whether it succeeded, as whom, and whether
+// a refusal was the account's lockout.
+func (s *SMTPServer) runAuth(br *bufio.Reader, write func(string), arg string) (ok bool, user string, locked bool) {
 	if s.auth == nil {
-		return false, ""
+		return false, "", false
 	}
 	parts := strings.SplitN(strings.TrimSpace(arg), " ", 2)
 	mech := strings.ToUpper(strings.TrimSpace(parts[0]))
@@ -521,32 +526,30 @@ func (s *SMTPServer) runAuth(br *bufio.Reader, write func(string), arg string) (
 		}
 		f := strings.Split(raw, "\x00") // authzid \0 authcid \0 passwd
 		if len(f) != 3 {
-			return false, ""
+			return false, "", false
 		}
-		if s.verify(f[1], f[2]) {
-			return true, f[1]
-		}
-		return false, ""
+		ok, locked := s.verify(f[1], f[2])
+		return ok, f[1], locked
 	case "LOGIN":
 		write("334 " + base64.StdEncoding.EncodeToString([]byte("Username:")))
 		user := readB64()
 		write("334 " + base64.StdEncoding.EncodeToString([]byte("Password:")))
 		pass := readB64()
-		if s.verify(user, pass) {
-			return true, user
-		}
-		return false, ""
+		ok, locked := s.verify(user, pass)
+		return ok, user, locked
 	default:
-		return false, ""
+		return false, "", false
 	}
 }
 
-func (s *SMTPServer) verify(user, pass string) bool {
+// verify reports whether the credentials are good, and whether a refusal
+// was the account's lockout rather than the credentials.
+func (s *SMTPServer) verify(user, pass string) (ok, locked bool) {
 	if user == "" || s.auth == nil {
-		return false
+		return false, false
 	}
 	ok, err := s.auth(user, pass)
-	return err == nil && ok
+	return err == nil && ok, errors.Is(err, ErrAccountLocked)
 }
 
 // recipientAccepted enforces no open relay: only recipients on a domain this

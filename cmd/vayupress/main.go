@@ -866,6 +866,9 @@ func main() {
 		logging.LogInfo("email", "SMTP not configured — transactional mail will be delivered via the built-in VayuMail engine when DOMAIN is set")
 	}
 
+	// An account locked after too many failed sign-ins tells its owner.
+	auth.OnAccountLocked = a.notifyAccountLocked
+
 	// Scheduled publishing (Tier 1).
 	a.scheduler = scheduler.New(dbpkg.DB)
 

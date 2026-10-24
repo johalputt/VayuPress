@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/email"
@@ -207,6 +208,13 @@ func (a *App) handleMailRecoverCode(w http.ResponseWriter, r *http.Request) {
 	confirm := r.FormValue("confirm")
 	ip := clientIPForContact(r)
 
+	// A recovery code is a password by another name: its guesses count toward
+	// the account's lockout with every other door's. Checked before the recovery budget, so
+	// a locked account is told when to try again rather than a generic no.
+	if locked, until := auth.CheckAccountLockout(addr); locked {
+		a.renderRecoveryPage(w, r, recoveryCodeFormPage(addr, loginLockoutMessage(until)))
+		return
+	}
 	if !recoveryByIP.allow(ip) || !recoveryByAddress.allow(addr) {
 		// A generic failure, not "slow down": the latter tells an attacker their
 		// earlier guesses were reaching a real account.
@@ -225,6 +233,7 @@ func (a *App) handleMailRecoverCode(w http.ResponseWriter, r *http.Request) {
 
 	dbpkg.AuditLog("vayumail.recovery.code_attempt", "public:"+ip, addr, "")
 	if !a.vayuMail.Accounts().ConsumeRecoveryCode(r.Context(), addr, code) {
+		auth.RecordAccountFailure(addr, ip)
 		// One message for "no such mailbox" and for "wrong code". ConsumeRecoveryCode
 		// runs Argon2id over the stored codes for a real account and returns fast for
 		// an unknown one, so the two are distinguishable by timing; that is acceptable

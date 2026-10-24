@@ -392,8 +392,8 @@ func (s *IMAPServer) doLogin(line func(string), sess *imapSession, tag, arg stri
 		line(tag + " BAD LOGIN requires username and password")
 		return
 	}
-	if !s.verify(user, pass) {
-		line(tag + " NO [AUTHENTICATIONFAILED] Invalid credentials")
+	if ok, locked := s.verify(user, pass); !ok {
+		line(tag + imapAuthRefusal(locked))
 		return
 	}
 	s.setAuthed(sess, user)
@@ -424,20 +424,35 @@ func (s *IMAPServer) doAuthenticate(br *bufio.Reader, w *bufio.Writer, line func
 		return
 	}
 	f := strings.Split(string(dec), "\x00") // authzid \0 authcid \0 passwd
-	if len(f) != 3 || !s.verify(f[1], f[2]) {
-		line(tag + " NO [AUTHENTICATIONFAILED] Invalid credentials")
+	if len(f) != 3 {
+		line(tag + imapAuthRefusal(false))
+		return
+	}
+	if ok, locked := s.verify(f[1], f[2]); !ok {
+		line(tag + imapAuthRefusal(locked))
 		return
 	}
 	s.setAuthed(sess, f[1])
 	line(tag + " OK AUTHENTICATE completed")
 }
 
-func (s *IMAPServer) verify(user, pass string) bool {
+// verify reports whether the credentials are good, and whether a refusal
+// was the account's lockout rather than the credentials.
+func (s *IMAPServer) verify(user, pass string) (ok, locked bool) {
 	if s.bridge == nil || user == "" {
-		return false
+		return false, false
 	}
 	ok, err := s.bridge.AuthUser(user, pass)
-	return err == nil && ok
+	return err == nil && ok, errors.Is(err, ErrAccountLocked)
+}
+
+// imapAuthRefusal is a refused sign-in's tagged reply: UNAVAILABLE (RFC 5530,
+// try again later) for a locked account, AUTHENTICATIONFAILED otherwise.
+func imapAuthRefusal(locked bool) string {
+	if locked {
+		return " NO [UNAVAILABLE] Too many failed sign-ins; try again later"
+	}
+	return " NO [AUTHENTICATIONFAILED] Invalid credentials"
 }
 
 func (s *IMAPServer) setAuthed(sess *imapSession, user string) {

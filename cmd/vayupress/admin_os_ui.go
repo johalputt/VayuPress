@@ -580,6 +580,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/verify", a.handleOSShieldVerify)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/dismiss", a.handleOSShieldDismiss)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/release", a.handleOSShieldRelease)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/accounts/unlock", a.handleOSAccountUnlock)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/settings", a.handleOSShieldSettings)
 		// Tier 2/3 in-panel toggle — records intent (a flag file); a root agent applies it.
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/tier", a.handleOSShieldTier)
@@ -2056,6 +2057,13 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(osLoginPage(email, loginLockoutMessage(until), next)))
 		return
 	}
+	// The account's own lockout, shared by every door: many addresses
+	// guessing one account are stopped here, as one address is above.
+	if locked, until := auth.CheckAccountLockout(email); locked {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(osLoginPage(email, loginLockoutMessage(until), next)))
+		return
+	}
 	u, err := a.userStore.Authenticate(r.Context(), email, pass)
 	if err != nil {
 		// Fall back to a VayuMail account login (mailbox / author / editor / etc.),
@@ -2069,6 +2077,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 			if _, mailOn := a.vayuMail.Accounts().TOTPStatus(r.Context(), addr); !mailOn && !a.vayuMail.IsHandedOver(addr) {
 				if ok, required := a.verifyTOTPForLogin(r.Context(), addr, r.FormValue("totp")); required && !ok {
 					auth.RecordAuthFailure(ip)
+					auth.RecordAccountFailure(email, ip)
 					w.Header().Set("Content-Type", "text/html; charset=utf-8")
 					_, _ = w.Write([]byte(osLoginPage(email, "Enter the 6-digit code from your authenticator app, then re-enter your password.", next)))
 					return
@@ -2080,17 +2089,20 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			auth.RecordAuthSuccess(ip)
+			auth.RecordAccountSuccess(email)
 			a.enrolOnSignIn(r, addr)
 			auth.SetSessionCookieRemember(w, token, remember)
 			http.Redirect(w, r, loginDest, http.StatusSeeOther)
 			return
 		} else if totpMissing {
 			auth.RecordAuthFailure(ip)
+			auth.RecordAccountFailure(email, ip)
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			_, _ = w.Write([]byte(osLoginPage(email, "Enter the 6-digit code from your authenticator app, then re-enter your password.", next)))
 			return
 		}
 		auth.RecordAuthFailure(ip)
+		auth.RecordAccountFailure(email, ip)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(osLoginPage(email, "Invalid email or password.", next)))
 		return
@@ -2099,6 +2111,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	// On failure the password must be re-entered (it is never echoed back).
 	if ok, required := a.verifyTOTPForLogin(r.Context(), email, r.FormValue("totp")); required && !ok {
 		auth.RecordAuthFailure(ip)
+		auth.RecordAccountFailure(email, ip)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(osLoginPage(email, "Enter the 6-digit code from your authenticator app, then re-enter your password.", next)))
 		return
@@ -2109,6 +2122,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	auth.RecordAuthSuccess(ip)
+	auth.RecordAccountSuccess(email)
 	a.userStore.TouchLastLogin(r.Context(), u.ID)
 	auth.SetSessionCookieRemember(w, token, remember)
 	http.Redirect(w, r, loginDest, http.StatusSeeOther)

@@ -247,6 +247,13 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 			"Too many sign-in attempts from this address. Try again shortly.", "")
 		return
 	}
+	// The account's own lockout, shared by every door (auth.
+	// CheckAccountLockout), which the address counter above cannot see.
+	if locked, until := auth.CheckAccountLockout(emailAddr); locked {
+		w.Header().Set("Retry-After", strconv.Itoa(int(time.Until(until).Seconds())+1))
+		writeAPIError(w, r, http.StatusTooManyRequests, "account-locked", loginLockoutMessage(until), "")
+		return
+	}
 	if d := mailAuthThrottle.Delay(emailAddr); d > 0 {
 		time.Sleep(d)
 	}
@@ -275,6 +282,7 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 	if !matched {
 		mailAuthThrottle.Fail(emailAddr)
 		auth.RecordAuthFailure(lockKey)
+		auth.RecordAccountFailure(emailAddr, clientIP)
 		writeAPIError(w, r, http.StatusUnauthorized, "invalid-credentials", "That email and password don't match", "")
 		return
 	}
@@ -311,6 +319,7 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 		if !ok {
 			mailAuthThrottle.Fail(emailAddr)
 			auth.RecordAuthFailure(lockKey)
+			auth.RecordAccountFailure(emailAddr, clientIP)
 			writeAPIError(w, r, http.StatusUnauthorized, "totp-invalid", "That code is not valid, or it has been used. Try the current one.", "")
 			return
 		}
@@ -321,6 +330,7 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 	// budget for guessing the code.
 	mailAuthThrottle.Success(emailAddr)
 	auth.RecordAuthSuccess(lockKey)
+	auth.RecordAccountSuccess(emailAddr)
 
 	// Credentials good: ensure a member record exists for this address and start
 	// a session. The member's tier is whatever it already is (free by default);
@@ -407,6 +417,13 @@ func (a *App) handleMemberVayuMailDeviceRegister(w http.ResponseWriter, r *http.
 			"Too many sign-in attempts from this address. Try again shortly.", "")
 		return
 	}
+	// The account's own lockout, shared by every door (auth.
+	// CheckAccountLockout), which the address counter above cannot see.
+	if locked, until := auth.CheckAccountLockout(emailAddr); locked {
+		w.Header().Set("Retry-After", strconv.Itoa(int(time.Until(until).Seconds())+1))
+		writeAPIError(w, r, http.StatusTooManyRequests, "account-locked", loginLockoutMessage(until), "")
+		return
+	}
 	bridge := &vayuMailBridge{app: a}
 	if d := mailAuthThrottle.Delay(emailAddr); d > 0 {
 		time.Sleep(d)
@@ -414,11 +431,13 @@ func (a *App) handleMemberVayuMailDeviceRegister(w http.ResponseWriter, r *http.
 	if !bridge.verifyCredentialWeb(r.Context(), emailAddr, body.Password) {
 		mailAuthThrottle.Fail(emailAddr)
 		auth.RecordAuthFailure(lockKey)
+		auth.RecordAccountFailure(emailAddr, clientIP)
 		writeAPIError(w, r, http.StatusUnauthorized, "invalid-credentials", "That email and password don't match", "")
 		return
 	}
 	mailAuthThrottle.Success(emailAddr)
 	auth.RecordAuthSuccess(lockKey)
+	auth.RecordAccountSuccess(emailAddr)
 	a.enrolOnSignIn(r, emailAddr)
 
 	accts := a.vayuMail.Accounts()
@@ -586,15 +605,22 @@ func (a *App) handleMemberVayuMailPrivKey(w http.ResponseWriter, r *http.Request
 	// it and we return a uniform 401 — identical for an unknown mailbox and a
 	// wrong password, so the endpoint cannot enumerate which addresses exist.
 	bridge := &vayuMailBridge{app: a}
+	if locked, until := auth.CheckAccountLockout(emailAddr); locked {
+		w.Header().Set("Retry-After", strconv.Itoa(int(time.Until(until).Seconds())+1))
+		writeAPIError(w, r, http.StatusTooManyRequests, "account-locked", loginLockoutMessage(until), "")
+		return
+	}
 	if d := mailAuthThrottle.Delay(emailAddr); d > 0 {
 		time.Sleep(d)
 	}
 	if !bridge.verifyCredential(r.Context(), emailAddr, body.Password) {
 		mailAuthThrottle.Fail(emailAddr)
+		auth.RecordAccountFailure(emailAddr, auth.ClientIP(r))
 		writeAPIError(w, r, http.StatusUnauthorized, "invalid-credentials", "That email and password don't match", "")
 		return
 	}
 	mailAuthThrottle.Success(emailAddr)
+	auth.RecordAccountSuccess(emailAddr)
 
 	// Credentials good. Load the caller's armored private key; if this mailbox
 	// pre-dates auto-keygen and has none yet, mint one idempotently first so a key

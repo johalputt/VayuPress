@@ -58,6 +58,9 @@ type QueueStatus struct {
 // Bridge is the only contract between VayuPress core and VayuMail.
 type Bridge interface {
 	// Auth — delegated to VayuPress core (never stores plaintext passwords).
+	// AuthUser returns ErrAccountLocked, and false, while the account is
+	// locked after too many failures, so each server answers "try again
+	// later" in its protocol's words rather than "invalid credentials".
 	AuthUser(username, password string) (bool, error)
 	GetUserByEmail(email string) (*MailUser, error)
 

@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"sort"
@@ -234,6 +235,12 @@ func (s *POP3Server) handle(conn net.Conn) {
 				continue
 			}
 			okAuth, aerr := s.bridge.AuthUser(user, strings.TrimSpace(arg))
+			if errors.Is(aerr, ErrAccountLocked) {
+				// RFC 3206: a temporary refusal, not a wrong password.
+				recordSource(false)
+				errResp("[SYS/TEMP] too many failed sign-ins; try again later")
+				continue
+			}
 			if aerr != nil || !okAuth {
 				recordSource(false)
 				errResp("[AUTH] invalid credentials")

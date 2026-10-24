@@ -48,6 +48,29 @@ import (
 	vtor "github.com/johalputt/vayupress/internal/vayuos/vayutor"
 )
 
+// talkVerify checks a VayuTalk connect's mailbox password, as the mail
+// servers do (vayuMailBridge.AuthUser).
+func (a *App) talkVerify(ctx context.Context, email, password string) bool {
+	// Same decaying per-mailbox throttle as the mail listeners, so a
+	// VayuTalk connect cannot be used to bypass brute-force defences,
+	// and the same account lockout as every other door.
+	if locked, _ := auth.CheckAccountLockout(email); locked {
+		return false
+	}
+	if d := mailAuthThrottle.Delay(email); d > 0 {
+		time.Sleep(d)
+	}
+	ok := (&vayuMailBridge{app: a}).verifyCredential(ctx, email, password)
+	if ok {
+		mailAuthThrottle.Success(email)
+		auth.RecordAccountSuccess(email)
+	} else {
+		mailAuthThrottle.Fail(email)
+		auth.RecordAccountFailure(email, "VayuTalk")
+	}
+	return ok
+}
+
 // ── Mail bridge ──────────────────────────────────────────────────────────────
 
 // vayuMailBridge connects VayuMail to VayuPress core (auth, transactional mail,
@@ -66,6 +89,13 @@ func (b *vayuMailBridge) AuthUser(username, password string) (bool, error) {
 	if !strings.Contains(addr, "@") {
 		addr = username + "@" + domain
 	}
+	// The account's lockout, shared with every other door (auth.
+	// CheckAccountLockout): a locked mailbox is refused here without its
+	// password being checked, so guesses over IMAP, POP3 and SMTP count
+	// toward the same five as the web's, and the client is told to try later.
+	if locked, _ := auth.CheckAccountLockout(addr); locked {
+		return false, vmail.ErrAccountLocked
+	}
 	// Brute-force throttle: an account under attack accrues a short, decaying
 	// delay before each attempt, so guessing is slowed to a crawl while a
 	// correct password still authenticates (just a little slower). Cleared on
@@ -76,8 +106,10 @@ func (b *vayuMailBridge) AuthUser(username, password string) (bool, error) {
 	ok := b.verifyCredential(ctx, addr, password)
 	if ok {
 		mailAuthThrottle.Success(addr)
+		auth.RecordAccountSuccess(addr)
 	} else {
 		mailAuthThrottle.Fail(addr)
+		auth.RecordAccountFailure(addr, "a mail app (IMAP, POP3 or SMTP)")
 	}
 	return ok, nil
 }
@@ -595,23 +627,9 @@ func (a *App) bootVayuOS() {
 			vtalk.SetUnreadTTL(secs)
 		}
 	}
-	talkBridge := &vayuMailBridge{app: a}
 	a.vayuTalk = vtalk.NewEngine(vtalk.Config{
 		Enabled: talkEnabled,
-		Verify: func(ctx context.Context, email, password string) bool {
-			// Same decaying per-mailbox throttle as the mail listeners, so a
-			// VayuTalk connect cannot be used to bypass brute-force defences.
-			if d := mailAuthThrottle.Delay(email); d > 0 {
-				time.Sleep(d)
-			}
-			ok := talkBridge.verifyCredential(ctx, email, password)
-			if ok {
-				mailAuthThrottle.Success(email)
-			} else {
-				mailAuthThrottle.Fail(email)
-			}
-			return ok
-		},
+		Verify:  a.talkVerify,
 		PubKey: func(email string) (string, string, error) {
 			if a.vayuPGP == nil {
 				return "", "", fmt.Errorf("vayupgp unavailable")
