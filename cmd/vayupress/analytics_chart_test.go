@@ -28,80 +28,131 @@ func twoDigit(n int) string {
 	return string(rune('0'+n/10)) + string(rune('0'+n%10))
 }
 
-// TestTrendChartInteractiveAndCSPSafe: the traffic chart must carry the pure-CSS
-// hover layer (hit band, guide, dots, styled tooltip with date + counts) and stay
-// strictly CSP-safe (no inline styles, no scripts, no external hosts).
-func TestTrendChartInteractiveAndCSPSafe(t *testing.T) {
+// Every day of the chart is a band saying its counts in words, which the
+// browser shows without the script and admin-os-intel.js shows in the
+// chart's readout; and the chart stays CSP-safe (no inline styles, no
+// scripts, no external hosts).
+func TestTrendChartSaysEachDaysCounts(t *testing.T) {
 	out := osTrendChart(sampleSeries(30), "Traffic")
 	assertCSPSafe(t, "osTrendChart", out)
-	for _, want := range []string{
-		`class="vp-pt__hit"`, // hoverable band
-		`class="vp-pt__guide"`,
-		`vp-pt__dot--pv`, `vp-pt__dot--vis`,
-		`class="vp-pt__tip"`, // styled tooltip
-		`vp-pt__tip-date`, `vp-pt__tip-val`,
-		`id="vpTrendFill"`, // gradient area def (filled via CSS url())
-		`Pageviews`, `Visitors`,
-	} {
+	if n := strings.Count(out, `<rect class="vp-pt__hit"`); n != 30 {
+		t.Errorf("%d day bands, want 30", n)
+	}
+	if !strings.Contains(out, "<title>Jul 1: 100 page views, 60 visitors</title>") {
+		t.Error("the first day does not say its counts")
+	}
+	for _, want := range []string{`<div class="vp-trend-tip" hidden></div>`, `>Page views<`, `>Visitors<`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("chart missing %q", want)
 		}
 	}
-	// A concrete day's counts must be embedded in a tooltip (hover shows date+count).
-	if !strings.Contains(out, "Jul 1") {
-		t.Error("tooltip should show a human date")
+}
+
+// No word is drawn in the SVG: it is stretched to its box, so its text would
+// be stretched with it, or shrunk to 5 pixels on a phone. The axis is HTML:
+// the first and last day, the middle one when it falls on a day, and the
+// three gridlines' values.
+func TestTheTrendsWordsAreHTML(t *testing.T) {
+	out := osTrendChart(sampleSeries(27), "Traffic")
+	svg := out[strings.Index(out, "<svg"):strings.Index(out, "</svg>")]
+	if strings.Contains(svg, "<text") {
+		t.Error("the SVG draws text")
+	}
+	if !strings.Contains(out, `<div class="vp-trend-x"><span>Jul 1</span><span>Jul 14</span><span class="vp-trend-x__end">Jul 27</span></div>`) {
+		t.Errorf("27 days: axis is not first, middle and last:\n%s", out[strings.Index(out, `<div class="vp-trend-x"`):])
+	}
+	// 28 days have no middle day; a label between two days would name one
+	// it is not over.
+	if even := osTrendChart(sampleSeries(28), "Traffic"); !strings.Contains(even, `<div class="vp-trend-x"><span>Jul 1</span><span></span><span class="vp-trend-x__end">Jul 28</span></div>`) {
+		t.Error("28 days: a middle label is placed between two days")
+	}
+	// The highest count in sampleSeries(27) is day 27's page views, 282.
+	for _, want := range []string{`vp-trend-y--top">282<`, `vp-trend-y--mid">141<`, `vp-trend-y--base">0<`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing gridline value %q", want)
+		}
 	}
 }
 
-// TestTrendChartLongWindowStaysLight: beyond the styled-tooltip cap the chart
-// must switch to lightweight native <title> tooltips (bounded DOM), never
-// rendering hundreds of styled tooltip groups.
-func TestTrendChartLongWindowStaysLight(t *testing.T) {
-	out := osTrendChart(sampleSeries(400), "Traffic — long")
-	if strings.Contains(out, `class="vp-pt__tip"`) {
-		t.Error("long window must not render styled tooltip groups (DOM bloat)")
+// The chart is two lines in the page's ink and nothing under them: no
+// gradient, no filled area, no colour of its own.
+func TestTrendChartIsTwoLinesAndNoFill(t *testing.T) {
+	out := osTrendChart(sampleSeries(30), "Traffic")
+	if n := strings.Count(out, "<polyline"); n != 2 {
+		t.Errorf("%d lines, want page views and visitors", n)
 	}
-	if !strings.Contains(out, "<title>") {
-		t.Error("long window must still be hoverable via native <title>")
+	for _, banned := range []string{"<linearGradient", "<path", "url(#", "vp-trend-area", "chart-1", "chart-2"} {
+		if strings.Contains(out, banned) {
+			t.Errorf("chart carries %q", banned)
+		}
 	}
-	assertCSPSafe(t, "osTrendChart-long", out)
 }
 
-// TestLiveCardStructureCSPSafe: the Live panel must expose the poller hooks the
-// JS fills (count, window, updated, and the three bar containers) and stay
-// strictly CSP-safe (no inline styles/scripts). The bar containers are .vp-bars
-// so the poller can render the same coloured bars the server renders elsewhere.
-func TestLiveCardStructureCSPSafe(t *testing.T) {
+// A line is drawn from two days with views. One day is a figure, which the
+// band already gives; a range of days with none is no trend at all. The
+// zero days are counted out, not the series' length: a week with one day
+// of views is still one day.
+func TestATrendNeedsTwoDaysWithViews(t *testing.T) {
+	week := sampleSeries(7)
+	for i := range week {
+		week[i].Count, week[i].Visitors = 0, 0
+	}
+	if osTrendChart(nil, "x") != "" || osTrendChart(week, "x") != "" {
+		t.Error("a range with no views draws a chart")
+	}
+	week[3].Count, week[3].Visitors = 5, 2
+	if osTrendChart(week, "x") != "" {
+		t.Error("one day with views draws a chart")
+	}
+	week[5].Count, week[5].Visitors = 3, 1
+	if out := osTrendChart(week, "x"); !strings.Contains(out, "vp-trend-svg") {
+		t.Error("two days with views draw no chart")
+	}
+}
+
+// Who is reading now: the count is a figure like the band's, with the pages
+// and referrers the script fills, and nothing that restates it (a LIVE pill,
+// pulsing rings) or says nothing (a country list with no location known).
+func TestLiveCardIsAFigureAndTwoLists(t *testing.T) {
 	out := osLiveCard("/os/api/analytics/realtime")
 	assertCSPSafe(t, "osLiveCard", out)
 	for _, want := range []string{
-		`data-live`,
-		`data-live-count`,
-		`data-live-window`,
-		`data-live-updated`,
-		`vp-bars vm-live-list" data-live-countries`,
-		`vp-bars vm-live-list" data-live-pages`,
-		`vp-bars vm-live-list" data-live-referrers`,
-		`vm-live-badge`,
-		`vm-live-rings`,
+		`data-live-src="/os/api/analytics/realtime"`,
+		`<div class="stat-card__label">Reading now</div><div class="stat-card__value" data-live-count>`,
+		`data-live-window`, `data-live-updated`,
+		`<div class="vp-bars" data-live-pages>`,
+		`<div class="vp-bars" data-live-referrers>`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("live card missing %q", want)
 		}
 	}
-	// The old table markup must be gone — bars, not <tbody> rows.
-	if strings.Contains(out, "<tbody") || strings.Contains(out, "data-live-pages><table") {
-		t.Error("live card should use .vp-bars containers, not tables")
+	for _, banned := range []string{"vm-live-badge", "vm-live-rings", "data-live-countries", "<tbody"} {
+		if strings.Contains(out, banned) {
+			t.Errorf("live card carries %q", banned)
+		}
 	}
 }
 
-func TestTrendChartEdgeCases(t *testing.T) {
-	if osTrendChart(nil, "x") != "" {
-		t.Error("empty series must render nothing")
+// Every bar is one ink: no row carries a colour of its own.
+func TestEveryBarIsOneInk(t *testing.T) {
+	var rows []osChartBar
+	for i := 0; i < 10; i++ {
+		rows = append(rows, osChartBar{Label: "/p" + twoDigit(i), Value: 10 - i})
 	}
-	out := osTrendChart(sampleSeries(1), "single")
-	assertCSPSafe(t, "osTrendChart-single", out)
-	if !strings.Contains(out, "vp-trend-svg") {
-		t.Error("single-point chart should still render")
+	out := osBarList(rows, osShareOfListed(), "")
+	if n := strings.Count(out, `<span class="vp-bar__fill w-`); n != 10 {
+		t.Errorf("%d plain bars of 10:\n%s", n, out)
+	}
+	if strings.Contains(out, "vp-bar--") {
+		t.Errorf("a bar carries a colour class:\n%s", out)
+	}
+}
+
+// An empty list is one sentence in the page's empty state, where its rows
+// would be.
+func TestAnEmptyBarListIsOneSentence(t *testing.T) {
+	if got := osBarList(nil, osShareOfListed(), "No search engine sent a reader."); got != `<p class="table-empty">No search engine sent a reader.</p>` {
+		t.Errorf("empty list = %q", got)
 	}
 }

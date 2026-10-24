@@ -157,22 +157,9 @@ func (c *adminFragmentCache) keys(prefix string) []string {
 	return out
 }
 
-// refreshAnalyticsReports recomputes every cached Analytics report now, in the
-// background. A goal is part of that report, and without this a goal added or
-// deleted stayed out of (or in) the page for up to the fragment's TTL.
-func (a *App) refreshAnalyticsReports() {
-	for _, key := range adminDash.keys("analytics:") {
-		days, err := strconv.Atoi(strings.TrimPrefix(key, "analytics:"))
-		if err != nil {
-			continue
-		}
-		label := analyticsLabelForDays(days)
-		adminDash.warm(key, func(ctx context.Context) string { return a.renderAnalyticsBody(ctx, days, label) })
-	}
-}
-
-// refreshSiteAnalytics rebuilds every cached window of one site's Analytics,
-// after a change the page shows (a goal added or removed).
+// refreshSiteAnalytics rebuilds every cached window of v's Analytics, after a
+// change the page shows (a goal or segment added or removed): without it the
+// page went on without it for up to the fragment's TTL.
 func (a *App) refreshSiteAnalytics(v analyticsView, host string) {
 	prefix := siteAnalyticsPrefix(v)
 	for _, key := range adminDash.keys(prefix) {
@@ -180,8 +167,7 @@ func (a *App) refreshSiteAnalytics(v analyticsView, host string) {
 		if err != nil {
 			continue
 		}
-		label := analyticsLabelForDays(days)
-		adminDash.warm(key, func(ctx context.Context) string { return a.renderSiteAnalyticsBody(ctx, v, host, days, label) })
+		adminDash.warm(key, func(ctx context.Context) string { return a.renderSiteAnalyticsBody(ctx, v, host, days) })
 	}
 }
 
@@ -193,13 +179,12 @@ func (a *App) refreshSiteAnalytics(v analyticsView, host string) {
 func (a *App) startDashboardWarmer(done <-chan struct{}) {
 	warm := func() {
 		if a.analytics != nil {
-			label := analyticsLabelForDays(30)
-			adminDash.warm("analytics:30", func(ctx context.Context) string {
-				return a.renderAnalyticsBody(ctx, 30, label)
-			})
 			host := a.primaryHost(context.Background())
 			adminDash.warm(siteAnalyticsKey(primaryView, 30), func(ctx context.Context) string {
-				return a.renderSiteAnalyticsBody(ctx, primaryView, host, 30, label)
+				return a.renderSiteAnalyticsBody(ctx, primaryView, host, 30)
+			})
+			adminDash.warm(siteAnalyticsKey(platformView, 30), func(ctx context.Context) string {
+				return a.renderSiteAnalyticsBody(ctx, platformView, "every site", 30)
 			})
 			adminDash.warm(homeVisitorsKey, a.renderHomeVisitors)
 		}

@@ -224,6 +224,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   empty by construction, and because its weeks were fixed dates it counted
   each visitor as retained in the week of their only visit. The route now
   answers `measurable: false` with the reason.
+- **Analytics, redrawn.** One page for the install's own site, each hosted
+  site and every site together. It opens on what it is read for: the
+  figures, each linked to its definition, the trend, who is reading now,
+  top and landing pages, referrers and channels. Everything else (devices,
+  location, campaigns, events, performance, searches, goals, segments, what
+  readers and the content did, journeys, alerts, retention) is a section
+  closed under a one-line head that says what it holds. Every bar and line
+  is one quiet ink; colour is kept for links and for states that need
+  acting on. The trend is two lines, drawn from two days with views; its
+  words are set at reading size whatever the screen, and the hovered day
+  shows its weekday, its page views and visitors, and a dot on each line
+  (a tap holds it on a phone). Right now is a figure with the pages and
+  sources read now. Journeys lists the ways from one page to another. An
+  export is one sheet: the report and the format. The shortest range is
+  Today, the day so far in UTC, where it said 24 hours.
 
 ### Security
 
@@ -235,6 +250,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - **A key bound to one site cannot read the install-wide analytics**, whatever
   it was granted: those figures add up every site. Only the exports refused
   it before.
+- **The filters a segment is saved from cannot leave their attribute.** The
+  Explorer's Save carries the filters in an attribute of the button; a
+  double quote in a filter's value is now written as its entity where the
+  value is quoted, so the attribute ends where it should whatever was typed.
+  It was escaped before, by a general escaper; the quoting is now visible at
+  the line that quotes.
 - **Analytics changes are audited.** A goal or funnel made, a goal deleted
   and a console setting changed each leave an audit record (a setting by its
   key alone, since some keys are credentials). The request log line names

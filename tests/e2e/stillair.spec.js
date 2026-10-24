@@ -374,6 +374,39 @@ for (const [device, use] of [
   });
 }
 
+// Analytics opens what it is for and folds the rest, and the lint above
+// reads a closed fold as not there. So the same lint reads the pages again
+// with every fold opened, at each width: what a reader opens is held to the
+// scale too. The explanation count is the one rule left out, since it is
+// about what a page shows before anything is opened.
+for (const width of [1280, 1024, 390]) {
+  test(`Analytics with every fold opened passes the design lint, at ${width}px`, async ({ page }) => {
+    test.setTimeout(120000);
+    await page.setViewportSize({ width, height: 900 });
+    await openConsole(page);
+    const findings = [];
+    for (const href of ["/os/analytics", "/os/platform/analytics"]) {
+      await page.goto(href);
+      const counting = page.getByText("This is counted in the background");
+      for (let i = 0; i < 20 && (await counting.count()) > 0; i++) {
+        await page.waitForTimeout(1000);
+        await page.reload();
+      }
+      await page.waitForLoadState("load");
+      const folds = await page.evaluate(() => {
+        const all = [...document.querySelectorAll("main details.sa-fold")];
+        all.forEach((d) => { d.open = true; });
+        return all.length;
+      });
+      if (folds < 10) findings.push(`${href}: ${folds} folds, so the page was not read`);
+      for (const f of await page.evaluate(lintPage)) {
+        if (!/characters of explanation on show/.test(f)) findings.push(`${href}: ${f}`);
+      }
+    }
+    expect(findings).toEqual([]);
+  });
+}
+
 // On a laptop screen the rail starts as icons, since with an app's section list
 // beside it the content column was too narrow for its tables. The toggle still
 // opens it, the choice survives a reload, and a collapsed link keeps its name.

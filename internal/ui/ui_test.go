@@ -131,3 +131,18 @@ func TestARowsTagComesBeforeItsLabel(t *testing.T) {
 		t.Error("a row without a tag draws one")
 	}
 }
+
+// A fold's head is its summary, read closed; a figure's label links its
+// definition when it has one, and is text when not.
+func TestAFoldIsReadClosedAndAFigureLinksItsDefinition(t *testing.T) {
+	got := string(Fold("Searches", "What readers looked for", HTML("<p>body</p>")))
+	if want := `<details class="sa-fold"><summary class="section-head"><h2 class="section-head__title">Searches</h2><span class="section-head__hint">What readers looked for</span></summary><p>body</p></details>`; got != want {
+		t.Errorf("fold = %s", got)
+	}
+	if got := string(Figure{Value: "3", Label: "Visits", Def: "/docs/ANALYTICS#visit"}.Cell()); !strings.Contains(got, `<a class="stat-card__def" href="/docs/ANALYTICS#visit">Visits</a>`) {
+		t.Errorf("figure with a definition = %s", got)
+	}
+	if got := string(Figure{Value: "3", Label: "Visits"}.Cell()); strings.Contains(got, "<a") {
+		t.Errorf("figure without one = %s", got)
+	}
+}

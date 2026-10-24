@@ -75,6 +75,18 @@ func hostedView(d domain.Domain) analyticsView {
 	return analyticsView{scope: d.ID, defs: d.ID, alert: d.ID, base: "/os/d/" + d.ID + "/analytics", d: d, hosted: true}
 }
 
+// title is the view's page heading: a hosted site's Visitors, the primary's
+// Analytics (the rail's name for it), or every site's.
+func (v analyticsView) title() string {
+	switch {
+	case v.hosted:
+		return "Visitors"
+	case v.all():
+		return platformAnalyticsTitle
+	}
+	return "Analytics"
+}
+
 // alertsAPI is where the view's alerts are written.
 func (v analyticsView) alertsAPI() string {
 	switch {

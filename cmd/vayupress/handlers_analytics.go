@@ -692,7 +692,7 @@ func (a *App) refreshDefinitionReports(scope, host string) {
 	if scope == analytics.ScopeAllDomains {
 		// The install's definitions are listed on Platform's page and on the
 		// primary's, each counted over its own visits.
-		a.refreshAnalyticsReports()
+		a.refreshSiteAnalytics(platformView, "every site")
 		a.refreshSiteAnalytics(primaryView, a.primaryHost(context.Background()))
 		return
 	}

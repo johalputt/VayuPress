@@ -110,12 +110,12 @@ func (a *App) osSegmentsSection(ctx context.Context, v analyticsView, days int) 
 	scope, explore := v.scope, v.base+"/explore"
 	list, err := a.analytics.ListSegments(ctx, v.defs)
 	if err != nil || len(list) == 0 {
-		return string(ui.Section("Segments", "", ui.HTML(`<p class="table-empty">No segments yet. Save one from the <a href="`+
+		return string(ui.Fold("Segments", "Saved filters, none yet", ui.HTML(`<p class="table-empty">No segments yet. Save one from the <a href="`+
 			html.EscapeString(explore+"?days="+strconv.Itoa(days))+`">Explorer</a>.</p>`)))
 	}
 	all, err := a.analytics.Explore(ctx, analytics.ExploreQuery{Scope: scope, Metric: analytics.ExploreVisitors, Days: days})
 	if err != nil {
-		return string(ui.Section("Segments", "", ui.Callout("danger", ui.Text("The segments could not be counted: "+err.Error()))))
+		return string(ui.Fold("Segments", "", ui.Callout("danger", ui.Text("The segments could not be counted: "+err.Error()))))
 	}
 	rows := make([][]ui.HTML, 0, len(list))
 	for _, g := range list {
@@ -130,7 +130,7 @@ func (a *App) osSegmentsSection(ctx context.Context, v analyticsView, days int) 
 			ui.Text(count), ui.HTML(share),
 		})
 	}
-	return string(ui.Section("Segments", "Visitors in each, this period", ui.Table([]string{"Segment", "Visitors", "Share"}, rows, "")))
+	return string(ui.Fold("Segments", countOf(len(list), "segment")+", visitors in each", ui.Table([]string{"Segment", "Visitors", "Share"}, rows, "")))
 }
 
 // exploreSegments is the Explorer's part for segments: the scope's
@@ -157,11 +157,17 @@ func exploreSegments(base, api, site string, list []analytics.Segment, x explore
 	b.WriteString(`<p class="settings-row-hint">Start from: ` + strings.Join(presets, " · ") + `. Adjust the filters, count, then save them.</p>`)
 	if len(x.q.Filters) > 0 {
 		b.WriteString(`<div class="page-lead"><button type="button" class="btn btn--sm" data-sheet="segment-new">Save these filters as a segment</button></div>`)
+		// The filters ride in a double-quoted attribute. json.Marshal already
+		// writes <, > and & as \u escapes, so a double quote is the one
+		// character left that could end the attribute; it is replaced by its
+		// entity here, where the value is quoted, rather than trusted to a
+		// general escaper the reader has to check.
 		fs, _ := json.Marshal(x.q.Filters)
+		attr := strings.ReplaceAll(string(fs), `"`, "&#34;")
 		b.WriteString(string(ui.Sheet("segment-new", "Save as a segment", ui.Rows(
 			ui.Row{Label: "Name", ID: "segment-name", Hint: "It stands for " + segmentWords(x.q.Filters) + ".",
 				Control: ui.HTML(`<input class="input" id="segment-name" maxlength="80" placeholder="Returning readers">`)},
-		)+ui.HTML(`<div class="mt-3"><button type="button" class="btn btn--primary btn--sm" data-segment-save data-filters="`+html.EscapeString(string(fs))+`">Save</button></div>`))))
+		)+ui.HTML(`<div class="mt-3"><button type="button" class="btn btn--primary btn--sm" data-segment-save data-filters="`+attr+`">Save</button></div>`))))
 	}
 	b.WriteString(`<span class="text-xs muted" id="segment-status" role="status" aria-live="polite"></span>`)
 	return string(ui.Section("Segments", "Saved filters, kept for this site", ui.HTML(`<div id="segments" data-segments-api="`+html.EscapeString(api)+

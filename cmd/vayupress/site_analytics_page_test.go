@@ -35,7 +35,7 @@ func TestASitesAnalyticsIsThatSitesAlone(t *testing.T) {
 	collect("s1", "198.51.100.2", "/s1-landing", "")
 	collect("s2", "198.51.100.3", "/s2-only-page", "https://s2-referrer.example/")
 
-	one := a.renderSiteAnalyticsBody(ctx, hostedView(domain.Domain{ID: "s1"}), "one.test", 30, "last 30 days")
+	one := a.renderSiteAnalyticsBody(ctx, hostedView(domain.Domain{ID: "s1"}), "one.test", 30)
 	for _, want := range []string{"2 visitors to one.test", "/s1-landing", "news.ycombinator.com", "Landing pages", "What readers&#39; browsers measured"} {
 		if !strings.Contains(one, want) {
 			t.Errorf("site one's page has no %q", want)
@@ -51,7 +51,7 @@ func TestASitesAnalyticsIsThatSitesAlone(t *testing.T) {
 	if !strings.Contains(landing, "/s1-landing") || strings.Contains(landing, "s2-only-page") {
 		t.Errorf("site one's landing pages are not its own:\n%s", landing)
 	}
-	two := a.renderSiteAnalyticsBody(ctx, hostedView(domain.Domain{ID: "s2"}), "two.test", 30, "last 30 days")
+	two := a.renderSiteAnalyticsBody(ctx, hostedView(domain.Domain{ID: "s2"}), "two.test", 30)
 	if !strings.Contains(two, "1 visitor to two.test") || strings.Contains(two, "s1-landing") {
 		t.Errorf("site two's page is not site two's alone")
 	}
@@ -71,12 +71,12 @@ func siteAnalyticsPage(t *testing.T, site string, paths ...string) string {
 			t.Fatal(err)
 		}
 	}
-	return a.renderSiteAnalyticsBody(context.Background(), hostedView(domain.Domain{ID: site}), "customer.example", 30, "last 30 days")
+	return a.renderSiteAnalyticsBody(context.Background(), hostedView(domain.Domain{ID: site}), "customer.example", 30)
 }
 
 // The page is an overview in the console's page grammar, as the install's
-// Analytics is: its range a segmented control on its own address, its
-// sections laid open, nothing of the older card-and-accordion pages.
+// Analytics is: its range a segmented control on its own address, nothing of
+// the older card-and-accordion pages.
 func TestASitesAnalyticsIsAnOverview(t *testing.T) {
 	page := siteAnalyticsPage(t, "d1", "/", "/about")
 	for _, want := range []string{`data-page-kind="overview"`, `href="/os/d/d1/analytics?days=30">30 days`,
@@ -90,13 +90,18 @@ func TestASitesAnalyticsIsAnOverview(t *testing.T) {
 			t.Errorf("the page carries %q", not)
 		}
 	}
-	// One form, the New goal sheet's: nothing else on the page is a form.
-	if forms, goal := strings.Count(page, "<form"), strings.Count(page, "<form data-goal-form>"); forms != 1 || goal != 1 {
-		t.Errorf("the page carries %d forms, %d of them the goal sheet; want only the goal sheet", forms, goal)
+	// The forms are the sheets' (a new goal, an export): nothing on the page
+	// itself is a form.
+	if forms, sheets := strings.Count(page, "<form"), strings.Count(page, `<dialog class="sa-sheet"`); forms != 2 || sheets != 2 {
+		t.Errorf("the page carries %d forms and %d sheets; want the goal's and the export's", forms, sheets)
+	}
+	own, _, _ := strings.Cut(page, "<dialog")
+	if strings.Contains(own, "<form") {
+		t.Error("a form sits on the page outside a sheet")
 	}
 	empty := siteAnalyticsPage(t, "d1")
-	if !strings.Contains(empty, "No visits to customer.example") || !strings.Contains(empty, "Visits to this site appear here") {
-		t.Error("a site with no traffic does not say so")
+	if !strings.Contains(empty, "No visits to customer.example in the last 30 days") || strings.Contains(empty, `class="stat-card__def"`) {
+		t.Error("a site with no traffic does not say so once, in its state")
 	}
 }
 
@@ -108,7 +113,7 @@ func TestASitesLivePanelPollsThatSite(t *testing.T) {
 	st := analytics.New(dbpkg.DB)
 	st.UseVisits(vasession.NewMasterHasher([]byte("live")))
 	a := &App{analytics: st}
-	page := a.renderSiteAnalyticsBody(context.Background(), hostedView(domain.Domain{ID: "s1"}), "one.test", 30, "last 30 days")
+	page := a.renderSiteAnalyticsBody(context.Background(), hostedView(domain.Domain{ID: "s1"}), "one.test", 30)
 	if !strings.Contains(page, `data-live-src="/os/d/s1/analytics/realtime"`) {
 		t.Errorf("site one's live panel does not poll site one:\n%s", page)
 	}

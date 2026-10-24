@@ -35,6 +35,19 @@ func Section(title, hint string, body HTML) HTML {
 		string(Text(title)) + `</h2>` + h + `</div>` + string(body) + `</section>`)
 }
 
+// Fold is a Section the reader opens when they want it. Its head, the title
+// and a line saying what it holds, is the summary, so a closed fold is still
+// read: a page opens what it is for and folds the detail. No script:
+// <details>.
+func Fold(title, hint string, body HTML) HTML {
+	h := ""
+	if hint != "" {
+		h = `<span class="section-head__hint">` + string(Text(hint)) + `</span>`
+	}
+	return HTML(`<details class="sa-fold"><summary class="section-head"><h2 class="section-head__title">` +
+		string(Text(title)) + `</h2>` + h + `</summary>` + string(body) + `</details>`)
+}
+
 // Row is one setting: what it is, what it does, and its control on the right.
 // Changed marks a row whose value differs from what is saved.
 type Row struct {
@@ -101,6 +114,9 @@ func Facts(facts ...Fact) HTML {
 type Figure struct {
 	Value, Label, Note, Tone string
 	Live                     bool
+	// Def is where the figure's definition is: its label links there, so
+	// what is counted is one click from the number.
+	Def string
 }
 
 // Cell renders one figure.
@@ -114,7 +130,11 @@ func (f Figure) Cell() HTML {
 	if f.Live {
 		live = ` data-live`
 	}
-	s := `<div class="` + cls + `"` + live + `><div class="stat-card__label">` + string(Text(f.Label)) +
+	label := string(Text(f.Label))
+	if f.Def != "" {
+		label = `<a class="stat-card__def" href="` + string(Text(f.Def)) + `">` + label + `</a>`
+	}
+	s := `<div class="` + cls + `"` + live + `><div class="stat-card__label">` + label +
 		`</div><div class="` + figureValueClass(f.Value) + `">` + figureValue(f.Value) + `</div>`
 	if f.Note != "" {
 		s += `<div class="stat-card__note">` + string(Text(f.Note)) + `</div>`

@@ -123,3 +123,15 @@ func (s *Store) PathFlowsScoped(ctx context.Context, scope string, days, limit i
 	}
 	return flows, nil
 }
+
+// BetweenPages is the flows from one page to another, without the visits'
+// entries and exits (the landing and exit pages, which are reported as such).
+func BetweenPages(flows []PathFlow) []PathFlow {
+	out := make([]PathFlow, 0, len(flows))
+	for _, f := range flows {
+		if f.From != entryMarker && f.To != exitMarker {
+			out = append(out, f)
+		}
+	}
+	return out
+}

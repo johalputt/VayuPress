@@ -29,9 +29,9 @@ func TestContinentName(t *testing.T) {
 	}
 }
 
-// TestGeoSectionContinentsAndSetup: with countries but no proxy region/city data,
-// Geography must still show a real continent breakdown (offline) and a precise
-// setup card — and stay CSP-safe.
+// With countries and no region or city, the section shows the countries and
+// the continents they make up (no proxy needed), then says once what is
+// missing; how to get it is in How this works, not a box on the page.
 func TestGeoSectionContinentsAndSetup(t *testing.T) {
 	countries := []analytics.AudienceStat{
 		{Label: "US", Count: 120},
@@ -42,24 +42,29 @@ func TestGeoSectionContinentsAndSetup(t *testing.T) {
 	out := osGeoSection(countries, nil, nil)
 	assertCSPSafe(t, "osGeoSection", out)
 	for _, want := range []string{
-		"Continents", "North America", "Asia", "Europe", "South America",
-		"vp-geo-scroll", // countries scroll container
-		"vp-geo-setup",  // premium setup card
-		"Add visitor location headers",
-		"cf-region", "cf-ipcity",
+		">Countries<", ">Continents<", "North America", "Asia", "Europe", "South America",
+		`<p class="table-empty">No region or city recorded yet.</p>`,
+		"Add visitor location headers", "cf-region", "cf-ipcity",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("geo section missing %q", want)
 		}
 	}
+	if strings.Contains(out, "vp-geo-setup") || strings.Contains(out, "<ol") {
+		t.Error("the setup is a box of numbered steps again")
+	}
 }
 
-// TestGeoSectionEmpty: with no geo data at all, still renders the setup card CSP-safe.
+// With no location at all, the section says so in one line, then how a
+// location is recorded; no empty country and continent lists.
 func TestGeoSectionEmpty(t *testing.T) {
 	out := osGeoSection(nil, nil, nil)
 	assertCSPSafe(t, "osGeoSection-empty", out)
-	if !strings.Contains(out, "vp-geo-setup") {
-		t.Error("empty geo section should show the setup card")
+	if !strings.HasPrefix(out, `<p class="table-empty">No location recorded yet.</p>`) || !strings.Contains(out, "cf-region") {
+		t.Errorf("empty geo section = %s", out)
+	}
+	if strings.Contains(out, "Countries") || strings.Count(out, "table-empty") != 1 {
+		t.Errorf("empty geo section says it more than once: %s", out)
 	}
 }
 

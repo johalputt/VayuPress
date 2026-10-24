@@ -13,7 +13,6 @@ import (
 	"html"
 	htmpl "html/template"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -381,167 +380,9 @@ const platformAnalyticsTitle = "Every site's analytics"
 
 // handleOSPlatformAnalytics is Platform › Analytics: every site this install
 // serves, added up, for an administrator (the "platform" area is admin-only).
-// Each site's own figures are its own page; this is the one place they meet.
+// It is the sites' own page, given every site, with what each adds first.
 func (a *App) handleOSPlatformAnalytics(w http.ResponseWriter, r *http.Request) {
-	nonce := render.CSPNonce(r)
-	cfg := a.getOSSettings(r.Context())
-
-	if a.analytics == nil {
-		writeOSHTML(w, r, adminOSLayout(nonce, platformAnalyticsTitle, "platform", cfg, ui.Overview(ui.OverviewPage{Title: platformAnalyticsTitle},
-			ui.Band{Title: "Visitors", Aside: ui.Empty("trend", "Analytics are off", "This install was started without the analytics store.", "")})))
-		return
-	}
-
-	// Selected reporting period (default 30 days, up to 3 years).
-	days, periodLabel := analyticsPeriod(r)
-
-	// The Analytics report runs ~a dozen aggregate scans over large tables. It is
-	// computed OFF the request path and cached (admin_dashcache.go) so this tab
-	// can never block a request into a 502; a startup warmer keeps the default
-	// window hot. The nonce'd tabs script is appended per-request (never cached).
-	frag, ready := adminDash.get("analytics:"+strconv.Itoa(days), analyticsFragmentTTL, func(ctx context.Context) string {
-		return a.renderAnalyticsBody(ctx, days, periodLabel)
-	})
-	if !ready {
-		frag = string(ui.Overview(ui.OverviewPage{Title: platformAnalyticsTitle, State: ui.Text("Counting the last " + periodLabel), Actions: osPeriodSelector(platformAnalyticsBase, days)},
-			ui.Band{Title: "Visitors", Hint: "Last " + periodLabel, Chart: `<p class="table-empty">This is counted in the background; reload in a few seconds.</p>`}))
-	}
-	// The alerts are read off the request, not the cache, so a change shows
-	// at once.
-	frag += a.alertsSection(r.Context(), platformView.alert, platformView.alertsAPI(), cfg.AccessLevel >= accessAdmin, nonce)
-	body := frag + "\n" + `<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js?v=` + assetVer("js/admin-os-intel.js") + `"></script>`
-	writeOSHTML(w, r, adminOSLayout(nonce, platformAnalyticsTitle, "platform", cfg, htmpl.HTML(body)))
-}
-
-// renderAnalyticsBody builds Analytics as the Overview kind (fidelity plan):
-// visitors in the chosen range with the range as a segmented control, one
-// chart beside who is on the site now, then the sections laid open, none a
-// disclosure. It runs the heavy aggregate queries, so it is only ever called
-// from the background fragment cache, never inline on a request; "" on a hard
-// query error lets the cache retry rather than keep an empty report.
-func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel string) string {
-	sum, err := a.analytics.Since(ctx, days, 10)
-	if err != nil {
-		return ""
-	}
-	page := ui.OverviewPage{Title: platformAnalyticsTitle, Actions: osPeriodSelector(platformAnalyticsBase, days) + exploreButton(platformAnalyticsBase+"/explore", days)}
-	sites, scope := a.analyticsScopeNote(ctx)
-	if sum == nil {
-		page.State = ui.Text("No visits recorded yet")
-		return string(ui.Overview(page, ui.Band{Title: "Visitors", Hint: "Last " + periodLabel,
-			Chart: `<p class="table-empty">Visits appear here as people read your site.</p>` + scope}))
-	}
-
-	ov, _ := a.analytics.OverviewSince(ctx, days)
-	// The previous window of the same length, for each figure's change. Bounds
-	// are date strings; the current window starts at curFrom (inclusive) and the
-	// previous one is [prevFrom, curFrom).
-	now := time.Now().UTC()
-	curFrom := now.AddDate(0, 0, -(days - 1)).Format("2006-01-02")
-	prevFrom := now.AddDate(0, 0, -(2*days - 1)).Format("2006-01-02")
-	prevOv, _ := a.analytics.OverviewBetween(ctx, prevFrom, curFrom)
-	devices, _ := a.analytics.Devices(ctx, days)
-	browsers, _ := a.analytics.Browsers(ctx, days)
-	oses, _ := a.analytics.OperatingSystems(ctx, days)
-	channels, _ := a.analytics.Channels(ctx, days)
-	events, _ := a.analytics.CustomEvents(ctx, days)
-	utm, _ := a.analytics.UTMStats(ctx, days)
-	countries, _ := a.analytics.Countries(ctx, days)
-	regions, _ := a.analytics.Regions(ctx, days)
-	cities, _ := a.analytics.Cities(ctx, days)
-	series, _ := a.analytics.PageviewSeries(ctx, days)
-
-	// The state is the one number the page is opened for, with whose traffic it
-	// is: on an install hosting several sites every figure here adds them up,
-	// and the page says so rather than let a client's number pass for the
-	// operator's.
-	state := "No visits in the last " + periodLabel
-	if ov != nil && ov.UniqueVisitors > 0 {
-		state = countOf(ov.UniqueVisitors, "visitor") + " in the last " + periodLabel
-	}
-	figs := analyticsFigures(ov, prevOv, sum.TotalViews)
-	if sites > 1 {
-		state += ", across all " + strconv.Itoa(sites) + " sites"
-	}
-	page.State = ui.Text(state)
-
-	chart := ui.HTML(`<p class="table-empty">No visits in this period yet.</p>`)
-	switch {
-	case len(series) > 0:
-		chart = ui.HTML(osTrendChart(series, "Traffic over "+periodLabel))
-	case len(sum.Daily) > 0:
-		vals := make([]int, 0, len(sum.Daily))
-		for _, d := range sum.Daily {
-			vals = append(vals, int(d.Views))
-		}
-		chart = ui.HTML(`<div class="sparkline-wrap">` + osSparkline(vals, "Views a day, last "+periodLabel) + `</div>`)
-	}
-
-	bars := func(items []osChartBar, denom osBarDenom, empty string) string { return osBarList(items, denom, empty) }
-	pageBars := make([]osChartBar, 0, len(sum.TopPages))
-	for _, p := range sum.TopPages {
-		pageBars = append(pageBars, osChartBar{Label: prettyPathText(p.Path), Value: int(p.Views), Href: p.Path})
-	}
-	refBars := make([]osChartBar, 0, len(sum.Referrers))
-	for _, h := range sum.Referrers {
-		refBars = append(refBars, osChartBar{Label: h.Host, Value: int(h.Hits)})
-	}
-	campaigns := osCampaigns(utm)
-	eventBars := make([]osChartBar, 0, len(events))
-	for _, e := range events {
-		eventBars = append(eventBars, osChartBar{Label: e.Name, Value: e.Count})
-	}
-
-	sections := []ui.HTML{
-		ui.HTML(a.osEachSiteSection(ctx, days)),
-		ui.HTML(analyticsCols(
-			string(ui.Section("Top pages", "", ui.HTML(bars(pageBars, osShareOf(int(sum.TotalViews)), "No page views recorded yet."))))+"",
-			string(ui.Section("Referrers", "", ui.HTML(bars(refBars, osShareOf(int(sum.TotalReferrals)), "No links from other sites yet.")))))),
-		ui.Section("How they found you", "Direct, search, social and other sites, from the referrer alone",
-			ui.HTML(bars(osBarsFromAudience(channels), osShareOfListed(), "Visitors are grouped here once they arrive."))),
-		ui.Section("What they read on", "", ui.HTML(analyticsCols(
-			analyticsPanel("Devices", osDonut(osSegsFromAudience(devices), "No device data yet.")),
-			analyticsPanel("Browsers", bars(osBarsFromAudience(browsers), osShareOfListed(), "No browser data yet.")),
-			analyticsPanel("Systems", bars(osBarsFromAudience(oses), osShareOfListed(), "No system data yet."))))),
-		ui.Section("Where they are", "Coarse location only", ui.HTML(osGeoSection(countries, regions, cities))),
-		ui.Section("Campaigns", "", ui.HTML(campaigns)),
-		ui.Section("Events", "What you track with data-vp-event or VayuPress.track()",
-			ui.HTML(bars(eventBars, osShareHidden(), "No custom events yet."))),
-		ui.HTML(a.osSearchesSection(ctx, analytics.ScopeAllDomains, days)),
-		ui.HTML(a.osGoalsSectionOf(ctx, platformView, days)),
-		ui.HTML(a.osSegmentsSection(ctx, platformView, days)),
-		ui.HTML(a.osBehaviourSection(ctx, analytics.ScopeAllDomains, platformAnalyticsBase+"/explore", days)),
-		ui.HTML(a.osContentSection(ctx, analytics.ScopeAllDomains, platformAnalyticsBase+"/explore", days)),
-		ui.HTML(a.osPerformanceSection(ctx, analytics.ScopeAllDomains, days)),
-		ui.HTML(a.osJourneySection(ctx, analytics.ScopeAllDomains, days)),
-		ui.HTML(osExportSection("/os/api/analytics/export", days)),
-		ui.Explain(ui.HTML(`<p>Everything here is counted and kept on this server: no cookies, no personal data, and no request to anyone else. A visitor is recognised within a day by a salted hash that changes daily, so nobody can be followed from one day to the next.</p>`)),
-	}
-	return string(ui.Overview(page, ui.Band{Title: "Visitors", Hint: "Last " + periodLabel, Figures: figs, Chart: chart + scope,
-		Aside: ui.Section("Right now", "", ui.HTML(osLiveCard("/os/api/analytics/realtime")))}, sections...))
-}
-
-// analyticsFigures is the band's figure group: visitors and pageviews, which
-// the browser beacon measures, each with its change on the window before, and
-// the server's own count of page requests, which includes crawlers and
-// visitors without JavaScript. The two counts are of different populations,
-// so they are named differently and the request count says why it is higher:
-// labelled alike, "31643 views" over "1327 pageviews" read as a
-// contradiction. A figure that would read 0 is left out.
-func analyticsFigures(ov, prev *analytics.Overview, requests int64) []ui.Figure {
-	var figs []ui.Figure
-	if ov != nil && ov.UniqueVisitors > 0 {
-		var pv, pvw int
-		if prev != nil {
-			pv, pvw = prev.UniqueVisitors, prev.TotalPageviews
-		}
-		figs = append(figs, ui.Figure{Value: strconv.Itoa(ov.UniqueVisitors), Label: "Visitors", Note: analyticsChange(ov.UniqueVisitors, pv)},
-			ui.Figure{Value: strconv.Itoa(ov.TotalPageviews), Label: "Pageviews", Note: analyticsChange(ov.TotalPageviews, pvw)})
-	}
-	if requests > 0 {
-		figs = append(figs, ui.Figure{Value: strconv.FormatInt(requests, 10), Label: "Page requests", Note: "Crawlers and visitors without JavaScript included"})
-	}
-	return figs
+	a.writeSiteAnalytics(w, r, platformView, "every site", platformAnalyticsTitle, "platform")
 }
 
 // analyticsScopeNote says whose traffic these figures are. Every reader here
@@ -595,7 +436,9 @@ var analyticsPeriodOptions = []struct {
 	Days  int
 	Label string
 }{
-	{1, "24 hours"}, {7, "7 days"}, {30, "30 days"}, {90, "90 days"},
+	// One day is today so far, from midnight UTC, as every range is a set of
+	// UTC days (docs/ANALYTICS.md): "24 hours" said what it was not.
+	{1, "Today"}, {7, "7 days"}, {30, "30 days"}, {90, "90 days"},
 	{180, "6 months"}, {365, "1 year"}, {730, "2 years"}, {1095, "3 years"},
 }
 
@@ -611,16 +454,43 @@ func analyticsLabelForDays(days int) string {
 }
 
 // analyticsPeriod resolves the ?days= query param to a whitelisted window,
-// returning the day count and a human label. Defaults to 30 days; the maximum
-// is 3 years (1095 days).
+// returning the day count and its words. Defaults to 30 days; the maximum is
+// 3 years (1095 days).
 func analyticsPeriod(r *http.Request) (int, string) {
 	want, _ := strconv.Atoi(r.URL.Query().Get("days"))
 	for _, o := range analyticsPeriodOptions {
 		if o.Days == want {
-			return o.Days, "last " + o.Label
+			return o.Days, periodWords(o.Days)
 		}
 	}
-	return 30, "last 30 days"
+	return 30, periodWords(30)
+}
+
+// periodWords is a period as a sentence starts it ("last 30 days"), and
+// analyticsPhrase as one goes on to say it ("the last 30 days"). Today is
+// said as what it counts. Both are made from the day count alone, so a page
+// counted on a request and the same page counted by the warmer say the same.
+func periodWords(days int) string {
+	if days == 1 {
+		return "today, since midnight UTC"
+	}
+	return "last " + analyticsLabelForDays(days)
+}
+
+func analyticsPhrase(days int) string {
+	if days == 1 {
+		return periodWords(days)
+	}
+	return "the " + periodWords(days)
+}
+
+// analyticsWhen is the period after a count: "in the last 30 days", and
+// "today, since midnight UTC", which takes no "in".
+func analyticsWhen(days int) string {
+	if days == 1 {
+		return periodWords(days)
+	}
+	return "in " + analyticsPhrase(days)
 }
 
 // osPeriodSelector renders the period chooser as a row of links (GET, no JS).
@@ -634,103 +504,61 @@ func osPeriodSelector(base string, days int) ui.HTML {
 	return `<div data-period>` + ui.Segments("Period", segs...) + `</div>`
 }
 
-// osLiveCard renders the live-visitors panel; admin-os-intel.js polls src
-// (the install's realtime endpoint, or one site's) every few seconds and
-// fills it in. It shows the active-visitor count plus where they are
-// (country), what they're viewing, and how they arrived (referrer).
+// osLiveCard is who is reading the site now: their count, as a figure, the
+// pages they are on and where they came from, filled every 10 s from src by
+// admin-os-intel.js. A count in ink, not an accent number beside a LIVE pill
+// and pulsing rings: it is the same kind of figure as the band's.
 func osLiveCard(src string) string {
 	return `<div class="vm-liveview" data-live data-live-src="` + esc(src) + `">
-  <div class="vm-live-hero mb-4">
-    <div class="vm-live-hero__main">
-      <div class="vm-live-badge"><span class="live-dot"></span> LIVE</div>
-      <div class="vm-live-count" data-live-count>—</div>
-      <div class="vm-live-sub muted text-sm"><span data-live-noun>visitors</span> active in the last <span data-live-window>5</span> minutes · auto-refreshes every 10s <span class="vm-live-updated text-xs" data-live-updated></span></div>
-    </div>
-    <div class="vm-live-rings" aria-hidden="true"><span></span><span></span><span></span></div>
-  </div>
-  <div class="sa-cols">
-    <div><h3 class="sa-panel__title">Countries</h3>
-      <div class="vp-bars vm-live-list" data-live-countries><p class="table-empty">Waiting for live data…</p></div></div>
-    <div><h3 class="sa-panel__title">Pages</h3>
-      <div class="vp-bars vm-live-list" data-live-pages><p class="table-empty">Waiting for live data…</p></div></div>
-    <div><h3 class="sa-panel__title">Referrers</h3>
-      <div class="vp-bars vm-live-list" data-live-referrers><p class="table-empty">Waiting for live data…</p></div></div>
-  </div>
+  <div class="stat-card"><div class="stat-card__label">Reading now</div><div class="stat-card__value" data-live-count>—</div>
+    <div class="stat-card__note"><span data-live-noun>visitors</span> in the last <span data-live-window>5</span> minutes<span data-live-updated></span></div></div>
+  <h3 class="sa-panel__title">Pages</h3>
+  <div class="vp-bars" data-live-pages><p class="table-empty">Counting…</p></div>
+  <h3 class="sa-panel__title">Referrers</h3>
+  <div class="vp-bars" data-live-referrers><p class="table-empty">Counting…</p></div>
 </div>`
 }
 
-// osGeoSection renders the Geography tab: countries + an offline continent
-// breakdown (both work with no proxy, since countries resolve offline), then
-// regions + cities (which need proxy location headers). When region/city data is
-// absent it shows a precise, premium setup card rather than a blank panel.
+// osGeoSection is where readers are: countries and the continents they make
+// up, which resolve with no proxy, then regions and cities, which need the
+// proxy's location headers. What is missing is said once, and how to get
+// regions and cities is in How this works, not a box on the page.
 func osGeoSection(countries, regions, cities []analytics.AudienceStat) string {
+	setup := string(ui.Explain(ui.HTML(`<p>VayuPress looks up no address: a country comes from the headers the reverse proxy sends, and a region or a city only when it sends those too. With Cloudflare, turn on Rules › Settings › Add visitor location headers (it adds <code>cf-region</code> and <code>cf-ipcity</code>). CloudFront, Vercel and Fastly headers are read too, and <code>X-Geo-Region</code> and <code>X-Geo-City</code> from any proxy.</p>`)))
 	if len(countries) == 0 && len(regions) == 0 && len(cities) == 0 {
-		return osGeoSetupNote(true)
+		return `<p class="table-empty">No location recorded yet.</p>` + setup
 	}
-	// Countries as a colour bar list with full country names + flags.
 	countryBars := make([]osChartBar, 0, len(countries))
+	contAgg := map[string]int{}
 	for _, c := range countries {
 		name := countryName(c.Label)
 		if name == "" {
 			name = c.Label
 		}
-		countryBars = append(countryBars, osChartBar{Label: name, LabelHTML: countryDisplayHTML(c.Label), Value: c.Count})
-	}
-	// Continents — aggregated offline from the country codes (no proxy needed),
-	// so the Geography tab always shows a real world-region view. Sorted desc.
-	contAgg := map[string]int{}
-	for _, c := range countries {
-		if name := continentName(c.Label); name != "" {
-			contAgg[name] += c.Count
+		countryBars = append(countryBars, osChartBar{Label: name, Value: c.Count})
+		if cont := continentName(c.Label); cont != "" {
+			contAgg[cont] += c.Count
 		}
 	}
 	continentBars := make([]osChartBar, 0, len(contAgg))
 	for name, n := range contAgg {
 		continentBars = append(continentBars, osChartBar{Label: name, Value: n})
 	}
-	sort.SliceStable(continentBars, func(i, j int) bool { return continentBars[i].Value > continentBars[j].Value })
-
-	top := analyticsCols(
-		analyticsPanel("Countries", `<div class="vp-geo-scroll">`+osBarList(countryBars, osShareOfListed(), "No country data yet.")+`</div>`),
-		analyticsPanel("Continents", osBarList(continentBars, osShareOfListed(), "No continent data yet.")))
-
-	// Regions & cities need proxy headers. When both are absent, show one setup
-	// card spanning the row; otherwise show whichever populated bar lists exist.
-	var detail string
+	sort.SliceStable(continentBars, func(i, j int) bool {
+		if continentBars[i].Value != continentBars[j].Value {
+			return continentBars[i].Value > continentBars[j].Value
+		}
+		return continentBars[i].Label < continentBars[j].Label
+	})
+	out := analyticsCols(
+		analyticsPanel("Countries", osBarList(countryBars, osShareOfListed(), "No country recorded yet.")),
+		analyticsPanel("Continents", osBarList(continentBars, osShareOfListed(), "No continent recorded yet.")))
 	if len(regions) == 0 && len(cities) == 0 {
-		detail = analyticsPanel("Regions and cities", osGeoSetupNote(false))
-	} else {
-		regionCard := osGeoSetupNote(false)
-		if len(regions) > 0 {
-			regionCard = `<div class="vp-geo-scroll">` + osBarList(osBarsFromAudience(regions), osShareOfListed(), "") + `</div>`
-		}
-		cityCard := osGeoSetupNote(false)
-		if len(cities) > 0 {
-			cityCard = `<div class="vp-geo-scroll">` + osBarList(osBarsFromAudience(cities), osShareOfListed(), "") + `</div>`
-		}
-		detail = analyticsCols(analyticsPanel("Regions", regionCard), analyticsPanel("Cities", cityCard))
+		return out + `<p class="table-empty">No region or city recorded yet.</p>` + setup
 	}
-	return top + detail
-}
-
-// osGeoSetupNote renders a precise, premium setup card explaining how to light up
-// region/city data. VayuPress does no IP geolocation itself (privacy by design);
-// regions and cities require a CDN location header. The steps are Cloudflare-first
-// (the common case) with other providers noted. CSP-safe: no inline styles.
-func osGeoSetupNote(full bool) string {
-	lead := "Regions and cities need one extra signal from your reverse proxy — VayuPress never geolocates IPs itself (privacy by design). Countries already resolve automatically."
-	if full {
-		lead = "No location data yet. VayuPress does no GeoIP lookups (privacy by design). Countries resolve automatically; regions and cities need one extra signal from your reverse proxy."
-	}
-	return `<div class="vp-geo-setup">
-  <p class="vp-geo-setup__lead">` + lead + `</p>
-  <ol class="vp-geo-setup__steps">
-    <li><span class="vp-geo-setup__n">1</span> Cloudflare dashboard → your site → <strong>Rules → Settings</strong></li>
-    <li><span class="vp-geo-setup__n">2</span> Turn on <strong>Add visitor location headers</strong></li>
-    <li><span class="vp-geo-setup__n">3</span> Done — regions &amp; cities appear within minutes (adds <code>cf-region</code> &amp; <code>cf-ipcity</code>)</li>
-  </ol>
-  <p class="vp-geo-setup__alt">Also recognised automatically: AWS CloudFront, Vercel &amp; Fastly geo headers, and generic <code>X-Geo-Region</code> / <code>X-Geo-City</code>.</p>
-</div>`
+	return out + analyticsCols(
+		analyticsPanel("Regions", osBarList(osBarsFromAudience(regions), osShareOfListed(), "No region recorded yet.")),
+		analyticsPanel("Cities", osBarList(osBarsFromAudience(cities), osShareOfListed(), "No city recorded yet.")))
 }
 
 // osGoalsSectionOf is the Goals section for v: its goals counted over its
@@ -761,7 +589,7 @@ func (a *App) osGoalsSectionOf(ctx context.Context, v analyticsView, days int) s
     <input id="goal-target" class="input" type="text" data-goal-target placeholder="/thank-you  or  signup" required></div>
   <div class="mt-3 sa-list__sheet-actions"><button class="btn btn--primary btn--sm" type="submit">Add goal</button></div>
 </form>`))
-	return string(ui.Section("Goals", "The share of visitors who reach a page or fire an event", ui.HTML(`<div data-goals data-goal-base="`+esc(base)+`">
+	return string(ui.Fold("Goals", countOf(len(results), "goal")+", the share of visitors who reach each", ui.HTML(`<div data-goals data-goal-base="`+esc(base)+`">
   <button type="button" class="btn btn--ghost btn--sm" data-sheet="goal-new">`+saIcon("plus")+` New goal</button>
   <div class="table-wrap"><table class="table">
     <thead><tr><th>Goal</th><th>Reached by</th><th>Target</th><th>Completions</th><th>Conversion</th><th></th></tr></thead>
@@ -775,7 +603,7 @@ func (a *App) osGoalsSectionOf(ctx context.Context, v analyticsView, days int) s
 func (a *App) osSearchesSection(ctx context.Context, scope string, days int) string {
 	stats, _ := a.analytics.SearchesScoped(ctx, scope, days, 20)
 	if len(stats) == 0 {
-		return string(ui.Section("Searches", "What readers looked for with the site's search",
+		return string(ui.Fold("Searches", "What readers looked for with the site's search",
 			ui.HTML(`<p class="table-empty">No searches yet.</p>`+string(ui.Explain(`<p>Searches made from the site's search page show here; a query that looks like an email address or a long number is never kept.</p>`)))))
 	}
 	// Bars, as every other top list here: a four-column table did not fit
@@ -810,7 +638,7 @@ func (a *App) osSearchesSection(ctx context.Context, scope string, days int) str
 			analyticsPanel("Opened after searching", osBarList(pages, osShareOf(next.Opened), "No search has been followed by a page yet.")),
 			analyticsPanel("Searched again as", osBarList(again, osShareOf(next.Refined), "No search has been tried again in other words yet.")))
 	}
-	return string(ui.Section("Searches", "What readers looked for with the site's search", ui.HTML(body)))
+	return string(ui.Fold("Searches", "What readers looked for with the site's search", ui.HTML(body)))
 }
 
 // noGoalsYet is the goals table's empty row; the script writes the same words
@@ -827,16 +655,19 @@ func goalKindLabel(kind string) string {
 
 // osJourneySection renders the top page-to-page transitions (visitor journey).
 func (a *App) osJourneySection(ctx context.Context, scope string, days int) string {
-	flows, _ := a.analytics.PathFlowsScoped(ctx, scope, days, 25)
-	body := `<p class="table-empty">Once visitors read more than one page in a visit, their most common paths show here.</p>`
-	if len(flows) > 0 {
-		rows := ""
-		for _, f := range flows {
-			rows += `<tr><td class="post-row__name">` + osPrettyPath(f.From) + `</td><td class="muted">→</td><td class="post-row__name">` + osPrettyPath(f.To) + `</td><td>` + strconv.Itoa(f.Count) + `</td></tr>`
+	// Every flow is read, as the visits' entries and exits outnumber the
+	// rest and are already the landing and exit pages; ten shown.
+	flows, _ := a.analytics.PathFlowsScoped(ctx, scope, days, 1000)
+	flows = analytics.BetweenPages(flows)
+	bars := make([]osChartBar, 0, 10)
+	for i, f := range flows {
+		if i == 10 {
+			break
 		}
-		body = `<div class="table-wrap"><table class="table"><thead><tr><th>From</th><th></th><th>To</th><th>Times</th></tr></thead><tbody>` + rows + `</tbody></table></div>`
+		bars = append(bars, osChartBar{Label: prettyPathText(f.From) + " → " + prettyPathText(f.To), Value: f.Count})
 	}
-	return string(ui.Section("Journeys", "(entry) is where a visit begins, (exit) where it ends", ui.HTML(body)))
+	return string(ui.Fold("Journeys", countOf(len(flows), "way")+" from one page to another",
+		ui.HTML(osBarList(bars, osShareHidden(), "No visit went from one page to another yet."))))
 }
 
 // osEachSiteSection is what each site adds to Platform's figures: its page
@@ -892,50 +723,32 @@ func osCampaigns(utm []analytics.UTMStat) string {
 	return out
 }
 
-// osExportSection renders download links for every report in CSV and JSON over
-// the selected window.
-func osExportSection(href string, days int) string {
+// osExportSheet is the page's Export button and the sheet it opens: any
+// report for the period, as CSV or JSON, from href (the view's own export).
+// Fourteen rows of buttons on the page became one choice in a sheet; the
+// form is a GET, and the answer downloads (Content-Disposition).
+func osExportSheet(href string, days int) (ui.HTML, ui.HTML) {
 	labels := map[string]string{
 		"overview": "Overview", "pages": "Top pages", "referrers": "Referrers",
 		"browsers": "Browsers", "devices": "Devices", "os": "Operating systems",
 		"countries": "Countries", "regions": "Regions", "cities": "Cities",
-		"utm": "Campaigns (UTM)", "events": "Custom events", "sessions": "Sessions",
-		"goals": "Goals", "journey": "Visitor journey",
+		"utm": "Campaigns", "events": "Custom events", "sessions": "Visits",
+		"goals": "Goals", "journey": "Journeys",
 	}
-	d := strconv.Itoa(days)
-	rows := ""
+	var opts strings.Builder
 	for _, rep := range analyticsExportReports {
-		base := href + "?days=" + d + "&report=" + rep
-		rows += `<tr><td class="post-row__name">` + html.EscapeString(labels[rep]) + `</td>` +
-			`<td><a class="btn btn--sm" href="` + base + `&format=csv" download>CSV</a> ` +
-			`<a class="btn btn--sm" href="` + base + `&format=json" download>JSON</a></td></tr>`
+		opts.WriteString(`<option value="` + rep + `">` + html.EscapeString(labels[rep]) + `</option>`)
 	}
-	return string(ui.Section("Export", "Any report for this period, as CSV or JSON",
-		ui.HTML(`<div class="table-wrap"><table class="table"><thead><tr><th>Report</th><th>Download</th></tr></thead><tbody>`+rows+`</tbody></table></div>`)))
-}
-
-// osPrettyPath renders a page path for display: URL-decoded, query-string
-// stripped, and truncated with an ellipsis (full value preserved in a tooltip).
-// The literal journey markers "(entry)" / "(exit)" are passed through verbatim.
-func osPrettyPath(p string) string {
-	full := p
-	disp := p
-	// Drop any query/fragment that may have slipped through.
-	if i := strings.IndexAny(disp, "?#"); i >= 0 {
-		disp = disp[:i]
-	}
-	if dec, err := url.QueryUnescape(disp); err == nil && dec != "" {
-		disp = dec
-	}
-	if disp == "" {
-		disp = "/"
-	}
-	const max = 48
-	if len([]rune(disp)) > max {
-		r := []rune(disp)
-		disp = string(r[:max-1]) + "…"
-	}
-	return `<span title="` + html.EscapeString(full) + `">` + html.EscapeString(disp) + `</span>`
+	btn := ui.HTML(` <button type="button" class="btn btn--sm" data-sheet="analytics-export">Export</button>`)
+	sheet := ui.Sheet("analytics-export", "Export a report", ui.HTML(`<form method="get" action="`+html.EscapeString(href)+`">
+  <input type="hidden" name="days" value="`+strconv.Itoa(days)+`">
+  <div class="field"><label class="field-label" for="export-report">Report</label>
+    <select id="export-report" class="select" name="report">`+opts.String()+`</select></div>
+  <div class="field"><label class="field-label" for="export-format">Format</label>
+    <select id="export-format" class="select" name="format"><option value="csv">CSV</option><option value="json">JSON</option></select></div>
+  <div class="mt-3 sa-list__sheet-actions"><button class="btn btn--primary btn--sm" type="submit">Download</button></div>
+</form>`))
+	return btn, sheet
 }
 
 // osPrivacyNote renders the trust footer shown at the bottom of the analytics

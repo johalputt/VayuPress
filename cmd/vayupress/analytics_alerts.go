@@ -336,7 +336,12 @@ func (a *App) alertsSection(ctx context.Context, site, api string, admin bool, n
 	if admin {
 		b.WriteString(string(ui.Sheet("alert-new", "Add an alert", alertForm())))
 	}
-	out := string(ui.Section("Alerts", "Checked every minute", ui.HTML(b.String())))
+	// Folded like the page's detail, and open when a firing is not yet seen:
+	// that is the one thing here to act on.
+	out := string(ui.Fold("Alerts", countOf(len(list), "alert")+", checked every minute", ui.HTML(b.String())))
+	if unseen > 0 {
+		out = string(ui.Section("Alerts", countOf(unseen, "firing")+" not yet seen", ui.HTML(b.String())))
+	}
 	if admin {
 		out += alertsScript(nonce)
 	}

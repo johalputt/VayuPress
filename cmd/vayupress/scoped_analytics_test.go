@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/johalputt/vayupress/internal/analytics"
+	"github.com/johalputt/vayupress/internal/domain"
 )
 
 // ADR-0153 Phases 5–7.
@@ -80,9 +81,10 @@ func TestTheScopedTrafficPageUsesTheScopedQueries(t *testing.T) {
 // a person once for each day they came, and where each figure is defined.
 // (It once warned that its visits and the install's visitors were different
 // populations; since visitors are counted from each site's own rows, they
-// are the same measure.)
+// are the same measure.) It is How this works, which closes every served
+// page after the cached report (TestThePrimarysPageSaysWhereEverySitesAlertsAre).
 func TestTheTrafficPageSaysWhatItsVisitorsAre(t *testing.T) {
-	page := siteAnalyticsPage(t, "d1", "/")
+	page := string(analyticsExplain(hostedView(domain.Domain{ID: "d1"}), "customer.example"))
 	for _, want := range []string{"once for each day they came", `href="/docs/ANALYTICS"`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the site's traffic page does not say %q", want)

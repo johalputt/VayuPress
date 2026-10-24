@@ -157,8 +157,9 @@
 })();
 
 /*
- * Live analytics — polls the realtime endpoint every 10s and updates the Live
- * tab: active-visitor count, countries, active pages, and referrers. CSP-safe:
+ * Live analytics — polls the realtime endpoint every 10s and updates the
+ * Right now panel: the readers' count, the pages they are on, and where they
+ * came from. CSP-safe:
  * DOM updated via textContent only, no eval, no inline styles. No-op without
  * the live card.
  */
@@ -171,11 +172,12 @@
 
   function clear(el) { while (el && el.firstChild) el.removeChild(el.firstChild); }
 
+  // The empty sentence, in the server's own form (osBarList).
   function emptyState(el, msg) {
-    var d = document.createElement('div');
-    d.className = 'empty-state';
-    d.textContent = msg;
-    el.appendChild(d);
+    var p = document.createElement('p');
+    p.className = 'table-empty';
+    p.textContent = msg;
+    el.appendChild(p);
   }
 
   // widthClass snaps a 0..100 percentage to the nearest 5% bucket, mirroring the
@@ -187,20 +189,16 @@
     return 'w-' + (Math.floor((pct + 2) / 5) * 5);
   }
 
-  // makeBar builds one .vp-bar row — structurally identical to the server's
-  // osBarList output: a label, the count with its share %, and a proportional
-  // coloured track. labelNode is a string or a DOM node (flag + country name);
-  // title is the hover/aria text. CSP-safe: DOM API only, no innerHTML.
-  function makeBar(labelNode, title, value, max, total, colorIndex) {
+  // makeBar builds one .vp-bar row as the server's osBarList does: a label,
+  // the count with its share, and a bar in the one ink every list uses.
+  // CSP-safe: DOM API only, no innerHTML.
+  function makeBar(text, value, max, total) {
     var row = document.createElement('div');
-    row.className = 'vp-bar vp-bar--c' + colorIndex + ' vp-bar--enter';
-
+    row.className = 'vp-bar';
     var label = document.createElement('span');
     label.className = 'vp-bar__label';
-    if (title) label.title = title;
-    if (typeof labelNode === 'string') label.textContent = labelNode;
-    else label.appendChild(labelNode);
-
+    label.title = text;
+    label.textContent = text;
     var val = document.createElement('span');
     val.className = 'vp-bar__val';
     val.appendChild(document.createTextNode(String(value)));
@@ -210,93 +208,48 @@
       pctSpan.textContent = Math.round(value * 100 / total) + '%';
       val.appendChild(pctSpan);
     }
-
     var track = document.createElement('span');
     track.className = 'vp-bar__track';
     var fill = document.createElement('span');
-    var pct = max > 0 ? Math.floor(value * 100 / max) : 0;
-    fill.className = 'vp-bar__fill ' + widthClass(pct);
+    fill.className = 'vp-bar__fill ' + widthClass(max > 0 ? Math.floor(value * 100 / max) : 0);
     track.appendChild(fill);
-
     row.appendChild(label);
     row.appendChild(val);
     row.appendChild(track);
     return row;
   }
 
-  // maxTotal returns {max, total} of the count field across items (max floored
-  // at 1 so a single visitor still fills its bar proportionally).
-  function maxTotal(items) {
-    var max = 1, total = 0;
-    items.forEach(function (it) { var v = it.count || 0; if (v > max) max = v; total += v; });
-    return { max: max, total: total };
-  }
-
-  // Fill a bar list from {label,count}/{path,count}. Proportional coloured bars
-  // (relative to the busiest row) plus each row's share of the total.
+  // Fill a bar list from {label,count}/{path,count}: bars relative to the
+  // busiest row, each with its share of the total.
   function fill(el, items, labelKey, emptyMsg) {
     if (!el) return;
     clear(el);
     items = items || [];
     if (!items.length) { emptyState(el, emptyMsg); return; }
-    var mt = maxTotal(items);
-    items.forEach(function (it, i) {
-      var label = String(it[labelKey] || it.label || '(unknown)');
-      el.appendChild(makeBar(label, label, it.count || 0, mt.max, mt.total, (i % 8) + 1));
-    });
-  }
-
-  // Fill the live-countries bars with a flag <img> (or a neutral globe for
-  // unknown locations) + name + count. Resilient to old/new payload shapes.
-  function fillCountries(el, items) {
-    if (!el) return;
-    clear(el);
-    items = items || [];
-    if (!items.length) { emptyState(el, 'No active visitors right now.'); return; }
-    var mt = maxTotal(items);
-    items.forEach(function (c, i) {
-      var name = c.name || c.label || c.code || 'Unknown';
-      var frag = document.createDocumentFragment();
-      if (c.flag) {
-        var img = document.createElement('img');
-        img.className = 'vp-flag-img';
-        img.src = c.flag;
-        img.alt = '';
-        img.width = 20; img.height = 15;
-        img.loading = 'lazy';
-        frag.appendChild(img);
-      } else {
-        var globe = document.createElement('span');
-        globe.className = 'vp-flag-img vp-flag-unknown';
-        globe.setAttribute('aria-hidden', 'true');
-        frag.appendChild(globe);
-      }
-      frag.appendChild(document.createTextNode(' ' + name));
-      el.appendChild(makeBar(frag, name, c.count || 0, mt.max, mt.total, (i % 8) + 1));
+    var max = 1, total = 0;
+    items.forEach(function (it) { var v = it.count || 0; if (v > max) max = v; total += v; });
+    items.forEach(function (it) {
+      el.appendChild(makeBar(String(it[labelKey] || it.label || '(unknown)'), it.count || 0, max, total));
     });
   }
 
   function render(data) {
     var card = document.querySelector('[data-live]');
     if (!card) return;
-    var countEl = card.querySelector('[data-live-count]');
-    var pagesEl = card.querySelector('[data-live-pages]');
-    var countriesEl = card.querySelector('[data-live-countries]');
-    var referrersEl = card.querySelector('[data-live-referrers]');
-    var updatedEl = card.querySelector('[data-live-updated]');
     data = data || {};
     var active = data.active_visitors || 0;
+    var countEl = card.querySelector('[data-live-count]');
     if (countEl) countEl.textContent = String(active);
     // The noun follows the count the poller just wrote: "1 visitors" was the
     // sentence the design lint caught once the panel was laid open.
     var nounEl = card.querySelector('[data-live-noun]');
     if (nounEl) nounEl.textContent = active === 1 ? 'visitor' : 'visitors';
-    fill(pagesEl, data.active_pages, 'path', 'No active visitors right now.');
-    fillCountries(countriesEl, data.active_countries);
-    fill(referrersEl, data.active_referrers, 'label', 'No referrers in the last 5 minutes.');
+    fill(card.querySelector('[data-live-pages]'), data.active_pages, 'path', 'No one is reading now.');
+    fill(card.querySelector('[data-live-referrers]'), data.active_referrers, 'label', 'No one came from another site in the last 5 minutes.');
+    var updatedEl = card.querySelector('[data-live-updated]');
     if (updatedEl) {
       var t = new Date();
-      updatedEl.textContent = '· updated ' + t.toLocaleTimeString();
+      updatedEl.textContent = ', at ' + t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
   }
 
@@ -338,5 +291,80 @@
     var bar = link.closest('[data-period]');
     bar.classList.add('is-loading');
     bar.setAttribute('aria-busy', 'true');
+  });
+})();
+
+/*
+ * The traffic chart's readout. Each day's band carries its counts (and a
+ * <title>, the browser's tooltip when this script is not run); here they are
+ * set in the chart's own readout beside the hovered day, at reading size,
+ * with a dot on each line. Positioned through the CSSOM, which the console's
+ * style-src allows; the markup carries no style attribute. The dots' height
+ * is the drawing's: its plot runs from 4 to 196 of 200 units.
+ */
+(function () {
+  'use strict';
+
+  function row(cls, label, value) {
+    var r = document.createElement('div');
+    r.className = 'vp-trend-tip__row';
+    var key = document.createElement('span');
+    key.className = cls;
+    var b = document.createElement('b');
+    b.textContent = Number(value).toLocaleString('en-US');
+    r.appendChild(key);
+    r.appendChild(document.createTextNode(label));
+    r.appendChild(b);
+    return r;
+  }
+
+  document.querySelectorAll('.vp-trend-plot').forEach(function (plot) {
+    var tip = plot.querySelector('.vp-trend-tip');
+    var svg = plot.querySelector('.vp-trend-svg');
+    var dots = plot.querySelectorAll('.vp-trend-dot');
+    if (!tip || !svg || dots.length !== 2) return;
+    var max = Number(svg.getAttribute('data-max')) || 1;
+    plot.querySelectorAll('.vp-pt').forEach(function (pt) {
+      var title = pt.querySelector('title');
+      if (title) pt.removeChild(title);
+      pt.addEventListener('pointerenter', function () {
+        var pv = pt.getAttribute('data-pv'), vis = pt.getAttribute('data-vis');
+        while (tip.firstChild) tip.removeChild(tip.firstChild);
+        var date = document.createElement('div');
+        date.className = 'vp-trend-tip__date';
+        date.textContent = pt.getAttribute('data-day');
+        tip.appendChild(date);
+        tip.appendChild(row('vp-legend__line', 'Page views', pv));
+        tip.appendChild(row('vp-legend__line vp-legend__line--vis', 'Visitors', vis));
+        tip.hidden = false;
+
+        var box = plot.getBoundingClientRect();
+        var area = svg.getBoundingClientRect();
+        var day = pt.getBoundingClientRect();
+        var x = day.left + day.width / 2 - box.left;
+        [pv, vis].forEach(function (v, i) {
+          var y = area.top - box.top + area.height * (196 - (Number(v) / max) * 192) / 200;
+          dots[i].style.left = x + 'px';
+          dots[i].style.top = y + 'px';
+          dots[i].hidden = false;
+        });
+        var left = x + 14;
+        if (left + tip.offsetWidth > box.width) left = x - 14 - tip.offsetWidth;
+        tip.style.left = Math.max(0, left) + 'px';
+      });
+    });
+    // A touch leaves as it lifts: the readout stays until another day is
+    // tapped, or the page is touched elsewhere.
+    plot.addEventListener('pointerleave', function (e) {
+      if (e.pointerType === 'touch') return;
+      tip.hidden = true;
+      dots[0].hidden = dots[1].hidden = true;
+    });
+    document.addEventListener('pointerdown', function (e) {
+      if (e.pointerType === 'touch' && !plot.contains(e.target)) {
+        tip.hidden = true;
+        dots[0].hidden = dots[1].hidden = true;
+      }
+    });
   });
 })();

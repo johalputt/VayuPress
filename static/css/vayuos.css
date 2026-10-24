@@ -2503,40 +2503,7 @@
 
 .vp-os button.tab.tab--active { background: var(--brand); border-color: var(--brand); color: var(--on-accent); }
 
-.vp-os .vm-live-hero { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); overflow: hidden; position: relative; }
-
-.vp-os .vm-live-hero__main { min-width: 0; }
-
-.vp-os .vm-live-badge { display: inline-flex; align-items: center; gap: 0.45em; font-size: var(--text-xs); font-weight: 600; color: var(--ok); margin-bottom: var(--sp-2); }
-
-.vp-os .vm-live-count { font-size: 28px; font-weight: 600; line-height: 1; color: var(--brand); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
-
-.vp-os .vm-live-sub { margin-top: var(--sp-2); }
-
 .vp-os .vm-live-updated { color: var(--text-3); margin-left: 0.35em; }
-
-.vp-os .vm-live-rings { position: relative; width: 92px; height: 92px; flex: 0 0 auto; }
-
-.vp-os .vm-live-rings span { position: absolute; inset: 0; margin: auto; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--ok); opacity: 0; }
-
-.vp-os .vm-live-rings span:nth-child(2) { animation-delay: 0.9s; }
-
-.vp-os .vm-live-rings span:nth-child(3) { animation-delay: 1.8s; }
-
-.vp-os .vm-live-list .vp-bar--enter:nth-child(2) { animation-delay: 0.03s; }
-
-.vp-os .vm-live-list .vp-bar--enter:nth-child(3) { animation-delay: 0.06s; }
-
-.vp-os .vm-live-list .vp-bar--enter:nth-child(4) { animation-delay: 0.09s; }
-
-.vp-os .vm-live-list .vp-bar--enter:nth-child(5) { animation-delay: 0.12s; }
-
-/* Derived-engagement strip — GDPR-safe ratios under the headline metrics. */
-
-@media (prefers-reduced-motion: reduce) {
-  .vp-os .vm-live-rings span { opacity: 0.18; }
-
-}
 
 /* Country flags: real self-hosted SVG images (flag-icons, MIT), so they render
    identically on every platform — including Windows, which omits flag emoji
@@ -2545,46 +2512,6 @@
 
 /* Neutral globe placeholder for visitors with no known country (no GeoIP). */
 .vp-os .vp-flag-unknown { background-image: var(--icon-globe); background-size: cover; background-position: center; box-shadow: none; }
-
-/* Geography — long country/region/city lists scroll inside their card so the
-   page never becomes one endless column. */
-.vp-os .vp-geo-scroll { max-height: 340px; overflow-y: auto; padding-right: 4px; }
-
-.vp-os .vp-geo-scroll::-webkit-scrollbar { width: 8px; }
-
-.vp-os .vp-geo-scroll::-webkit-scrollbar-track { background: transparent; }
-
-.vp-os .vp-geo-scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: var(--radius-surface); }
-
-.vp-os .vp-geo-setup { border: 1px dashed var(--border-strong); border-radius: var(--r-md); padding: var(--sp-4); background: var(--brand-dim); }
-
-.vp-os .vp-geo-setup__lead { color: var(--text-2); font-size: var(--text-sm); margin-bottom: var(--sp-3); line-height: 1.5; }
-
-.vp-os .vp-geo-setup__steps { list-style: none; display: grid; gap: var(--sp-2); margin: 0 0 var(--sp-3); padding: 0; }
-
-.vp-os .vp-geo-setup__steps li { display: flex; align-items: center; gap: 0.6em; font-size: var(--text-sm); color: var(--text); }
-
-.vp-os .vp-geo-setup__n { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; flex: 0 0 auto; border-radius: 50%; background: var(--brand); color: var(--on-accent); font-weight: 600; font-size: 12px; }
-
-.vp-os .vp-geo-setup__alt { font-size: var(--text-xs); color: var(--text-3); margin: 0; }
-
-.vp-os .vp-geo-setup code { background: var(--bg-surface-2); padding: 1px 5px; border-radius: var(--radius-small); }
-
-@media (max-width: 900px) {
-  
-
-  .vp-os .vm-live-count { font-size: 28px; }
-
-  
-
-}
-
-@media (max-width: 480px) {
-  .vp-os .vm-live-rings { display: none; }
-
-  
-
-}
 
 /* ── Update & Backup panel (admin_os_update.go) ──────────────────────────── */
 .vp-os .settings-callout { display: flex; flex-direction: column; gap: .35rem; padding: .9rem 1.1rem; margin-bottom: 1.5rem; border: 1px solid var(--border, var(--border-2)); border-left: 3px solid var(--brand, var(--accent)); border-radius: var(--radius-surface); background: var(--surface-2, var(--accent-soft)); }
@@ -2835,92 +2762,64 @@
 
 .vp-os .vp-bar__pct { color: var(--text-3); font-weight: 400; margin-left: .4rem; }
 
-.vp-os .vp-bar__track { grid-column: 1 / -1; height: 8px; border-radius: var(--radius-small); background: var(--bg-surface-2); overflow: hidden; }
+.vp-os .vp-bar__track { grid-column: 1 / -1; height: 3px; border-radius: var(--radius-small); background: var(--border-1, var(--bg-surface-2)); overflow: hidden; }
 
-.vp-os .vp-bar__fill { display: block; height: 100%; border-radius: var(--radius-small); background: var(--chart-1); transition: width .4s ease; }
+/* One ink for every bar: a bar's length is its figure, and a colour would be
+   a second reading of the same number. */
+.vp-os .vp-bar__fill { display: block; height: 100%; border-radius: var(--radius-small); background: var(--text-3); transition: width .4s ease; }
 
-.vp-os .vp-bar--c1 .vp-bar__fill { background: var(--chart-1); }
+/* Two-series trend chart. Its key is a short stroke of each line. */
+.vp-os .vp-legend__item { display: inline-flex; align-items: center; gap: .5rem; }
 
-.vp-os .vp-bar--c2 .vp-bar__fill { background: var(--chart-2); }
+.vp-os .vp-legend__line { width: 18px; height: 0; border-top: 1.5px solid var(--text-1, var(--text)); flex: 0 0 auto; }
 
-.vp-os .vp-bar--c3 .vp-bar__fill { background: var(--chart-3); }
+.vp-os .vp-legend__line--vis { border-top: 1.5px dashed var(--text-3); }
 
-.vp-os .vp-bar--c4 .vp-bar__fill { background: var(--chart-4); }
-
-.vp-os .vp-bar--c5 .vp-bar__fill { background: var(--chart-5); }
-
-.vp-os .vp-bar--c6 .vp-bar__fill { background: var(--chart-6); }
-
-.vp-os .vp-bar--c7 .vp-bar__fill { background: var(--chart-7); }
-
-.vp-os .vp-bar--c8 .vp-bar__fill { background: var(--chart-8); }
-
-/* Donut chart + legend */
-.vp-os .vp-donut-wrap { display: flex; gap: 1.4rem; align-items: center; flex-wrap: wrap; }
-
-.vp-os .vp-donut { width: 128px; height: 128px; flex: 0 0 auto; transform: rotate(0deg); }
-
-.vp-os .vp-donut__track { fill: none; stroke: var(--bg-surface-2); stroke-width: 5; }
-
-.vp-os .vp-donut__seg { fill: none; stroke-width: 5; }
-
-.vp-os .vp-legend { display: flex; flex-direction: column; gap: .45rem; min-width: 140px; flex: 1 1 auto; }
-
-.vp-os .vp-legend__item { display: flex; align-items: center; gap: .5rem; font-size: 14px; color: var(--text-2); }
-
-.vp-os .vp-legend__dot { width: 10px; height: 10px; border-radius: var(--radius-small); flex: 0 0 auto; }
-
-.vp-os .vp-legend__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 auto; }
-
-.vp-os .vp-legend__val { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); }
-
-.vp-os .donut-c1, .vp-os .legend-c1 { stroke: var(--chart-1); background: var(--chart-1); }
-
-.vp-os .donut-c2, .vp-os .legend-c2 { stroke: var(--chart-2); background: var(--chart-2); }
-
-.vp-os .donut-c3, .vp-os .legend-c3 { stroke: var(--chart-3); background: var(--chart-3); }
-
-.vp-os .donut-c4, .vp-os .legend-c4 { stroke: var(--chart-4); background: var(--chart-4); }
-
-.vp-os .donut-c5, .vp-os .legend-c5 { stroke: var(--chart-5); background: var(--chart-5); }
-
-.vp-os .donut-c6, .vp-os .legend-c6 { stroke: var(--chart-6); background: var(--chart-6); }
-
-.vp-os .donut-c7, .vp-os .legend-c7 { stroke: var(--chart-7); background: var(--chart-7); }
-
-.vp-os .donut-c8, .vp-os .legend-c8 { stroke: var(--chart-8); background: var(--chart-8); }
-
-/* Two-series trend chart */
 .vp-os .vp-trend { margin-top: .25rem; }
 
 .vp-os .vp-trend-legend { display: flex; align-items: center; gap: 1.2rem; margin-bottom: .6rem; font-size: 13px; color: var(--text-2); }
 
-/* Legend text, not a pill: the page grammar keeps a fill for controls. */
-.vp-os .vp-trend-peak { margin-left: auto; font-size: 12px; color: var(--text-3); }
+/* The plot: the lines stretched to its box, the words in HTML over it. */
+.vp-os .vp-trend-plot { position: relative; padding-left: 2.75rem; }
 
-.vp-os .vp-trend-svg { width: 100%; height: auto; max-height: 320px; display: block; overflow: visible; }
+.vp-os .vp-trend-svg { width: 100%; height: 240px; display: block; overflow: visible; }
+
+@media (max-width: 640px) { .vp-os .vp-trend-svg { height: 200px; } }
+
+.vp-os .vp-trend-y { position: absolute; left: 0; font-size: 13px; line-height: 1; color: var(--text-3); font-variant-numeric: tabular-nums; transform: translateY(-50%); }
+
+.vp-os .vp-trend-y--top { top: 2%; }
+
+.vp-os .vp-trend-y--mid { top: 50%; }
+
+.vp-os .vp-trend-y--base { top: 98%; }
+
+.vp-os .vp-trend-x { display: grid; grid-template-columns: 1fr auto 1fr; margin: .5rem 0 0 2.75rem; font-size: 13px; color: var(--text-3); }
+
+.vp-os .vp-trend-x__end { justify-self: end; }
+
+/* The hovered day, set by admin-os-intel.js over the plot: its date, then
+   each line's count beside its key, at reading size. */
+.vp-os .vp-trend-tip { position: absolute; top: 0; z-index: 1; min-width: 11rem; padding: .55rem .75rem; border: 1px solid var(--border-1, var(--border)); border-radius: var(--radius-control, 6px); background: var(--surface-1, var(--bg-surface)); box-shadow: var(--shadow-3); color: var(--text-1, var(--text)); font-size: 14px; line-height: 1.45; pointer-events: none; font-variant-numeric: tabular-nums; }
+
+.vp-os .vp-trend-tip__date { font-weight: 600; margin-bottom: .2rem; }
+
+.vp-os .vp-trend-tip__row { display: flex; align-items: center; gap: .5rem; color: var(--text-2); }
+
+.vp-os .vp-trend-tip__row b { margin-left: auto; padding-left: 1rem; font-weight: 600; color: var(--text-1, var(--text)); }
+
+/* A dot on each line at the hovered day. */
+.vp-os .vp-trend-dot { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--text-1, var(--text)); box-shadow: 0 0 0 2px var(--surface-1, var(--bg-surface)); pointer-events: none; }
+
+.vp-os .vp-trend-dot--vis { background: var(--text-3); }
 
 .vp-os .chart-grid { stroke: var(--border); stroke-width: 1; opacity: .5; }
 
-.vp-os .chart-yaxis { fill: var(--text-3); font-size: 12px; }
-
-.vp-os .chart-xaxis { fill: var(--text-3); font-size: 12px; text-anchor: middle; }
-
-.vp-os .chart-xaxis--start { text-anchor: start; }
-
-.vp-os .chart-xaxis--end { text-anchor: end; }
-
-.vp-os .vp-trend-grad-0 { stop-color: var(--chart-1); stop-opacity: .34; }
-
-.vp-os .vp-trend-grad-1 { stop-color: var(--chart-1); stop-opacity: 0; }
-
-.vp-os .vp-trend-area { fill: url(#vpTrendFill); }
-
 .vp-os .vp-trend-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 
-.vp-os .vp-trend-line--pv { stroke: var(--chart-1); }
+.vp-os .vp-trend-line--pv { stroke: var(--text-1, var(--text)); stroke-width: 1.5; }
 
-.vp-os .vp-trend-line--vis { stroke: var(--chart-2); stroke-dasharray: 4 3; }
+.vp-os .vp-trend-line--vis { stroke: var(--text-3); stroke-width: 1.5; stroke-dasharray: 4 3; }
 
 /* ── Interactive hover layer: guide line, dots and a styled tooltip, revealed by
    pure CSS on band :hover (no JS, no inline styles). ─────────────────────────── */
@@ -2928,47 +2827,12 @@
 
 .vp-os .vp-pt__guide { stroke: var(--text-3); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0; vector-effect: non-scaling-stroke; }
 
-.vp-os .vp-pt__dot { opacity: 0; stroke: var(--surface-1); stroke-width: 1.5; }
+.vp-os .vp-pt__guide { transition: opacity .12s var(--ease, ease); }
 
-.vp-os .vp-pt__dot--pv { fill: var(--chart-1); }
-
-.vp-os .vp-pt__dot--vis { fill: var(--chart-2); }
-
-.vp-os .vp-pt__tip { opacity: 0; pointer-events: none; }
-
-.vp-os .vp-pt__tip-bg { fill: var(--bg-surface-3, var(--text-3)); stroke: var(--border-strong, var(--border)); stroke-width: 1; }
-
-.vp-os .vp-pt__tip-date { fill: var(--text, var(--on-accent)); font-size: 12px; font-weight: 600; }
-
-.vp-os .vp-pt__tip-lbl { fill: var(--text-2, var(--accent)); font-size: 12px; }
-
-.vp-os .vp-pt__tip-val { fill: var(--text, var(--on-accent)); font-size: 12px; font-weight: 600; text-anchor: end; }
-
-.vp-os .vp-pt__tip-dot--pv { fill: var(--chart-1); }
-
-.vp-os .vp-pt__tip-dot--vis { fill: var(--chart-2); }
-
-/* Only the hovered band lights up. Transitions are short + GPU-cheap (opacity). */
-.vp-os .vp-pt__guide, .vp-os .vp-pt__dot, .vp-os .vp-pt__tip { transition: opacity .12s var(--ease, ease); }
-
-.vp-os .vp-pt:hover .vp-pt__guide,
-.vp-os .vp-pt:hover .vp-pt__dot,
-.vp-os .vp-pt:hover .vp-pt__tip { opacity: 1; }
-
-/* Light one-shot draw-in when the chart first mounts. */
-
-.vp-os .vp-trend[data-chart] .vp-trend-line { stroke-dasharray: 3000; }
-
-.vp-os .vp-trend[data-chart] .vp-trend-line--vis { stroke-dasharray: 4 3; }
+.vp-os .vp-pt:hover .vp-pt__guide { opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) {
-  .vp-os .vp-trend[data-chart] .vp-trend-line,
-  .vp-os .vp-trend[data-chart] .vp-trend-line--vis,
-  .vp-os .vp-trend[data-chart] .vp-trend-area { stroke-dasharray: none; }
-
-  .vp-os .vp-trend-line--vis { stroke-dasharray: 4 3; }
-
-  .vp-os .vp-pt__guide, .vp-os .vp-pt__dot, .vp-os .vp-pt__tip { transition: none; }
+  .vp-os .vp-pt__guide { transition: none; }
 
 }
 
@@ -5156,6 +5020,9 @@
 .vp-os[data-ui="still-air"] .seg-btn {
   display: inline-flex; align-items: center; gap: var(--space-3); height: 26px; padding: 0 var(--space-4);
   border-radius: var(--radius-small); font: var(--type-label); color: var(--text-2); background: none;
+  /* A segment is one label on one line: its height is fixed, so a wrapped
+     label ("7 / days") spilled out of it. A row that does not fit scrolls. */
+  flex: none; white-space: nowrap;
 }
 .vp-os[data-ui="still-air"] .seg-btn:hover { color: var(--text-1); }
 .vp-os[data-ui="still-air"] .seg-btn.is-active { background: var(--surface-float); color: var(--text-1); box-shadow: var(--shadow-3); }
@@ -6474,6 +6341,26 @@
 .vp-os[data-ui="still-air"] .sa-status__detail { margin: 2px 0 0; font: var(--type-body); color: var(--text-2); }
 .vp-os[data-ui="still-air"] .sa-statuspage > section { margin-top: var(--space-8); }
 .vp-os[data-ui="still-air"] .sa-overview > section { margin-top: var(--space-8); }
+/* A fold is a section read closed: its head is the summary, with a caret
+   that turns when it opens, and its body is the section's. */
+.vp-os[data-ui="still-air"] .sa-overview > .sa-fold { margin-top: var(--space-6); }
+.vp-os[data-ui="still-air"] .sa-fold > summary { list-style: none; cursor: pointer; margin-top: 0; justify-content: flex-start; gap: var(--space-3); }
+.vp-os[data-ui="still-air"] .sa-fold > summary::-webkit-details-marker { display: none; }
+.vp-os[data-ui="still-air"] .sa-fold > summary::before { content: ""; align-self: center; width: 16px; height: 16px; flex: none; background: var(--text-3); -webkit-mask: var(--icon-chevron) center / 12px no-repeat; mask: var(--icon-chevron) center / 12px no-repeat; transform: rotate(-90deg); transition: transform var(--duration-standard) var(--ease-enter); }
+.vp-os[data-ui="still-air"] .sa-fold[open] > summary::before { transform: none; }
+.vp-os[data-ui="still-air"] .sa-fold > summary .section-head__hint { margin-left: auto; text-align: right; }
+.vp-os[data-ui="still-air"] .sa-fold > summary:hover .section-head__title { text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 640px) {
+  .vp-os[data-ui="still-air"] .sa-fold > summary { flex-wrap: wrap; }
+  .vp-os[data-ui="still-air"] .sa-fold > summary .section-head__hint { margin-left: 28px; flex-basis: 100%; text-align: left; }
+}
+@media (prefers-reduced-motion: reduce) { .vp-os[data-ui="still-air"] .sa-fold > summary::before { transition: none; } }
+/* An empty list says so in a line, where its rows would be. */
+.vp-os[data-ui="still-air"] .sa-overview .table-empty { text-align: left; padding: var(--space-2) 0; color: var(--text-3); }
+/* A figure's label is the way to its definition: the ink stays the
+   label's, the link shows on hover. */
+.vp-os[data-ui="still-air"] .stat-card__def { color: inherit; text-decoration: none; }
+.vp-os[data-ui="still-air"] .stat-card__def:hover { text-decoration: underline; text-underline-offset: 3px; }
 .vp-os[data-ui="still-air"] .sa-statuspage .section-head { border-bottom: 1px solid var(--border-1); padding-bottom: var(--space-3); }
 .vp-os[data-ui="still-air"] .sa-statuspage .section-head + * { margin-top: 0; }
 /* Updates: the check's outcome sits in the state line, so it is a dot and a

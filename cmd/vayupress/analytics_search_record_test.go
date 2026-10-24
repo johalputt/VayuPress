@@ -33,7 +33,7 @@ func TestASearchIsCountedForAPersonAndShownOnTheSite(t *testing.T) {
 	if len(stats) != 1 || stats[0].Query != "pricing" || stats[0].Empty != 1 {
 		t.Fatalf("searches recorded: %+v; want the person's search for pricing, which found nothing", stats)
 	}
-	page := a.renderAnalyticsBody(ctx, 30, "30 days")
+	page := a.renderSiteAnalyticsBody(ctx, platformView, "every site", 30)
 	sec := betweenMarkers(t, page, ">Searches<", ">Goals<")
 	if !strings.Contains(sec, "pricing") || !strings.Contains(sec, ">Found nothing<") {
 		t.Errorf("the Searches section does not show the search:\n%s", sec)

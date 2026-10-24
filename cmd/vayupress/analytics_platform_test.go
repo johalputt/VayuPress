@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -79,7 +80,7 @@ func TestThePrimarysPageIsItsOwnVisits(t *testing.T) {
 	if _, err := a.analytics.CreateSegment(ctx, analytics.ScopeAllDomains, "The operator's readers", []analytics.ExploreFilter{{Dim: "device", Op: analytics.FilterIsNot, Value: "bot"}}); err != nil {
 		t.Fatal(err)
 	}
-	primary := a.renderSiteAnalyticsBody(ctx, primaryView, "example.test", 7, "last 7 days")
+	primary := a.renderSiteAnalyticsBody(ctx, primaryView, "example.test", 7)
 	for _, want := range []string{"/home", "2 visitors to example.test", "Reached /a", "The operator&#39;s readers", `href="/os/analytics?days=7"`, `data-live-src="/os/analytics/realtime"`} {
 		if !strings.Contains(primary, want) {
 			t.Errorf("the primary's page has no %q", want)
@@ -92,11 +93,11 @@ func TestThePrimarysPageIsItsOwnVisits(t *testing.T) {
 	if !strings.Contains(primary, "<td>0 <span") {
 		t.Error("the install's goal on the primary's page counts other sites' visits")
 	}
-	platform := a.renderAnalyticsBody(ctx, 7, "last 7 days")
+	platform := a.renderSiteAnalyticsBody(ctx, platformView, "every site", 7)
 	if !strings.Contains(platform, "<td>3 <span") || !strings.Contains(platform, "Every site&#39;s analytics") || !strings.Contains(platform, ">Each site<") {
 		t.Error("Platform does not count the install's goal over every site, under its name, with each site's share")
 	}
-	if hosted := a.renderSiteAnalyticsBody(ctx, hostedView(one), one.Host, 7, "last 7 days"); strings.Contains(hosted, "Reached /a") {
+	if hosted := a.renderSiteAnalyticsBody(ctx, hostedView(one), one.Host, 7); strings.Contains(hosted, "Reached /a") {
 		t.Error("a hosted site's page lists the install's goal")
 	}
 }
@@ -292,6 +293,7 @@ func TestTheConsoleServesThePrimarysOwnPage(t *testing.T) {
 
 // The install's alerts count every site, so they are on every site's page;
 // the primary's page tells an administrator so, and an editor not at all.
+// Its own alerts are a fold, with How this works after it.
 func TestThePrimarysPageSaysWhereEverySitesAlertsAre(t *testing.T) {
 	a, _ := alertsApp(t)
 	a.analytics = analytics.New(dbpkg.DB)
@@ -307,5 +309,58 @@ func TestThePrimarysPageSaysWhereEverySitesAlertsAre(t *testing.T) {
 		if got := strings.Contains(w.Body.String(), pointer); got != want {
 			t.Errorf("%s: the pointer to every site's alerts shown %v, want %v", role, got, want)
 		}
+		// How this works closes the page, after every fold, the alerts read
+		// off the request included.
+		body := w.Body.String()
+		if i, j := strings.LastIndex(body, `<details class="sa-fold"><summary class="section-head"><h2 class="section-head__title">Alerts`), strings.LastIndex(body, "How this works"); i < 0 || j < i {
+			t.Errorf("%s: How this works (at %d) is not after the Alerts fold (at %d)", role, j, i)
+		}
+	}
+}
+
+// Every site's page shows the figures the install-wide API returns for the
+// same range: its visitors, page views and visits, and each top page with
+// its views. Read from the API's answer, not from the store the page reads,
+// so a page that counted anything differently would be caught.
+func TestEverySitesPageShowsWhatTheAPIReturns(t *testing.T) {
+	openMigratedDB(t)
+	a := &App{analytics: analytics.New(dbpkg.DB)}
+	seedTwoSites(t)
+	page := a.renderSiteAnalyticsBody(context.Background(), platformView, "every site", 7)
+
+	var ov analytics.Overview
+	readAPI(t, a.handleAnalyticsOverview, "/api/v1/analytics/overview?days=7", &ov)
+	if ov.UniqueVisitors != 5 || ov.TotalPageviews != 5 {
+		t.Fatalf("seed: the API reads %+v", ov)
+	}
+	for label, n := range map[string]int{"Visitors": ov.UniqueVisitors, "Page views": ov.TotalPageviews, "Visits": ov.TotalVisits} {
+		if want := label + `</a></div><div class="stat-card__value">` + strconv.Itoa(n) + `</div>`; !strings.Contains(page, want) {
+			t.Errorf("the page's %s is not the API's %d", label, n)
+		}
+	}
+	var pages []analytics.PageStat
+	readAPI(t, a.handleAnalyticsPages, "/api/v1/analytics/pages?days=7&limit=10", &pages)
+	if len(pages) != 2 {
+		t.Fatalf("seed: the API lists %+v", pages)
+	}
+	// Read in Top pages alone: Landing pages lists the same paths.
+	_, top, _ := strings.Cut(page, ">Top pages<")
+	top, _, _ = strings.Cut(top, ">Landing pages<")
+	for _, p := range pages {
+		if want := `title="` + p.Path + `">` + p.Path + `</span><span class="vp-bar__val">` + strconv.Itoa(p.Pageviews) + `<`; !strings.Contains(top, want) {
+			t.Errorf("the page's %s is not the API's %d views", p.Path, p.Pageviews)
+		}
+	}
+}
+
+func readAPI(t *testing.T, h http.HandlerFunc, target string, into any) {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	h(rec, httptest.NewRequest(http.MethodGet, target, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%s = %d (%s)", target, rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), into); err != nil {
+		t.Fatalf("%s: %v (%s)", target, err, rec.Body.String())
 	}
 }

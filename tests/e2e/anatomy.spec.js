@@ -163,6 +163,33 @@ test("every console page keeps to the page grammar, or at least no further from 
   expect(findings).toEqual([]);
 });
 
+// Analytics folds its detail, and the walk above measures only what shows.
+// Opened, the folds are held to the same rules: no box in a box, no badge,
+// no zero figure, no form loose in the page.
+test("Analytics with every fold opened keeps to the page grammar", async ({ page }) => {
+  test.setTimeout(120000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/os");
+  await page.waitForLoadState("networkidle");
+  const findings = [];
+  for (const href of ["/os/analytics", "/os/platform/analytics"]) {
+    await page.goto(href);
+    for (let i = 0; i < 20 && (await page.getByText("This is counted in the background").count()) > 0; i++) {
+      await page.waitForTimeout(1000);
+      await page.reload();
+    }
+    await page.waitForLoadState("networkidle");
+    const folds = await page.evaluate(() => {
+      const all = [...document.querySelectorAll("main details.sa-fold")];
+      all.forEach((d) => { d.open = true; });
+      return all.length;
+    });
+    if (folds < 10) findings.push(`${href}: ${folds} folds, so the page was not measured`);
+    for (const f of ruleBreaks(await page.evaluate(anatomy))) findings.push(`${href}: ${f}`);
+  }
+  expect(findings).toEqual([]);
+});
+
 // Mail's administration keeps to the page grammar where it is real: on the
 // install with Mail on. The walk above sees these pages as their setup state,
 // since Mail is off on its install, so they are held to the rules here,

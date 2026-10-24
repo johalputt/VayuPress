@@ -552,6 +552,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post(primaryAnalyticsBase+"/alerts/seen", a.handleOSAlertsSeen)
 		pr.Get(platformAnalyticsBase, a.handleOSPlatformAnalytics)
 		pr.Get(platformAnalyticsBase+"/explore", a.handleOSExplore)
+		pr.Get(platformAnalyticsBase+"/realtime", a.handleOSScopedRealtime)
+		pr.Get(platformAnalyticsBase+"/export", a.handleAnalyticsExport)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/analytics/segments", a.handleOSSegmentCreate)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/analytics/segments/{sid}", a.handleOSSegmentDelete)
 		// VayuAnalytics: export downloads + goal management (session-authed).
