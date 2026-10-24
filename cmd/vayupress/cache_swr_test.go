@@ -19,6 +19,7 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/reqclass"
 	"github.com/johalputt/vayupress/internal/users"
 )
 
@@ -170,6 +171,7 @@ func TestAStalePageIsRenderedForTheOperatorAlone(t *testing.T) {
 		swrInst.inflight[pg.key] = true
 		swrInst.mu.Unlock()
 		cached := filepath.Join(config.Cfg.CacheDir, pg.file)
+		var served context.Context
 		get := func(token string) string {
 			if err := os.MkdirAll(filepath.Dir(cached), 0o755); err != nil {
 				t.Fatal(err)
@@ -186,7 +188,8 @@ func TestAStalePageIsRenderedForTheOperatorAlone(t *testing.T) {
 			}
 			rc := chi.NewRouteContext()
 			rc.URLParams.Add("slug", "the-post")
-			req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rc))
+			served = reqclass.NewContext(context.WithValue(req.Context(), chi.RouteCtxKey, rc))
+			req = req.WithContext(served)
 			rec := httptest.NewRecorder()
 			pg.serve(rec, req)
 			return rec.Body.String()
@@ -202,6 +205,10 @@ func TestAStalePageIsRenderedForTheOperatorAlone(t *testing.T) {
 			got := get(c.token)
 			if rendered := got != before; rendered != c.rendered {
 				t.Errorf("%s, %s: rendered %v, want %v (%.60q)", pg.name, c.who, rendered, c.rendered, got)
+			}
+			// The site's pages are counted as the cache answered them.
+			if hit, decided := reqclass.Cache(served); !decided || hit == c.rendered {
+				t.Errorf("%s, %s: counted as a cache hit %v (counted %v), want %v", pg.name, c.who, hit, decided, !c.rendered)
 			}
 		}
 		swrInst.mu.Lock()
@@ -236,6 +243,7 @@ func TestThePageCacheSwitchDecidesWhetherPagesAreKept(t *testing.T) {
 		{"a topic", filepath.Join("tags", "go.html"), "/tags/go", "tag", "go", a.handleTagPage},
 	} {
 		cached := filepath.Join(config.Cfg.CacheDir, pg.file)
+		var served context.Context
 		get := func(header ...string) *httptest.ResponseRecorder {
 			req := httptest.NewRequest("GET", pg.url, nil)
 			if len(header) == 2 {
@@ -245,7 +253,8 @@ func TestThePageCacheSwitchDecidesWhetherPagesAreKept(t *testing.T) {
 			if pg.param != "" {
 				rc.URLParams.Add(pg.param, pg.value)
 			}
-			req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rc))
+			served = reqclass.NewContext(context.WithValue(req.Context(), chi.RouteCtxKey, rc))
+			req = req.WithContext(served)
 			rec := httptest.NewRecorder()
 			pg.serve(rec, req)
 			return rec
@@ -266,6 +275,9 @@ func TestThePageCacheSwitchDecidesWhetherPagesAreKept(t *testing.T) {
 		on := get()
 		if on.Body.String() != copy {
 			t.Errorf("%s, cache on: the kept copy was not served (%.60q)", pg.name, on.Body.String())
+		}
+		if hit, _ := reqclass.Cache(served); !hit {
+			t.Errorf("%s, cache on: the kept copy served was not counted as a cache hit", pg.name)
 		}
 		if cc := on.Header().Get("Cache-Control"); cc != "no-cache" {
 			t.Errorf("%s: Cache-Control %q; a browser may show it unasked after an edit", pg.name, cc)

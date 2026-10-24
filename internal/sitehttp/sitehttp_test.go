@@ -70,24 +70,27 @@ func TestAPercentileIsWithinATenthOfTheExactOne(t *testing.T) {
 }
 
 // What is recorded is what is read: each status in its class, the pages and
-// their times, each site its own, and two writes add up.
+// their times, those the page cache answered and those it rendered, each
+// site its own, and two writes add up. A cache hit that is not a page (a
+// 304) is not a cached page.
 func TestWhatIsRecordedIsRead(t *testing.T) {
 	db := openDB(t)
 	ctx := context.Background()
 	r := &Recorder{}
 	now := time.Now()
-	r.Record("s1", 200, true, 5*time.Millisecond, now)
-	r.Record("s1", 200, true, 120*time.Millisecond, now)
-	r.Record("s1", 200, false, time.Millisecond, now)
-	r.Record("s1", 304, false, 0, now)
-	r.Record("s1", 404, false, 0, now)
-	r.Record("s1", 410, false, 0, now)
-	r.Record("s1", 503, false, 0, now)
-	r.Record("s2", 500, false, 0, now)
+	r.Record("s1", 200, true, Cached, 5*time.Millisecond, now)
+	r.Record("s1", 200, true, Rendered, 120*time.Millisecond, now)
+	r.Record("s1", 200, false, NoCache, time.Millisecond, now)
+	r.Record("s1", 304, false, Cached, 0, now)
+	r.Record("s1", 404, false, NoCache, 0, now)
+	r.Record("s1", 410, false, NoCache, 0, now)
+	r.Record("s1", 503, false, NoCache, 0, now)
+	r.Record("s2", 500, false, NoCache, 0, now)
 	if err := r.Flush(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	r.Record("s1", 200, true, 5*time.Millisecond, now)
+	r.Record("s1", 200, true, Cached, 7*time.Millisecond, now)
+	r.Record("s1", 200, true, Rendered, 5*time.Millisecond, now)
 	if err := r.Flush(ctx, db); err != nil {
 		t.Fatal(err)
 	}
@@ -95,15 +98,16 @@ func TestWhatIsRecordedIsRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Summary{Requests: 8, S2xx: 4, S3xx: 1, S4xx: 2, S404: 1, S5xx: 1, Pages: 3, MeanMS: 130.0 / 3, P50MS: 5, P75MS: bounds[bucket(120)], P95MS: bounds[bucket(120)]}
+	want := Summary{Requests: 9, S2xx: 5, S3xx: 1, S4xx: 2, S404: 1, S5xx: 1, Pages: 4, MeanMS: 137.0 / 4, P50MS: 5, P75MS: 7, P95MS: bounds[bucket(120)],
+		Cached: 2, CachedMeanMS: 6, Rendered: 2, RenderedMeanMS: 62.5}
 	if got != want {
 		t.Errorf("site one = %+v\nwant      %+v", got, want)
 	}
 	if len(days) != 1 || days[0].Summary != want || days[0].Day != now.UTC().Format("2006-01-02") {
 		t.Errorf("site one by day = %+v", days)
 	}
-	if all, _, _ := Read(ctx, db, AllSites, 1); all.Requests != 9 || all.S5xx != 2 {
-		t.Errorf("every site = %+v, want 9 requests and 2 server errors", all)
+	if all, _, _ := Read(ctx, db, AllSites, 1); all.Requests != 10 || all.S5xx != 2 {
+		t.Errorf("every site = %+v, want 10 requests and 2 server errors", all)
 	}
 	if two, _, _ := Read(ctx, db, "s2", 1); two.Requests != 1 || two.Pages != 0 || two.P95MS != 0 {
 		t.Errorf("site two = %+v, want 1 request and no pages", two)
@@ -115,7 +119,8 @@ func TestAFailedWriteLosesNothing(t *testing.T) {
 	db := openDB(t)
 	ctx := context.Background()
 	r := &Recorder{}
-	r.Record("s1", 200, true, 7*time.Millisecond, time.Now())
+	r.Record("s1", 200, true, Rendered, 7*time.Millisecond, time.Now())
+	r.Record("s1", 200, true, Cached, 3*time.Millisecond, time.Now())
 	if _, err := db.Exec(`ALTER TABLE site_http_minutes RENAME TO held`); err != nil {
 		t.Fatal(err)
 	}
@@ -128,8 +133,8 @@ func TestAFailedWriteLosesNothing(t *testing.T) {
 	if err := r.Flush(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	if got, _, _ := Read(ctx, db, "s1", 1); got.Requests != 1 || got.Pages != 1 || got.P50MS != 7 {
-		t.Errorf("after the failed write = %+v, want the one page", got)
+	if got, _, _ := Read(ctx, db, "s1", 1); got.Requests != 2 || got.Pages != 2 || got.P95MS != 7 || got.Rendered != 1 || got.RenderedMeanMS != 7 || got.Cached != 1 || got.CachedMeanMS != 3 {
+		t.Errorf("after the failed write = %+v, want the rendered page and the cached one", got)
 	}
 }
 
@@ -147,7 +152,7 @@ func TestThePurgeKeepsTheDaysKept(t *testing.T) {
 		}
 	}
 	r := &Recorder{}
-	r.Record("s1", 200, true, time.Millisecond, time.Now())
+	r.Record("s1", 200, true, NoCache, time.Millisecond, time.Now())
 	if err := r.Flush(ctx, db); err != nil {
 		t.Fatal(err)
 	}

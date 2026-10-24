@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -258,7 +259,26 @@ func recordSiteRequest(ctx context.Context, r *http.Request, ww middleware.WrapR
 	status := ww.Status()
 	page := r.Method == http.MethodGet && status == http.StatusOK && dur <= streamLatencyCutoff && !reqclass.Shielded(ctx) &&
 		strings.HasPrefix(ww.Header().Get("Content-Type"), "text/html")
-	sitehttp.Requests.Record(site, status, page, dur, time.Now())
+	cache := sitehttp.NoCache
+	if hit, decided := reqclass.Cache(ctx); decided {
+		cache = sitehttp.Rendered
+		if hit {
+			cache = sitehttp.Cached
+		}
+	}
+	sitehttp.Requests.Record(site, status, page, cache, dur, time.Now())
+}
+
+// countPageCache counts a page the page cache answered (hit) or did not hold,
+// in the install's hit ratio and as the request's own, which the request
+// logger counts in the site's pages.
+func countPageCache(r *http.Request, hit bool) {
+	if hit {
+		atomic.AddInt64(&metrics.MetricCacheHits, 1)
+	} else {
+		atomic.AddInt64(&metrics.MetricCacheMisses, 1)
+	}
+	reqclass.MarkCache(r.Context(), hit)
 }
 
 // siteRequestPath reports whether a path is a site's own rather than the

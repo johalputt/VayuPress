@@ -190,7 +190,9 @@ again as others. `performance` gives the readers' vitals at p75 (a vital no
 reader reported is `null`, with each vital's own `samples_*`), and `server`
 and `server_by_day`: the site's requests by status and its pages' server
 time (the mean, and p50, p75 and p95 as the bound of their bucket,
-`_at_most`).
+`_at_most`), with the pages the page cache answered and those it rendered,
+each with its mean (`cached_pages`, `cached_mean_ms`, `rendered_pages`,
+`rendered_mean_ms`).
 
 No cookie is set, and no IP address or user agent is stored. A visit is keyed
 by a hash whose salt rotates daily, so a reader cannot be followed from one day

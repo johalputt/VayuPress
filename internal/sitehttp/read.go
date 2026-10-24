@@ -25,6 +25,21 @@ type Summary struct {
 	P50MS  int64   `json:"p50_ms_at_most"`
 	P75MS  int64   `json:"p75_ms_at_most"`
 	P95MS  int64   `json:"p95_ms_at_most"`
+	// Cached are the pages the page cache answered and Rendered those it did
+	// not hold, each with its mean server time; a page the cache does not
+	// keep is in neither.
+	Cached         int64   `json:"cached_pages"`
+	CachedMeanMS   float64 `json:"cached_mean_ms"`
+	Rendered       int64   `json:"rendered_pages"`
+	RenderedMeanMS float64 `json:"rendered_mean_ms"`
+}
+
+// mean is ms over n, or 0 for no n.
+func mean(ms, n int64) float64 {
+	if n == 0 {
+		return 0
+	}
+	return float64(ms) / float64(n)
 }
 
 // Day is one day of a Summary's range.
@@ -61,17 +76,15 @@ func Read(ctx context.Context, db *sql.DB, site string, days int) (Summary, []Da
 		return Summary{}, nil, err
 	}
 	var total Summary
-	var totalMS int64
+	var totalMS, cachedMS, renderedMS int64
 	for rows.Next() {
 		d := &Day{}
-		var ms int64
-		if err := rows.Scan(&d.Day, &d.Requests, &d.S2xx, &d.S3xx, &d.S4xx, &d.S404, &d.S5xx, &d.Pages, &ms); err != nil {
+		var ms, cms, rms int64
+		if err := rows.Scan(&d.Day, &d.Requests, &d.S2xx, &d.S3xx, &d.S4xx, &d.S404, &d.S5xx, &d.Pages, &ms, &d.Cached, &cms, &d.Rendered, &rms); err != nil {
 			_ = rows.Close()
 			return Summary{}, nil, err
 		}
-		if d.Pages > 0 {
-			d.MeanMS = float64(ms) / float64(d.Pages)
-		}
+		d.MeanMS, d.CachedMeanMS, d.RenderedMeanMS = mean(ms, d.Pages), mean(cms, d.Cached), mean(rms, d.Rendered)
 		byDay[d.Day] = d
 		order = append(order, d.Day)
 		total.Requests += d.Requests
@@ -81,16 +94,16 @@ func Read(ctx context.Context, db *sql.DB, site string, days int) (Summary, []Da
 		total.S404 += d.S404
 		total.S5xx += d.S5xx
 		total.Pages += d.Pages
-		totalMS += ms
+		total.Cached += d.Cached
+		total.Rendered += d.Rendered
+		totalMS, cachedMS, renderedMS = totalMS+ms, cachedMS+cms, renderedMS+rms
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
 		return Summary{}, nil, err
 	}
 	_ = rows.Close()
-	if total.Pages > 0 {
-		total.MeanMS = float64(totalMS) / float64(total.Pages)
-	}
+	total.MeanMS, total.CachedMeanMS, total.RenderedMeanMS = mean(totalMS, total.Pages), mean(cachedMS, total.Cached), mean(renderedMS, total.Rendered)
 
 	rows, err = db.QueryContext(ctx, latencySQL(clause), args...)
 	if err != nil {
@@ -133,7 +146,8 @@ func Read(ctx context.Context, db *sql.DB, site string, days int) (Summary, []Da
 // range of its table's key or its time index (sitehttp_test.go holds them to
 // it).
 func minutesSQL(clause string) string {
-	return `SELECT substr(minute,1,10), SUM(requests), SUM(s2xx), SUM(s3xx), SUM(s4xx), SUM(s404), SUM(s5xx), SUM(pages), SUM(page_ms)
+	return `SELECT substr(minute,1,10), SUM(requests), SUM(s2xx), SUM(s3xx), SUM(s4xx), SUM(s404), SUM(s5xx), SUM(pages), SUM(page_ms),
+		SUM(cached_pages), SUM(cached_ms), SUM(rendered_pages), SUM(rendered_ms)
 		FROM site_http_minutes WHERE minute>=?` + clause + ` GROUP BY 1 ORDER BY 1`
 }
 

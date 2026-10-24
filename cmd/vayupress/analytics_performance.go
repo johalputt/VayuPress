@@ -5,7 +5,8 @@ package main
 // analytics_performance.go — Performance on the Analytics pages: what the
 // readers' own browsers measured (Core Web Vitals at the 75th percentile)
 // beside what this server measured for the same site and range (its
-// requests by status, and the time it took to answer its pages).
+// requests by status, the time it took to answer its pages, and how many the
+// page cache answered).
 
 import (
 	"context"
@@ -44,7 +45,7 @@ func (a *App) osPerformanceSection(ctx context.Context, scope string, days int) 
 		analyticsPanel("What readers' browsers measured", a.readerVitals(ctx, scope, days)),
 		analyticsPanel("What the server measured", server),
 	)+byDay+string(ui.Explain(ui.HTML(`<p>A reader's browser measures each page it loads, and the figure is the 75th percentile of those readings. Response to input is reported only when a reader interacted, and layout shift only by browsers that measure it.</p>`+
-		`<p>The server counts every request a site's visitors make of it, the shield's refusals among them; the console and the API are the install's own. It counts from the first request this version answered. Server time runs from the request reaching this server to its answer, for the HTML pages answered in full, and each percentile is within a tenth of the exact one.</p>`))))))
+		`<p>The server counts every request a site's visitors make of it, the shield's refusals among them; the console and the API are the install's own. It counts from the first request this version answered. Server time runs from the request reaching this server to its answer, for the HTML pages answered in full, and each percentile is within a tenth of the exact one. The page cache counts a post, Home and a topic page, answered from the copy it keeps or rendered because it held none.</p>`))))))
 }
 
 func (a *App) readerVitals(ctx context.Context, scope string, days int) string {
@@ -117,7 +118,13 @@ func (a *App) serverMeasured(ctx context.Context, scope string, days int) (panel
 			{ui.Text("Half in"), ui.Text(atMost(sum.P50MS))},
 			{ui.Text("Three in four in"), ui.Text(atMost(sum.P75MS))},
 			{ui.Text("Nineteen in twenty in"), ui.Text(atMost(sum.P95MS))},
-			{ui.Text("Mean"), ui.Text(strconv.FormatFloat(sum.MeanMS, 'f', 1, 64) + " ms")},
+			{ui.Text("Mean"), ui.Text(meanMS(sum.MeanMS))},
+		}, ""))
+	}
+	if sum.Cached+sum.Rendered > 0 {
+		panel += string(ui.Table([]string{"Page cache", "Pages, mean"}, [][]ui.HTML{
+			{ui.Text("Answered from the cache"), ui.Text(strconv.FormatInt(sum.Cached, 10) + ", " + meanMS(sum.CachedMeanMS))},
+			{ui.Text("Rendered for the request"), ui.Text(strconv.FormatInt(sum.Rendered, 10) + ", " + meanMS(sum.RenderedMeanMS))},
 		}, ""))
 	}
 	if days <= 31 && len(byDay) > 1 {
@@ -134,6 +141,8 @@ func (a *App) serverMeasured(ctx context.Context, scope string, days int) (panel
 	}
 	return panel, byDayTable
 }
+
+func meanMS(ms float64) string { return strconv.FormatFloat(ms, 'f', 1, 64) + " ms" }
 
 // vitalWords is the three vitals for a line of text: each p75, or that it
 // was not reported.

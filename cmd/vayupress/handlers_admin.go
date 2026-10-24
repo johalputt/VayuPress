@@ -343,7 +343,7 @@ func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
 			// The operator who made it stale is the exception (rendersStaleFor).
 			if fresh || (!warm && !a.rendersStaleFor(r)) {
 				if !warm {
-					atomic.AddInt64(&metrics.MetricCacheHits, 1)
+					countPageCache(r, true)
 					if !fresh {
 						swrRefresh("home", func() { a.warmHome(context.Background()) })
 					}
@@ -353,7 +353,7 @@ func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
 			}
 		}
 		if !warm {
-			atomic.AddInt64(&metrics.MetricCacheMisses, 1)
+			countPageCache(r, false)
 		}
 	}
 	// Every page rendered here from the database takes a render slot: page 1 on
@@ -592,7 +592,7 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 			// operator who made it stale (rendersStaleFor).
 			if fresh || (!warm && !a.rendersStaleFor(r)) {
 				if !warm {
-					atomic.AddInt64(&metrics.MetricCacheHits, 1)
+					countPageCache(r, true)
 					if !fresh {
 						swrRefresh("post:"+slug, func() { a.warmArticle(context.Background(), slug) })
 					}
@@ -608,7 +608,7 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !warm {
-		atomic.AddInt64(&metrics.MetricCacheMisses, 1)
+		countPageCache(r, false)
 		// An operator previewing is not a crawler: never held back.
 		if !isAdmin {
 			release, ok := admitColdRender(w, r)

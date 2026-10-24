@@ -32,10 +32,10 @@ func TestASitesPerformanceIsItsOwn(t *testing.T) {
 	}
 	r := &sitehttp.Recorder{}
 	now := time.Now()
-	r.Record("s1", 200, true, 39*time.Millisecond, now) // a bucket bound: read exactly
-	r.Record("s1", 404, false, 0, now)
-	r.Record("s1", 500, false, 0, now)
-	r.Record("s2", 200, true, 900*time.Millisecond, now)
+	r.Record("s1", 200, true, sitehttp.Cached, 39*time.Millisecond, now) // a bucket bound: read exactly
+	r.Record("s1", 404, false, sitehttp.NoCache, 0, now)
+	r.Record("s1", 500, false, sitehttp.NoCache, 0, now)
+	r.Record("s2", 200, true, sitehttp.NoCache, 900*time.Millisecond, now)
 	if err := r.Flush(ctx, dbpkg.DB); err != nil {
 		t.Fatal(err)
 	}
@@ -47,6 +47,7 @@ func TestASitesPerformanceIsItsOwn(t *testing.T) {
 		`Response to input (INP)<br><span class="muted">Good is 200 ms or less</span></td><td>Not reported</td>`,
 		"<td>Requests</td><td>3</td>", "<td>Not found</td><td>1 (33%)</td>", "1 (33%)</span>",
 		"<td>Pages answered in full</td><td>1</td>", "at most 39 ms",
+		"<td>Answered from the cache</td><td>1, 39.0 ms</td>", "<td>Rendered for the request</td><td>0, 0.0 ms</td>",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("site one's Performance has no %q", want)
@@ -61,7 +62,8 @@ func TestASitesPerformanceIsItsOwn(t *testing.T) {
 
 // Through the request logger and the domain resolver as they run: a site's
 // page is its page, a stylesheet a request and not a page, a missing path
-// its 404, and the console and the API are not the site's at all.
+// its 404, a page the page cache answered or rendered is counted as such,
+// and the console and the API are not the site's at all.
 func TestTheServerCountsEachSitesOwnRequests(t *testing.T) {
 	a, _ := shieldSitesApp(t)
 	ctx := context.Background()
@@ -69,6 +71,10 @@ func TestTheServerCountsEachSitesOwnRequests(t *testing.T) {
 	before, _, _ := sitehttp.Read(ctx, dbpkg.DB, "c1", 1)
 	h := structuredLoggerMiddleware(a.domainMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/cached", "/rendered":
+			countPageCache(r, r.URL.Path == "/cached")
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte("<p>page</p>"))
 		case "/post", "/os/analytics", "/api/v1/posts":
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			_, _ = w.Write([]byte("<p>page</p>"))
@@ -79,7 +85,7 @@ func TestTheServerCountsEachSitesOwnRequests(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	})))
-	for _, p := range []string{"/post", "/style.css", "/missing", "/os/analytics", "/api/v1/posts"} {
+	for _, p := range []string{"/post", "/cached", "/cached", "/rendered", "/style.css", "/missing", "/os/analytics", "/api/v1/posts"} {
 		r := httptest.NewRequest(http.MethodGet, p, nil)
 		r.Host = "one.example"
 		h.ServeHTTP(httptest.NewRecorder(), r)
@@ -88,7 +94,10 @@ func TestTheServerCountsEachSitesOwnRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 	after, _, _ := sitehttp.Read(ctx, dbpkg.DB, "c1", 1)
-	if d := (after.Requests - before.Requests); d != 3 || after.Pages-before.Pages != 1 || after.S404-before.S404 != 1 {
-		t.Errorf("site one gained %d requests, %d pages, %d not found; want 3, 1 and 1", d, after.Pages-before.Pages, after.S404-before.S404)
+	if d := (after.Requests - before.Requests); d != 6 || after.Pages-before.Pages != 4 || after.S404-before.S404 != 1 {
+		t.Errorf("site one gained %d requests, %d pages, %d not found; want 6, 4 and 1", d, after.Pages-before.Pages, after.S404-before.S404)
+	}
+	if c, rd := after.Cached-before.Cached, after.Rendered-before.Rendered; c != 2 || rd != 1 {
+		t.Errorf("site one gained %d pages from the cache and %d rendered; want 2 and 1 (a page the cache took no part in is neither)", c, rd)
 	}
 }

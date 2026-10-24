@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -20,7 +19,6 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
-	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/tagrules"
 )
@@ -263,12 +261,12 @@ func (a *App) handleTagPage(w http.ResponseWriter, r *http.Request) {
 	if cacheable {
 		cachePath := filepath.Join(config.Cfg.CacheDir, filepath.FromSlash(cacheRel))
 		if fi, err := os.Stat(cachePath); err == nil && render.CacheEntryFresh(fi) { //nosec G703 -- cacheRel sanitised by TagPageCacheRel (rejects unsafe path components) + domCacheDir; tag length-bounded; path confined to CacheDir
-			atomic.AddInt64(&metrics.MetricCacheHits, 1)
+			countPageCache(r, true)
 			http.ServeFile(w, r, cachePath) //nosec G703 -- path confined to CacheDir; tag sanitised by TagPageCacheRel
 			return
 		}
 	}
-	atomic.AddInt64(&metrics.MetricCacheMisses, 1)
+	countPageCache(r, false)
 	release, ok := admitColdRender(w, r)
 	if !ok {
 		return

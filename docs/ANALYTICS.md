@@ -125,8 +125,12 @@ the install's, not a site's. Among them, its pages, the HTML answers to a GET
 served in full, with their server time, from the request reaching the server
 to its answer. Server times are kept as a histogram whose buckets are each at
 most a tenth wider than the last, and a percentile is said as "at most" its
-bucket's bound, which is within a tenth of it. Counts are kept in memory and
-written every minute; a stop writes them first.
+bucket's bound, which is within a tenth of it. A post, Home and a topic page
+are also counted by the page cache: answered from the copy it keeps, or
+rendered for the request because it held none, each
+with its mean server time, which is the render time where the two differ.
+Counts are kept in memory and written every minute; a stop writes them
+first.
 
 **Retention.** Not measured. A visitor is the same only within a day, so
 nobody can be seen to come back on a later day, and a week-over-week cohort

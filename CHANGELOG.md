@@ -125,9 +125,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   beside what the server measured for the same site and period: its
   requests by how they were answered (answered, redirected, not found,
   refused, server errors), its pages' server time at p50, p75 and p95 and
-  their mean, and the same by day. The server counts each site's requests as
-  it answers them and writes them every minute (migration 119); the API's
-  performance report gives the same. Alerts can watch server errors,
+  their mean, how many pages the page cache answered and how many it
+  rendered, each with its mean server time, and the same by day. The server
+  counts each site's requests as it answers them and writes them every
+  minute (migrations 119 and 120); the API's performance report gives the
+  same. Alerts can watch server errors,
   requests not found and the average server time.
 - **Readers' speed is measured as stated.** The p75 of each vital was taken
   one rank too high (of four readings, the largest) and counted bots' page
@@ -223,6 +225,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   in and a column marking the engagement rows whose layout shift was
   measured. Rows from before it are left unmeasured for layout shift, so the
   readers' shift figure starts from the first page loads after the upgrade.
+- **Migration 120** adds the columns counting each site's pages by whether
+  the page cache answered them; it changes no row.
 
 - **Migration 116 moves the shield's events into one table at start-up.**
   It copies the rows the block and challenge tables hold (they are kept

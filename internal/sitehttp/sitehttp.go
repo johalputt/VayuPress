@@ -5,7 +5,7 @@
 // answer its pages.
 //
 // A request is counted in memory as it is answered and written once a minute
-// (site_http_minutes, site_http_latency; migration 119), so the hot path takes
+// (site_http_minutes, site_http_latency; migrations 119 and 120), so the hot path takes
 // a lock and adds to a counter, never a database write. A page's server time
 // is the time from the request reaching the server to the server finishing
 // its answer, kept as a histogram whose buckets are each about a tenth wider
@@ -57,7 +57,19 @@ func bucket(ms int64) int {
 
 type counts struct {
 	requests, s2xx, s3xx, s4xx, s404, s5xx, pages, pageMS int64
+	cached, cachedMS, rendered, renderedMS                int64
 }
+
+// Cache is how the page cache took part in a page: it answered it, or the
+// page was rendered because the cache did not hold it, or the cache had no
+// part (a page it does not keep).
+type Cache int
+
+const (
+	NoCache Cache = iota
+	Cached
+	Rendered
+)
 
 type minuteKey struct{ site, minute string }
 type hourKey struct{ site, hour string }
@@ -73,8 +85,8 @@ type Recorder struct {
 var Requests = &Recorder{}
 
 // Record counts one request answered for site with status; page marks one
-// of its pages, served in d.
-func (r *Recorder) Record(site string, status int, page bool, d time.Duration, now time.Time) {
+// of its pages, served in d, and cache how the page cache took part in it.
+func (r *Recorder) Record(site string, status int, page bool, cache Cache, d time.Duration, now time.Time) {
 	now = now.UTC()
 	mk := minuteKey{site, now.Format("2006-01-02 15:04") + ":00"}
 	r.mu.Lock()
@@ -107,6 +119,14 @@ func (r *Recorder) Record(site string, status int, page bool, d time.Duration, n
 	ms := d.Milliseconds()
 	c.pages++
 	c.pageMS += ms
+	switch cache {
+	case Cached:
+		c.cached++
+		c.cachedMS += ms
+	case Rendered:
+		c.rendered++
+		c.renderedMS += ms
+	}
 	hk := hourKey{site, now.Format("2006-01-02 15") + ":00:00"}
 	h := r.latency[hk]
 	if h == nil {
@@ -147,6 +167,10 @@ func (r *Recorder) putBack(m map[minuteKey]*counts, l map[hourKey]map[int]int64)
 		d.s5xx += c.s5xx
 		d.pages += c.pages
 		d.pageMS += c.pageMS
+		d.cached += c.cached
+		d.cachedMS += c.cachedMS
+		d.rendered += c.rendered
+		d.renderedMS += c.renderedMS
 	}
 	for k, h := range l {
 		d := r.latency[k]
@@ -180,10 +204,13 @@ func write(ctx context.Context, db *sql.DB, m map[minuteKey]*counts, l map[hourK
 	}
 	defer func() { _ = tx.Rollback() }()
 	for k, c := range m {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO site_http_minutes(domain_id,minute,requests,s2xx,s3xx,s4xx,s404,s5xx,pages,page_ms) VALUES(?,?,?,?,?,?,?,?,?,?)
+		if _, err := tx.ExecContext(ctx, `INSERT INTO site_http_minutes(domain_id,minute,requests,s2xx,s3xx,s4xx,s404,s5xx,pages,page_ms,cached_pages,cached_ms,rendered_pages,rendered_ms)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 			ON CONFLICT(domain_id,minute) DO UPDATE SET requests=requests+excluded.requests, s2xx=s2xx+excluded.s2xx, s3xx=s3xx+excluded.s3xx,
-			s4xx=s4xx+excluded.s4xx, s404=s404+excluded.s404, s5xx=s5xx+excluded.s5xx, pages=pages+excluded.pages, page_ms=page_ms+excluded.page_ms`,
-			k.site, k.minute, c.requests, c.s2xx, c.s3xx, c.s4xx, c.s404, c.s5xx, c.pages, c.pageMS); err != nil {
+			s4xx=s4xx+excluded.s4xx, s404=s404+excluded.s404, s5xx=s5xx+excluded.s5xx, pages=pages+excluded.pages, page_ms=page_ms+excluded.page_ms,
+			cached_pages=cached_pages+excluded.cached_pages, cached_ms=cached_ms+excluded.cached_ms,
+			rendered_pages=rendered_pages+excluded.rendered_pages, rendered_ms=rendered_ms+excluded.rendered_ms`,
+			k.site, k.minute, c.requests, c.s2xx, c.s3xx, c.s4xx, c.s404, c.s5xx, c.pages, c.pageMS, c.cached, c.cachedMS, c.rendered, c.renderedMS); err != nil {
 			return err
 		}
 	}

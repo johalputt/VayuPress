@@ -20,7 +20,13 @@ import (
 type mark struct {
 	shielded atomic.Bool
 	site     atomic.Pointer[string]
+	cache    atomic.Int32 // 0 not decided, cacheHit or cacheMiss
 }
+
+const (
+	cacheHit  = 1
+	cacheMiss = 2
+)
 
 type ctxKey struct{}
 
@@ -65,4 +71,27 @@ func Site(ctx context.Context) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// MarkCache records whether the page cache answered the request (hit) or the
+// page had to be rendered (a miss), so the outer recorder can count the
+// site's pages by it. No-op if the context carries no classification.
+func MarkCache(ctx context.Context, hit bool) {
+	if m, ok := ctx.Value(ctxKey{}).(*mark); ok {
+		if hit {
+			m.cache.Store(cacheHit)
+		} else {
+			m.cache.Store(cacheMiss)
+		}
+	}
+}
+
+// Cache is what MarkCache recorded: whether the page cache answered, and
+// whether the page cache decided at all (a page it does not hold is neither).
+func Cache(ctx context.Context) (hit, decided bool) {
+	if m, ok := ctx.Value(ctxKey{}).(*mark); ok {
+		c := m.cache.Load()
+		return c == cacheHit, c != 0
+	}
+	return false, false
 }
