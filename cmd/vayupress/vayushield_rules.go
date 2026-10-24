@@ -6,6 +6,7 @@ package main
 // the field's explanation and what each rule has matched since it was saved.
 
 import (
+	"context"
 	"html"
 	"strconv"
 	"strings"
@@ -106,9 +107,9 @@ func expiredEntries(list []string) string {
 // otherLimitsNote states the two limits that guard the install outside the
 // shield, with the values the gates enforce, so the page that holds the
 // shield's limits is not silent about them.
-func otherLimitsNote() string {
+func (a *App) otherLimitsNote(ctx context.Context) string {
 	fails, window, lock := auth.LockoutPolicy()
 	return `<div class="vs-feat"><p class="text-sm"><strong>Limits set elsewhere.</strong> Sign-in: ` + strconv.Itoa(fails) +
 		` failed attempts within ` + humanizeWindow(window) + ` lock that address out for ` + humanizeWindow(lock) +
-		`. API keys: ` + strconv.Itoa(apiKeyDefaultRatePerMin()) + ` requests a minute each, unless a key sets its own on <a href="/os/apikeys">API keys</a>. Neither is affected by anything on this page.</p></div>`
+		`. API and MCP keys: ` + rateLabel(a.apiDefaultRatePerMin(ctx)) + ` each, unless a key sets its own, on <a href="/os/apikeys">API keys</a>. Neither is affected by anything on this page.</p></div>`
 }

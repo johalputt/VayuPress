@@ -519,9 +519,12 @@ func osConnectorManageCard(keys []apikeys.Key) string {
 		if k.ExpiresAt != nil {
 			details += connectorDetailRow("Expires", html.EscapeString(k.ExpiresAt.UTC().Format("2 Jan 2006 15:04")+" UTC"))
 		}
-		if k.RatePerMin > 0 {
-			details += connectorDetailRow("Rate limit", strconv.Itoa(k.RatePerMin)+"/min")
+		// A connector is a key, so its budget is set where every key's is.
+		budget := "The keys' default"
+		if k.RatePerMin != 0 {
+			budget = rateLabel(k.RatePerMin)
 		}
+		details += connectorDetailRow("Requests a minute", html.EscapeString(budget)+` · <a href="/os/apikeys">Change on API keys</a>`)
 		if caps := k.Permissions.Capabilities(); len(caps) > 0 && !k.Permissions.IsSuperuser() {
 			chips := ""
 			for _, c := range caps {

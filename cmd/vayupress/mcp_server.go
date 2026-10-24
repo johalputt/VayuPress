@@ -74,7 +74,7 @@ func (a *App) mountMCP(r chi.Router) {
 	}
 	srv := a.buildMCPServer()
 	r.Group(func(r chi.Router) {
-		r.Use(a.requireMCPAuth, auth.RateLimitMiddleware, a.apiUsageMiddleware)
+		r.Use(a.requireMCPAuth, a.apiUsageMiddleware)
 		r.Post("/mcp", srv.ServeHTTP)
 	})
 }

@@ -48,6 +48,24 @@ var ErrNotFound = errors.New("apikeys: key not found")
 // ErrInternalProtected is returned when a destructive op targets the system key.
 var ErrInternalProtected = errors.New("apikeys: the internal system key cannot be revoked or deleted")
 
+// ErrBadRate is a per-minute budget no key can hold (see ValidRatePerMin).
+var ErrBadRate = errors.New("apikeys: a key's requests a minute are the install's default, a number from 1 to 100000, or unlimited")
+
+// Unlimited is a key's RatePerMin when the operator has lifted its budget:
+// its calls are counted against no per-minute limit. Agents working through
+// the API or MCP make calls in bursts that a fixed budget cuts off mid-task,
+// and the operator who issued the key decides that, not a default.
+const Unlimited = -1
+
+// MaxRatePerMin is the largest budget a key can be given as a number.
+const MaxRatePerMin = 100000
+
+// ValidRatePerMin reports whether rate can be stored as a key's budget: 0
+// (the install's default), Unlimited, or 1 to MaxRatePerMin.
+func ValidRatePerMin(rate int) bool {
+	return rate == 0 || rate == Unlimited || (rate >= 1 && rate <= MaxRatePerMin)
+}
+
 // Key is the metadata view of an issued API key. The raw token and its hash are
 // never exposed through this type — only a short, non-sensitive display prefix.
 type Key struct {
@@ -168,8 +186,8 @@ func (s *Store) create(ctx context.Context, ownerID, label string, perms Permiss
 	}
 	id := hashToken(raw)[:24] // stable, opaque id derived from the token hash
 	now := time.Now().UTC()
-	if ratePerMin < 0 {
-		ratePerMin = 0
+	if !ValidRatePerMin(ratePerMin) {
+		return Key{}, "", ErrBadRate
 	}
 	if perms == nil {
 		perms = NewPermissions()
@@ -519,6 +537,26 @@ func (s *Store) SetActive(ctx context.Context, id string, active bool) error {
 		v = 1
 	}
 	res, err := s.db.ExecContext(ctx, `UPDATE vayu_api_keys SET active=? WHERE id=?`, v, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	s.invalidate()
+	return nil
+}
+
+// SetRatePerMin changes a key's per-minute budget (see ValidRatePerMin).
+// The internal key is never metered, so it has no budget to set.
+func (s *Store) SetRatePerMin(ctx context.Context, id string, rate int) error {
+	if id == InternalKeyID {
+		return ErrInternalProtected
+	}
+	if !ValidRatePerMin(rate) {
+		return ErrBadRate
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE vayu_api_keys SET rate_per_min=? WHERE id=?`, rate, id)
 	if err != nil {
 		return err
 	}

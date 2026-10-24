@@ -231,9 +231,7 @@ type ipBucket struct {
 }
 
 var (
-	rateMu      sync.Mutex
-	rateBuckets = make(map[string]*ipBucket)
-	trustedIPs  = parseTrustedIPs()
+	trustedIPs = parseTrustedIPs()
 
 	// Separate, more generous bucket set for the unauthenticated public
 	// discovery endpoints (WKD, mail autoconfig). Kept apart from the API limiter
@@ -295,32 +293,6 @@ func parseTrustedIPs() map[string]bool {
 		}
 	}
 	return m
-}
-
-// RateLimitMiddleware enforces 100 requests/hour per IP (trusted IPs bypassed).
-func RateLimitMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := ClientIP(r)
-		if trustedIPs[ip] {
-			next.ServeHTTP(w, r)
-			return
-		}
-		rateMu.Lock()
-		b, ok := rateBuckets[ip]
-		if !ok || time.Now().After(b.resetAt) {
-			b = &ipBucket{1, time.Now().Add(time.Hour)}
-			rateBuckets[ip] = b
-		} else {
-			b.count++
-		}
-		allowed := b.count <= 100
-		rateMu.Unlock()
-		if !allowed {
-			writeAuthError(w, 429, "rate_limit_exceeded", "rate limit exceeded (100 req/hour)", "/docs/api/rate-limiting")
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }
 
 // ── Pprof rate limiter (ADR-0037) ────────────────────────────────────────────
@@ -453,13 +425,6 @@ func StartBucketSweeper(ctx context.Context) {
 					}
 				}
 				authFailMu.Unlock()
-				rateMu.Lock()
-				for ip, b := range rateBuckets {
-					if now.After(b.resetAt) {
-						delete(rateBuckets, ip)
-					}
-				}
-				rateMu.Unlock()
 				discoveryMu.Lock()
 				for ip, b := range discoveryBuckets {
 					if now.After(b.resetAt) {

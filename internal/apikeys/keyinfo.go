@@ -16,7 +16,7 @@ type KeyInfo struct {
 	Owner      string      // owning users.id ("" = operator/system-owned)
 	Perms      Permissions // fine-grained grant set
 	ExpiresAt  *time.Time  // hard expiry, or nil for never
-	RatePerMin int         // per-key request budget; 0 = use the global default
+	RatePerMin int         // per-key request budget; 0 = the install's default, Unlimited = none
 	// DomainID binds the key to one hosted domain (migration 092). Empty means
 	// the key acts globally across every domain this install serves.
 	DomainID string

@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+
+- **API and MCP limits are yours to set, unlimited included.** Agents were
+  cut off within minutes: behind the key check, every API and MCP call was
+  also held to 100 an hour from one address, whatever the key's own budget
+  of 600 a minute said. An authenticated call is now held to its key's
+  budget alone. **API keys › Limits** sets the default for every key, as a
+  number or unlimited; each key, and each MCP connector, can keep the
+  default, have a number of its own, or be unlimited, from its Manage sheet
+  or when it is made. The limits that guard the server from strangers
+  (sign-in attempts, public pages, VayuShield) are not lifted by any of it.
+
 ### Security
 
 - **An outgoing Subject is written as a header may be.** VayuMail wrote the

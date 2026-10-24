@@ -503,9 +503,12 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// get exactly what they were granted, unmapped routes fail closed.
 	r.Group(func(r chi.Router) {
 		// Chain: authenticate (stamp KeyInfo) → enforce section:action grant →
-		// coarse per-IP cap → per-key budget + WORM audit (only admitted
-		// requests consume a key's budget and appear in its usage trail).
-		r.Use(auth.RequireAPIKey, a.requireAPIPermission, auth.RateLimitMiddleware, a.apiUsageMiddleware)
+		// the key's budget + WORM audit (only admitted requests consume a key's
+		// budget and appear in its usage trail). A per-address cap of 100 an
+		// hour sat before the budget, and only authenticated calls reached it,
+		// so it stopped working agents within minutes while a key's own budget
+		// (or Unlimited, set by the operator) was what the operator chose.
+		r.Use(auth.RequireAPIKey, a.requireAPIPermission, a.apiUsageMiddleware)
 
 		// VCB (ADR-0135): machine-readable contract discovery + manifest
 		// validation against this running host. Read-only; plugins:read.

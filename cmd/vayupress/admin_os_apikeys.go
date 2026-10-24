@@ -18,6 +18,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/secrets"
+	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/ui"
 )
 
@@ -136,7 +137,7 @@ func (a *App) handleOSAPIKeys(w http.ResponseWriter, r *http.Request) {
 		creds, _ = a.secrets.List(r.Context())
 	}
 
-	body := osAPIKeysPage(keys, creds)
+	body := osAPIKeysPage(keys, creds, a.apiDefaultRatePerMin(r.Context()))
 
 	// This page hosts the filter island (x-data="filterList"), so it opts into
 	// the Alpine runtime; pageUsesAlpine keeps the decision tied to the markup.
@@ -163,7 +164,7 @@ func apiBaseURL() string {
 
 // osAPIKeysPage is the page body, apart from the request so the tests render
 // exactly what an operator sees.
-func osAPIKeysPage(keys []apikeys.Key, creds []secrets.Credential) string {
+func osAPIKeysPage(keys []apikeys.Key, creds []secrets.Credential, defaultRate int) string {
 	return string(ui.SettingsPage("API keys", osAPIKeysState(keys),
 		"Keys for your API, and the credentials VayuPress uses with other services.",
 		ui.HTML(`<div id="ak-token-banner" class="card ak-token-banner" hidden>
@@ -177,6 +178,15 @@ func osAPIKeysPage(keys []apikeys.Key, creds []secrets.Credential) string {
 </div>
 <p class="page-lead"><span id="ak-status" role="status" aria-live="polite" class="text-xs muted"></span></p>`),
 		ui.Section("Your API", "Where scripts, CI and agents send their calls", ui.Rows(osAPIBaseRows()...)),
+		ui.Section("Limits", "Requests a minute for each key, through the API and MCP", ui.Rows(ui.Row{
+			Label: "Each key, unless it sets its own",
+			Hint:  "Now " + rateLabel(defaultRate) + ". Empty is the built-in " + strconv.Itoa(apiKeyBuiltInRatePerMin()) + " a minute; Unlimited counts no key's calls. Sign-in attempts and public pages keep their own limits, which this does not lift.",
+			Control: rateControl("ak-rate-default", "", func() int {
+				if defaultRate == apiKeyBuiltInRatePerMin() {
+					return 0
+				}
+				return defaultRate
+			}())})),
 		ui.Section("Issued keys", "Each key can do only what it was granted", ui.HTML(osAPIKeysOwnSection(keys))),
 		ui.Section("Third-party services", "Credentials VayuPress uses to reach other providers", ui.HTML(osAPIKeysServicesSection(creds))),
 		ui.Section("Extension compatibility", "The contract an add-on must satisfy before it loads", osAPIKeysVCB()),
@@ -312,6 +322,7 @@ func osAPIKeysOwnSection(keys []apikeys.Key) string {
 				connectorDetailRow("State", status)+
 				connectorDetailRow("Can reach", apiKeyCapabilitySummary(k))+
 				connectorDetailRow("Expires", html.EscapeString(expiry))+
+				connectorDetailRow("Requests a minute", string(rateControl("ak-rate", k.ID, k.RatePerMin)))+
 				connectorDetailRow("Last used", html.EscapeString(last))+
 				`</div>
 <div class="ak-cred-actions">`+actions+`
@@ -351,6 +362,22 @@ func osAPIKeysOwnSection(keys []apikeys.Key) string {
 	return list + sheets + string(ui.Sheet("ak-create", "Create a key", osAPIKeysCreateForm()))
 }
 
+// rateControl edits a budget: empty for the default, a number, or
+// Unlimited. action names the data-action the page's script sends it with;
+// id is the key's, or "" for the default.
+func rateControl(action, id string, rate int) ui.HTML {
+	n, unl := "", ""
+	switch {
+	case rate == apikeys.Unlimited:
+		unl = " checked"
+	case rate > 0:
+		n = strconv.Itoa(rate)
+	}
+	return ui.HTML(`<span class="ak-cred-actions" data-ak-rate><input class="input ak-field-narrow" type="number" min="1" max="` + strconv.Itoa(apikeys.MaxRatePerMin) +
+		`" step="1" placeholder="Default" value="` + n + `" aria-label="Requests a minute"><label><input type="checkbox"` + unl + `> Unlimited</label>` +
+		`<button type="button" class="btn btn--sm" data-action="` + action + `" data-id="` + html.EscapeString(id) + `">Save</button></span>`)
+}
+
 // osAPIKeysCreateForm is the scoped-key create form, shown in a sheet: a 12×6
 // permission grid (section rows × action columns) with per-row and grand
 // "select all" toggles, plus optional expiry and a per-key rate budget. It is
@@ -385,8 +412,9 @@ func osAPIKeysCreateForm() ui.HTML {
       <input id="ak-new-expiry" class="input" type="datetime-local">
     </div>
     <div class="field ak-field-narrow">
-      <label class="field-label" for="ak-new-rate">Rate / min</label>
-      <input id="ak-new-rate" class="input" type="number" min="0" step="1" placeholder="600">
+      <label class="field-label" for="ak-new-rate">Requests a minute</label>
+      <input id="ak-new-rate" class="input" type="number" min="1" max="100000" step="1" placeholder="Default">
+      <label class="text-xs"><input type="checkbox" id="ak-new-rate-unl"> Unlimited</label>
     </div>
   </div>
   <div class="ak-grid-toolbar">
@@ -649,8 +677,9 @@ func (a *App) handleOSAPIKeyCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rate := body.RatePerMin
-	if rate < 0 {
-		rate = 0
+	if !apikeys.ValidRatePerMin(rate) {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-rate", apikeys.ErrBadRate.Error(), "")
+		return
 	}
 
 	owner := currentUserIDOf(r) // per-user ownership; admins can still manage all
@@ -794,6 +823,68 @@ func (a *App) apiKeyMutate(w http.ResponseWriter, r *http.Request, action string
 		return
 	}
 	dbpkg.AuditLog("apikey."+action, dbpkg.AuditActor(r), id, "")
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleOSAPIKeyRate sets one key's requests a minute: 0 for the default,
+// apikeys.Unlimited, or a number (apikeys.ValidRatePerMin). Recorded, since
+// lifting a key's budget is a decision the audit log should be able to show.
+func (a *App) handleOSAPIKeyRate(w http.ResponseWriter, r *http.Request) {
+	if a.apiKeys == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "apikeys-error", "API key store not initialised", "")
+		return
+	}
+	if !a.keyLifecycleAuthorized(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "changing a key's limit requires an administrator or a superuser key", "")
+		return
+	}
+	var body struct {
+		ID   string `json:"id"`
+		Rate int    `json:"rate_per_min"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "Could not read the limit.", "")
+		return
+	}
+	id := strings.TrimSpace(body.ID)
+	if err := a.apiKeys.SetRatePerMin(r.Context(), id, body.Rate); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "apikeys-error", err.Error(), "")
+		return
+	}
+	dbpkg.AuditLog("apikey.rate", dbpkg.AuditActor(r), id, "rate_per_min="+strconv.Itoa(body.Rate))
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleOSAPIRateDefault sets the requests a minute of every key that sets
+// none: 0 for the built-in budget, apikeys.Unlimited, or a number.
+func (a *App) handleOSAPIRateDefault(w http.ResponseWriter, r *http.Request) {
+	if a.siteSettings == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "settings-error", "Settings are not available", "")
+		return
+	}
+	if !a.keyLifecycleAuthorized(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "changing the keys' default limit requires an administrator or a superuser key", "")
+		return
+	}
+	var body struct {
+		Rate int `json:"rate_per_min"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !apikeys.ValidRatePerMin(body.Rate) {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-rate", apikeys.ErrBadRate.Error(), "")
+		return
+	}
+	v := ""
+	switch {
+	case body.Rate == apikeys.Unlimited:
+		v = "unlimited"
+	case body.Rate > 0:
+		v = strconv.Itoa(body.Rate)
+	}
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{settings.KeyAPIRatePerMin: v}); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "settings-error", err.Error(), "")
+		return
+	}
+	dbpkg.AuditLog("apikey.rate_default", dbpkg.AuditActor(r), settings.KeyAPIRatePerMin, "value="+v)
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -946,6 +1037,7 @@ if(createBtn)createBtn.addEventListener('click',function(){
   var expiry=(document.getElementById('ak-new-expiry')||{}).value||'';
   var rateRaw=(document.getElementById('ak-new-rate')||{}).value||'';
   var rate=parseInt(rateRaw,10);if(isNaN(rate)||rate<0)rate=0;
+  if((document.getElementById('ak-new-rate-unl')||{}).checked)rate=-1;
   var caps=collectCapabilities();
   if(caps.length===0){akSet('Grant at least one permission (or tick Full access)',true,createBtn);return;}
   createBtn.disabled=true;akSet('Creating…',false,createBtn);
@@ -960,7 +1052,12 @@ document.addEventListener('click',function(ev){
   if(cp){var el=document.querySelector(cp.getAttribute('data-copy'));if(el){var v=el.value!==undefined?el.value:el.textContent;if(navigator.clipboard)navigator.clipboard.writeText(v).then(function(){akSet('Copied',false);},function(){akSet('Copy failed; select it instead',true);});}return;}
   var b=ev.target.closest('[data-action]');if(!b)return;
   var act=b.getAttribute('data-action');var id=b.getAttribute('data-id');
-  if(act==='ak-rotate'){
+  if(act==='ak-rate'||act==='ak-rate-default'){
+    var box=b.closest('[data-ak-rate]');var n=parseInt(box.querySelector('input[type=number]').value,10);
+    var r=box.querySelector('input[type=checkbox]').checked?-1:(isNaN(n)?0:n);
+    var body={rate_per_min:r};if(act==='ak-rate')body.id=id;
+    b.disabled=true;jpost(act==='ak-rate'?'/os/api/apikeys/rate':'/os/api/apikeys/rate-default',body).then(function(res){b.disabled=false;if(res.ok){akSet('Saved',false,b);}else{akSet(res.d.detail||'Error',true,b);}});
+  }else if(act==='ak-rotate'){
     vpConfirm({title:'Rotate this key?',message:'The current value stops working immediately.',confirm:'Rotate'},function(){
     b.disabled=true;jpost('/os/api/apikeys/rotate',{id:id}).then(function(res){b.disabled=false;if(res.ok){showToken(res.d.token);akSet('Key rotated',false);}else{akSet(res.d.detail||'Error',true,b);}});
     });

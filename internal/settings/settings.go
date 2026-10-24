@@ -163,6 +163,13 @@ const (
 	// and a comment appears only once it is approved.
 	KeyNoFollowLinks = "links.nofollow"
 
+	// KeyAPIRatePerMin is the requests a minute each API or MCP key may make
+	// when the key sets no budget of its own: "" for the built-in 600 (or the
+	// VAYU_API_RATE_PER_MIN environment value), a number from 1 to 100000, or
+	// "unlimited". Set on the API keys page; it never lifts the limits that
+	// guard the server from strangers (sign-in attempts, public endpoints).
+	KeyAPIRatePerMin = "api.rate_per_min"
+
 	// KeyPageCache keeps rendered public pages (home, posts, topics) on disk
 	// and serves them from there, stored "true" or "false"; unset is on. Off,
 	// every visit renders its page: for checking a change as it is drawn, at
@@ -528,6 +535,7 @@ var RobotsOptions = map[string]bool{
 // editor round-trips it. Anything else is configuration, credentials, network
 // policy or measurements about this specific machine.
 var NotPortable = map[string]bool{
+	KeyAPIRatePerMin:              true,
 	KeyNoFollowLinks:              true,
 	KeyPageCache:                  true,
 	KeyThemeStudioDraft:           true,
@@ -654,6 +662,7 @@ var NotPortable = map[string]bool{
 
 // AllKeys is the canonical set of settings keys accepted by Set/SetMany.
 var AllKeys = map[string]bool{
+	KeyAPIRatePerMin: true,
 	// A hosted site's own VayuShield settings (vayushield/site_policy.go).
 	KeyShieldSitePoW:                true,
 	KeyShieldSiteJS:                 true,

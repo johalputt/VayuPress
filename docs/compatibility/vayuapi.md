@@ -108,14 +108,19 @@ contract: mint the key with exactly those boxes ticked
 Each external key has its own fixed-window budget, keyed by the key's identity
 (not the caller's IP — rotating addresses does not escape it):
 
-- Default: **600 requests/minute** (operator-tunable via
-  `VAYU_API_RATE_PER_MIN`, or per key at mint time).
+- Default: **600 requests/minute**, or what the operator sets for every key
+  on **API keys › Limits**: a number from 1 to 100,000, or **unlimited**.
+  `VAYU_API_RATE_PER_MIN` changes the built-in 600.
+- Per key: the default, a number of its own, or unlimited, set when the key
+  is made or later in its Manage sheet. An MCP connector is a key, and its
+  budget is set the same way.
 - Over budget → `429` with `Retry-After: 60` and this page in the error body.
 - The internal system key is exempt.
-- In front of the keys, the write routes also allow 100 requests an hour from
-  one client address; addresses in `TRUSTED_IPS` are exempt. A CI runner that
-  writes in bulk should use `POST /api/v1/articles/bulk` (up to 1,000 posts a
-  request) or be listed there.
+- An authenticated call is held to its key's budget alone: no per-address
+  limit stands behind it. The limits that guard the server from strangers
+  (sign-in attempts, public endpoints, VayuShield) are not lifted by a key's
+  setting. Many posts at once still go best through
+  `POST /api/v1/articles/bulk` (up to 1,000 a request).
 
 Handle `429` by honouring `Retry-After` — do not retry in a tight loop.
 

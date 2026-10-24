@@ -206,7 +206,7 @@ func TestTheSecurityPageStatesTheOtherLimits(t *testing.T) {
 	a, _ := shieldSitesApp(t)
 	t.Setenv("VAYU_API_RATE_PER_MIN", "1234")
 	band := a.shieldPolicyBand(context.Background(), false)
-	for _, want := range []string{"5 failed attempts within 15 min lock that address out for 60 min", "API keys: 1234 requests a minute each"} {
+	for _, want := range []string{"5 failed attempts within 15 min lock that address out for 60 min", "API and MCP keys: 1234 a minute each"} {
 		if !strings.Contains(band, want) {
 			t.Errorf("the page does not say %q", want)
 		}

@@ -85,15 +85,15 @@ func TestAPIUsageMiddlewarePassthrough(t *testing.T) {
 // TestAPIKeyDefaultRate pins the default budget and its env clamp behaviour.
 func TestAPIKeyDefaultRate(t *testing.T) {
 	t.Setenv("VAYU_API_RATE_PER_MIN", "")
-	if got := apiKeyDefaultRatePerMin(); got != 600 {
+	if got := apiKeyBuiltInRatePerMin(); got != 600 {
 		t.Errorf("default = %d, want 600", got)
 	}
 	t.Setenv("VAYU_API_RATE_PER_MIN", "120")
-	if got := apiKeyDefaultRatePerMin(); got != 120 {
+	if got := apiKeyBuiltInRatePerMin(); got != 120 {
 		t.Errorf("tuned = %d, want 120", got)
 	}
 	t.Setenv("VAYU_API_RATE_PER_MIN", "0") // out of band → fall back
-	if got := apiKeyDefaultRatePerMin(); got != 600 {
+	if got := apiKeyBuiltInRatePerMin(); got != 600 {
 		t.Errorf("clamped = %d, want 600", got)
 	}
 }

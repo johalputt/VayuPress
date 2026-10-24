@@ -935,7 +935,7 @@ func (a *App) shieldPolicyBand(ctx context.Context, geoBlind bool) string {
 		}
 	}
 
-	b.WriteString(otherLimitsNote())
+	b.WriteString(a.otherLimitsNote(ctx))
 
 	// Malformed entries are named. One typo must not lose the other nine lines,
 	// and a silently dropped allow entry means the source it was protecting

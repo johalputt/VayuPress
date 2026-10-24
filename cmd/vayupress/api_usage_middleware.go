@@ -5,9 +5,9 @@ package main
 // api_usage_middleware.go — VayuAPI Stage 3 (ADR-0134): per-key rate limiting
 // and per-call WORM audit for API-key callers.
 //
-// Where the per-IP RateLimitMiddleware protects the box from a single hostile
-// address, this gate enforces each KEY's budget — keyed by KeyInfo.ID, so a
-// caller cannot escape it by rotating IPs. Every audited call lands in the
+// This gate enforces each KEY's budget — keyed by KeyInfo.ID, so a caller
+// cannot escape it by rotating IPs — the one the operator set for the key,
+// the API keys page's default, or none when either says unlimited. Every audited call lands in the
 // append-only audit_log as `api.call | key:<id> | METHOD /path | status`, giving
 // the operator a per-key usage trail with no telemetry leaving the box.
 //
@@ -16,8 +16,10 @@ package main
 // external credential to meter.
 
 import (
+	"context"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -26,6 +28,7 @@ import (
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/settings"
 )
 
 // apiKeyUsage is the shared fixed-window limiter for all external keys. The
@@ -33,14 +36,47 @@ import (
 // with individual rate_per_min overrides while sharing window state.
 var apiKeyUsage = newIngestLimiter(0, time.Minute)
 
-// apiKeyDefaultRatePerMin is the per-key request budget applied when a key has
-// no explicit rate_per_min. Env-tunable, clamped to a sane band; the default
-// (600/min) is generous for real automation while still bounding abuse.
-func apiKeyDefaultRatePerMin() int {
-	if n, err := strconv.Atoi(config.EnvOr("VAYU_API_RATE_PER_MIN", "600")); err == nil && n >= 1 && n <= 100000 {
+// apiKeyBuiltInRatePerMin is the per-key budget when neither the key nor the
+// API keys page sets one: VAYU_API_RATE_PER_MIN, clamped to a sane band, or
+// 600, which is generous for real automation while still bounding abuse.
+func apiKeyBuiltInRatePerMin() int {
+	if n, err := strconv.Atoi(config.EnvOr("VAYU_API_RATE_PER_MIN", "600")); err == nil && n >= 1 && n <= apikeys.MaxRatePerMin {
 		return n
 	}
 	return 600
+}
+
+// apiDefaultRatePerMin is the budget of a key that sets none: the API keys
+// page's default (settings.KeyAPIRatePerMin), a number or apikeys.Unlimited,
+// or the built-in budget when the page sets none either.
+func (a *App) apiDefaultRatePerMin(ctx context.Context) int {
+	if a.siteSettings != nil {
+		v := strings.TrimSpace(a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyAPIRatePerMin))
+		if v == "unlimited" {
+			return apikeys.Unlimited
+		}
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 && n <= apikeys.MaxRatePerMin {
+			return n
+		}
+	}
+	return apiKeyBuiltInRatePerMin()
+}
+
+// keyRatePerMin is ki's budget: its own, or the default. apikeys.Unlimited
+// means its calls are not counted.
+func (a *App) keyRatePerMin(ctx context.Context, ki apikeys.KeyInfo) int {
+	if ki.RatePerMin != 0 {
+		return ki.RatePerMin
+	}
+	return a.apiDefaultRatePerMin(ctx)
+}
+
+// rateLabel says a budget as the console shows it.
+func rateLabel(rate int) string {
+	if rate == apikeys.Unlimited {
+		return "unlimited"
+	}
+	return strconv.Itoa(rate) + " a minute"
 }
 
 // serveWithKeyUsage applies the caller key's per-minute budget, serves the
@@ -52,11 +88,8 @@ func (a *App) serveWithKeyUsage(w http.ResponseWriter, r *http.Request, ki apike
 		next.ServeHTTP(w, r)
 		return
 	}
-	limit := apiKeyDefaultRatePerMin()
-	if ki.RatePerMin > 0 {
-		limit = ki.RatePerMin
-	}
-	if !apiKeyUsage.allowLimit(ki.ID, limit) {
+	limit := a.keyRatePerMin(r.Context(), ki)
+	if limit != apikeys.Unlimited && !apiKeyUsage.allowLimit(ki.ID, limit) {
 		w.Header().Set("Retry-After", "60")
 		writeAPIError(w, r, http.StatusTooManyRequests, "rate_limited",
 			"per-key request budget exhausted ("+strconv.Itoa(limit)+"/min) — retry after the window resets",

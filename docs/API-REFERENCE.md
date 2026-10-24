@@ -35,12 +35,12 @@ signed-in browser session.
 
 ## Rate limits
 
-- **Per key:** 600 requests a minute by default (`VAYU_API_RATE_PER_MIN`), or
-  the key's own budget.
-- **Per address, on the write routes:** 100 requests an hour from one client
-  address. Addresses listed in `TRUSTED_IPS` are exempt.
+- **Per key, for the API and MCP alike:** the key's own budget (a number, or
+  unlimited), or else the default set on **API keys › Limits** (a number or
+  unlimited), or else the built-in 600 a minute (`VAYU_API_RATE_PER_MIN`).
+  An authenticated call meets no other limit.
 
-Over either limit the answer is `429` with `Retry-After`. Use
+Over the budget the answer is `429` with `Retry-After`. Use
 `POST /api/v1/articles/bulk` for many posts at once.
 
 ## Errors
