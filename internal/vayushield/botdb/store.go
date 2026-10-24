@@ -6,7 +6,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"time"
 )
 
@@ -246,7 +245,7 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 	return out, nil
 }
 
-// ── Community export / import ────────────────────────────────────────────────
+// ── Community export ────────────────────────────────────────────────
 
 // CommunityFile is the shareable signature export format. IP hints are stripped
 // on export for privacy (they can encode an operator's network topology).
@@ -294,49 +293,6 @@ func (s *Store) Export(ctx context.Context) ([]byte, error) {
 		})
 	}
 	return json.MarshalIndent(cf, "", "  ")
-}
-
-// Import merges a community signature file. Imported rows are marked auto_learned
-// (not operator_verified) so the local operator still reviews them; existing
-// operator-verified rows are never overwritten. Returns the number imported.
-func (s *Store) Import(ctx context.Context, data []byte) (int, error) {
-	var cf CommunityFile
-	if err := json.Unmarshal(data, &cf); err != nil {
-		return 0, fmt.Errorf("parse community file: %w", err)
-	}
-	if cf.Format != "vayushield-signatures" {
-		return 0, fmt.Errorf("unrecognized community file format %q", cf.Format)
-	}
-	now := time.Now().UTC()
-	n := 0
-	for _, e := range cf.Signatures {
-		if e.FingerprintHash == "" {
-			continue
-		}
-		pq := 0
-		if e.PostQuantum {
-			pq = 1
-		}
-		conf := e.Confidence
-		if conf > 0.9 {
-			conf = 0.9 // community signatures cap below local verification
-		}
-		res, err := s.db.ExecContext(ctx, `INSERT INTO vayushield_signatures
-(fingerprint_hash,ja3_hash,ja4_hash,http2_settings_hash,header_order_hash,user_agent_pattern,post_quantum_present,classification,bot_name,confidence,first_seen,last_seen,request_count,auto_learned,notes)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0,1,'imported from community')
-ON CONFLICT(fingerprint_hash) DO UPDATE SET
-ja4_hash=CASE WHEN vayushield_signatures.ja4_hash='' THEN excluded.ja4_hash ELSE vayushield_signatures.ja4_hash END,
-confidence=CASE WHEN operator_verified=1 THEN confidence ELSE MAX(confidence, excluded.confidence) END`,
-			e.FingerprintHash, e.JA3, e.JA4, e.HTTP2SettingsHash, e.HeaderOrderHash, e.UserAgentPattern, pq,
-			string(e.Classification), e.BotName, conf, now, now)
-		if err != nil {
-			return n, err
-		}
-		if ra, _ := res.RowsAffected(); ra > 0 {
-			n++
-		}
-	}
-	return n, nil
 }
 
 // purgeChunk bounds how many rows a single maintenance DELETE removes, so it

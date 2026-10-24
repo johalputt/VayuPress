@@ -252,6 +252,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **A site's Visitors page counts what its Analytics page counts.** The
+  page views a site owner saw under My site were every request a page was
+  drawn for, crawlers and AI agents included, while the site's Analytics
+  page counts readers' page views, so one site had two different figures
+  called page views. Both are now readers' page views over the same days.
 - **Text is cut where a character starts.** A page's path over 512 bytes,
   a title over 300, a query, a campaign tag, an event's name or a goal's
   name or target was cut at its byte limit, through a character when it

@@ -132,8 +132,13 @@ func (s *Store) Record(ctx context.Context, scope, path, referrer string) error 
 	return nil
 }
 
-// ViewsForScope returns the total views and the busiest paths for ONE domain
-// over the last `days` days.
+// ViewsForScope returns the page views and the busiest paths for ONE domain
+// over the last `days` days, today included, by the Analytics page's own
+// definition: readers' page-view events (analytics_pageviews), counted from
+// the same first day as TopPagesScoped. It read the per-render tally
+// (analytics_daily) before, which counts every request a page was drawn for,
+// crawlers and AI agents included, so a site's Visitors page and its
+// Analytics page gave one site two different figures, both called page views.
 //
 // Separate from SummarySince, which aggregates across every domain for the
 // operator. A caller that wants one client's numbers must ask for that client's
@@ -146,27 +151,20 @@ func (s *Store) ViewsForScope(ctx context.Context, scope string, days, limit int
 	if limit <= 0 {
 		limit = 10
 	}
-	from := time.Now().UTC().AddDate(0, 0, -days).Format("2006-01-02")
-	if err = s.db.QueryRowContext(ctx,
-		`SELECT COALESCE(SUM(views),0) FROM analytics_daily WHERE day>=? AND domain_id=?`,
-		from, scope).Scan(&total); err != nil {
+	from := s.now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	clause, arg := domainClause(scope)
+	if err = s.readDB().QueryRowContext(ctx,
+		`SELECT COUNT(1) FROM analytics_pageviews WHERE created_at>=? AND event_type=1`+clause,
+		append([]any{from}, arg...)...).Scan(&total); err != nil {
 		return 0, nil, err
 	}
-	rows, qerr := s.db.QueryContext(ctx,
-		`SELECT path,SUM(views) v FROM analytics_daily WHERE day>=? AND domain_id=? GROUP BY path ORDER BY v DESC LIMIT ?`,
-		from, scope, limit)
-	if qerr != nil {
-		return total, nil, qerr
+	pages, err := s.TopPagesScoped(ctx, scope, days, limit)
+	if err != nil {
+		return total, nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var p PathCount
-		if err := rows.Scan(&p.Path, &p.Views); err != nil {
-			return total, nil, err
-		}
-		top = append(top, p)
+	for _, p := range pages {
+		top = append(top, PathCount{Path: p.Path, Views: int64(p.Pageviews)})
 	}
-	_ = rows.Err()
 	return total, top, nil
 }
 

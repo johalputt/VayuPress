@@ -42,10 +42,8 @@ func prettyPathText(p string) string {
 
 // osChartBar is one row of a horizontal bar list.
 type osChartBar struct {
-	Label     string
-	LabelHTML string // optional pre-rendered (already-escaped) label, e.g. a flag + name
-	Value     int
-	Href      string // optional — makes the label a link
+	Label string
+	Value int
 }
 
 // barWidthClass snaps a 0..100 percentage to the nearest available w-N class
@@ -174,12 +172,6 @@ func osBarList(items []osChartBar, denom osBarDenom, emptyMsg string) string {
 			label = "(unknown)"
 		}
 		lab := html.EscapeString(label)
-		if it.LabelHTML != "" {
-			lab = it.LabelHTML // caller-escaped rich label (e.g. flag + country name)
-		}
-		if it.Href != "" {
-			lab = `<a href="` + html.EscapeString(it.Href) + `">` + lab + `</a>`
-		}
 		pct := it.Value * 100 / max
 		share := ""
 		if total > 0 {
