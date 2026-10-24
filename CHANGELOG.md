@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.13] — 2026-10-24
+
+Analytics and the shield, rebuilt per site: one definition of every figure, each site its own page, rules, limits and a record of what the shield did; then attacked and measured before release.
+
 ### Changed
 
 - **Analytics counts one way, everywhere.** Every figure the console shows
