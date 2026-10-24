@@ -35,6 +35,8 @@ func exploreApp(t *testing.T) *App {
 			t.Fatal(err)
 		}
 	}
+	// Registered after the database, so it runs before the database closes.
+	t.Cleanup(func() { forgetCache(t, exploreDash) })
 	return &App{analytics: analytics.New(dbpkg.DB)}
 }
 

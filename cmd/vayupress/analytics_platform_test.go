@@ -367,22 +367,30 @@ func readAPI(t *testing.T, h http.HandlerFunc, target string, into any) {
 	}
 }
 
-// settleDash waits until no background count is running. A page served from
-// the cache starts its count on a goroutine of its own; one that outlived
-// its test read the configuration the next test was rewriting.
-func settleDash(t *testing.T) {
+// settleDash forgets the dashboards' cache.
+func settleDash(t *testing.T) { forgetCache(t, adminDash) }
+
+// forgetCache waits until no background count of c is running, then empties
+// it. A page served from the cache starts its count on a goroutine of its
+// own; one that outlived its test read the configuration the next test was
+// rewriting. And the cache is the package's, keyed by what was asked and not
+// by the database: an answer one test counted was read by the next to ask
+// the same question within its lifetime, against that test's own figures.
+func forgetCache(t *testing.T, c *adminFragmentCache) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		busy := false
-		adminDash.mu.Lock()
-		for _, e := range adminDash.m {
+		c.mu.Lock()
+		for _, e := range c.m {
 			busy = busy || e.computing
 		}
-		adminDash.mu.Unlock()
 		if !busy {
+			clear(c.m)
+			c.mu.Unlock()
 			return
 		}
+		c.mu.Unlock()
 		if time.Now().After(deadline) {
 			t.Fatal("a background count was still running 10 s after its test")
 		}
