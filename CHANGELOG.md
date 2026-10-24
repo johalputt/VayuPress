@@ -8,6 +8,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+
+- **An outgoing Subject is written as a header may be.** VayuMail wrote the
+  Subject exactly as typed. A line break in it would have ended the header
+  and begun another of the sender's choosing; the composer is one line, so
+  only a caller of the API or a script could send one. Any header holding
+  a line break is now refused, and a Subject that is not plain ASCII is
+  encoded (RFC 2047), as mail servers expect.
+
 ## [3.18.13] — 2026-10-24
 
 Analytics and the shield, rebuilt per site: one definition of every figure, each site its own page, rules, limits and a record of what the shield did; then attacked and measured before release.

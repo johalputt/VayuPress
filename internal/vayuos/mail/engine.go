@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"mime"
 	"mime/quotedprintable"
 	"net"
 	"net/http"
@@ -432,11 +433,35 @@ func (e *Engine) Compose(ctx context.Context, from string, to []string, subject,
 		// splitAddress tolerates a `"Name" <addr>` From, so the Sent copy is
 		// filed under the sender's bare local part, not the display name.
 		local, _ := splitAddress(from)
-		sent := "From: " + from + "\r\nTo: " + strings.Join(to, ", ") + "\r\nSubject: " + subject +
+		sent := "From: " + from + "\r\nTo: " + strings.Join(to, ", ") + "\r\nSubject: " + mime.QEncoding.Encode("utf-8", subject) +
 			"\r\nDate: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n\r\n" + body + "\r\n"
 		_, _ = e.maildir.DeliverTo(e.senderDomain(from), local, "Sent", []byte(sent))
 	}
 	return id, nil
+}
+
+// writeHeaders writes a message's header block and the blank line after it.
+// It is the one place an outgoing header reaches the wire, so it is where a
+// value is made safe rather than at each caller: a line break in any value
+// is refused, since it would end that header and start another (or the
+// body), and a Subject that is not plain ASCII is RFC 2047-encoded, since
+// raw UTF-8 is not allowed in a header and some servers mangle or refuse it.
+func writeHeaders(raw *bytes.Buffer, headers []HeaderField) error {
+	for _, h := range headers {
+		if strings.ContainsAny(h.Value, "\r\n") {
+			return fmt.Errorf("vayumail: the %s header holds a line break", h.Key)
+		}
+		v := h.Value
+		if strings.EqualFold(h.Key, "Subject") {
+			v = mime.QEncoding.Encode("utf-8", v)
+		}
+		raw.WriteString(h.Key)
+		raw.WriteString(": ")
+		raw.WriteString(v)
+		raw.WriteString("\r\n")
+	}
+	raw.WriteString("\r\n")
+	return nil
 }
 
 // Attachment is a file attached to an outgoing message.
@@ -665,13 +690,9 @@ func (e *Engine) ComposeRich(ctx context.Context, m ComposeMessage) (int64, erro
 	}
 
 	var raw bytes.Buffer
-	for _, h := range headers {
-		raw.WriteString(h.Key)
-		raw.WriteString(": ")
-		raw.WriteString(h.Value)
-		raw.WriteString("\r\n")
+	if err := writeHeaders(&raw, headers); err != nil {
+		return 0, err
 	}
-	raw.WriteString("\r\n")
 	raw.Write(bodyBuf.Bytes())
 
 	rawMsg, err := e.dkimFor(e.senderDomain(m.From)).SignMessage(raw.Bytes())
@@ -1353,13 +1374,9 @@ func (e *Engine) sendMail(ctx context.Context, from string, to []string, subject
 	// Assemble the complete message (CRLF throughout), then DKIM-sign it as a
 	// whole so the signed bytes are exactly the bytes we transmit.
 	var raw bytes.Buffer
-	for _, h := range headers {
-		raw.WriteString(h.Key)
-		raw.WriteString(": ")
-		raw.WriteString(h.Value)
-		raw.WriteString("\r\n")
+	if err := writeHeaders(&raw, headers); err != nil {
+		return 0, err
 	}
-	raw.WriteString("\r\n")
 	raw.Write(bodyBuf.Bytes())
 
 	rawMsg, err := e.dkimFor(e.senderDomain(from)).SignMessage(raw.Bytes())
