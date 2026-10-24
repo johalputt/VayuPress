@@ -91,8 +91,7 @@ func (a *App) buildWeeklyDigest(days int) (string, string) {
 	}
 
 	if wv, err := a.vaEngagement.WebVitalsP75(ctx, days); err == nil && wv.Samples > 0 {
-		fmt.Fprintf(&b, "\nReal-user experience p75 (n=%d): LCP=%dms INP=%dms CLS=%.2f\n",
-			wv.Samples, wv.P75LCPMs, wv.P75INPMs, float64(wv.P75CLSX100)/100)
+		fmt.Fprintf(&b, "\nReal-user experience p75 (n=%d): %s\n", wv.Samples, vitalWords(wv))
 	} else {
 		b.WriteString("\nReal-user experience: not enough samples yet\n")
 	}

@@ -374,7 +374,12 @@ type WebVitals struct {
 	P75LCPMs   int   `json:"p75_lcp_ms"`
 	P75INPMs   int   `json:"p75_inp_ms"`
 	P75CLSX100 int   `json:"p75_cls_x100"`
-	Samples    int64 `json:"samples"` // rows with at least one reported vital
+	Samples    int64 `json:"samples"` // the most readings any one vital has
+	// Each vital's own readings: a vital with none has no p75, which is not
+	// a p75 of 0 (no reader interacted, or the browser cannot measure it).
+	SamplesLCP int64 `json:"samples_lcp"`
+	SamplesINP int64 `json:"samples_inp"`
+	SamplesCLS int64 `json:"samples_cls"`
 }
 
 // WebVitalsP75 computes the trailing-window 75th percentile per vital with one
@@ -394,37 +399,38 @@ func (s *Store) webVitalsP75(ctx context.Context, days int, clause string, cargs
 	from := fromTime(days)
 	out := &WebVitals{}
 	args := append([]any{from}, cargs...)
-	pick := func(col string, dst *int, count *int64) error {
+	// measured is the condition for a reading to have the vital: LCP and
+	// INP are never 0 when measured, and a layout shift is flagged.
+	pick := func(col, measured string, dst *int, count *int64) error {
 		var n int64
+		// A person's readings alone, as every other engagement figure: a
+		// bot's page loads say nothing about what readers wait for.
 		if err := s.readDB().QueryRowContext(ctx,
-			`SELECT COUNT(1) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+col+`>0`+clause, args...).Scan(&n); err != nil {
+			`SELECT COUNT(1) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+measured+` AND `+human+clause, args...).Scan(&n); err != nil {
 			return err
 		}
 		*count = n
 		if n == 0 {
 			return nil
 		}
-		off := n * 3 / 4 // floor(p75 rank)-1 → zero-based OFFSET
+		// Nearest rank: the ceil(0.75n)-th smallest, at zero-based OFFSET
+		// ceil(0.75n)-1. n*3/4 was one rank above it, and on four samples
+		// read the largest.
+		off := (n*3+3)/4 - 1
 		return s.readDB().QueryRowContext(ctx,
-			`SELECT `+col+` FROM vayuanalytics_sessions WHERE entry_time>=? AND `+col+`>0`+clause+` ORDER BY `+col+` LIMIT 1 OFFSET ?`,
+			`SELECT `+col+` FROM vayuanalytics_sessions WHERE entry_time>=? AND `+measured+` AND `+human+clause+` ORDER BY `+col+` LIMIT 1 OFFSET ?`,
 			append(args, off)...).Scan(dst)
 	}
-	if err := pick("lcp_ms", &out.P75LCPMs, &out.Samples); err != nil {
+	if err := pick("lcp_ms", "lcp_ms>0", &out.P75LCPMs, &out.SamplesLCP); err != nil {
 		return nil, err
 	}
-	var n2, n3 int64
-	if err := pick("inp_ms", &out.P75INPMs, &n2); err != nil {
+	if err := pick("inp_ms", "inp_ms>0", &out.P75INPMs, &out.SamplesINP); err != nil {
 		return nil, err
 	}
-	if err := pick("cls_x100", &out.P75CLSX100, &n3); err != nil {
+	if err := pick("cls_x100", "cls_seen=1", &out.P75CLSX100, &out.SamplesCLS); err != nil {
 		return nil, err
 	}
-	if n2 > out.Samples {
-		out.Samples = n2
-	}
-	if n3 > out.Samples {
-		out.Samples = n3
-	}
+	out.Samples = max(out.SamplesLCP, out.SamplesINP, out.SamplesCLS)
 	return out, nil
 }
 

@@ -96,6 +96,9 @@ type EnterInput struct {
 	LCPMs   int // Largest Contentful Paint, milliseconds
 	INPMs   int // Interaction to Next Paint, milliseconds
 	CLSX100 int // Cumulative Layout Shift × 100 (integer-exact)
+	// CLSKnown says CLSX100 was measured: the browser observes layout shifts
+	// and the page said so. Its 0 is then no shift, not "not reported".
+	CLSKnown bool
 }
 
 // RecordEnter inserts a new engagement row for a page view. is_new_session is
@@ -138,11 +141,11 @@ func recordEnter(ctx context.Context, e execer, in EnterInput) error {
 	}
 	lcp, inp, clsx := clampCWV(in.LCPMs, in.INPMs, in.CLSX100)
 	_, err := e.ExecContext(ctx, `INSERT INTO vayuanalytics_sessions
-(session_hash,visitor_hash,page_path,source_category,source_detail,referrer_domain,referrer_path,entry_time,country_code,client_type,bot_score,is_new_session,lcp_ms,inp_ms,cls_x100,domain_id)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+(session_hash,visitor_hash,page_path,source_category,source_detail,referrer_domain,referrer_path,entry_time,country_code,client_type,bot_score,is_new_session,lcp_ms,inp_ms,cls_x100,cls_seen,domain_id)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		in.SessionHash, visitor, in.PagePath, string(in.Class.Category), in.Class.Detail,
 		in.Class.ReferrerDomain, in.Class.ReferrerPath, now, in.Country, ct, in.BotScore, isNew,
-		lcp, inp, clsx, in.DomainID)
+		lcp, inp, clsx, clsSeen(in.CLSKnown, in.CLSX100), in.DomainID)
 	return err
 }
 
@@ -175,9 +178,19 @@ type BeaconInput struct {
 	// Late-reported Core Web Vitals (migration 091): INP and CLS often only
 	// exist by unload time. Zero = not reported; the UPDATE folds with MAX so
 	// the enter row's earlier value never regresses.
-	LCPMs   int
-	INPMs   int
-	CLSX100 int
+	LCPMs    int
+	INPMs    int
+	CLSX100  int
+	CLSKnown bool // as EnterInput's
+}
+
+// clsSeen is 1 when a reported layout shift was measured and is in range:
+// one out of range is a lie clampCWV zeroed, not a measurement of 0.
+func clsSeen(known bool, clsx int) int {
+	if known && clsx >= 0 && clsx <= 4000 {
+		return 1
+	}
+	return 0
 }
 
 // engagedThresholdSec / engagedThresholdScroll define an "engaged read".
@@ -226,6 +239,7 @@ interaction_count=MAX(interaction_count,?),
 lcp_ms=CASE WHEN ?=0 THEN lcp_ms ELSE MAX(lcp_ms,?) END,
 inp_ms=CASE WHEN ?=0 THEN inp_ms ELSE MAX(inp_ms,?) END,
 cls_x100=CASE WHEN ?=0 THEN cls_x100 ELSE MAX(cls_x100,?) END,
+cls_seen=MAX(cls_seen,?),
 engaged=CASE WHEN MAX(time_on_page_seconds,?)>=? AND MAX(scroll_depth_percent,?)>=? THEN 1 ELSE 0 END,
 bounce=CASE WHEN MAX(time_on_page_seconds,?)<? AND MAX(scroll_depth_percent,?)<? THEN 1 ELSE 0 END
 WHERE id=(SELECT id FROM vayuanalytics_sessions WHERE session_hash=? AND page_path=? ORDER BY entry_time DESC LIMIT 1)`,
@@ -236,6 +250,7 @@ WHERE id=(SELECT id FROM vayuanalytics_sessions WHERE session_hash=? AND page_pa
 		lcp, lcp,
 		inp, inp,
 		clsx, clsx,
+		clsSeen(in.CLSKnown, in.CLSX100),
 		in.TimeOnPage, engagedThresholdSec, in.ScrollDepth, engagedThresholdScroll,
 		in.TimeOnPage, bounceMaxSec, in.ScrollDepth, engagedThresholdScroll,
 		in.SessionHash, in.PagePath)

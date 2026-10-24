@@ -41,6 +41,7 @@ import (
 	"github.com/johalputt/vayupress/internal/queue"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/siemsink"
+	"github.com/johalputt/vayupress/internal/sitehttp"
 	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/vayuanalytics/classifier"
 	vagdpr "github.com/johalputt/vayupress/internal/vayuanalytics/gdpr"
@@ -398,6 +399,9 @@ func (a *App) bootVayuShield() {
 
 	a.startAnalyticsRetention(queue.DoneCh)
 	a.startAlerts(queue.DoneCh)
+	sitehttp.Requests.Start(dbpkg.DB, queue.DoneCh, func(err error) {
+		logging.LogInfo("sitehttp", "request counts not written yet, kept for the next minute: "+err.Error())
+	})
 }
 
 // shieldChargeAt is the last unix-second the shield charged the governance
@@ -518,6 +522,10 @@ func (a *App) handleVAEnter(w http.ResponseWriter, r *http.Request) {
 		L int    `json:"l"` // LCP ms (real-user vital, clamped server-side)
 		N int    `json:"n"` // INP ms
 		C int    `json:"c"` // CLS × 100
+		// CS says C was measured (the browser observes layout shifts). A
+		// copy of the script from before this flag sends none: its 0 is
+		// read as not measured.
+		CS bool `json:"cs"`
 	}
 	if err := readCappedJSON(w, r, 8*1024, &req); err != nil {
 		w.WriteHeader(http.StatusNoContent)
@@ -595,6 +603,7 @@ func (a *App) handleVAEnter(w http.ResponseWriter, r *http.Request) {
 		LCPMs:       req.L,
 		INPMs:       req.N,
 		CLSX100:     req.C,
+		CLSKnown:    req.CS,
 	})
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -612,13 +621,14 @@ func (a *App) handleVAEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		P string `json:"p"` // pathname
-		T int    `json:"t"` // time on page (seconds)
-		S int    `json:"s"` // scroll depth (percent)
-		I int    `json:"i"` // interaction count
-		L int    `json:"l"` // late LCP ms (MAX-folded into the enter row)
-		N int    `json:"n"` // late INP ms
-		C int    `json:"c"` // late CLS × 100
+		P  string `json:"p"`  // pathname
+		T  int    `json:"t"`  // time on page (seconds)
+		S  int    `json:"s"`  // scroll depth (percent)
+		I  int    `json:"i"`  // interaction count
+		L  int    `json:"l"`  // late LCP ms (MAX-folded into the enter row)
+		N  int    `json:"n"`  // late INP ms
+		C  int    `json:"c"`  // late CLS × 100
+		CS bool   `json:"cs"` // as the enter beacon's
 	}
 	if err := readCappedJSON(w, r, 8*1024, &req); err != nil {
 		w.WriteHeader(http.StatusNoContent)
@@ -645,6 +655,7 @@ func (a *App) handleVAEvent(w http.ResponseWriter, r *http.Request) {
 		LCPMs:        req.L,
 		INPMs:        req.N,
 		CLSX100:      req.C,
+		CLSKnown:     req.CS,
 	})
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -1134,19 +1145,21 @@ func (a *App) renderShieldEngagement(ctx context.Context, days int) string {
 	}
 	// Real-user Core Web Vitals (2025 plan Wave 3): p75 LCP/INP/CLS measured by
 	// the visitors' own browsers through the engagement beacon — no third-party
-	// RUM script, no cookie. Zero values mean "not enough samples yet".
+	// RUM script, no cookie. A vital no reader reported says so.
 	if wv, err := a.vaEngagement.WebVitalsP75(ctx, days); err == nil && wv.Samples > 0 {
-		good := func(v, threshold int) string {
-			if v > 0 && v <= threshold {
-				return `<span class="tone-ok">`
+		facts := make([]ui.Fact, 0, 4)
+		for _, x := range vitalsOf(wv) {
+			val := `<span>Not reported</span>`
+			switch {
+			case x.Reported && x.OK:
+				val = `<span class="tone-ok">` + x.Value + `</span>`
+			case x.Reported:
+				val = `<span>` + x.Value + `</span>`
 			}
-			return `<span>`
+			facts = append(facts, ui.Fact{Key: x.Name, Value: ui.HTML(val)})
 		}
-		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">Real-user experience (p75)</div>` + string(ui.Facts(
-			ui.Fact{Key: "Largest Contentful Paint", Value: ui.HTML(good(wv.P75LCPMs, 2500) + strconv.Itoa(wv.P75LCPMs) + ` ms</span>`)},
-			ui.Fact{Key: "Interaction to Next Paint", Value: ui.HTML(good(wv.P75INPMs, 200) + strconv.Itoa(wv.P75INPMs) + ` ms</span>`)},
-			ui.Fact{Key: "Layout Shift", Value: ui.HTML(good(wv.P75CLSX100, 10) + ftoa2(float64(wv.P75CLSX100)/100) + `</span>`)},
-			ui.Fact{Key: "Sampled visits", Value: ui.HTML(strconv.FormatInt(wv.Samples, 10))})) + `</div>`)
+		facts = append(facts, ui.Fact{Key: "Sampled visits", Value: ui.HTML(strconv.FormatInt(wv.Samples, 10))})
+		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">Real-user experience (p75)</div>` + string(ui.Facts(facts...)) + `</div>`)
 	}
 	if ai, err := a.vaEngagement.AITraffic(ctx, days); err == nil {
 		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">AI-assisted discovery vs organic search</div>`)
@@ -1694,17 +1707,17 @@ func readCappedJSON(w http.ResponseWriter, r *http.Request, maxBytes int64, v an
 // real-user performance from real readers, with no third-party script.
 const vaEngagementJS = `(function(){'use strict';
 var start=Date.now(),maxScroll=0,interactions=0,sent=false;
-var lcp=0,inp=0,cls=0;
+var lcp=0,inp=0,cls=0,clsOK=false;
 try{
  if(window.PerformanceObserver){
   try{new PerformanceObserver(function(l){var e=l.getEntries();if(e.length){lcp=Math.round(e[e.length-1].startTime);}}).observe({type:'largest-contentful-paint',buffered:true});}catch(e){}
   try{new PerformanceObserver(function(l){var e=l.getEntries();for(var i=0;i<e.length;i++){if(e[i].interactionId&&e[i].duration>inp)inp=Math.round(e[i].duration);}}).observe({type:'event',buffered:true,durationThreshold:16});}catch(e){}
-  try{new PerformanceObserver(function(l){var e=l.getEntries();for(var i=0;i<e.length;i++){if(!e[i].hadRecentInput)cls+=e[i].value;}}).observe({type:'layout-shift',buffered:true});}catch(e){}
+  try{new PerformanceObserver(function(l){var e=l.getEntries();for(var i=0;i<e.length;i++){if(!e[i].hadRecentInput)cls+=e[i].value;}}).observe({type:'layout-shift',buffered:true});clsOK=(PerformanceObserver.supportedEntryTypes||[]).indexOf('layout-shift')>=0;}catch(e){}
  }
 }catch(e){}
 function onScroll(){var h=document.body.scrollHeight||1;var s=(window.scrollY+window.innerHeight)/h*100;var v=Math.min(100,Math.round(s));if(v>maxScroll)maxScroll=v;}
 function onInteract(){interactions++;}
-function payload(){onScroll();return JSON.stringify({p:location.pathname,t:Math.round((Date.now()-start)/1000),s:maxScroll,i:interactions,l:lcp,n:inp,c:Math.round(cls*100)});}
+function payload(){onScroll();return JSON.stringify({p:location.pathname,t:Math.round((Date.now()-start)/1000),s:maxScroll,i:interactions,l:lcp,n:inp,c:Math.round(cls*100),cs:clsOK});}
 function send(){if(sent)return;sent=true;try{if(navigator.sendBeacon){navigator.sendBeacon('/__vayuanalytics/event',new Blob([payload()],{type:'application/json'}));}else{var x=new XMLHttpRequest();x.open('POST','/__vayuanalytics/event',true);x.setRequestHeader('Content-Type','application/json');x.send(payload());}}catch(e){}}
 window.addEventListener('scroll',onScroll,{passive:true});
 // Measured once the page is laid out, not only on a scroll: a page shorter
@@ -1713,11 +1726,11 @@ if(document.readyState==='complete'){onScroll();}else{window.addEventListener('l
 window.addEventListener('click',onInteract);
 document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')send();});
 window.addEventListener('pagehide',send);
-try{fetch('/__vayuanalytics/enter',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p:location.pathname,q:location.search,r:document.referrer||'',l:lcp,n:inp,c:Math.round(cls*100)}),keepalive:true}).catch(function(){});}catch(e){}
+try{fetch('/__vayuanalytics/enter',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p:location.pathname,q:location.search,r:document.referrer||'',l:lcp,n:inp,c:Math.round(cls*100),cs:clsOK}),keepalive:true}).catch(function(){});}catch(e){}
 // SPA route tracking: history pushState/replaceState are wrapped so a client-side
 // navigation fires a fresh enter for the new path — otherwise an entire React/Vue
 // visit collapses into one page view and per-page engagement lies.
-(function(){var wrap=function(orig){return function(s,u){var r=orig.apply(this,arguments);try{fetch('/__vayuanalytics/enter',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p:location.pathname,q:location.search,r:'',l:lcp,n:inp,c:Math.round(cls*100)}),keepalive:true}).catch(function(){});}catch(e){}return r;};};try{history.pushState=wrap(history.pushState);history.replaceState=wrap(history.replaceState);}catch(e){}})();
+(function(){var wrap=function(orig){return function(s,u){var r=orig.apply(this,arguments);try{fetch('/__vayuanalytics/enter',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p:location.pathname,q:location.search,r:'',l:lcp,n:inp,c:Math.round(cls*100),cs:clsOK}),keepalive:true}).catch(function(){});}catch(e){}return r;};};try{history.pushState=wrap(history.pushState);history.replaceState=wrap(history.replaceState);}catch(e){}})();
 })();`
 
 // startShieldCluster joins this node to a fleet, if the operator configured one,

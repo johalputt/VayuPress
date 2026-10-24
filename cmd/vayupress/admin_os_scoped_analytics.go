@@ -135,7 +135,7 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, site, host string, da
 			analyticsPanel("Browsers", bars(osBarsFromAudience(audience("browser")), osShareOfListed(), "No browser data yet.")),
 			analyticsPanel("Systems", bars(osBarsFromAudience(audience("os")), osShareOfListed(), "No system data yet."))))),
 		ui.Section("Where they are", "Coarse location only", ui.HTML(osGeoSection(audience("country"), audience("region"), audience("city")))),
-		ui.Section("Speed for readers", "Core Web Vitals, 75th percentile", ui.HTML(a.siteVitals(ctx, site, days))),
+		ui.HTML(a.osPerformanceSection(ctx, site, days)),
 		ui.Section("Events", "What this site tracks with data-vp-event or VayuPress.track()",
 			ui.HTML(bars(eventBars, osShareHidden(), "No custom events yet."))),
 		ui.HTML(a.osSearchesSection(ctx, site, days)),
@@ -176,28 +176,4 @@ func osDuration(sec float64) string {
 		return strconv.Itoa(s) + "s"
 	}
 	return strconv.Itoa(s/60) + "m " + strconv.Itoa(s%60) + "s"
-}
-
-// siteVitals is the site's Core Web Vitals, each against Google's "good"
-// line, from the pages' own measurements (the engagement beacon).
-func (a *App) siteVitals(ctx context.Context, site string, days int) string {
-	if a.vaEngagement == nil {
-		return `<p class="table-empty">Speed is measured by the reading beacon, which is not running.</p>`
-	}
-	v, err := a.vaEngagement.WebVitalsP75Scoped(ctx, site, days)
-	if err != nil || v == nil || v.Samples == 0 {
-		return `<p class="table-empty">No page has reported its speed yet.</p>`
-	}
-	row := func(name, value string, good bool, line string) string {
-		tone := "ok"
-		if !good {
-			tone = "warn"
-		}
-		return `<tr><td>` + name + `</td><td class="mono">` + value + `</td><td>` + string(ui.State(tone, map[bool]string{true: "Good", false: "Needs work"}[good])) + `</td><td class="muted text-sm">` + line + `</td></tr>`
-	}
-	return `<div class="table-wrap"><table class="table"><thead><tr><th>Measure</th><th>p75</th><th></th><th>Good is</th></tr></thead><tbody>` +
-		row("Largest paint (LCP)", strconv.Itoa(v.P75LCPMs)+" ms", v.P75LCPMs <= 2500, "2.5 s or less") +
-		row("Response to input (INP)", strconv.Itoa(v.P75INPMs)+" ms", v.P75INPMs <= 200, "200 ms or less") +
-		row("Layout shift (CLS)", strconv.FormatFloat(float64(v.P75CLSX100)/100, 'f', 2, 64), v.P75CLSX100 <= 10, "0.10 or less") +
-		`</tbody></table></div><p class="settings-row-hint">From ` + strconv.FormatInt(v.Samples, 10) + ` page loads that reported.</p>`
 }

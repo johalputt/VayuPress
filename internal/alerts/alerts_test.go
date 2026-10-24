@@ -201,12 +201,12 @@ func TestEachFigureCountsWhatItsReportCounts(t *testing.T) {
 		('d','z','/search',3,'q1','s1',?,'r3'),('e','z','/search',3,'q2','s1',?,'r3')`, ago(1), ago(1), ago(1), ago(1), ago(1))
 	exec(t, `INSERT INTO analytics_event_data(event_id,property_key,property_value) VALUES('d','results','0'),('e','results','4')`)
 	for m, want := range map[Metric]int{Refused: 2, Challenged: 2, Views: 2, Visitors: 3, EmptySearches: 1} {
-		n, err := s.Count(ctx, Alert{Site: "s1", Metric: m, WindowMin: 15}, time.Now())
+		n, _, err := s.Count(ctx, Alert{Site: "s1", Metric: m, WindowMin: 15}, time.Now())
 		if err != nil || n != want {
 			t.Errorf("%s on site one counts %d (%v), want %d", m, n, err, want)
 		}
 	}
-	if n, _ := s.Count(ctx, Alert{Site: Install, Metric: Refused, WindowMin: 15}, time.Now()); n != 3 {
+	if n, _, _ := s.Count(ctx, Alert{Site: Install, Metric: Refused, WindowMin: 15}, time.Now()); n != 3 {
 		t.Errorf("the install's refusals count %d, want every site's 3", n)
 	}
 }
@@ -267,5 +267,46 @@ func TestASiteHoldsAtMostItsShareOfAlerts(t *testing.T) {
 	b, _ := draft().Validate("s2")
 	if _, err := s.Create(ctx, b); err != nil {
 		t.Errorf("another site's first alert is refused: %v", err)
+	}
+}
+
+// The server's figures are its minute rows for the window: errors and
+// missing pages summed, the average server time over the pages, and an
+// average over no pages is not measured, so a "below" alert on it is not
+// fired by an empty window.
+func TestTheServersFiguresAreItsMinutes(t *testing.T) {
+	s := openDB(t)
+	ctx := context.Background()
+	min := func(ago int) string {
+		return time.Now().UTC().Add(-time.Duration(ago) * time.Minute).Truncate(time.Minute).Format("2006-01-02 15:04:05")
+	}
+	exec(t, `INSERT INTO site_http_minutes(domain_id,minute,requests,s404,s5xx,pages,page_ms) VALUES
+		('s1',?,10,2,1,4,400),('s1',?,5,1,2,2,600),('s1',?,9,9,9,9,9000),('s2',?,3,0,5,1,50)`, min(2), min(5), min(40), min(2))
+	for m, want := range map[Metric]int{ServerErrors: 3, NotFound: 3, ServerTime: 166} {
+		n, measured, err := s.Count(ctx, Alert{Site: "s1", Metric: m, WindowMin: 15}, time.Now())
+		if err != nil || !measured || n != want {
+			t.Errorf("%s on site one = %d (measured %v, %v), want %d", m, n, measured, err, want)
+		}
+	}
+	if n, _, _ := s.Count(ctx, Alert{Site: Install, Metric: ServerErrors, WindowMin: 15}, time.Now()); n != 8 {
+		t.Errorf("the install's server errors = %d, want every site's 8", n)
+	}
+	if _, measured, _ := s.Count(ctx, Alert{Site: "quiet", Metric: ServerTime, WindowMin: 15}, time.Now()); measured {
+		t.Errorf("an average over no pages is measured")
+	}
+	d := Draft{Name: "Slow", Metric: "server_time", Op: "below", Threshold: "50", Window: "15", Cooldown: "60", Severity: "warn"}
+	a, err := d.Validate("quiet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Create(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	fired, err := s.Check(ctx, func(string) bool { return true }, nil)
+	if err != nil || len(fired) != 0 {
+		t.Errorf("an alert on an empty window fired: %+v, %v", fired, err)
+	}
+	if l, _ := s.List(ctx, "quiet"); len(l) != 1 || l[0].Checked || l[0].CheckedAt.IsZero() {
+		t.Errorf("the empty window is not recorded as checked with nothing to count: %+v", l)
 	}
 }

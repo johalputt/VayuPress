@@ -262,8 +262,11 @@ func (a *App) alertsSection(ctx context.Context, site, api string, admin bool, n
 	rows := make([][]ui.HTML, 0, len(list))
 	for _, al := range list {
 		last := "Not checked yet"
-		if al.Checked {
+		switch {
+		case al.Checked:
 			last = strconv.Itoa(al.LastValue) + " " + al.Noun() + ", " + humanAgo(al.CheckedAt, now)
+		case !al.CheckedAt.IsZero():
+			last = "Nothing to measure in the window, " + humanAgo(al.CheckedAt, now)
 		}
 		fired := "Never"
 		if !al.LastFiredAt.IsZero() {

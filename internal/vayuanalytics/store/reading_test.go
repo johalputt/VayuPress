@@ -91,3 +91,70 @@ func TestReadingDepthReadsARange(t *testing.T) {
 		}
 	}
 }
+
+// Readers' p75 is the nearest rank, the ceil(0.75n)-th smallest, of a
+// person's readings alone: of 100, 200, 300 and 400 ms, 300, whatever a bot
+// measured.
+func TestVitalsP75IsTheNearestRankOfReaders(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	now := time.Now().UTC()
+	for i, lcp := range []int{400, 100, 300, 200} {
+		in := enter("v"+string(rune('a'+i)), "/a", "direct", "", "human", now)
+		in.DomainID, in.LCPMs = "s1", lcp
+		if err := s.RecordEnter(ctx, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bot := enter("bot", "/a", "direct", "", "Headless", now)
+	bot.DomainID, bot.LCPMs = "s1", 9000
+	if err := s.RecordEnter(ctx, bot); err != nil {
+		t.Fatal(err)
+	}
+	v, err := s.WebVitalsP75Scoped(ctx, "s1", 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.P75LCPMs != 300 || v.Samples != 4 {
+		t.Errorf("p75 LCP = %d over %d samples, want 300 over 4", v.P75LCPMs, v.Samples)
+	}
+}
+
+// A layout shift of 0 is a reading when it was measured: three measured
+// pages, one never shifting, give a p75 of their third, and a page whose
+// browser could not measure one is no reading. A vital no one reported has
+// no readings, never a p75 of 0.
+func TestALayoutShiftOfZeroIsAReading(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	now := time.Now().UTC()
+	for i, c := range []struct {
+		cls   int
+		known bool
+	}{{0, true}, {5, true}, {20, true}, {0, false}} {
+		in := enter("c"+string(rune('a'+i)), "/a", "direct", "", "human", now)
+		in.DomainID, in.LCPMs, in.CLSX100, in.CLSKnown = "s1", 500, c.cls, c.known
+		if err := s.RecordEnter(ctx, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The exit beacon of a measured page that never shifted keeps it so,
+	// and a later one from a copy of the script that cannot say does not
+	// unmark it.
+	if err := s.RecordBeacon(ctx, BeaconInput{SessionHash: "ca", PagePath: "/a", CLSX100: 0, CLSKnown: true, Now: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordBeacon(ctx, BeaconInput{SessionHash: "cb", PagePath: "/a", CLSX100: 0, Now: now}); err != nil {
+		t.Fatal(err)
+	}
+	v, err := s.WebVitalsP75Scoped(ctx, "s1", 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.SamplesCLS != 3 || v.P75CLSX100 != 20 {
+		t.Errorf("CLS = %d over %d readings, want 20 over 3", v.P75CLSX100, v.SamplesCLS)
+	}
+	if v.SamplesINP != 0 || v.SamplesLCP != 4 || v.Samples != 4 {
+		t.Errorf("readings: LCP %d, INP %d, most %d; want 4, 0, 4", v.SamplesLCP, v.SamplesINP, v.Samples)
+	}
+}

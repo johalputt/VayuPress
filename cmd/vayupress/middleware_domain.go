@@ -9,6 +9,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/reqclass"
 	"github.com/johalputt/vayupress/internal/settings"
 )
 
@@ -45,6 +46,13 @@ func (a *App) domainMiddleware(next http.Handler) http.Handler {
 			}
 		}
 		ctx := context.WithValue(r.Context(), ctxKeyDomain{}, d)
+		// The site as the analytics name it: the request logger, outside this
+		// middleware, counts the request as this site's (internal/sitehttp).
+		site := ""
+		if !d.IsPrimary {
+			site = d.ID
+		}
+		reqclass.SetSite(ctx, site)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

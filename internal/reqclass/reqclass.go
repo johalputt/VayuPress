@@ -17,7 +17,10 @@ import (
 	"sync/atomic"
 )
 
-type mark struct{ shielded atomic.Bool }
+type mark struct {
+	shielded atomic.Bool
+	site     atomic.Pointer[string]
+}
 
 type ctxKey struct{}
 
@@ -43,4 +46,23 @@ func Shielded(ctx context.Context) bool {
 		return m.shielded.Load()
 	}
 	return false
+}
+
+// SetSite records the site the request was resolved to ("" the primary, else
+// a hosted site's id), so the outer latency recorder can count the request as
+// that site's. No-op if the context carries no classification.
+func SetSite(ctx context.Context, site string) {
+	if m, ok := ctx.Value(ctxKey{}).(*mark); ok {
+		m.site.Store(&site)
+	}
+}
+
+// Site is the site SetSite recorded, and whether one was.
+func Site(ctx context.Context) (string, bool) {
+	if m, ok := ctx.Value(ctxKey{}).(*mark); ok {
+		if p := m.site.Load(); p != nil {
+			return *p, true
+		}
+	}
+	return "", false
 }

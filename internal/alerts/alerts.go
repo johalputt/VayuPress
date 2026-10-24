@@ -38,6 +38,9 @@ const (
 	EmptySearches Metric = "empty_searches"
 	Refused       Metric = "refused"
 	Challenged    Metric = "challenged"
+	ServerErrors  Metric = "server_errors"
+	NotFound      Metric = "not_found"
+	ServerTime    Metric = "server_time"
 )
 
 // metric is how one figure is counted: its query over [since, now) for every
@@ -72,6 +75,20 @@ var metrics = []struct {
 	{Challenged, metric{"Challenges issued", "challenges issued",
 		`SELECT COUNT(1) FROM shield_events WHERE created_at>=? AND outcome='issued'`,
 		`SELECT COUNT(1) FROM shield_events WHERE domain_id=? AND created_at>=? AND outcome='issued'`}},
+	// What the server measured of the site's requests (internal/sitehttp),
+	// a row per minute: a window counts the minutes that began within it,
+	// each once the server has written it, at the end of that minute.
+	{ServerErrors, metric{"Server errors", "server errors",
+		`SELECT COALESCE(SUM(s5xx),0) FROM site_http_minutes WHERE minute>=?`,
+		`SELECT COALESCE(SUM(s5xx),0) FROM site_http_minutes WHERE domain_id=? AND minute>=?`}},
+	{NotFound, metric{"Requests for pages not found", "requests not found",
+		`SELECT COALESCE(SUM(s404),0) FROM site_http_minutes WHERE minute>=?`,
+		`SELECT COALESCE(SUM(s404),0) FROM site_http_minutes WHERE domain_id=? AND minute>=?`}},
+	// An average over no pages is not 0: it is not measured, and the alert
+	// is not checked against it (NULL, through Count).
+	{ServerTime, metric{"Average server time for pages, ms", "ms on average for its pages",
+		`SELECT SUM(page_ms)/SUM(pages) FROM site_http_minutes WHERE minute>=?`,
+		`SELECT SUM(page_ms)/SUM(pages) FROM site_http_minutes WHERE domain_id=? AND minute>=?`}},
 }
 
 func lookup(m Metric) (metric, bool) {
@@ -328,21 +345,22 @@ func (s *Store) query(ctx context.Context, q string, args ...any) ([]Alert, erro
 	return out, rows.Err()
 }
 
-// Count is the alert's figure over the window ending at now.
-func (s *Store) Count(ctx context.Context, a Alert, now time.Time) (int, error) {
+// Count is the alert's figure over the window ending at now, and whether
+// there was anything to measure: an average over no pages is not 0.
+func (s *Store) Count(ctx context.Context, a Alert, now time.Time) (int, bool, error) {
 	m, ok := lookup(a.Metric)
 	if !ok {
-		return 0, fmt.Errorf("alerts: unknown figure %q", a.Metric)
+		return 0, false, fmt.Errorf("alerts: unknown figure %q", a.Metric)
 	}
 	since := sqliteTime(now.Add(-time.Duration(a.WindowMin) * time.Minute))
-	var n int
+	var n sql.NullInt64
 	var err error
 	if a.Site == Install {
 		err = s.rdb.QueryRowContext(ctx, m.all, since).Scan(&n)
 	} else {
 		err = s.rdb.QueryRowContext(ctx, m.site, a.Site, since).Scan(&n)
 	}
-	return n, err
+	return int(n.Int64), n.Valid, err
 }
 
 // sqliteTime is t as SQLite's CURRENT_TIMESTAMP writes it, the form every
@@ -383,9 +401,17 @@ func (s *Store) Check(ctx context.Context, live func(site string) bool, send Mai
 		if a.Site != Install && !live(a.Site) {
 			continue // the site was removed; its alerts count nothing
 		}
-		value, err := s.Count(ctx, a, now)
+		value, measured, err := s.Count(ctx, a, now)
 		if err != nil {
 			return fired, err
+		}
+		if !measured {
+			// Nothing to measure in the window: checked, with no value, and
+			// neither above nor below anything.
+			if _, err := s.db.ExecContext(ctx, `UPDATE analytics_alerts SET checked_at=?, last_value=NULL WHERE id=?`, at, a.ID); err != nil {
+				return fired, err
+			}
+			continue
 		}
 		if _, err := s.db.ExecContext(ctx, `UPDATE analytics_alerts SET checked_at=?, last_value=? WHERE id=?`, at, value, a.ID); err != nil {
 			return fired, err

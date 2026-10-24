@@ -21,7 +21,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/auth"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/domain"
+	"github.com/johalputt/vayupress/internal/sitehttp"
 )
 
 type ctxSiteAnalyticsKey struct{}
@@ -253,19 +255,49 @@ func (a *App) handleSiteAnalyticsFunnel(w http.ResponseWriter, r *http.Request) 
 
 func (a *App) handleSiteAnalyticsPerformance(w http.ResponseWriter, r *http.Request) {
 	sc, days := siteScopeOf(r), siteDays(r)
+	// A vital no reader reported is null, never a p75 of 0; each has its
+	// own readings.
 	type vitals struct {
-		LCPMs   int     `json:"lcp_ms_p75"`
-		INPMs   int     `json:"inp_ms_p75"`
-		CLS     float64 `json:"cls_p75"`
-		Samples int64   `json:"samples"`
+		LCPMs      *int     `json:"lcp_ms_p75"`
+		INPMs      *int     `json:"inp_ms_p75"`
+		CLS        *float64 `json:"cls_p75"`
+		Samples    int64    `json:"samples"`
+		SamplesLCP int64    `json:"samples_lcp"`
+		SamplesINP int64    `json:"samples_inp"`
+		SamplesCLS int64    `json:"samples_cls"`
 	}
 	out := struct {
 		siteHead
-		Vitals *vitals `json:"vitals"`
+		Vitals *vitals           `json:"vitals"`
+		Server *sitehttp.Summary `json:"server"`
+		Days   []sitehttp.Day    `json:"server_by_day"`
 	}{siteHead: headOf(sc, days)}
+	if dbpkg.DB != nil {
+		site := sc.scope
+		if site == analytics.ScopeAllDomains {
+			site = sitehttp.AllSites
+		}
+		sum, byDay, err := sitehttp.Read(r.Context(), dbpkg.Reader(), site, days)
+		if err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
+			return
+		}
+		out.Server, out.Days = &sum, byDay
+	}
 	if a.vaEngagement != nil {
 		if v, err := a.vaEngagement.WebVitalsP75Scoped(r.Context(), sc.scope, days); err == nil && v != nil && v.Samples > 0 {
-			out.Vitals = &vitals{LCPMs: v.P75LCPMs, INPMs: v.P75INPMs, CLS: float64(v.P75CLSX100) / 100, Samples: v.Samples}
+			vt := &vitals{Samples: v.Samples, SamplesLCP: v.SamplesLCP, SamplesINP: v.SamplesINP, SamplesCLS: v.SamplesCLS}
+			if v.SamplesLCP > 0 {
+				vt.LCPMs = &v.P75LCPMs
+			}
+			if v.SamplesINP > 0 {
+				vt.INPMs = &v.P75INPMs
+			}
+			if v.SamplesCLS > 0 {
+				cls := float64(v.P75CLSX100) / 100
+				vt.CLS = &cls
+			}
+			out.Vitals = vt
 		}
 	}
 	writeJSON(w, r, http.StatusOK, out)

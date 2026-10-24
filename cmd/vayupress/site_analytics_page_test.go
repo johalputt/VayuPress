@@ -35,7 +35,7 @@ func TestASitesAnalyticsIsThatSitesAlone(t *testing.T) {
 	collect("s2", "198.51.100.3", "/s2-only-page", "https://s2-referrer.example/")
 
 	one := a.renderSiteAnalyticsBody(ctx, "s1", "one.test", 30, "last 30 days")
-	for _, want := range []string{"2 visitors to one.test", "/s1-landing", "news.ycombinator.com", "Landing pages", "Speed for readers"} {
+	for _, want := range []string{"2 visitors to one.test", "/s1-landing", "news.ycombinator.com", "Landing pages", "What readers&#39; browsers measured"} {
 		if !strings.Contains(one, want) {
 			t.Errorf("site one's page has no %q", want)
 		}
@@ -79,7 +79,7 @@ func siteAnalyticsPage(t *testing.T, site string, paths ...string) string {
 func TestASitesAnalyticsIsAnOverview(t *testing.T) {
 	page := siteAnalyticsPage(t, "d1", "/", "/about")
 	for _, want := range []string{`data-page-kind="overview"`, `href="/os/d/d1/analytics?days=30">30 days`,
-		">Top pages<", ">Landing pages<", ">Referrers<", ">Where they are<", ">Speed for readers<", "/about"} {
+		">Top pages<", ">Landing pages<", ">Referrers<", ">Where they are<", ">Performance<", "/about"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("missing %q", want)
 		}

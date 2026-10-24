@@ -110,6 +110,24 @@ left before the beacon could be sent has no depth and is not counted. The
 Analytics page gives, for the most read pages, the share of readings that
 passed half the page and nine tenths of it. Bots' readings are not counted.
 
+**Readers' speed.** The Core Web Vitals the readers' own browsers measured,
+each at its 75th percentile by nearest rank (the reading ranked
+ceil(0.75 × n)), over a person's page loads alone. Largest paint is a
+reading when it is above 0, and response to input when a reader interacted;
+a layout shift is one when the browser could measure it, a page that never
+shifted reading 0. A measure with no readings is "not reported", never 0.
+
+**What the server measured.** Every request a site's visitors made of it,
+the shield's refusals among them, counted by how it was answered: answered
+(2xx), redirected (3xx), not found (404), refused or bad (the other 4xx) and
+server errors (5xx); the console, the API and the server's own endpoints are
+the install's, not a site's. Among them, its pages, the HTML answers to a GET
+served in full, with their server time, from the request reaching the server
+to its answer. Server times are kept as a histogram whose buckets are each at
+most a tenth wider than the last, and a percentile is said as "at most" its
+bucket's bound, which is within a tenth of it. Counts are kept in memory and
+written every minute; a stop writes them first.
+
 **Retention.** Not measured. A visitor is the same only within a day, so
 nobody can be seen to come back on a later day, and a week-over-week cohort
 would be empty by construction. The API's `retention` route says so rather
@@ -176,6 +194,14 @@ The figures are counted from the same rows the reports read:
 - **Requests the shield refused**: blocks and operator limits' 429s, the
   refusals the Security page counts.
 - **Challenges issued**: challenges the shield served, solved or not.
+- **Server errors** and **requests for pages not found**: the site's
+  requests the server answered with a 5xx, or with 404.
+- **Average server time for pages**: the mean of its pages' server times,
+  in milliseconds. A window with no page in it has nothing to measure: the
+  alert is checked and neither fires nor counts it as 0.
+
+The server's figures are read from its minute rows, so a window counts the
+minutes that began within it, each once it has ended and been written.
 
 A window ends at the minute the check runs, and each count reads a range of
 an index, so a check costs what its window holds. A site that is removed stops

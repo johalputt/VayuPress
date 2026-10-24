@@ -71,7 +71,7 @@ func TestTheScopedTrafficPageUsesTheScopedQueries(t *testing.T) {
 				"every site on the install under one client's name", c[1])
 		}
 	}
-	if !strings.Contains(goFuncBody(readSourceFile(t, "admin_os_scoped_analytics.go"), "siteVitals"), "WebVitalsP75Scoped(") {
+	if !strings.Contains(goFuncBody(readSourceFile(t, "analytics_performance.go"), "readerVitals"), "WebVitalsP75Scoped(") {
 		t.Error("the site's speed is not read for the site")
 	}
 }

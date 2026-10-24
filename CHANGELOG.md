@@ -120,6 +120,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   figure is counted by the overview's own definition, a visit by its own
   columns alone; a question those cannot answer is refused with the reason.
   The question is the page's address, so a result can be bookmarked or sent.
+- **Performance beside the server.** Analytics, the install's and each
+  site's, sets what readers' browsers measured (Core Web Vitals at p75)
+  beside what the server measured for the same site and period: its
+  requests by how they were answered (answered, redirected, not found,
+  refused, server errors), its pages' server time at p50, p75 and p95 and
+  their mean, and the same by day. The server counts each site's requests as
+  it answers them and writes them every minute (migration 119); the API's
+  performance report gives the same. Alerts can watch server errors,
+  requests not found and the average server time.
+- **Readers' speed is measured as stated.** The p75 of each vital was taken
+  one rank too high (of four readings, the largest) and counted bots' page
+  loads; it is the nearest rank of a person's readings now. A layout shift
+  of 0, a page that never shifted, was read as not reported and left out, so
+  the shift figure read worse than readers saw; the script now says when it
+  measured one. A vital no reader reported reads "not reported", not 0.
 - **What followed a search.** Analytics' Searches says how many searches
   were followed in their visit by a page, by another search, or by nothing,
   which pages readers opened after searching, and which queries they tried
@@ -203,6 +218,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   the site it served.
 
 ### Upgrade Notes
+
+- **Migration 119** adds the two tables the server's measurements are kept
+  in and a column marking the engagement rows whose layout shift was
+  measured. Rows from before it are left unmeasured for layout shift, so the
+  readers' shift figure starts from the first page loads after the upgrade.
 
 - **Migration 116 moves the shield's events into one table at start-up.**
   It copies the rows the block and challenge tables hold (they are kept

@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/sitehttp"
 )
 
 // purgeExpiredAnalytics deletes every analytics row older than the retention
@@ -29,6 +31,11 @@ func (a *App) purgeExpiredAnalytics(ctx context.Context) {
 	if a.vaEngagement != nil {
 		if n, err := a.vaEngagement.Purge(ctx, days); err == nil && n > 0 {
 			logging.LogInfo("vayuanalytics", fmt.Sprintf("purged %d engagement rows older than %dd", n, days))
+		}
+	}
+	if dbpkg.DB != nil {
+		if n, err := sitehttp.Purge(ctx, dbpkg.DB, days); err == nil && n > 0 {
+			logging.LogInfo("sitehttp", fmt.Sprintf("purged %d rows of server measurements older than %dd", n, days))
 		}
 	}
 	// Then the sites that keep their data for less time than the install.

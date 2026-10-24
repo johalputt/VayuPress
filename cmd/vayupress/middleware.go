@@ -24,6 +24,7 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/reqclass"
 	"github.com/johalputt/vayupress/internal/safefetch"
+	"github.com/johalputt/vayupress/internal/sitehttp"
 	"github.com/johalputt/vayupress/internal/trace"
 )
 
@@ -231,6 +232,7 @@ func structuredLoggerMiddleware(next http.Handler) http.Handler {
 			metrics.HTTPLatencyWindow.Record(dur)
 			metrics.RouteLatency.Record(routeOf(r), dur)
 		}
+		recordSiteRequest(ctx, r, ww, dur)
 		ra, ua := logIdentity(r)
 		logging.LogJSON(logging.LogFields{
 			Level: "info", RequestID: getRequestID(r),
@@ -240,6 +242,34 @@ func structuredLoggerMiddleware(next http.Handler) http.Handler {
 			RemoteAddr: ra, UserAgent: ua, Component: "http",
 		})
 	})
+}
+
+// recordSiteRequest counts a request as its site's, for the site's own
+// Performance: every request a site's readers and visitors make of it (the
+// console, the API and the server's own endpoints are the install's, not a
+// site's), and among them its pages, an HTML answer to a GET, with the time
+// the server took. A page the shield delayed or challenged is counted by its
+// status and not timed, as the latency figures above leave it out.
+func recordSiteRequest(ctx context.Context, r *http.Request, ww middleware.WrapResponseWriter, dur time.Duration) {
+	site, ok := reqclass.Site(ctx)
+	if !ok || !siteRequestPath(r.URL.Path) {
+		return
+	}
+	status := ww.Status()
+	page := r.Method == http.MethodGet && status == http.StatusOK && dur <= streamLatencyCutoff && !reqclass.Shielded(ctx) &&
+		strings.HasPrefix(ww.Header().Get("Content-Type"), "text/html")
+	sitehttp.Requests.Record(site, status, page, dur, time.Now())
+}
+
+// siteRequestPath reports whether a path is a site's own rather than the
+// install's: not the console, the API, or the server's internal endpoints.
+func siteRequestPath(p string) bool {
+	for _, pre := range []string{"/os/", "/api/", "/__", "/health"} {
+		if strings.HasPrefix(p, pre) {
+			return false
+		}
+	}
+	return p != "/os"
 }
 
 // logSite is the host a request was served for, for the request log: an
