@@ -229,6 +229,7 @@ func TestTheExplorerSplitsByTheVisit(t *testing.T) {
 		by   string
 		want map[string]float64
 	}{
+		{"exit", map[string]float64{"/a": 3, "/c": 1, "/b": 1}},
 		{"visit_channel", map[string]float64{"direct": 3, "organic": 1, "social": 1}},
 		{"visit_referrer", map[string]float64{"": 3, "www.google.com": 1, "news.ycombinator.com": 1}},
 		{"returning", map[string]float64{"yes": 2, "no": 3}},

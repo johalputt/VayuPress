@@ -82,6 +82,25 @@ trimmed, and one that looks like an email address or holds five or more digits
 in a row is not kept at all. Searches in the instant search box are answered in
 the reader's browser and are not counted.
 
+**Link out and download.** A click on a link to another host is a link out;
+a click on a link to a file (a document, an archive, a recording, or any link
+marked `download`) is a download, wherever the file is. The counting script
+reports each, and what is kept is where the link led, as its host and path:
+never its query, fragment, port or user name, which is where a token or an
+address travels. A file on the page's own host is kept by its path alone.
+Neither is a custom event or a conversion; each is an event of its visit, so
+a visit that ended in one is not a bounce.
+
+**Exit page.** The page of a visit's last page view.
+
+**Reading depth.** How far down a page its reader scrolled, as the
+engagement beacon reports it when the reader leaves: the furthest point seen,
+measured when the page has laid out as well as on every scroll, so a page
+shorter than the window counts as read to its end. A reading whose reader
+left before the beacon could be sent has no depth and is not counted. The
+Analytics page gives, for the most read pages, the share of readings that
+passed half the page and nine tenths of it. Bots' readings are not counted.
+
 **Retention.** Not measured. A visitor is the same only within a day, so
 nobody can be seen to come back on a later day, and a week-over-week cohort
 would be empty by construction. The API's `retention` route says so rather

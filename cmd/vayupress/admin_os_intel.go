@@ -520,6 +520,7 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 		ui.HTML(a.osSearchesSection(ctx, analytics.ScopeAllDomains, days)),
 		ui.HTML(a.osGoalsSection(ctx, days)),
 		ui.HTML(a.osSegmentsSection(ctx, analytics.ScopeAllDomains, "/os/analytics/explore", days)),
+		ui.HTML(a.osBehaviourSection(ctx, analytics.ScopeAllDomains, "/os/analytics/explore", days)),
 		ui.HTML(a.osJourneySection(ctx, days)),
 		ui.HTML(osExportSection(days)),
 		ui.Explain(ui.HTML(`<p>Everything here is counted and kept on this server: no cookies, no personal data, and no request to anyone else. A visitor is recognised within a day by a salted hash that changes daily, so nobody can be followed from one day to the next.</p>`)),

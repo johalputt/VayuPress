@@ -120,6 +120,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   figure is counted by the overview's own definition, a visit by its own
   columns alone; a question those cannot answer is refused with the reason.
   The question is the page's address, so a result can be bookmarked or sent.
+- **What readers did.** Analytics, the install's and each site's, shows
+  where visits ended, the links readers followed off the site, the files they
+  fetched, and how far down each of the most read pages they scrolled (the
+  share past half and past nine tenths). The counting script reports a click
+  on a link to another host and on a link to a file; what is kept is the
+  host and path it led to, never its query. Neither counts as a custom event
+  or a conversion. The Explorer counts both, and splits visits by their exit
+  page.
+- **Scroll depth counts a short page.** The reading beacon measured depth on
+  scroll alone, so a page shorter than the window, read to its end without a
+  scroll, reported 0%. It is measured once the page has laid out too.
 - **Segments.** A set of Explorer filters is saved as a segment, for one
   site or for the install, and applied from the Explorer with its own
   filters; the Analytics page lists each with the visitors in it and their

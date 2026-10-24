@@ -1704,9 +1704,12 @@ try{
 }catch(e){}
 function onScroll(){var h=document.body.scrollHeight||1;var s=(window.scrollY+window.innerHeight)/h*100;var v=Math.min(100,Math.round(s));if(v>maxScroll)maxScroll=v;}
 function onInteract(){interactions++;}
-function payload(){return JSON.stringify({p:location.pathname,t:Math.round((Date.now()-start)/1000),s:maxScroll,i:interactions,l:lcp,n:inp,c:Math.round(cls*100)});}
+function payload(){onScroll();return JSON.stringify({p:location.pathname,t:Math.round((Date.now()-start)/1000),s:maxScroll,i:interactions,l:lcp,n:inp,c:Math.round(cls*100)});}
 function send(){if(sent)return;sent=true;try{if(navigator.sendBeacon){navigator.sendBeacon('/__vayuanalytics/event',new Blob([payload()],{type:'application/json'}));}else{var x=new XMLHttpRequest();x.open('POST','/__vayuanalytics/event',true);x.setRequestHeader('Content-Type','application/json');x.send(payload());}}catch(e){}}
 window.addEventListener('scroll',onScroll,{passive:true});
+// Measured once the page is laid out, not only on a scroll: a page shorter
+// than the window is read to its end without one, and read as 0%.
+if(document.readyState==='complete'){onScroll();}else{window.addEventListener('load',onScroll);}
 window.addEventListener('click',onInteract);
 document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')send();});
 window.addEventListener('pagehide',send);

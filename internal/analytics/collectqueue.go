@@ -108,9 +108,16 @@ func (s *Store) buildCollectEvent(req CollectRequest, ip, ua, domainID string) *
 	now := s.now().UTC()
 
 	et := req.EventType
+	name := trunc(req.EventName, 200)
 	switch {
 	case req.search != nil:
 		et = eventSearch
+	case et == eventOutbound || et == eventDownload:
+		target, ok := linkTarget(req.EventName, host, et == eventDownload)
+		if !ok {
+			return nil
+		}
+		name = target
 	case et != 2:
 		et = 1
 	}
@@ -127,7 +134,6 @@ func (s *Store) buildCollectEvent(req CollectRequest, ip, ua, domainID string) *
 	if et == 1 {
 		view, landing = 1, path
 	}
-	name := trunc(req.EventName, 200)
 	eventID := "e" + itoa64(now.UnixNano()) + "-" + itoa64(int64(eventSeq.Add(1)))
 
 	ev := &collectEvent{

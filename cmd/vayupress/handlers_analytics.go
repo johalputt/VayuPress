@@ -97,6 +97,9 @@ function base(t,n,d){var u=utm();return{u:location.pathname+location.search,r:do
 function pv(){send(base(1,''))}
 if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',pv)}else{pv()}
 document.addEventListener('click',function(e){var el=e.target.closest('[data-vp-event]');if(!el)return;var n=el.getAttribute('data-vp-event');var d={};Array.from(el.attributes).forEach(function(a){if(a.name.indexOf('data-vp-')===0&&a.name!=='data-vp-event'){d[a.name.slice(8)]=a.value}});send(base(2,n,d))});
+var FILES=/\.(pdf|zip|gz|tgz|rar|7z|dmg|exe|msi|apk|epub|mobi|docx?|xlsx?|pptx?|odt|ods|odp|csv|txt|mp3|mp4|m4a|mov|wav|ogg|webm)$/i;
+function link(e){if(e.type==='auxclick'&&e.button!==1)return;var a=e.target.closest&&e.target.closest('a[href]');if(!a)return;var u;try{u=new URL(a.href,location.href)}catch(x){return}if(u.protocol!=='http:'&&u.protocol!=='https:')return;var to=u.origin+u.pathname;if(a.hasAttribute('download')||FILES.test(u.pathname)){send(base(5,to));return}if(u.host!==location.host){send(base(4,to))}}
+document.addEventListener('click',link,true);document.addEventListener('auxclick',link,true);
 window.VayuPress=window.VayuPress||{};window.VayuPress.track=function(n,d){send(base(2,n,d||{}))};
 }();`)
 	// VayuAnalytics Enterprise engagement beacon (time on page / scroll depth).

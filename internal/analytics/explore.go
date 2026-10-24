@@ -37,6 +37,8 @@ const (
 	ExploreBounceRate ExploreMetric = "bounce_rate"
 	ExploreAvgVisit   ExploreMetric = "avg_visit"
 	ExploreEvents     ExploreMetric = "events"
+	ExploreOutbound   ExploreMetric = "outbound"
+	ExploreDownloads  ExploreMetric = "downloads"
 )
 
 // exploreMetric is how one figure is counted.
@@ -58,6 +60,8 @@ var exploreMetrics = []exploreMetric{
 	{ExploreBounceRate, "Bounce rate", true, "100.0*SUM(s.events=1 AND s.views=1)/COUNT(1)", "s.events>0", false},
 	{ExploreAvgVisit, "Average visit", true, "AVG(CASE WHEN s.events>1 THEN (julianday(s.last_at)-julianday(s.created_at))*86400.0 END)", "s.events>0", false},
 	{ExploreEvents, "Custom events", false, "COUNT(1)", "p.event_type=2", true},
+	{ExploreOutbound, "Links out", false, "COUNT(1)", "p.event_type=" + strconv.Itoa(eventOutbound), true},
+	{ExploreDownloads, "Downloads", false, "COUNT(1)", "p.event_type=" + strconv.Itoa(eventDownload), true},
 }
 
 // exploreDim is one way to split or filter: the column of an event (p) or of
@@ -84,11 +88,12 @@ const (
 // figure: an event's visit is joined. A visit's referrer is its first page
 // view's, the one it arrived by; "returning" is the same visitor's earlier
 // visit to the same site, which can only be the same day, as a visitor is
-// recognised for a day (docs/ANALYTICS.md); "converted" is a custom event in
-// the visit.
+// recognised for a day (docs/ANALYTICS.md); its exit is its last page view;
+// "converted" is a custom event in the visit.
 const (
 	visitFirstView  = `FROM analytics_pageviews f WHERE f.session_id=s.id AND f.event_type=1 ORDER BY f.created_at, f.id LIMIT 1`
 	visitReturning  = `CASE WHEN EXISTS(SELECT 1 FROM analytics_sessions r WHERE r.visitor_id=s.visitor_id AND r.domain_id=s.domain_id AND (r.created_at<s.created_at OR (r.created_at=s.created_at AND r.id<s.id))) THEN 'yes' ELSE 'no' END`
+	visitExit       = `COALESCE((SELECT f.url_path FROM analytics_pageviews f WHERE f.session_id=s.id AND f.event_type=1 ORDER BY f.created_at DESC, f.id DESC LIMIT 1),'')`
 	visitConverted  = `CASE WHEN EXISTS(SELECT 1 FROM analytics_pageviews c WHERE c.session_id=s.id AND c.event_type=2) THEN 'yes' ELSE 'no' END`
 	visitLengthSecs = `CAST(COALESCE(round((julianday(s.last_at)-julianday(s.created_at))*86400.0),0) AS INTEGER)`
 )
@@ -102,7 +107,9 @@ var exploreDims = []exploreDim{
 	{"utm_source", "Campaign source", "p.utm_source", "", false, dimWords},
 	{"utm_medium", "Campaign medium", "p.utm_medium", "", false, dimWords},
 	{"utm_campaign", "Campaign", "p.utm_campaign", "", false, dimWords},
-	{"event", "Event", "p.event_name", "", false, dimWords},
+	// A custom event's name, or for a link out or a download where it led
+	// (links.go).
+	{"event", "Event, link or file", "p.event_name", "", false, dimWords},
 	{"country", "Country", "s.country", "s.country", false, dimWords},
 	{"region", "Region", "s.region", "s.region", false, dimWords},
 	{"city", "City", "s.city", "s.city", false, dimWords},
@@ -110,6 +117,7 @@ var exploreDims = []exploreDim{
 	{"browser", "Browser", "s.browser", "s.browser", false, dimWords},
 	{"os", "Operating system", "s.os", "s.os", false, dimWords},
 	{"language", "Language", "s.language", "s.language", false, dimWords},
+	{"exit", "Exit page", visitExit, visitExit, true, dimWords},
 	{"visit_channel", "Visit's channel", "s.id", "s.id", false, dimWords}, // s.id marks it usable; Store.dimSQL writes it
 	{"visit_referrer", "Visit's referrer", "COALESCE((SELECT f.referrer " + visitFirstView + "),'')", "COALESCE((SELECT f.referrer " + visitFirstView + "),'')", true, dimWords},
 	{"returning", "Returning the same day", visitReturning, visitReturning, false, dimFlag},

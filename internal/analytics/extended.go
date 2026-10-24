@@ -100,7 +100,7 @@ type CollectRequest struct {
 	UTMCampaign string            `json:"utm_campaign"`
 	UTMContent  string            `json:"utm_content"`
 	UTMTerm     string            `json:"utm_term"`
-	EventType   int               `json:"event_type"` // 1=pageview 2=customEvent
+	EventType   int               `json:"event_type"` // 1 page view, 2 custom event, 4 link out, 5 download (links.go)
 	EventName   string            `json:"event_name"`
 	EventData   map[string]string `json:"event_data"`
 
