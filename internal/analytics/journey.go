@@ -38,8 +38,15 @@ const (
 const maxJourneyRows = 100000
 
 // PathFlows returns the most common page-to-page transitions over the trailing
-// N days, capped to `limit` rows (highest count first).
+// N days, capped to `limit` rows (highest count first), every site's together.
 func (s *Store) PathFlows(ctx context.Context, days, limit int) ([]PathFlow, error) {
+	return s.PathFlowsScoped(ctx, ScopeAllDomains, days, limit)
+}
+
+// PathFlowsScoped is PathFlows for one site's visits, or every site's for
+// ScopeAllDomains. A visit is one site's (migration 113), so a site's paths
+// never run into another's.
+func (s *Store) PathFlowsScoped(ctx context.Context, scope string, days, limit int) ([]PathFlow, error) {
 	if days <= 0 {
 		days = 14
 	}
@@ -49,11 +56,12 @@ func (s *Store) PathFlows(ctx context.Context, days, limit int) ([]PathFlow, err
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
 
 	// Ordered by session then time so consecutive rows form each visitor's path.
+	clause, carg := domainClause(scope)
 	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT session_id, url_path FROM analytics_pageviews
-		 WHERE created_at>=? AND event_type=1
+		 WHERE created_at>=? AND event_type=1`+clause+`
 		 ORDER BY session_id, created_at, id
-		 LIMIT ?`, from, maxJourneyRows)
+		 LIMIT ?`, append(append([]any{from}, carg...), maxJourneyRows)...)
 	if err != nil {
 		return nil, err
 	}

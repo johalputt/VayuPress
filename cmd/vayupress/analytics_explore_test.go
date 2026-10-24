@@ -75,9 +75,18 @@ func TestASitesExplorerCountsItsOwnTraffic(t *testing.T) {
 			t.Errorf("site one's Explorer has no %q", want)
 		}
 	}
-	all := explorePage(t, a, "/os/analytics/explore?metric=views&days=7", nil).Body.String()
-	if !strings.Contains(all, ">5<") {
-		t.Errorf("the install's Explorer does not count every site's 5 views")
+	// One view of the primary's own: its Explorer counts that alone, and
+	// Platform's every site's six.
+	if _, err := dbpkg.DB.Exec(`INSERT INTO analytics_sessions(id,visitor_id,domain_id,created_at,last_at,events,views,landing) VALUES('v0','r0','',datetime('now'),datetime('now'),1,1,'/home');
+		INSERT INTO analytics_pageviews(id,session_id,url_path,event_type,domain_id,created_at,visitor_id) VALUES('p0','v0','/home',1,'',datetime('now'),'r0')`); err != nil {
+		t.Fatal(err)
+	}
+	if own := explorePage(t, a, "/os/analytics/explore?metric=views&by=path&days=7", nil).Body.String(); !strings.Contains(own, "<td>/home</td><td>1</td>") || strings.Contains(own, "<td>/a</td>") {
+		t.Errorf("the primary's Explorer does not count its own one view alone")
+	}
+	all := explorePage(t, a, "/os/platform/analytics/explore?metric=views&days=7", nil).Body.String()
+	if !strings.Contains(all, ">6<") || !strings.Contains(all, "Explorer, every site") {
+		t.Errorf("Platform's Explorer does not count every site's 6 views, named as every site's")
 	}
 	ch := explorePage(t, a, "/os/d/s1/analytics/explore?metric=views&by=channel&days=7&fd=path&fo=is&fv=/a&fd=&fo=is&fv=", &one).Body.String()
 	for _, want := range []string{"<td>Organic search</td><td>1</td>", "<td>Direct</td><td>2</td>", `where page is &#34;/a&#34;`} {
@@ -141,14 +150,14 @@ func TestTheExplorersCacheIsBounded(t *testing.T) {
 	}
 }
 
-// Opened from the rail, the Explorer asks page views by page; the form's
-// "Nothing" is the total alone.
+// Opened with no question, the Explorer asks page views by page; the form's
+// "Nothing" is the total alone. Platform's, whose rows are both sites'.
 func TestTheExplorerOpensOnViewsByPage(t *testing.T) {
 	a := exploreApp(t)
-	if body := explorePage(t, a, "/os/analytics/explore", nil).Body.String(); !strings.Contains(body, "<td>/a</td><td>4</td>") {
+	if body := explorePage(t, a, "/os/platform/analytics/explore", nil).Body.String(); !strings.Contains(body, "<td>/a</td><td>4</td>") {
 		t.Errorf("the Explorer does not open on views by page")
 	}
-	if body := explorePage(t, a, "/os/analytics/explore?metric=views&by=&days=30", nil).Body.String(); strings.Contains(body, "By page") || !strings.Contains(body, ">5<") {
+	if body := explorePage(t, a, "/os/platform/analytics/explore?metric=views&by=&days=30", nil).Body.String(); strings.Contains(body, "By page") || !strings.Contains(body, ">5<") {
 		t.Errorf("an empty split is not the total alone")
 	}
 }

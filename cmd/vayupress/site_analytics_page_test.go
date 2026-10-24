@@ -10,6 +10,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/analytics"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/domain"
 	vasession "github.com/johalputt/vayupress/internal/vayuanalytics/session"
 )
 
@@ -34,7 +35,7 @@ func TestASitesAnalyticsIsThatSitesAlone(t *testing.T) {
 	collect("s1", "198.51.100.2", "/s1-landing", "")
 	collect("s2", "198.51.100.3", "/s2-only-page", "https://s2-referrer.example/")
 
-	one := a.renderSiteAnalyticsBody(ctx, "s1", "one.test", 30, "last 30 days")
+	one := a.renderSiteAnalyticsBody(ctx, hostedView(domain.Domain{ID: "s1"}), "one.test", 30, "last 30 days")
 	for _, want := range []string{"2 visitors to one.test", "/s1-landing", "news.ycombinator.com", "Landing pages", "What readers&#39; browsers measured"} {
 		if !strings.Contains(one, want) {
 			t.Errorf("site one's page has no %q", want)
@@ -50,7 +51,7 @@ func TestASitesAnalyticsIsThatSitesAlone(t *testing.T) {
 	if !strings.Contains(landing, "/s1-landing") || strings.Contains(landing, "s2-only-page") {
 		t.Errorf("site one's landing pages are not its own:\n%s", landing)
 	}
-	two := a.renderSiteAnalyticsBody(ctx, "s2", "two.test", 30, "last 30 days")
+	two := a.renderSiteAnalyticsBody(ctx, hostedView(domain.Domain{ID: "s2"}), "two.test", 30, "last 30 days")
 	if !strings.Contains(two, "1 visitor to two.test") || strings.Contains(two, "s1-landing") {
 		t.Errorf("site two's page is not site two's alone")
 	}
@@ -70,7 +71,7 @@ func siteAnalyticsPage(t *testing.T, site string, paths ...string) string {
 			t.Fatal(err)
 		}
 	}
-	return a.renderSiteAnalyticsBody(context.Background(), site, "customer.example", 30, "last 30 days")
+	return a.renderSiteAnalyticsBody(context.Background(), hostedView(domain.Domain{ID: site}), "customer.example", 30, "last 30 days")
 }
 
 // The page is an overview in the console's page grammar, as the install's
@@ -107,7 +108,7 @@ func TestASitesLivePanelPollsThatSite(t *testing.T) {
 	st := analytics.New(dbpkg.DB)
 	st.UseVisits(vasession.NewMasterHasher([]byte("live")))
 	a := &App{analytics: st}
-	page := a.renderSiteAnalyticsBody(context.Background(), "s1", "one.test", 30, "last 30 days")
+	page := a.renderSiteAnalyticsBody(context.Background(), hostedView(domain.Domain{ID: "s1"}), "one.test", 30, "last 30 days")
 	if !strings.Contains(page, `data-live-src="/os/d/s1/analytics/realtime"`) {
 		t.Errorf("site one's live panel does not poll site one:\n%s", page)
 	}

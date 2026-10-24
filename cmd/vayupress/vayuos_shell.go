@@ -112,6 +112,9 @@ var saClearnetApps = []saApp{
 		{Label: "Storage", Href: "/os/storage", Icon: "disk"},
 		{Label: "Power", Href: "/os/power", Icon: "power"},
 		{Label: "Monitoring", Href: "/os/monitoring", Icon: "pulse"},
+		// Every site's readers added up: the one place they meet, which only
+		// an administrator opens (the "platform" area).
+		{Label: "Every site's analytics", Href: platformAnalyticsBase, Icon: "chart"},
 		{Label: "VayuFlow", Href: "/os/vayuflow", Icon: "flow"},
 		{Label: "Faults", Href: "/os/faults", Icon: "warn", Group: "Diagnostics"},
 		{Label: "Topology", Href: "/os/topology", Icon: "topology"},
@@ -173,6 +176,7 @@ var saNavApp = map[string]string{
 	"shield": "shield", "vayuveil": "shield", "security": "shield",
 	"operations": "system", "system": "system", "storage": "system", "update": "system", "monitoring": "system", "governance": "system",
 	"vayuflow": "system", "modes": "system", "faults": "system", "topology": "system", "replay": "system", "adr": "system",
+	"platform": "system",
 	"settings": "settings", "tools": "settings", "apikeys": "settings", "connector": "settings", "claudecode": "settings",
 	"buzz": "settings", "profile": "settings", "spaces": "settings",
 }

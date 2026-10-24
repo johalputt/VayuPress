@@ -138,6 +138,10 @@ func osPathMinLevel(path string) int {
 		// tunables. That is a map of the machine, so it sits with the other
 		// infrastructure surfaces rather than being readable by an author.
 		"vayuveil",
+		// Platform is the install's own administration: its Analytics adds up
+		// every site it serves, hosted customers' readers among them, which
+		// only an administrator reads. Each site's own figures are its page.
+		"platform",
 	}
 	// "optimize" is the hub that fronts SEO / Analytics / VayuShield / Theme Studio
 	// / Theme Store; it opens at editor level (its editor-safe cards) and hides the
@@ -180,6 +184,15 @@ func osPathMinLevel(path string) int {
 
 	for _, a := range adminAreas {
 		if osPathInArea(path, a) {
+			return accessAdmin
+		}
+	}
+	// The install-wide analytics API is Platform's: its live panel, exports
+	// and alerts count every site. The "analytics" editor area below matches
+	// /os/api/analytics/*, so these are named before it; the primary site's
+	// own are under /os/analytics, at its page's level.
+	for _, p := range []string{"/os/api/analytics/realtime", "/os/api/analytics/export", "/os/api/analytics/alerts"} {
+		if strings.HasPrefix(path, p) {
 			return accessAdmin
 		}
 	}

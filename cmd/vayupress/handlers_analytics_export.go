@@ -63,7 +63,10 @@ func (a *App) handleAnalyticsParquetExport(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-// handleAnalyticsExport serves GET /api/v1/analytics/export?report=&format=&days=
+// handleAnalyticsExport serves GET {view}/export?report=&format=&days=: a
+// site's reports from its own page (/os/analytics/export for the primary,
+// /os/d/{id}/analytics/export for a hosted site), every site's from Platform
+// and from /api/v1/analytics/export.
 //
 // format is "csv" (default) or "json". The response carries a Content-Disposition
 // attachment header so browsers download it as a file.
@@ -72,10 +75,11 @@ func (a *App) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "analytics-disabled", "Analytics not initialised", "")
 		return
 	}
-	// Exports are install-wide today. A domain-scoped key (migration 092) may
-	// not read aggregates that blend other domains' traffic, so it is refused
-	// here until exports grow a per-domain filter.
-	if ki, isKey := auth.KeyInfoFromContext(r.Context()); isKey && ki.DomainID != "" {
+	v := viewOf(r)
+	// A domain-scoped key (migration 092) reads its own site alone: the
+	// hosted pages' middleware has already held it to its site, and the
+	// primary's reports and every site's are not it.
+	if ki, isKey := auth.KeyInfoFromContext(r.Context()); isKey && ki.DomainID != "" && !v.hosted {
 		writeAPIError(w, r, http.StatusForbidden, "key-scope-mismatch",
 			"domain-scoped API keys cannot read install-wide exports", "")
 		return
@@ -91,7 +95,7 @@ func (a *App) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
 	}
 	days := queryInt(r, "days", 30)
 
-	header, rows, payload, err := a.buildAnalyticsExport(r, report, days)
+	header, rows, payload, err := a.buildAnalyticsExport(r, v, report, days)
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "validation_error", err.Error(), "")
 		return
@@ -119,19 +123,20 @@ func (a *App) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
 
 // buildAnalyticsExport returns the CSV header + rows and an equivalent JSON
 // payload for the named report. It returns an error for an unknown report.
-func (a *App) buildAnalyticsExport(r *http.Request, report string, days int) (header []string, rows [][]string, payload interface{}, err error) {
+func (a *App) buildAnalyticsExport(r *http.Request, v analyticsView, report string, days int) (header []string, rows [][]string, payload interface{}, err error) {
 	ctx := r.Context()
 	switch report {
 	case "overview":
-		ov, e := a.analytics.OverviewSince(ctx, days)
+		ov, e := a.analytics.OverviewSinceScoped(ctx, v.scope, days)
 		if e != nil {
 			return nil, nil, nil, e
 		}
 		header = []string{"metric", "value"}
 		// Ladder rule (2025 plan Wave 4): beyond the cutoff, uniques merge
 		// daily HLL sketches — O(days) unions instead of a raw-table scan.
+		// The sketches are kept for the install, not per site.
 		uniques := ov.UniqueVisitors
-		if days > analytics.RollupRawCutoffDays {
+		if days > analytics.RollupRawCutoffDays && v.all() {
 			from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
 			to := time.Now().UTC().Format("2006-01-02")
 			if u64, e := a.analytics.RollupUniques(ctx, from, to); e == nil && u64 > 0 {
@@ -148,7 +153,7 @@ func (a *App) buildAnalyticsExport(r *http.Request, report string, days int) (he
 		return header, rows, ov, nil
 
 	case "pages":
-		items, e := a.analytics.TopPages(ctx, days, queryInt(r, "limit", 200))
+		items, e := a.analytics.TopPagesScoped(ctx, v.scope, days, queryInt(r, "limit", 200))
 		if e != nil {
 			return nil, nil, nil, e
 		}
@@ -159,7 +164,7 @@ func (a *App) buildAnalyticsExport(r *http.Request, report string, days int) (he
 		return header, rows, items, nil
 
 	case "referrers":
-		items, e := a.analytics.TopReferrers(ctx, days, queryInt(r, "limit", 200))
+		items, e := a.analytics.TopReferrersScoped(ctx, v.scope, days, queryInt(r, "limit", 200))
 		if e != nil {
 			return nil, nil, nil, e
 		}
@@ -170,7 +175,7 @@ func (a *App) buildAnalyticsExport(r *http.Request, report string, days int) (he
 		return header, rows, items, nil
 
 	case "browsers", "devices", "os":
-		items, e := audienceFor(ctx, a.analytics, report, days)
+		items, e := audienceFor(ctx, a.analytics, v.scope, report, days)
 		if e != nil {
 			return nil, nil, nil, e
 		}
@@ -181,7 +186,7 @@ func (a *App) buildAnalyticsExport(r *http.Request, report string, days int) (he
 		return header, rows, items, nil
 
 	case "countries", "regions", "cities":
-		items, e := audienceFor(ctx, a.analytics, report, days)
+		items, e := audienceFor(ctx, a.analytics, v.scope, report, days)
 		if e != nil {
 			return nil, nil, nil, e
 		}
@@ -192,7 +197,7 @@ func (a *App) buildAnalyticsExport(r *http.Request, report string, days int) (he
 		return header, rows, items, nil
 
 	case "utm":
-		items, e := a.analytics.UTMStats(ctx, days)
+		items, e := a.analytics.UTMStatsScoped(ctx, v.scope, days)
 		if e != nil {
 			return nil, nil, nil, e
 		}
@@ -203,7 +208,7 @@ func (a *App) buildAnalyticsExport(r *http.Request, report string, days int) (he
 		return header, rows, items, nil
 
 	case "events":
-		items, e := a.analytics.CustomEvents(ctx, days)
+		items, e := a.analytics.CustomEventsScoped(ctx, v.scope, days)
 		if e != nil {
 			return nil, nil, nil, e
 		}
@@ -214,7 +219,7 @@ func (a *App) buildAnalyticsExport(r *http.Request, report string, days int) (he
 		return header, rows, items, nil
 
 	case "sessions":
-		items, e := a.analytics.RecentSessions(ctx, days, queryInt(r, "limit", 500))
+		items, e := a.analytics.RecentSessionsScoped(ctx, v.scope, days, queryInt(r, "limit", 500))
 		if e != nil {
 			return nil, nil, nil, e
 		}
@@ -225,7 +230,7 @@ func (a *App) buildAnalyticsExport(r *http.Request, report string, days int) (he
 		return header, rows, items, nil
 
 	case "goals":
-		items, e := a.analytics.GoalResults(ctx, days)
+		items, e := a.analytics.GoalResultsOver(ctx, v.defs, v.scope, days)
 		if e != nil {
 			return nil, nil, nil, e
 		}
@@ -236,7 +241,7 @@ func (a *App) buildAnalyticsExport(r *http.Request, report string, days int) (he
 		return header, rows, items, nil
 
 	case "journey":
-		items, e := a.analytics.PathFlows(ctx, days, queryInt(r, "limit", 100))
+		items, e := a.analytics.PathFlowsScoped(ctx, v.scope, days, queryInt(r, "limit", 100))
 		if e != nil {
 			return nil, nil, nil, e
 		}
@@ -249,20 +254,11 @@ func (a *App) buildAnalyticsExport(r *http.Request, report string, days int) (he
 	return nil, nil, nil, fmt.Errorf("unknown report %q", report)
 }
 
-// audienceFor dispatches to the correct audience breakdown by report name.
-func audienceFor(ctx context.Context, store *analytics.Store, report string, days int) ([]analytics.AudienceStat, error) {
-	switch report {
-	case "browsers":
-		return store.Browsers(ctx, days)
-	case "devices":
-		return store.Devices(ctx, days)
-	case "countries":
-		return store.Countries(ctx, days)
-	case "regions":
-		return store.Regions(ctx, days)
-	case "cities":
-		return store.Cities(ctx, days)
-	default:
-		return store.OperatingSystems(ctx, days)
+// audienceFor is the audience breakdown a report names, for scope.
+func audienceFor(ctx context.Context, store *analytics.Store, scope, report string, days int) ([]analytics.AudienceStat, error) {
+	col := map[string]string{"browsers": "browser", "devices": "device", "countries": "country", "regions": "region", "cities": "city"}[report]
+	if col == "" {
+		col = "os"
 	}
+	return store.AudienceScoped(ctx, scope, col, days)
 }

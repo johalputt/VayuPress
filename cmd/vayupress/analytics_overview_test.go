@@ -22,7 +22,7 @@ func TestAnalyticsIsAnOverviewWithItsSectionsLaidOpen(t *testing.T) {
 		t.Fatal("the report did not render")
 	}
 	for _, want := range []string{`data-page-kind="overview"`, `<div data-period><nav class="seg-filter" aria-label="Period">`,
-		`is-active" aria-current="page" href="/os/analytics?days=30">30 days`, "data-live-count",
+		`is-active" aria-current="page" href="/os/platform/analytics?days=30">30 days`, "data-live-count",
 		">Top pages<", ">Referrers<", ">Where they are<", ">Goals<", ">Journeys<", ">Export<",
 		`data-sheet="goal-new"`, `<dialog class="sa-sheet" id="goal-new"`} {
 		if !strings.Contains(page, want) {

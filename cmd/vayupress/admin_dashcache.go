@@ -173,15 +173,15 @@ func (a *App) refreshAnalyticsReports() {
 
 // refreshSiteAnalytics rebuilds every cached window of one site's Analytics,
 // after a change the page shows (a goal added or removed).
-func (a *App) refreshSiteAnalytics(site, host string) {
-	prefix := "site-analytics:" + site + ":"
+func (a *App) refreshSiteAnalytics(v analyticsView, host string) {
+	prefix := siteAnalyticsPrefix(v)
 	for _, key := range adminDash.keys(prefix) {
 		days, err := strconv.Atoi(strings.TrimPrefix(key, prefix))
 		if err != nil {
 			continue
 		}
 		label := analyticsLabelForDays(days)
-		adminDash.warm(key, func(ctx context.Context) string { return a.renderSiteAnalyticsBody(ctx, site, host, days, label) })
+		adminDash.warm(key, func(ctx context.Context) string { return a.renderSiteAnalyticsBody(ctx, v, host, days, label) })
 	}
 }
 
@@ -196,6 +196,10 @@ func (a *App) startDashboardWarmer(done <-chan struct{}) {
 			label := analyticsLabelForDays(30)
 			adminDash.warm("analytics:30", func(ctx context.Context) string {
 				return a.renderAnalyticsBody(ctx, 30, label)
+			})
+			host := a.primaryHost(context.Background())
+			adminDash.warm(siteAnalyticsKey(primaryView, 30), func(ctx context.Context) string {
+				return a.renderSiteAnalyticsBody(ctx, primaryView, host, 30, label)
 			})
 			adminDash.warm(homeVisitorsKey, a.renderHomeVisitors)
 		}

@@ -55,10 +55,13 @@ func (a *App) startAlerts(done <-chan struct{}) {
 	}()
 }
 
-// alertHosts is each hosted site's host by id; only those sites' alerts are
-// counted, so a removed site's alerts stop.
-func (a *App) alertHosts(ctx context.Context) map[string]string {
-	hosts := map[string]string{}
+// siteHosts is each site's host by the id its visits are recorded with, ""
+// the primary's: the sites alerts are counted for, so a removed site's stop,
+// and the sites Platform breaks its figures into.
+func (a *App) siteHosts(ctx context.Context) map[string]string {
+	// The primary's own alerts are kept with site "", the value its visits
+	// are recorded with.
+	hosts := map[string]string{"": a.primaryHost(ctx)}
 	if a.domains == nil {
 		return hosts
 	}
@@ -76,7 +79,7 @@ func (a *App) alertHosts(ctx context.Context) map[string]string {
 
 // checkAlerts runs every alert once and wakes the bells when one fired.
 func (a *App) checkAlerts(ctx context.Context) {
-	hosts := a.alertHosts(ctx)
+	hosts := a.siteHosts(ctx)
 	fired, err := a.alerts.Check(ctx, func(site string) bool { _, ok := hosts[site]; return ok }, a.mailAlert(hosts))
 	if err != nil {
 		logging.LogInfo("alerts", "check stopped: "+err.Error())
@@ -102,8 +105,11 @@ func alertWhere(site string, hosts map[string]string) string {
 
 // alertPage is the console page that lists site's alerts.
 func alertPage(site string) string {
-	if site == alerts.Install {
-		return "/os/analytics#alerts"
+	switch site {
+	case alerts.Install:
+		return platformAnalyticsBase + "#alerts"
+	case "":
+		return primaryAnalyticsBase + "#alerts"
 	}
 	return "/os/d/" + site + "/analytics#alerts"
 }
@@ -137,7 +143,7 @@ func (a *App) alertNotices(ctx context.Context) []osNotification {
 	if err != nil || len(unseen) == 0 {
 		return nil
 	}
-	hosts := a.alertHosts(ctx)
+	hosts := a.siteHosts(ctx)
 	out := make([]osNotification, 0, len(unseen))
 	for _, u := range unseen {
 		if _, ok := hosts[u.Site]; !ok && u.Site != alerts.Install {
@@ -150,8 +156,8 @@ func (a *App) alertNotices(ctx context.Context) []osNotification {
 }
 
 // alertScope is the scope a request to the alerts' API acts on: the URL's
-// hosted site under /os/d/{id}, else the install's. It answers the refusal
-// itself.
+// hosted site under /os/d/{id}, the primary's under /os/analytics, else every
+// site's. It answers the refusal itself.
 func (a *App) alertScope(w http.ResponseWriter, r *http.Request) (string, bool) {
 	if !a.isAdminRequest(r) {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
@@ -162,7 +168,7 @@ func (a *App) alertScope(w http.ResponseWriter, r *http.Request) (string, bool) 
 		return "", false
 	}
 	if !strings.HasPrefix(r.URL.Path, "/os/d/") {
-		return alerts.Install, true
+		return viewOf(r).alert, true
 	}
 	d, ok := osScopedDomain(r)
 	if !ok || d.IsPrimary {

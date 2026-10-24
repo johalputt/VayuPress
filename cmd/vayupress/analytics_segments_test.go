@@ -77,14 +77,14 @@ func TestASegmentIsSavedForItsSiteAndApplied(t *testing.T) {
 func TestTheAnalyticsPageListsSegments(t *testing.T) {
 	a := exploreApp(t)
 	ctx := context.Background()
-	if empty := a.osSegmentsSection(ctx, "s1", "/os/d/s1/analytics/explore", 7); !strings.Contains(empty, "No segments yet") {
+	if empty := a.osSegmentsSection(ctx, hostedView(domain.Domain{ID: "s1"}), 7); !strings.Contains(empty, "No segments yet") {
 		t.Errorf("no segments is not said")
 	}
 	id, err := a.analytics.CreateSegment(ctx, "s1", "Mobile", []analytics.ExploreFilter{{Dim: "device", Op: analytics.FilterIs, Value: "mobile"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := a.osSegmentsSection(ctx, "s1", "/os/d/s1/analytics/explore", 7)
+	got := a.osSegmentsSection(ctx, hostedView(domain.Domain{ID: "s1"}), 7)
 	for _, want := range []string{`href="/os/d/s1/analytics/explore?seg=` + id + `&amp;metric=visitors&amp;by=day&amp;days=7">Mobile</a>`,
 		`device is &#34;mobile&#34;`, "<td>1</td><td>50%</td>"} {
 		if !strings.Contains(got, want) {

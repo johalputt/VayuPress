@@ -2,10 +2,28 @@
 
 Every figure the console shows is defined here, once, and computed by one
 function for every page that shows it (`overviewWindow` in
-`internal/analytics/extended.go`): the install's Analytics, a site's own
-Analytics, Home, the period comparison and the export read the same
+`internal/analytics/extended.go`): a site's own Analytics, every site's
+together, Home, the period comparison and the export read the same
 definition. `internal/analytics/accuracy_contract_test.go` holds a day of known
 events and the figures below must come out of it exactly.
+
+## Whose figures
+
+Each site has its own Analytics, which counts its own visits alone: the
+install's own site at Audience › Analytics (`/os/analytics`), which an editor
+may read, and each hosted site's, opened from Site › Domains
+(`/os/d/{id}/analytics`), an administrator's. Each page exports its own
+reports. Home's visitors are the
+install's own site's.
+
+Every site added together is one page, System › Every site's analytics
+(`/os/platform/analytics`), and only an administrator opens it: it holds
+hosted customers' readers beside the install's own. It says so in its name,
+and its first section is what each site adds, linking to each site's own
+page. Its live panel, exports and alerts are the install-wide ones under
+`/os/api/analytics`, an administrator's too. The access rule is
+`osPathMinLevel` (`cmd/vayupress/handlers_auth.go`) and the test that holds
+it is `analytics_platform_test.go`.
 
 ## What is recorded
 
@@ -71,9 +89,12 @@ report. A host is matched by its labels and domain, never as a substring:
 
 **Conversion.** A custom event, or a page view of a goal's path, counted
 against the visitors of the same range. A goal or funnel belongs to a site: one
-made on a site's own Analytics counts that site's traffic alone, and the
-install's goals and funnels count every site's. A funnel counts visits, each
-walked through its steps in order.
+made on a hosted site's Analytics counts that site's traffic alone. The
+install's own goals and segments, made on its Analytics or on every site's,
+are listed on both: counted over the install's own site's visits on its page,
+and over every site's on every site's page. The install's funnels are read
+through the API, over every site's visits. A funnel counts visits,
+each walked through its steps in order.
 
 **Search.** A search made from a site's search page, recorded by the server
 as it answers: the query and how many results it found. It is an event, not a
@@ -202,7 +223,8 @@ with every value it shows and the total.
 ## Alerts
 
 An alert counts one figure over the last 5 minutes to 1 day, once a minute,
-for one hosted site or for the whole install. It fires when the count is
+for one site (the install's own, or a hosted one, on that site's Analytics)
+or for every site together (on every site's Analytics). It fires when the count is
 above its threshold, or below it, and then waits out its cooldown before it
 may fire again, however long the count stays past the threshold. A firing is
 a line in the console's bell, in the alert's severity, until it is marked

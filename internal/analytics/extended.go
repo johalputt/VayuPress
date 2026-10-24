@@ -688,6 +688,12 @@ type SessionInfo struct {
 
 // RecentSessions returns the most recent sessions.
 func (s *Store) RecentSessions(ctx context.Context, days, limit int) ([]SessionInfo, error) {
+	return s.RecentSessionsScoped(ctx, ScopeAllDomains, days, limit)
+}
+
+// RecentSessionsScoped is RecentSessions for one site's visits, or every
+// site's for ScopeAllDomains.
+func (s *Store) RecentSessionsScoped(ctx context.Context, scope string, days, limit int) ([]SessionInfo, error) {
 	if days <= 0 {
 		days = 7
 	}
@@ -695,8 +701,10 @@ func (s *Store) RecentSessions(ctx context.Context, days, limit int) ([]SessionI
 		limit = 50
 	}
 	from := time.Now().UTC().AddDate(0, 0, -days).Format("2006-01-02")
+	clause, carg := domainClauseOn("s", scope)
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT s.id,s.visitor_id,s.browser,s.os,s.device,s.country,s.created_at,COUNT(p.id) FROM analytics_sessions s LEFT JOIN analytics_pageviews p ON s.id=p.session_id WHERE s.created_at>=? GROUP BY +s.id ORDER BY s.created_at DESC LIMIT ?`, from, limit)
+		`SELECT s.id,s.visitor_id,s.browser,s.os,s.device,s.country,s.created_at,COUNT(p.id) FROM analytics_sessions s LEFT JOIN analytics_pageviews p ON s.id=p.session_id WHERE s.created_at>=?`+clause+` GROUP BY +s.id ORDER BY s.created_at DESC LIMIT ?`,
+		append(append([]any{from}, carg...), limit)...)
 	if err != nil {
 		return nil, err
 	}

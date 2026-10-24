@@ -111,14 +111,14 @@ func TestTheScopeNoteAppearsOnlyWhereItIsTrue(t *testing.T) {
 	if one == "" {
 		t.Fatal("the report did not render")
 	}
-	if strings.Contains(one, `href="/os/domains"`) || strings.Contains(one, "across all") {
+	if strings.Contains(one, "These figures add up all") || strings.Contains(one, "across all") {
 		t.Error("a single-site install carries a caveat that cannot apply to it")
 	}
 	if _, err := dbpkg.DB.Exec(`INSERT INTO domains(id,host,site_type,is_primary,status,created_at,updated_at) VALUES('c','client.example','blog',0,'active',datetime('now'),datetime('now'))`); err != nil {
 		t.Fatal(err)
 	}
 	two := a.renderAnalyticsBody(context.Background(), 30, "30 days")
-	for _, want := range []string{"These figures add up all 2 sites", `<a href="/os/domains">Sites</a>`} {
+	for _, want := range []string{"These figures add up all 2 sites", "Each site's own are its page, linked under Each site."} {
 		if !strings.Contains(two, want) {
 			t.Errorf("an install serving two sites: missing %q", want)
 		}

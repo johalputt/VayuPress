@@ -22,6 +22,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/blockrender"
@@ -718,7 +719,7 @@ func (a *App) buildMCPServer() *mcp.Server {
 			if in.Report == "" {
 				in.Report = "countries"
 			}
-			rows, err := audienceFor(ctx, a.analytics, in.Report, in.Days)
+			rows, err := audienceFor(ctx, a.analytics, analytics.ScopeAllDomains, in.Report, in.Days)
 			if err != nil {
 				return "", err
 			}

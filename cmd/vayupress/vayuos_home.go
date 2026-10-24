@@ -211,15 +211,17 @@ func saHomeVisitorsHead() string {
 		`<span class="section-head__hint">Last ` + strconv.Itoa(saHomeVisitorDays) + ` days</span></div>`
 }
 
-// renderHomeVisitors counts Home's visitor figures, off the request. An empty
-// result is not cached (adminFragmentCache), so a failed count is retried.
+// renderHomeVisitors counts Home's visitor figures, off the request: the
+// primary site's own, as its Analytics page counts them, which an editor may
+// read; every site's together is Platform's. An empty result is not cached
+// (adminFragmentCache), so a failed count is retried.
 func (a *App) renderHomeVisitors(ctx context.Context) string {
 	head := saHomeVisitorsHead()
-	ov, err := a.analytics.OverviewSince(ctx, saHomeVisitorDays)
+	ov, err := a.analytics.OverviewSinceScoped(ctx, primaryView.scope, saHomeVisitorDays)
 	if err != nil || ov == nil {
 		return ""
 	}
-	series, _ := a.analytics.PageviewSeries(ctx, saHomeVisitorDays)
+	series, _ := a.analytics.PageviewSeriesScoped(ctx, primaryView.scope, saHomeVisitorDays)
 	points := make([]int, 0, len(series))
 	for _, d := range series {
 		points = append(points, d.Visitors)

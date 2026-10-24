@@ -124,3 +124,36 @@ func (s *Store) PurgeSite(ctx context.Context, site string, retainDays int) (int
 	}
 	return total, nil
 }
+
+// SiteFigures is one site's page views and visitors over a range.
+type SiteFigures struct {
+	Site     string `json:"site"`
+	Views    int    `json:"views"`
+	Visitors int    `json:"visitors"`
+}
+
+// BySite is every site's page views and visitors over the trailing days,
+// most viewed first: the install's aggregate, broken down into the sites it
+// adds up. The site is grouped through a unary +, so the time index's range is
+// read (console_plans_test.go).
+func (s *Store) BySite(ctx context.Context, days int) ([]SiteFigures, error) {
+	if days <= 0 {
+		days = 30
+	}
+	from := s.now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	rows, err := s.readDB().QueryContext(ctx, `SELECT domain_id, SUM(event_type=1), COUNT(DISTINCT visitor_id)
+		FROM analytics_pageviews WHERE created_at>=? GROUP BY +domain_id ORDER BY 2 DESC, 1`, from)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SiteFigures
+	for rows.Next() {
+		var f SiteFigures
+		if err := rows.Scan(&f.Site, &f.Views, &f.Visitors); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}

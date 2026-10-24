@@ -22,7 +22,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/johalputt/vayupress/internal/alerts"
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
@@ -376,14 +375,19 @@ func computeSEOStats() {
 	seoStatsMu.Unlock()
 }
 
-// handleOSAnalytics renders the privacy-preserving analytics page from the local
-// analytics_daily / analytics_referrers tables.
-func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
+// platformAnalyticsTitle is the aggregate's name: it is every site's, and says
+// so before any figure is read.
+const platformAnalyticsTitle = "Every site's analytics"
+
+// handleOSPlatformAnalytics is Platform › Analytics: every site this install
+// serves, added up, for an administrator (the "platform" area is admin-only).
+// Each site's own figures are its own page; this is the one place they meet.
+func (a *App) handleOSPlatformAnalytics(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 
 	if a.analytics == nil {
-		writeOSHTML(w, r, adminOSLayout(nonce, "Analytics", "analytics", cfg, ui.Overview(ui.OverviewPage{Title: "Analytics"},
+		writeOSHTML(w, r, adminOSLayout(nonce, platformAnalyticsTitle, "platform", cfg, ui.Overview(ui.OverviewPage{Title: platformAnalyticsTitle},
 			ui.Band{Title: "Visitors", Aside: ui.Empty("trend", "Analytics are off", "This install was started without the analytics store.", "")})))
 		return
 	}
@@ -399,14 +403,14 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 		return a.renderAnalyticsBody(ctx, days, periodLabel)
 	})
 	if !ready {
-		frag = string(ui.Overview(ui.OverviewPage{Title: "Analytics", State: ui.Text("Counting the last " + periodLabel), Actions: osPeriodSelector("/os/analytics", days)},
+		frag = string(ui.Overview(ui.OverviewPage{Title: platformAnalyticsTitle, State: ui.Text("Counting the last " + periodLabel), Actions: osPeriodSelector(platformAnalyticsBase, days)},
 			ui.Band{Title: "Visitors", Hint: "Last " + periodLabel, Chart: `<p class="table-empty">This is counted in the background; reload in a few seconds.</p>`}))
 	}
 	// The alerts are read off the request, not the cache, so a change shows
 	// at once.
-	frag += a.alertsSection(r.Context(), alerts.Install, "/os/api/analytics/alerts", cfg.AccessLevel >= accessAdmin, nonce)
+	frag += a.alertsSection(r.Context(), platformView.alert, platformView.alertsAPI(), cfg.AccessLevel >= accessAdmin, nonce)
 	body := frag + "\n" + `<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js?v=` + assetVer("js/admin-os-intel.js") + `"></script>`
-	writeOSHTML(w, r, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, platformAnalyticsTitle, "platform", cfg, htmpl.HTML(body)))
 }
 
 // renderAnalyticsBody builds Analytics as the Overview kind (fidelity plan):
@@ -420,7 +424,7 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 	if err != nil {
 		return ""
 	}
-	page := ui.OverviewPage{Title: "Analytics", Actions: osPeriodSelector("/os/analytics", days) + exploreButton("/os/analytics/explore", days)}
+	page := ui.OverviewPage{Title: platformAnalyticsTitle, Actions: osPeriodSelector(platformAnalyticsBase, days) + exploreButton(platformAnalyticsBase+"/explore", days)}
 	sites, scope := a.analyticsScopeNote(ctx)
 	if sum == nil {
 		page.State = ui.Text("No visits recorded yet")
@@ -482,28 +486,14 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 	for _, h := range sum.Referrers {
 		refBars = append(refBars, osChartBar{Label: h.Host, Value: int(h.Hits)})
 	}
-	utmSourceBars := make([]osChartBar, 0, len(utm))
-	utmRows := ""
-	for _, u := range utm {
-		src := u.Source
-		if src == "" {
-			src = "(direct)"
-		}
-		utmSourceBars = append(utmSourceBars, osChartBar{Label: src, Value: u.Count})
-		utmRows += `<tr><td class="post-row__name">` + html.EscapeString(src) + `</td><td>` + html.EscapeString(u.Medium) + `</td><td>` + html.EscapeString(u.Campaign) + `</td><td>` + strconv.Itoa(u.Count) + `</td></tr>`
-	}
-	campaigns := `<p class="table-empty">No campaign traffic yet. Tag the links you share with <code>utm_source</code>, <code>utm_medium</code> and <code>utm_campaign</code> to see which bring visitors.</p>`
-	if utmRows != "" {
-		campaigns = analyticsCols(
-			analyticsPanel("Sources", bars(utmSourceBars, osShareHidden(), "")),
-			analyticsPanel("Campaigns", `<div class="table-wrap"><table class="table"><thead><tr><th>Source</th><th>Medium</th><th>Campaign</th><th>Hits</th></tr></thead><tbody>`+utmRows+`</tbody></table></div>`))
-	}
+	campaigns := osCampaigns(utm)
 	eventBars := make([]osChartBar, 0, len(events))
 	for _, e := range events {
 		eventBars = append(eventBars, osChartBar{Label: e.Name, Value: e.Count})
 	}
 
 	sections := []ui.HTML{
+		ui.HTML(a.osEachSiteSection(ctx, days)),
 		ui.HTML(analyticsCols(
 			string(ui.Section("Top pages", "", ui.HTML(bars(pageBars, osShareOf(int(sum.TotalViews)), "No page views recorded yet."))))+"",
 			string(ui.Section("Referrers", "", ui.HTML(bars(refBars, osShareOf(int(sum.TotalReferrals)), "No links from other sites yet.")))))),
@@ -518,13 +508,13 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 		ui.Section("Events", "What you track with data-vp-event or VayuPress.track()",
 			ui.HTML(bars(eventBars, osShareHidden(), "No custom events yet."))),
 		ui.HTML(a.osSearchesSection(ctx, analytics.ScopeAllDomains, days)),
-		ui.HTML(a.osGoalsSection(ctx, days)),
-		ui.HTML(a.osSegmentsSection(ctx, analytics.ScopeAllDomains, "/os/analytics/explore", days)),
-		ui.HTML(a.osBehaviourSection(ctx, analytics.ScopeAllDomains, "/os/analytics/explore", days)),
-		ui.HTML(a.osContentSection(ctx, analytics.ScopeAllDomains, "/os/analytics/explore", days)),
+		ui.HTML(a.osGoalsSectionOf(ctx, platformView, days)),
+		ui.HTML(a.osSegmentsSection(ctx, platformView, days)),
+		ui.HTML(a.osBehaviourSection(ctx, analytics.ScopeAllDomains, platformAnalyticsBase+"/explore", days)),
+		ui.HTML(a.osContentSection(ctx, analytics.ScopeAllDomains, platformAnalyticsBase+"/explore", days)),
 		ui.HTML(a.osPerformanceSection(ctx, analytics.ScopeAllDomains, days)),
-		ui.HTML(a.osJourneySection(ctx, days)),
-		ui.HTML(osExportSection(days)),
+		ui.HTML(a.osJourneySection(ctx, analytics.ScopeAllDomains, days)),
+		ui.HTML(osExportSection("/os/api/analytics/export", days)),
 		ui.Explain(ui.HTML(`<p>Everything here is counted and kept on this server: no cookies, no personal data, and no request to anyone else. A visitor is recognised within a day by a salted hash that changes daily, so nobody can be followed from one day to the next.</p>`)),
 	}
 	return string(ui.Overview(page, ui.Band{Title: "Visitors", Hint: "Last " + periodLabel, Figures: figs, Chart: chart + scope,
@@ -568,7 +558,7 @@ func (a *App) analyticsScopeNote(ctx context.Context) (int, ui.HTML) {
 		return len(list), ""
 	}
 	return len(list), ui.HTML(`<p class="settings-row-hint">These figures add up all ` + strconv.Itoa(len(list)) +
-		` sites this install serves. For one site on its own, open it from <a href="/os/domains">Sites</a> and use its own Visitors page, which counts that hostname alone.</p>`)
+		` sites this install serves. Each site's own are its page, linked under Each site.</p>`)
 }
 
 // analyticsChange says how a figure moved against the window before it, in
@@ -743,16 +733,12 @@ func osGeoSetupNote(full bool) string {
 </div>`
 }
 
-// osGoalsSection renders the conversion-goals card: a create form, plus a table
-// of each goal's completions and conversion rate over the selected window.
-func (a *App) osGoalsSection(ctx context.Context, days int) string {
-	return a.osGoalsSectionScoped(ctx, analytics.ScopeAllDomains, "/os/api/analytics/goals", days)
-}
-
-// osGoalsSectionScoped is the Goals section for scope's goals, whose form and
-// Delete buttons write to base (the install's goals API, or one site's).
-func (a *App) osGoalsSectionScoped(ctx context.Context, scope, base string, days int) string {
-	results, _ := a.analytics.GoalResultsScoped(ctx, scope, days)
+// osGoalsSectionOf is the Goals section for v: its goals counted over its
+// visits, with a create form, whose form and Delete buttons write to v's
+// goals API (the install's, or a hosted site's).
+func (a *App) osGoalsSectionOf(ctx context.Context, v analyticsView, days int) string {
+	base := v.goalsAPI()
+	results, _ := a.analytics.GoalResultsOver(ctx, v.defs, v.scope, days)
 	rows := `<tr><td colspan="6" class="muted">` + noGoalsYet + `</td></tr>`
 	if len(results) > 0 {
 		rows = ""
@@ -840,8 +826,8 @@ func goalKindLabel(kind string) string {
 }
 
 // osJourneySection renders the top page-to-page transitions (visitor journey).
-func (a *App) osJourneySection(ctx context.Context, days int) string {
-	flows, _ := a.analytics.PathFlows(ctx, days, 25)
+func (a *App) osJourneySection(ctx context.Context, scope string, days int) string {
+	flows, _ := a.analytics.PathFlowsScoped(ctx, scope, days, 25)
 	body := `<p class="table-empty">Once visitors read more than one page in a visit, their most common paths show here.</p>`
 	if len(flows) > 0 {
 		rows := ""
@@ -853,9 +839,62 @@ func (a *App) osJourneySection(ctx context.Context, days int) string {
 	return string(ui.Section("Journeys", "(entry) is where a visit begins, (exit) where it ends", ui.HTML(body)))
 }
 
+// osEachSiteSection is what each site adds to Platform's figures: its page
+// views and visitors over the period, its share of the views, and the way to
+// its own page. A site removed from the registry keeps its rows until the
+// purge, and is named as removed rather than dropped from the sum.
+func (a *App) osEachSiteSection(ctx context.Context, days int) string {
+	figs, err := a.analytics.BySite(ctx, days)
+	if err != nil {
+		return string(ui.Section("Each site", "", ui.Callout("danger", ui.Text("Not counted: "+err.Error()))))
+	}
+	hosts := a.siteHosts(ctx)
+	total := 0
+	for _, f := range figs {
+		total += f.Views
+	}
+	rows := make([][]ui.HTML, 0, len(figs))
+	d := "?days=" + strconv.Itoa(days)
+	for _, f := range figs {
+		name := ui.Text("A removed site")
+		if h, ok := hosts[f.Site]; ok {
+			href := "/os/d/" + f.Site + "/analytics" + d
+			if f.Site == "" {
+				href = primaryAnalyticsBase + d
+			}
+			name = ui.HTML(`<a href="` + html.EscapeString(href) + `">` + html.EscapeString(h) + `</a>`)
+		}
+		rows = append(rows, []ui.HTML{name, ui.Text(strconv.Itoa(f.Visitors)), ui.Text(strconv.Itoa(f.Views)), ui.HTML(osShareLabel(f.Views, total))})
+	}
+	return string(ui.Section("Each site", "What each adds to these figures; open one for its own",
+		ui.Table([]string{"Site", "Visitors", "Page views", "Share of views"}, rows, "No visits recorded yet.")))
+}
+
+// osCampaigns is the campaigns a period's tagged links brought: their
+// sources as bars, and each source, medium and campaign with its hits.
+func osCampaigns(utm []analytics.UTMStat) string {
+	utmSourceBars := make([]osChartBar, 0, len(utm))
+	utmRows := ""
+	for _, u := range utm {
+		src := u.Source
+		if src == "" {
+			src = "(direct)"
+		}
+		utmSourceBars = append(utmSourceBars, osChartBar{Label: src, Value: u.Count})
+		utmRows += `<tr><td class="post-row__name">` + html.EscapeString(src) + `</td><td>` + html.EscapeString(u.Medium) + `</td><td>` + html.EscapeString(u.Campaign) + `</td><td>` + strconv.Itoa(u.Count) + `</td></tr>`
+	}
+	out := `<p class="table-empty">No campaign traffic yet. Tag the links you share with <code>utm_source</code>, <code>utm_medium</code> and <code>utm_campaign</code> to see which bring visitors.</p>`
+	if utmRows != "" {
+		out = analyticsCols(
+			analyticsPanel("Sources", osBarList(utmSourceBars, osShareHidden(), "")),
+			analyticsPanel("Campaigns", `<div class="table-wrap"><table class="table"><thead><tr><th>Source</th><th>Medium</th><th>Campaign</th><th>Hits</th></tr></thead><tbody>`+utmRows+`</tbody></table></div>`))
+	}
+	return out
+}
+
 // osExportSection renders download links for every report in CSV and JSON over
 // the selected window.
-func osExportSection(days int) string {
+func osExportSection(href string, days int) string {
 	labels := map[string]string{
 		"overview": "Overview", "pages": "Top pages", "referrers": "Referrers",
 		"browsers": "Browsers", "devices": "Devices", "os": "Operating systems",
@@ -866,7 +905,7 @@ func osExportSection(days int) string {
 	d := strconv.Itoa(days)
 	rows := ""
 	for _, rep := range analyticsExportReports {
-		base := "/os/api/analytics/export?days=" + d + "&report=" + rep
+		base := href + "?days=" + d + "&report=" + rep
 		rows += `<tr><td class="post-row__name">` + html.EscapeString(labels[rep]) + `</td>` +
 			`<td><a class="btn btn--sm" href="` + base + `&format=csv" download>CSV</a> ` +
 			`<a class="btn btn--sm" href="` + base + `&format=json" download>JSON</a></td></tr>`

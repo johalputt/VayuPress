@@ -139,10 +139,17 @@ func (s *Store) GoalResults(ctx context.Context, days int) ([]GoalResult, error)
 // GoalResultsScoped is GoalResults for one site's goals over that site's
 // traffic (or the install's goals over every site's).
 func (s *Store) GoalResultsScoped(ctx context.Context, scope string, days int) ([]GoalResult, error) {
+	return s.GoalResultsOver(ctx, scope, scope, days)
+}
+
+// GoalResultsOver is the goals defined for defs counted over scope's traffic.
+// The install's own goals (defs ScopeAllDomains) are counted over the primary
+// site's visits on its page, and over every site's on the install's.
+func (s *Store) GoalResultsOver(ctx context.Context, defs, scope string, days int) ([]GoalResult, error) {
 	if days <= 0 {
 		days = 30
 	}
-	goals, err := s.ListGoalsScoped(ctx, scope)
+	goals, err := s.ListGoalsScoped(ctx, defs)
 	if err != nil {
 		return nil, err
 	}

@@ -137,6 +137,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   of 0, a page that never shifted, was read as not reported and left out, so
   the shift figure read worse than readers saw; the script now says when it
   measured one. A vital no reader reported reads "not reported", not 0.
+- **Each site's Analytics is its own; every site together is an
+  administrator's.** Audience › Analytics counted every site the install
+  serves, hosted customers' readers among them, and opened for an editor.
+  It now counts the install's own site alone, as each hosted site's page
+  counts that site, with campaigns, journeys and an export of its own
+  reports; Home's visitors are the same. Every site added together is
+  System › Every site's analytics, which only an administrator opens, named
+  as every site's, its first section what each site adds with a link to
+  each site's own page. The install-wide live panel, exports and alerts are
+  an administrator's with it. The install's goals and segments are listed on
+  both pages, counted over each page's own visits.
 - **What the content did.** Analytics, the install's and each site's, sorts
   its pages by what was measured of them: many views and little engagement,
   many and much, few and much, falling, rising, arriving from search, and
@@ -235,6 +246,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   in and a column marking the engagement rows whose layout shift was
   measured. Rows from before it are left unmeasured for layout shift, so the
   readers' shift figure starts from the first page loads after the upgrade.
+- **Audience › Analytics counts the install's own site alone** on an
+  install serving more than one site (on one site, its figures are what they
+  were). Every site's figures, and the alerts that count every site
+  together, are under System › Every site's analytics, for an
+  administrator; an editor no longer sees them. An alert for the install's
+  own site is added on its Analytics page.
 - **Migration 120** adds the columns counting each site's pages by whether
   the page cache answered them; it changes no row.
 

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/auth"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/settings"
 )
 
@@ -399,16 +401,11 @@ func (a *App) handleAnalyticsRealtime(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleOSScopedRealtime is one site's last five minutes, for the live panel
-// on that site's Analytics (/os/d/{id}/analytics). The site is the URL's,
-// resolved as every per-site page resolves it; the route is admin-only with
-// the rest of /os/d.
+// on that site's Analytics: the primary's at /os/analytics/realtime, a hosted
+// site's at /os/d/{id}/analytics/realtime (admin-only with the rest of
+// /os/d). Every site's is /os/api/analytics/realtime, an administrator's.
 func (a *App) handleOSScopedRealtime(w http.ResponseWriter, r *http.Request) {
-	d, ok := osScopedDomain(r)
-	if !ok {
-		writeAPIError(w, r, http.StatusNotFound, "no-site", "no such site", "")
-		return
-	}
-	a.writeRealtime(w, r, d.ID)
+	a.writeRealtime(w, r, viewOf(r).scope)
 }
 
 // writeRealtime answers the live panel for scope.
@@ -693,10 +690,13 @@ func (a *App) deleteGoal(w http.ResponseWriter, r *http.Request, scope, host, id
 // and segments: the install's Analytics, or that site's (whose host is host).
 func (a *App) refreshDefinitionReports(scope, host string) {
 	if scope == analytics.ScopeAllDomains {
+		// The install's definitions are listed on Platform's page and on the
+		// primary's, each counted over its own visits.
 		a.refreshAnalyticsReports()
+		a.refreshSiteAnalytics(primaryView, a.primaryHost(context.Background()))
 		return
 	}
-	a.refreshSiteAnalytics(scope, host)
+	a.refreshSiteAnalytics(hostedView(domain.Domain{ID: scope, Host: host}), host)
 }
 
 // goalAuditSite names the site a goal change was made on, for the audit line.

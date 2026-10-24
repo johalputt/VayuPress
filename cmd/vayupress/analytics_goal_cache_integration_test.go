@@ -26,17 +26,24 @@ import (
 func TestAGoalChangeReachesTheCachedReport(t *testing.T) {
 	_, _ = newTestHarness(t)
 	a := &App{analytics: analytics.New(dbpkg.DB)}
+	// The install's goals are on two cached pages: Platform's, and the
+	// primary site's own, which counts them over its visits.
 	const key = "analytics:30"
 	compute := func(ctx context.Context) string { return a.renderAnalyticsBody(ctx, 30, "last 30 days") }
-	report := func() string { h, _ := adminDash.get(key, time.Hour, compute); return h }
-
+	primaryKey := siteAnalyticsKey(primaryView, 30)
+	primaryCompute := func(ctx context.Context) string {
+		return a.renderSiteAnalyticsBody(ctx, primaryView, a.primaryHost(ctx), 30, "last 30 days")
+	}
+	platform := func() string { h, _ := adminDash.get(key, time.Hour, compute); return h }
+	primary := func() string { h, _ := adminDash.get(primaryKey, time.Hour, primaryCompute); return h }
 	adminDash.warm(key, compute)
+	adminDash.warm(primaryKey, primaryCompute)
 	deadline := time.Now().Add(10 * time.Second)
-	for report() == "" && time.Now().Before(deadline) {
+	for (platform() == "" || primary() == "") && time.Now().Before(deadline) {
 		time.Sleep(50 * time.Millisecond)
 	}
-	if report() == "" {
-		t.Fatal("seed: the report never computed")
+	if platform() == "" || primary() == "" {
+		t.Fatal("seed: the reports never computed")
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/os/api/analytics/goals",
@@ -55,9 +62,9 @@ func TestAGoalChangeReachesTheCachedReport(t *testing.T) {
 	id := created.ID
 
 	deadline = time.Now().Add(10 * time.Second)
-	for !strings.Contains(report(), "Cache probe goal") {
+	for !strings.Contains(platform(), "Cache probe goal") || !strings.Contains(primary(), "Cache probe goal") {
 		if time.Now().After(deadline) {
-			t.Fatal("the cached Analytics report still does not list a goal added ten seconds ago")
+			t.Fatal("a cached Analytics report, Platform's or the primary's, still does not list a goal added ten seconds ago")
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -73,7 +80,7 @@ func TestAGoalChangeReachesTheCachedReport(t *testing.T) {
 		t.Fatalf("delete goal = %d (%s)", rec.Code, rec.Body.String())
 	}
 	deadline = time.Now().Add(10 * time.Second)
-	for strings.Contains(report(), "Cache probe goal") {
+	for strings.Contains(platform(), "Cache probe goal") || strings.Contains(primary(), "Cache probe goal") {
 		if time.Now().After(deadline) {
 			t.Fatal("the cached Analytics report still lists a goal deleted ten seconds ago")
 		}

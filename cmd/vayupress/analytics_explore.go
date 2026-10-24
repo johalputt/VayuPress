@@ -105,9 +105,15 @@ func (x exploreAsk) values() url.Values {
 func (a *App) handleOSExplore(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
-	scope, base, api, site, title := analytics.ScopeAllDomains, "/os/analytics/explore", "/os/api/analytics/segments", "", "Explorer"
-	if d, ok := osScopedDomain(r); ok {
-		scope, base, api, site, title = d.ID, "/os/d/"+d.ID+"/analytics/explore", "/os/d/"+d.ID+"/api/analytics/segments", d.ID, "Explorer · "+d.Host
+	// The site's own visits (the primary's, a hosted site's) or every
+	// site's on Platform; its segments are the view's definitions.
+	v := viewOf(r)
+	scope, base, api, site, title := v.scope, v.base+"/explore", v.segmentsAPI(), "", "Explorer"
+	switch {
+	case v.hosted:
+		site, title = v.d.ID, "Explorer · "+v.d.Host
+	case v.all():
+		title = "Explorer, every site"
 	}
 	if a.analytics == nil {
 		writeOSHTML(w, r, adminOSLayout(nonce, title, "analytics", cfg, ui.Overview(ui.OverviewPage{Title: "Explorer"},
@@ -115,7 +121,7 @@ func (a *App) handleOSExplore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ask := exploreAskOf(r, scope)
-	segments, segErr := a.analytics.ListSegments(r.Context(), scope)
+	segments, segErr := a.analytics.ListSegments(r.Context(), v.defs)
 	invalid := segErr
 	if ask.seg != "" && segErr == nil {
 		invalid = analytics.ErrNoSegment

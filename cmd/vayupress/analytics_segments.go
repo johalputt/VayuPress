@@ -103,10 +103,12 @@ func segmentWords(fs []analytics.ExploreFilter) string {
 
 // osSegmentsSection is the Analytics page's segments: each with the
 // visitors it held over the period and their share of all of them, and the
-// way into the Explorer with it applied. Counted in the page's background
-// cache, which a segment saved or deleted refreshes.
-func (a *App) osSegmentsSection(ctx context.Context, scope, explore string, days int) string {
-	list, err := a.analytics.ListSegments(ctx, scope)
+// way into the Explorer with it applied: v's segments, counted over v's
+// visits. Counted in the page's background cache, which a segment saved or
+// deleted refreshes.
+func (a *App) osSegmentsSection(ctx context.Context, v analyticsView, days int) string {
+	scope, explore := v.scope, v.base+"/explore"
+	list, err := a.analytics.ListSegments(ctx, v.defs)
 	if err != nil || len(list) == 0 {
 		return string(ui.Section("Segments", "", ui.HTML(`<p class="table-empty">No segments yet. Save one from the <a href="`+
 			html.EscapeString(explore+"?days="+strconv.Itoa(days))+`">Explorer</a>.</p>`)))

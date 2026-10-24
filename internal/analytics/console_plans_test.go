@@ -156,6 +156,10 @@ func TestNoConsoleReadWalksAWholeTable(t *testing.T) {
 		_, _ = s.ViewsByPathCountryScoped(ctx, ScopeAllDomains, days, 100)
 		_, _ = s.ViewsOverTimeScoped(ctx, "d1", days*24)
 		_, _ = s.PathFlows(ctx, days, 10)
+		_, _ = s.PathFlowsScoped(ctx, "d1", days, 10)
+		_, _ = s.BySite(ctx, days)
+		_, _ = s.RecentSessionsScoped(ctx, "d1", days, 10)
+		_, _ = s.GoalResultsOver(ctx, ScopeAllDomains, "d1", days)
 	}
 	_, _ = s.OverviewBetween(ctx, weekAgo, today)
 	_, _ = s.OverviewBetweenScoped(ctx, "d1", weekAgo, today)
