@@ -354,6 +354,17 @@ for (const [device, use] of [
         page.on("pageerror", onError);
         await page.goto(href);
         await page.waitForLoadState("load");
+        // A page counted in the background (Analytics) answers its first
+        // visit with a placeholder. The lint is for the page, so it waits
+        // for it: read once, the result hung on whichever spec had opened
+        // the page before.
+        const counting = page.getByText("This is counted in the background");
+        for (let i = 0; i < 20 && (await counting.count()) > 0; i++) {
+          await page.waitForTimeout(1000);
+          await page.reload();
+          await page.waitForLoadState("load");
+        }
+        if ((await counting.count()) > 0) findings.push(`${href}: still counting after 20 s`);
         const found = await page.evaluate(lintPage);
         page.off("pageerror", onError);
         for (const f of [...found, ...errors.map((e) => "script error: " + e)]) findings.push(`${href}: ${f}`);

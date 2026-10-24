@@ -109,7 +109,7 @@ func (a *App) osSegmentsSection(ctx context.Context, scope, explore string, days
 	list, err := a.analytics.ListSegments(ctx, scope)
 	if err != nil || len(list) == 0 {
 		return string(ui.Section("Segments", "", ui.HTML(`<p class="table-empty">No segments yet. Save one from the <a href="`+
-			html.EscapeString(explore+"?days="+strconv.Itoa(days))+`">Explorer</a>'s filters: organic search, returning readers, a section of the site.</p>`)))
+			html.EscapeString(explore+"?days="+strconv.Itoa(days))+`">Explorer</a>.</p>`)))
 	}
 	all, err := a.analytics.Explore(ctx, analytics.ExploreQuery{Scope: scope, Metric: analytics.ExploreVisitors, Days: days})
 	if err != nil {

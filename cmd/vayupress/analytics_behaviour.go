@@ -69,6 +69,6 @@ func (a *App) readingDepth(ctx context.Context, scope string, days int) string {
 		rows = append(rows, []ui.HTML{ui.Text(prettyPathText(p.Path)), ui.Text(strconv.FormatInt(p.Readings, 10)),
 			ui.HTML(osShareLabel(int(p.ReachedHalf), int(p.Readings))), ui.HTML(osShareLabel(int(p.ReachedEnd), int(p.Readings)))})
 	}
-	return analyticsPanel("How far they read", `<p class="settings-row-hint">Of the readings that reported their depth as the reader left: how many passed half the page, and nine tenths of it.</p>`+
+	return analyticsPanel("How far they read", `<p class="settings-row-hint">Readings that reported their depth as the reader left.</p>`+
 		string(ui.Table([]string{"Page", "Readings", "Past half", "Past 90%"}, rows, "No reading has reported its depth yet.")))
 }

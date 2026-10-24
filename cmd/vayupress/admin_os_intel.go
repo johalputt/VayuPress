@@ -789,7 +789,7 @@ func (a *App) osSearchesSection(ctx context.Context, scope string, days int) str
 	stats, _ := a.analytics.SearchesScoped(ctx, scope, days, 20)
 	if len(stats) == 0 {
 		return string(ui.Section("Searches", "What readers looked for with the site's search",
-			ui.HTML(`<p class="table-empty">No searches yet. Searches made from the site's search page show here; a query that looks like an email address or a long number is never kept.</p>`)))
+			ui.HTML(`<p class="table-empty">No searches yet.</p>`+string(ui.Explain(`<p>Searches made from the site's search page show here; a query that looks like an email address or a long number is never kept.</p>`)))))
 	}
 	// Bars, as every other top list here: a four-column table did not fit
 	// its half of the section on a small laptop and scrolled sideways. The

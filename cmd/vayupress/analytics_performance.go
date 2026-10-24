@@ -44,7 +44,7 @@ func (a *App) osPerformanceSection(ctx context.Context, scope string, days int) 
 		analyticsPanel("What readers' browsers measured", a.readerVitals(ctx, scope, days)),
 		analyticsPanel("What the server measured", server),
 	)+byDay+string(ui.Explain(ui.HTML(`<p>A reader's browser measures each page it loads, and the figure is the 75th percentile of those readings. Response to input is reported only when a reader interacted, and layout shift only by browsers that measure it.</p>`+
-		`<p>The server counts every request a site's visitors make of it, the shield's refusals among them; the console and the API are the install's own. Server time runs from the request reaching this server to its answer, for the HTML pages answered in full, and each percentile is within a tenth of the exact one.</p>`))))))
+		`<p>The server counts every request a site's visitors make of it, the shield's refusals among them; the console and the API are the install's own. It counts from the first request this version answered. Server time runs from the request reaching this server to its answer, for the HTML pages answered in full, and each percentile is within a tenth of the exact one.</p>`))))))
 }
 
 func (a *App) readerVitals(ctx context.Context, scope string, days int) string {
@@ -93,7 +93,7 @@ func (a *App) serverMeasured(ctx context.Context, scope string, days int) (panel
 		return string(ui.Callout("danger", ui.Text("Not counted: "+err.Error()))), ""
 	}
 	if sum.Requests == 0 {
-		return `<p class="table-empty">No request recorded yet. The server counts each site's requests from the first one this version answers.</p>`, ""
+		return `<p class="table-empty">No request recorded yet.</p>`, ""
 	}
 	share := func(n int64) string {
 		return strconv.FormatInt(n, 10) + " (" + osShareLabel(int(n), int(sum.Requests)) + ")"
