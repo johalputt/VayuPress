@@ -111,10 +111,9 @@ func TestViewCountingBeingOffIsStatedPlainly(t *testing.T) {
 
 // Dropped views must be admitted, with the reason. A bounded buffer is a
 // deliberate trade and the panel should say so rather than hiding the loss.
+// Every telemetry queue's drops are on Monitoring's Telemetry section.
 func TestDroppedViewsAreAdmittedWithTheReason(t *testing.T) {
-	st, rec := quietWriter()
-	rec.Dropped = 812
-	card := writeStallSection(st, rec)
+	card := telemetrySection([]telemetryQueue{{name: "Page views", unit: "views", dropped: 812}})
 	if !strings.Contains(card, "812") {
 		t.Errorf("812 dropped views are not mentioned:\n%s", card)
 	}

@@ -29,6 +29,7 @@ type Store struct {
 	reader *sql.DB      // dashboard/report read pool; falls back to db. Set via UseReader.
 	coll   *collector   // in-memory view tally; see recorder.go
 	evq    *evCollector // batched /collect event queue; see collectqueue.go
+	hold   func() bool  // see HoldWhile
 	// selfHosts reports every host this install answers for, so referrer lists
 	// exclude internal navigation on ALL of them. Nil is the single-domain
 	// shape; see UseSelfHosts.
@@ -53,6 +54,19 @@ type Store struct {
 func New(db *sql.DB) *Store {
 	return &Store{db: db, reader: db, coll: newCollector(), evq: &evCollector{}, visits: vasession.NewHasher(), now: time.Now}
 }
+
+// HoldWhile holds the store's buffered writes (page views, beacons) while
+// held() reports true: the install's mode refuses writes because its disk is
+// failing, and a write then is one more write to a failing disk. The buffers
+// go on filling to their caps and are written when the hold ends. Call before
+// the collectors start.
+func (s *Store) HoldWhile(held func() bool) {
+	if s != nil {
+		s.hold = held
+	}
+}
+
+func (s *Store) held() bool { return s.hold != nil && s.hold() }
 
 // UseVisits gives the store the install's sessionizer, whose daily salt is
 // derived from the service keyring, so a restart keeps every visitor who is

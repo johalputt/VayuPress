@@ -38,6 +38,14 @@ func (m Mode) RefusesContentWrites() bool {
 	return m == ModeReadOnly || m == ModeQuarantined
 }
 
+// HoldsTelemetry reports whether m holds the best-effort telemetry queues
+// (page views, beacons, engagement, shield events) instead of writing them:
+// ReadOnly alone, which is entered when the disk is failing, so a write is one
+// more write to it. The queues keep what they hold to their caps and write it
+// when the mode returns. Quarantined is a security isolation, in which the
+// shield's record of what is happening matters most, so it is written.
+func (m Mode) HoldsTelemetry() bool { return m == ModeReadOnly }
+
 // Transition records a mode change with its cause and timestamp.
 type Transition struct {
 	From       Mode

@@ -270,6 +270,7 @@ func TestTheRailOffersEverySitesFiguresToAnAdministratorAlone(t *testing.T) {
 // The primary's page, as the console serves it at /os/analytics, is its own
 // visits: the handler hands the renderer the primary's view.
 func TestTheConsoleServesThePrimarysOwnPage(t *testing.T) {
+	t.Cleanup(func() { settleDash(t) })
 	a, _ := shieldSitesApp(t)
 	a.analytics = analytics.New(dbpkg.DB)
 	seedTwoSites(t)
@@ -295,6 +296,7 @@ func TestTheConsoleServesThePrimarysOwnPage(t *testing.T) {
 // the primary's page tells an administrator so, and an editor not at all.
 // Its own alerts are a fold, with How this works after it.
 func TestThePrimarysPageSaysWhereEverySitesAlertsAre(t *testing.T) {
+	t.Cleanup(func() { settleDash(t) })
 	a, _ := alertsApp(t)
 	a.analytics = analytics.New(dbpkg.DB)
 	if w := alertCall(a, a.handleOSAlertCreate, http.MethodPost, "/os/api/analytics/alerts", nil, "", alertJSON(""), users.RoleAdmin); w.Code != http.StatusOK {
@@ -362,5 +364,28 @@ func readAPI(t *testing.T, h http.HandlerFunc, target string, into any) {
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), into); err != nil {
 		t.Fatalf("%s: %v (%s)", target, err, rec.Body.String())
+	}
+}
+
+// settleDash waits until no background count is running. A page served from
+// the cache starts its count on a goroutine of its own; one that outlived
+// its test read the configuration the next test was rewriting.
+func settleDash(t *testing.T) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		busy := false
+		adminDash.mu.Lock()
+		for _, e := range adminDash.m {
+			busy = busy || e.computing
+		}
+		adminDash.mu.Unlock()
+		if !busy {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("a background count was still running 10 s after its test")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

@@ -25,6 +25,7 @@ import (
 // only the goal handler's own refresh can bring the new goal into it.
 func TestAGoalChangeReachesTheCachedReport(t *testing.T) {
 	_, _ = newTestHarness(t)
+	t.Cleanup(func() { settleDash(t) })
 	a := &App{analytics: analytics.New(dbpkg.DB)}
 	// The install's goals are on two cached pages: Platform's, and the
 	// primary site's own, which counts them over its visits.

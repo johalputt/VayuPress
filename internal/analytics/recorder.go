@@ -58,6 +58,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/dbbatch"
 )
 
 // Flush cadence and bounds.
@@ -98,11 +100,13 @@ type collector struct {
 
 	// Counters for the panel. Guarded by mu so a reader sees a consistent set.
 	dropped   int64
+	lost      int64
 	flushed   int64
 	writes    int64
 	lastFlush time.Time
 	lastErr   string
 	running   bool
+	retries   dbbatch.Retries
 }
 
 func newCollector() *collector {
@@ -215,7 +219,7 @@ func (s *Store) StartCollector(ctx context.Context) {
 // The buffer is swapped out under the lock and written outside it, so a slow
 // database delays the write and never the requests feeding it.
 func (s *Store) Flush(ctx context.Context) error {
-	if s == nil || s.coll == nil {
+	if s == nil || s.coll == nil || s.held() {
 		return nil
 	}
 	c := s.coll
@@ -232,19 +236,37 @@ func (s *Store) Flush(ctx context.Context) error {
 
 	var firstErr error
 	rows := 0
-	total := int64(0)
+	written := int64(0)
+	// What a refused chunk held, to be put back: counts add, so a count kept
+	// for the next flush merges exactly with what arrived meanwhile.
+	keptViews, keptRefs := map[viewKey]int64{}, map[refKey]int64{}
 
 	// Chunked so one enormous batch cannot hold the single write connection for
 	// an unbounded time — the exact failure mode this file removes.
 	batch := make([]queryArgs, 0, flushChunk)
+	var batchViews []viewKey
+	var batchRefs []refKey
 	flushBatch := func() {
 		if len(batch) == 0 {
 			return
 		}
-		if err := s.execBatch(ctx, batch); err != nil && firstErr == nil {
-			firstErr = err
+		if err := s.execBatch(ctx, batch); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			for _, k := range batchViews {
+				keptViews[k] = views[k]
+			}
+			for _, k := range batchRefs {
+				keptRefs[k] = refs[k]
+			}
+		} else {
+			rows += len(batch)
+			for _, k := range batchViews {
+				written += views[k]
+			}
 		}
-		batch = batch[:0]
+		batch, batchViews, batchRefs = batch[:0], batchViews[:0], batchRefs[:0]
 	}
 
 	for k, n := range views {
@@ -253,8 +275,7 @@ func (s *Store) Flush(ctx context.Context) error {
 			    ON CONFLICT(day,domain_id,path) DO UPDATE SET views=views+excluded.views`,
 			Args: []interface{}{k.day, k.scope, k.path, n},
 		})
-		rows++
-		total += n
+		batchViews = append(batchViews, k)
 		if len(batch) >= flushChunk {
 			flushBatch()
 		}
@@ -265,7 +286,7 @@ func (s *Store) Flush(ctx context.Context) error {
 			    ON CONFLICT(day,domain_id,host) DO UPDATE SET hits=hits+excluded.hits`,
 			Args: []interface{}{k.day, k.scope, k.host, n},
 		})
-		rows++
+		batchRefs = append(batchRefs, k)
 		if len(batch) >= flushChunk {
 			flushBatch()
 		}
@@ -273,15 +294,38 @@ func (s *Store) Flush(ctx context.Context) error {
 	flushBatch()
 
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.lastFlush = time.Now()
-	c.flushed += total
+	c.flushed += written
 	c.writes += int64(rows)
-	if firstErr != nil {
-		c.lastErr = firstErr.Error()
-	} else {
+	if firstErr == nil {
+		c.retries.OK()
 		c.lastErr = ""
+		return nil
 	}
-	c.mu.Unlock()
+	c.lastErr = firstErr.Error()
+	var refused int64
+	for _, n := range keptViews {
+		refused += n
+	}
+	if c.retries.Failed() {
+		c.lost += refused
+		return firstErr
+	}
+	// Kept for the next flush. A key the buffer has no room for (new keys
+	// filled it meanwhile) is lost and counted, so the cap still bounds it.
+	for k, n := range keptViews {
+		if _, ok := c.views[k]; ok || len(c.views) < maxPendingKeys {
+			c.views[k] += n
+		} else {
+			c.lost += n
+		}
+	}
+	for k, n := range keptRefs {
+		if _, ok := c.refs[k]; ok || len(c.refs) < maxPendingKeys {
+			c.refs[k] += n
+		}
+	}
 	return firstErr
 }
 
@@ -317,6 +361,8 @@ type CollectorState struct {
 	BufferedHi int   // the cap, so a reader can see how close it is
 	Pending    int64 // views awaiting a flush
 	Dropped    int64 // views discarded because the buffer was full
+	Lost       int64 // views the database refused dbbatch.MaxAttempts times in a row
+	Held       bool  // writes are held: the install's mode refuses them
 	Flushed    int64 // views written since boot
 	Writes     int64 // statements used to write them — the compression ratio
 	LastFlush  time.Time
@@ -345,6 +391,8 @@ func (s *Store) CollectorStats() CollectorState {
 		BufferedHi: maxPendingKeys,
 		Pending:    pending,
 		Dropped:    c.dropped,
+		Lost:       c.lost,
+		Held:       s.held(),
 		Flushed:    c.flushed,
 		Writes:     c.writes,
 		LastFlush:  c.lastFlush,

@@ -240,6 +240,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   export is one sheet: the report and the format. The shortest range is
   Today, the day so far in UTC, where it said 24 hours.
 
+### Fixed
+
+- **Telemetry survives a database that refuses it, and a restart.** Page
+  views, collected events, reading engagement and the shield's events are
+  each counted in memory and written in batches. A batch the database
+  refused (a lock held past the deadline, a failing disk) was thrown away
+  uncounted, and the view counter even counted it as written; it is now
+  kept and tried again, and discarded only after three refusals in a row,
+  counted as lost. In read-only mode, entered when the disk is failing,
+  the queues hold what they have instead of writing, to their caps, and
+  write it when the mode returns; quarantine still writes, since the
+  shield's record is what an incident needs. A shutdown now writes what
+  the queues hold before the database closes: a restart lost the last few
+  seconds of each. System › Monitoring shows every queue: what it holds,
+  what was dropped because it was full and what was lost because the
+  database refused it.
+
 ### Security
 
 - **Go 1.27.3.** The toolchain the binary is built with moves from 1.27.2

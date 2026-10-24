@@ -140,7 +140,7 @@ func (a *App) handleOSMonitoring(w http.ResponseWriter, r *http.Request) {
 		Tone:    tone,
 		State:   state,
 		Detail:  ui.Text("Up " + uptime.Truncate(time.Second).String() + " · refreshed as you watch"),
-	}, now, ui.HTML(routeLatencySection()), ui.HTML(writeStallSection(ws, rec)),
+	}, now, ui.HTML(routeLatencySection()), ui.HTML(writeStallSection(ws, rec)), ui.HTML(telemetrySection(a.telemetryQueues())),
 		ui.HTML(readStallSection(rs, coldRenderShed.Load())), budgetsSection, deeper)
 
 	writeOSHTML(w, r, adminOSLayout(nonce, "Monitoring", "monitoring", cfg, htmpl.HTML(poller+string(body))))

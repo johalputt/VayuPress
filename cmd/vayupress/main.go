@@ -914,6 +914,7 @@ func main() {
 	// Start the view-count flusher. Without it every view is buffered and never
 	// written, so this line is pinned by a test: a recorder that counts into a
 	// buffer nobody drains is the same defect as a setting nobody reads.
+	a.analytics.HoldWhile(telemetryHeld)
 	a.analytics.StartCollector(context.Background())
 	// Start the /collect batch flusher. Without it every collected beacon is
 	// buffered and never written — same pinned-defect class as above.
@@ -1410,6 +1411,12 @@ func main() {
 		case <-time.After(45 * time.Second):
 			logging.LogJSON(logging.LogFields{Level: "warn", Component: "main", Msg: "phase 2 timeout (45s) — in-flight jobs retried on next startup"})
 		}
+
+		// Phase 2b: write what the telemetry queues hold. Ingress is stopped,
+		// so nothing more arrives; without this a restart lost the last few
+		// seconds of views, beacons, engagement and shield events, which were
+		// still in memory when the database closed.
+		a.flushTelemetry(10 * time.Second)
 
 		// Phase 3: stop plugin pool + subprocess pools + resource watchdog
 		if os.Getenv("VAYU_PLUGINS_ENABLED") == "true" {

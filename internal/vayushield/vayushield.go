@@ -469,20 +469,25 @@ type Manager struct {
 // StartAsyncWrites launches the batched background writer for VayuShield's
 // telemetry. Call once at boot with the process shutdown channel. Until called,
 // telemetry writes run synchronously (as before).
-func (m *Manager) StartAsyncWrites(done <-chan struct{}) {
+//
+// held, when set, holds the writer's batches while it reports true
+// (dbbatch.Writer.HoldWhile).
+func (m *Manager) StartAsyncWrites(done <-chan struct{}, held func() bool) {
 	if m == nil || m.cfg.DB == nil || m.asyncW != nil {
 		return
 	}
 	m.asyncW = dbbatch.New(m.cfg.DB, 8192, 256, time.Second)
+	m.asyncW.HoldWhile(held)
 	go m.asyncW.Run(done)
 }
 
-// AsyncWritesDropped reports telemetry writes shed under overload (observability).
-func (m *Manager) AsyncWritesDropped() int64 {
+// AsyncWrites is the batched telemetry writer, for its stats and for a
+// shutdown to wait on; nil until StartAsyncWrites (every method is nil-safe).
+func (m *Manager) AsyncWrites() *dbbatch.Writer {
 	if m == nil {
-		return 0
+		return nil
 	}
-	return m.asyncW.Dropped()
+	return m.asyncW
 }
 
 // recordExec runs a best-effort telemetry write: batched off the request path

@@ -14,10 +14,11 @@ package store
 import (
 	"context"
 	"database/sql"
-	"sync/atomic"
 	"time"
 
 	"github.com/johalputt/vayupress/internal/vayuanalytics/classifier"
+
+	"github.com/johalputt/vayupress/internal/dbbatch"
 )
 
 // execer is satisfied by both *sql.DB and *sql.Tx, so the row-level write helpers
@@ -39,12 +40,14 @@ type execer interface {
 // flushes them in BATCHED transactions (~1/sec), collapsing hundreds of tiny
 // writes into a handful and keeping the writer free. Telemetry is best-effort:
 // if the buffer is full (an extreme flood) events are dropped rather than
-// allowed to block a request or melt the database.
+// allowed to block a request or melt the database. The batching is
+// dbbatch.Writer's, so a batch the database refuses is kept and tried again,
+// and held while the install refuses writes, as every telemetry queue is.
 type Store struct {
-	db      *sql.DB
-	reader  *sql.DB          // dashboard read pool; falls back to db. Set via UseReader.
-	ingest  chan ingestEvent // nil until StartIngest; then the async batch path
-	dropped atomic.Int64
+	db     *sql.DB
+	reader *sql.DB         // dashboard read pool; falls back to db. Set via UseReader.
+	ingest *dbbatch.Writer // nil until StartIngest; then the async batch path
+	hold   func() bool     // see HoldWhile
 }
 
 // New constructs a Store. Until StartIngest is called, QueueEnter/QueueBeacon
@@ -259,27 +262,59 @@ WHERE id=(SELECT id FROM vayuanalytics_sessions WHERE session_hash=? AND page_pa
 
 // ── Async batched ingestion ───────────────────────────────────────────────────
 
-// ingestEvent is one buffered write (exactly one of enter/beacon is set).
-type ingestEvent struct {
-	enter  *EnterInput
-	beacon *BeaconInput
-}
-
 const (
 	ingestBuffer     = 4096            // bounded backlog; full ⇒ drop (best-effort)
 	ingestMaxBatch   = 256             // flush early once this many events accrue
 	ingestFlushEvery = 1 * time.Second // otherwise flush on this cadence
 )
 
+// HoldWhile holds the ingest's batches, not writing them, while held()
+// reports true (the install's mode refuses writes). Call before StartIngest.
+func (s *Store) HoldWhile(held func() bool) {
+	if s != nil {
+		s.hold = held
+	}
+}
+
 // StartIngest launches the background batched-write loop. Call once at boot with
 // the process shutdown channel. It is safe to call on a nil/dbless store (no-op)
 // and idempotent. Until it runs, QueueEnter/QueueBeacon write synchronously.
+// Events are applied in arrival order, so a beacon that shares a batch with
+// its enter still folds into the just-inserted row.
 func (s *Store) StartIngest(done <-chan struct{}) {
 	if s == nil || s.db == nil || s.ingest != nil {
 		return
 	}
-	s.ingest = make(chan ingestEvent, ingestBuffer)
-	go s.ingestLoop(done)
+	s.ingest = dbbatch.New(s.db, ingestBuffer, ingestMaxBatch, ingestFlushEvery)
+	s.ingest.HoldWhile(s.hold)
+	go s.ingest.Run(done)
+}
+
+// IngestStopped is closed once the ingest has written (or counted lost) its
+// last batch after the shutdown channel closed; closed at once if it never
+// started.
+func (s *Store) IngestStopped() <-chan struct{} {
+	if s == nil {
+		return (*dbbatch.Writer)(nil).Stopped()
+	}
+	return s.ingest.Stopped()
+}
+
+// IngestStats is the ingest queue's state for the console: events waiting and
+// the buffer's size, those dropped because it was full, and those lost
+// because the database refused them (dbbatch.Writer.Lost).
+type IngestStats struct {
+	Buffered, Cap int
+	Dropped, Lost int64
+}
+
+// Stats reports the ingest queue. Zero before StartIngest.
+func (s *Store) Stats() IngestStats {
+	if s == nil || s.ingest == nil {
+		return IngestStats{}
+	}
+	n, c := s.ingest.Buffered()
+	return IngestStats{Buffered: n, Cap: c, Dropped: s.ingest.Dropped(), Lost: s.ingest.Lost()}
 }
 
 // Dropped reports how many telemetry events were shed because the ingest buffer
@@ -288,7 +323,7 @@ func (s *Store) Dropped() int64 {
 	if s == nil {
 		return 0
 	}
-	return s.dropped.Load()
+	return s.ingest.Dropped()
 }
 
 // QueueEnter enqueues a page-enter for batched persistence, never blocking the
@@ -301,11 +336,7 @@ func (s *Store) QueueEnter(in EnterInput) {
 		_ = s.RecordEnter(context.Background(), in)
 		return
 	}
-	select {
-	case s.ingest <- ingestEvent{enter: &in}:
-	default:
-		s.dropped.Add(1)
-	}
+	s.ingest.Submit(func(ctx context.Context, tx *sql.Tx) error { return recordEnter(ctx, tx, in) })
 }
 
 // QueueBeacon enqueues an engagement beacon for batched persistence.
@@ -317,74 +348,7 @@ func (s *Store) QueueBeacon(in BeaconInput) {
 		_ = s.RecordBeacon(context.Background(), in)
 		return
 	}
-	select {
-	case s.ingest <- ingestEvent{beacon: &in}:
-	default:
-		s.dropped.Add(1)
-	}
-}
-
-func (s *Store) ingestLoop(done <-chan struct{}) {
-	ticker := time.NewTicker(ingestFlushEvery)
-	defer ticker.Stop()
-	batch := make([]ingestEvent, 0, ingestMaxBatch)
-	flush := func() {
-		if len(batch) == 0 {
-			return
-		}
-		s.flushBatch(batch)
-		batch = batch[:0]
-	}
-	for {
-		select {
-		case <-done:
-			// Drain whatever is buffered, then flush and exit.
-			for {
-				select {
-				case ev := <-s.ingest:
-					batch = append(batch, ev)
-					if len(batch) >= ingestMaxBatch {
-						flush()
-					}
-				default:
-					flush()
-					return
-				}
-			}
-		case ev := <-s.ingest:
-			batch = append(batch, ev)
-			if len(batch) >= ingestMaxBatch {
-				flush()
-			}
-		case <-ticker.C:
-			flush()
-		}
-	}
-}
-
-// flushBatch persists a batch of events in a SINGLE transaction — one fsync for
-// the whole batch instead of one per event. Best-effort: a failed batch is
-// dropped (the process must never stall or crash on telemetry). Events are
-// applied in arrival order so a beacon that shares a batch with its enter still
-// folds into the just-inserted row.
-func (s *Store) flushBatch(batch []ingestEvent) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return
-	}
-	for _, ev := range batch {
-		switch {
-		case ev.enter != nil:
-			_ = recordEnter(ctx, tx, *ev.enter)
-		case ev.beacon != nil:
-			_ = recordBeacon(ctx, tx, *ev.beacon)
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		_ = tx.Rollback()
-	}
+	s.ingest.Submit(func(ctx context.Context, tx *sql.Tx) error { return recordBeacon(ctx, tx, in) })
 }
 
 // ── GDPR retention ────────────────────────────────────────────────────────────

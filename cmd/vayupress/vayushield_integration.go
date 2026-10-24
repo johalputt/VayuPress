@@ -151,6 +151,7 @@ func (a *App) bootVayuShield() {
 	// the post-restart VayuOS 502s: the beacon storm (enter + event on every
 	// public view) no longer saturates the single SQLite writer, so the dynamic
 	// admin panel stays responsive while caches warm.
+	a.vaEngagement.HoldWhile(telemetryHeld)
 	a.vaEngagement.StartIngest(queue.DoneCh)
 
 	// L1 kernel offload — the exporter writes jailed IPs into the app-owned
@@ -371,7 +372,7 @@ func (a *App) bootVayuShield() {
 	// batched background writer instead of one synchronous writer transaction per
 	// suspicious request. Under a bot flood — exactly when the shield is busiest —
 	// this keeps the single SQLite writer free so VayuOS stays responsive.
-	a.vayuShield.StartAsyncWrites(queue.DoneCh)
+	a.vayuShield.StartAsyncWrites(queue.DoneCh, telemetryHeld)
 
 	if a.vayuShield.Enabled() {
 		logging.LogInfo("vayushield", "bot protection ENABLED — PoW→JS→block→tarpit ladder + adaptive learning active")

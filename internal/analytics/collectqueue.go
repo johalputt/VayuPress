@@ -25,6 +25,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/dbbatch"
 )
 
 const (
@@ -64,11 +66,17 @@ type evCollector struct {
 	q  []collectEvent
 
 	dropped   int64
+	lost      int64
 	flushed   int64
 	writes    int64
 	lastFlush time.Time
 	lastErr   string
 	running   bool
+	retries   dbbatch.Retries
+
+	// flushing serialises flushes: the batch at the front stays in q until
+	// it is written, so two flushes would write it twice.
+	flushing sync.Mutex
 }
 
 // CollectAsync normalises a beacon exactly like Collect and queues it without
@@ -198,32 +206,49 @@ func (s *Store) StartEventCollector(ctx context.Context) {
 }
 
 // FlushEvents applies every queued event inside chunk-sized transactions.
+//
+// A chunk stays at the front of the queue until it is written. One the
+// database refuses (a lock held past the deadline, a failing disk) is tried
+// again on the next flush, and after dbbatch.MaxAttempts refusals in a row
+// discarded and counted lost. While the install refuses writes (HoldWhile)
+// nothing is tried, and the queue fills to its cap, past which beacons are
+// dropped and counted.
 func (s *Store) FlushEvents(ctx context.Context) error {
 	c := s.evq
-	if c == nil {
+	if c == nil || s.held() {
 		return nil
 	}
+	c.flushing.Lock()
+	defer c.flushing.Unlock()
 	for {
 		c.mu.Lock()
 		n := len(c.q)
 		if n > evFlushChunk {
 			n = evFlushChunk
 		}
-		batch := c.q[:n]
-		c.q = c.q[n:]
+		// Beacons arriving while this chunk is written are appended after it,
+		// so the chunk's elements are not moved by anyone but this flush.
+		batch := c.q[:n:n]
 		c.mu.Unlock()
 		if n == 0 {
 			return nil
 		}
 		err := s.applyCollectBatch(ctx, batch)
 		c.mu.Lock()
-		c.writes += int64(n)
 		c.lastFlush = time.Now().UTC()
-		if err != nil {
-			c.lastErr = err.Error()
-		} else {
+		switch {
+		case err == nil:
+			c.q = c.q[n:]
+			c.retries.OK()
+			c.writes += int64(n)
 			c.flushed += int64(n)
 			c.lastErr = ""
+		case c.retries.Failed():
+			c.q = c.q[n:]
+			c.lost += int64(n)
+			c.lastErr = err.Error()
+		default:
+			c.lastErr = err.Error()
 		}
 		c.mu.Unlock()
 		if err != nil {
@@ -295,6 +320,8 @@ func (s *Store) EventCollectorStats() CollectorState {
 		Buffered:   len(c.q),
 		BufferedHi: evQueueCap,
 		Dropped:    c.dropped,
+		Lost:       c.lost,
+		Held:       s.held(),
 		Flushed:    c.flushed,
 		Writes:     c.writes,
 		LastFlush:  c.lastFlush,

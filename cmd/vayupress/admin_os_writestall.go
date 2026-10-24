@@ -97,18 +97,9 @@ func writeStallSection(st dbpkg.StallState, rec analytics.CollectorState) string
 			Control: counting},
 		ui.Row{Label: "Views per write", Hint: strconv.FormatInt(rec.Flushed, 10) + " counted · " +
 			strconv.FormatInt(rec.Writes, 10) + " statement" + plural(rec.Writes), Control: ui.Text(ratio)},
-		ui.Row{Label: "Buffered now", Control: ui.Text(strconv.Itoa(rec.Buffered) + " / " + strconv.Itoa(rec.BufferedHi) + " keys")},
 		ui.Row{Label: "Awaiting the next write", Control: ui.Text(strconv.FormatInt(rec.Pending, 10) + " view" + plural(rec.Pending))},
 		ui.Row{Label: "Last written", Control: ui.Text(last)},
 	)
-	if rec.Dropped > 0 {
-		rows = append(rows, ui.Row{Label: "Dropped because the buffer was full",
-			Hint:    "The buffer is bounded on purpose, since losing a view count is a rounding error and losing the site is an outage.",
-			Control: ui.State("warn", strconv.FormatInt(rec.Dropped, 10)+" view"+plural(rec.Dropped))})
-	}
-	if rec.LastErr != "" {
-		rows = append(rows, ui.Row{Label: "Last flush error", Control: `<code>` + ui.Text(rec.LastErr) + `</code>`})
-	}
 	return string(ui.Section("Write connection", "", ui.Join(
 		`<p class="page-sub">`+ui.Brief("SQLite has one writer, so everything that writes shares a single connection. When something holds it, other writes queue, and this is where that shows up.")+`</p>`,
 		ui.Rows(rows...),
