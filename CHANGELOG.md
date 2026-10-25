@@ -8,6 +8,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.15] — 2026-10-25
+
+The DB-IP credit, quieter.
+
+### Changed
+
+- **The city table's credit is quieter.** Its licence asks for "IP
+  Geolocation by DB-IP" wherever its cities show, so the line stays, but in
+  the grey small print of the hints beside it rather than a blue link under
+  the list of cities.
+
 ## [3.18.14] — 2026-10-25
 
 Limits that are yours to set (API and MCP keys, unlimited included), sign-in attempts limited per account at every door, ads on the pages you choose, and a Right now that says where readers are, with flags and cities.

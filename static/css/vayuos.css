@@ -6417,6 +6417,10 @@
 .vp-os[data-ui="still-air"] .settings-rows .settings-row:has(.settings-row-control > .textarea) { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
 .vp-os[data-ui="still-air"] .settings-rows .settings-row:has(.settings-row-control > .textarea) .settings-row-control { justify-content: flex-start; }
 .vp-os[data-ui="still-air"] .settings-row-hint { margin-top: 2px; }
+/* A licence credit (the city table's DB-IP line): required, so kept, but in
+   the hint's grey and size rather than a link's blue, which drew the eye
+   away from the list it credits. */
+.vp-os .settings-row-hint a.vp-credit { color: inherit; text-decoration: underline dotted; text-underline-offset: 2px; }
 /* An editor that is more than a row marks its band's heading instead. */
 .vp-os[data-ui="still-air"] .settings-row.is-changed .settings-row-label::after,
 .vp-os[data-ui="still-air"] section:has(> .settings-panel.is-changed) > .section-head .section-head__title::after {
