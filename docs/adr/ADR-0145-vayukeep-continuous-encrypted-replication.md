@@ -4,6 +4,14 @@ Status: Accepted (P1 and the generation engine shipped in v3.15.80; continuous W
 Date: 2026-07-27
 Deciders: VayuPress core
 
+> **As built (checked 2026-10-25).** Generations are sealed archives written
+> to a target directory by `internal/vayukeep/store.go` (atomic rename, the
+> file name carries the order), encrypted by `internal/backup` (Argon2id and
+> AES-GCM). The design below names `internal/signing`, `internal/crypto` and
+> an `internal/storage.Backend` interface; none of them exists, generations
+> are not signed with a host key, and there is no S3 or SFTP target. Those
+> parts of Layers 2 and 3 are the design, not the product.
+
 > **Amended 2026-09-26.** A generation's database is no longer taken with
 > `VACUUM INTO`, one statement that could not pause. The console takes it with
 > SQLite's backup API in paced steps over one pinned read transaction

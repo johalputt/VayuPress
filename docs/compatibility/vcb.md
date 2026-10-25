@@ -1,7 +1,7 @@
 # Vayu Compatibility Bible (VCB) — VayuPress
 
 **Status:** Authoritative  
-**Last reviewed:** 2026-07-16
+**Last reviewed:** 2026-10-25 (hooks, manifest fields, theme options and categories checked against `internal/vcb` and `internal/theme`)
 
 ---
 
@@ -95,6 +95,8 @@ Field rules (each is checked by `vayu-compat` and the host):
 | `api_permissions` | Every entry must be a valid, **non-wildcard** `section:action` (see [/docs/compatibility/vayuapi](/docs/compatibility/vayuapi)). `*:*` and `section:*` are refused — least privilege is the contract. |
 | `executable` | Required. Relative path inside the package; absolute paths and `..` traversal are refused. |
 | `executable_sha256` | Optional but strongly recommended. 64-hex SHA-256; the sandbox verifies the binary before every launch and refuses a mismatch. |
+| `args` | Optional. Arguments passed to the binary when it starts. |
+| `env` | Optional. `KEY=VALUE` variables for the subprocess; the parent environment is never inherited. |
 | `sandbox.*` | Deny-by-default capability requests, mapped 1:1 onto the runtime sandbox: read/write paths must be absolute prefixes; `run_as` must be numeric `uid:gid`; limits must be in sane bounds. Network access and write paths are surfaced to the operator as warnings. |
 | `distribution` | Optional. `download_url` must be HTTPS; `sha256` is verified on install. |
 

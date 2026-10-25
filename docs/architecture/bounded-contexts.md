@@ -1,7 +1,7 @@
 # Bounded Contexts — VayuPress Internal Architecture
 
 **Status:** Authoritative  
-**Last reviewed:** 2026-09-25
+**Last reviewed:** 2026-10-25
 
 Every rule below names the test that enforces it. A rule without one is not
 listed here.
@@ -56,7 +56,7 @@ pinned by `internal/archcheck/ontology_contract_test.go` against
 
 ### Search
 
-**Packages:** `internal/search` (SQLite FTS5)
+**Packages:** `internal/search` (VayuFind: an in-process index with BM25 ranking and typo tolerance, ADR-0101)
 
 ### Identity
 

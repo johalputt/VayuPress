@@ -22,19 +22,19 @@ Thank you for your interest in contributing. VayuPress is governed by the [VayuP
 
 Required for: new dependencies, core architecture changes, major features, governance modifications.
 
-Submit RFCs to `vayupress/rfcs`. Minimum 7-day discussion. Simple majority to accept.
+Open an issue with the **RFC proposal** template (`.github/ISSUE_TEMPLATE/rfc_proposal.yml`), written
+from [docs/rfc-template.md](docs/rfc-template.md). Minimum 7-day discussion. An accepted design is
+recorded as an ADR in [docs/adr/](docs/adr/INDEX.md).
 
 ## PR Requirements
 
-| Requirement             | Enforcement              |
-|-------------------------|--------------------------|
-| DCO signed-off          | FAIL if missing          |
-| Passing CI              | FAIL if missing          |
-| Tests for new code      | FAIL if missing          |
-| Docs for new features   | FAIL if missing          |
-| Governance validation   | FAIL if violations       |
-| Changelog entry         | Warn if missing          |
-| Ethical review          | FAIL for high-risk changes|
+| Requirement | Enforced by |
+|-------------|-------------|
+| Passing CI | Every workflow runs on the pull request: `go vet`, gofmt, staticcheck, golangci-lint, gosec, `go test -race` (unit and integration), the architecture tests, markdownlint, shellcheck, the SPDX and encoding checks, and the browser specs |
+| Tests for new code | Review. No coverage threshold is enforced by CI |
+| Docs for new features | Review, and a changelog entry under `[Unreleased]` |
+| DCO sign-off (`git commit -s`) | Asked of every contributor; not checked by CI |
+| Ethical review | [docs/ETHICAL-REVIEW-PROCESS.md](docs/ETHICAL-REVIEW-PROCESS.md), for the changes it lists |
 
 Sign your commits with `git commit -s` (Developer Certificate of Origin).
 
@@ -73,19 +73,19 @@ it; `python3 scripts/spdx-headers.py` adds it. The reasoning for all of the abov
 
 ## Code Standards
 
-- Go 1.22+. Run `golangci-lint run` before submitting.
+- Go as pinned in `go.mod` (the `toolchain` line; 1.27 today). Run `golangci-lint run` before submitting.
 - SQLite-first: all new features must work with SQLite.
 - No new external dependencies without RFC approval.
 - No React/Vue/Angular in public paths — HTMX + Alpine.js only.
-- Test coverage >70% (>80% for critical paths).
-- Run `go test -race ./...` — zero races allowed.
+- Test what you change; a security rule is mutation-tested (break it and see the test fail).
+- Run `go test -race ./...` — zero races allowed; CI runs it.
 
 ## Onboarding Path
 
-1. Read governance docs and acknowledge.
-2. Submit a small first PR (docs, tests, typo fix).
-3. A mentor will be assigned.
-4. After 3 merged PRs, request write access to non-critical paths.
+1. Read the governance docs.
+2. Submit a small first PR (docs, tests, a typo fix).
+3. After a few merged PRs, ask for review rights on the areas you know
+   ([docs/MAINTAINERS.md](docs/MAINTAINERS.md)).
 
 ## Code of Conduct
 

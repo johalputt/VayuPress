@@ -21,6 +21,9 @@
 | [ADR-0157](ADR-0157-nothing-may-write-into-a-directory-nginx-includes.md) | A backup in sites-enabled is live config; reloads must not overlap | Accepted | Core | 2026-08-06 |
 | [ADR-0156](ADR-0156-the-write-connection-must-not-be-a-single-point-of-failure.md) | Traffic must never queue on SQLite's single writer, and a stall must leave evidence | Accepted | Core | 2026-08-06 |
 | [ADR-0155](ADR-0155-certificates-without-a-restart.md) | Adding a domain must not restart the server; two of the three restarts are already unnecessary | Accepted | Core | 2026-08-06 |
+| [ADR-0154](ADR-0154-one-console-per-site.md) | One console per site | Accepted | Core | 2026-08-03 |
+| [ADR-0153](ADR-0153-domain-independence.md) | Every domain a whole install | Accepted | Core | 2026-08-02 |
+| [ADR-0152](ADR-0152-agency-hosting.md) | Agency hosting: per-domain sites, scoped client access, witnessed mail | Accepted | Core | 2026-08-02 |
 | [ADR-0147](ADR-0147-per-client-connector-pages.md) | One page per client; VayuMCP keeps the protocol | Accepted | Core | 2026-07-28 |
 | [ADR-0148](ADR-0148-multi-node-verdict-sharing.md) | Nodes share VayuShield verdicts under a derived key; the ingress ceiling is linear | Accepted | Core | 2026-07-29 |
 | [ADR-0149](ADR-0149-third-party-network-intelligence.md) | Published network lists may add suspicion or refuse, and can never grant access | Accepted | Core | 2026-07-29 |
@@ -32,6 +35,9 @@
 | [ADR-0143](ADR-0143-tor-space-anonymity-model.md) | Tor Space Anonymity Model & Threat Boundary | Accepted | Core | 2026-07-24 |
 | [ADR-0142](ADR-0142-vayutalk-onion-to-onion-delivery.md) | VayuTalk Onion-to-Onion Delivery (Tor-World Federation) | Accepted | Core | 2026-07-20 |
 | [ADR-0001](ADR-0001-sqlite-first.md) | SQLite-First Data Layer | Accepted | Core | 2024-01-01 |
+| [ADR-0141](ADR-0141-vayuos-spaces-clearnet-tor.md) | VayuOS Spaces: Clearnet and Tor as separate, independently controllable worlds | Accepted | Core | 2026-07-19 |
+| [ADR-0140](ADR-0140-vayu-mcp-oauth.md) | VayuMCP Stage 4: OAuth 2.1 for one-click Connect | Accepted | Core | 2026-07-18 |
+| [ADR-0139](ADR-0139-vayu-mcp-connector.md) | VayuMCP: a built-in Model Context Protocol connector | Accepted | Core | 2026-07-18 |
 | [ADR-0138](ADR-0138-vayutor-onion-services.md) | VayuTor — One-Click Tor Onion Services for Every Hosted Domain | Accepted | Core | 2026-07-17 |
 | [ADR-0137](ADR-0137-vayushield-aegis-surge-and-swarm-scale.md) | VayuShield Aegis — Sovereign Surge, Swarm-Scale Classification & Self-Maintaining Detection | Accepted | Core | 2026-07-16 |
 | [ADR-0136](ADR-0136-premium-ux-motion-and-alpine-csp.md) | Premium UX — Motion/Design Tokens, View Transitions & the Alpine.js CSP Build | Accepted | Core | 2026-07-16 |
@@ -60,6 +66,8 @@
 | [ADR-0113](ADR-0113-memory-footprint-budget-and-search-index-windowing.md) | Memory-Footprint Budget & Search-Index Windowing | Accepted | Core | 2026-07-07 |
 | [ADR-0112](ADR-0112-vayushield-resilience-tiers.md) | VayuShield Resilience Tiers & Live Operator Controls | Accepted | VayuOS | 2026-07-06 |
 | [ADR-0111](ADR-0111-vayushield-bot-protection-and-analytics.md) | VayuShield Bot Protection & VayuAnalytics Engagement Analytics | Accepted | VayuOS | 2026-07-06 |
+| [ADR-0110](ADR-0110-incremental-search-index-persistence.md) | Incremental search-index persistence (no full rebuild on restart) | Accepted | Core | 2026-07-05 |
+| [ADR-0109](ADR-0109-writable-binary-location-for-self-update.md) | Run the binary from a service-owned writable directory for self-update | Accepted | Core | 2026-07-04 |
 | [ADR-0108](ADR-0108-vayumail-autoconfig-and-discovery-hardening.md) | VayuMail Autoconfig Discovery & Public-Discovery Hardening | Accepted | VayuOS | 2026-07-04 |
 | [ADR-0107](ADR-0107-self-hosted-htmx.md) | Self-Hosted HTMX in the VayuPress Binary | Accepted | VayuOS | 2026-07-03 |
 | [ADR-0106](ADR-0106-vayumail-namespace-rotating-qr.md) | VayuMail Clean Namespace, Rotating Setup QR & Device App Passwords | Accepted | Core | 2026-07-02 |

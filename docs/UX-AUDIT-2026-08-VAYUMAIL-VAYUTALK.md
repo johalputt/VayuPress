@@ -1,5 +1,7 @@
 # UX audit & upgrade plan — VayuMail and VayuTalk
 
+> **A record (checked 2026-10-25).** The audit and plan as written in August 2026; Mail and Talk have since been redrawn in the Still Air console. What the console does now is in [ADMIN-UI.md](ADMIN-UI.md).
+
 **Date:** 2026-08-26 · **Scope:** every user-facing surface of VayuMail (`cmd/vayupress/vayuos_mail*.go`,
 `vayuos.go` inbox/reader/search, accounts/contacts/DNS/devices/recovery handlers,
 `static/js/admin-os-mail*.js`) and VayuTalk (`vayuos_talk.go`, `handlers_vayutalk.go`,

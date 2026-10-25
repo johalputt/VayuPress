@@ -106,6 +106,10 @@ process can read its effect back afterwards.
 | `ProtectHome=yes` | home directories, including thumbnail caches | `/proc/self/mountinfo` |
 | `MemorySwapMax=0` | the kernel paging this service's memory to disk at all | the service's own cgroup |
 
+`ProtectHome=yes` is written only when the data directory is outside `/home`
+and `/root`: under either, it would leave the service unable to open its own
+database, so the worker skips it and records why (`scripts/vayuveil-harden.sh`).
+
 Everything else systemd offers is refused, and the page prints each refusal with
 its reason. `ProtectSystem=strict` is the one worth understanding: it is in the
 shipped unit and correct there, because that unit also carries a

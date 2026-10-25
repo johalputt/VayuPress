@@ -37,15 +37,23 @@
 │  │  │                firmware, latency_stats, timer_*   │  │  │
 │  │  └─────────────────────────────────────────────────────┘  │  │
 │  │                                                           │  │
-│  │  Seccomp-BPF allowlist (P28 — ~35 syscalls)              │  │
-│  │  All others → EPERM (graceful, not SIGKILL)              │  │
+│  │  Seccomp-BPF allowlist: written, NOT applied (see below) │  │
 │  │                                                           │  │
-│  │  capset(2) → all capabilities zeroed                     │  │
+│  │  capset(2) capability drop: written, NOT applied         │  │
 │  │                                                           │  │
 │  │  FD CLOEXEC sweep before exec                            │  │
 │  └───────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+**Not yet enforced (checked 2026-10-25).** The seccomp filter
+(`buildSeccompFilter`, `ApplySeccompFilter`), `NoNewPrivs` and the capability
+drop are in `internal/sandbox/confinement_linux.go`, but nothing calls them for
+a plugin process: they must run in the child between fork and `exec`, which
+the launcher does not have yet. The namespaces, cgroup limits, `RunAs`, the
+binary hash and the allowlists above are applied.
 
 ---
 

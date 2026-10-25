@@ -1,6 +1,6 @@
 # ADR-0152 — Agency hosting: per-domain sites, scoped client access, witnessed mail
 
-- **Status:** Proposed
+- **Status:** Accepted, built (checked 2026-10-25): the client role is `users.RoleClient`, its confined console `cmd/vayupress/admin_os_mysite.go`; the per-site surface is ADR-0154
 - **Date:** 2026-08-02
 - **Relates to:** ADR-0132 (VayuDomains), ADR-0123 (privilege separation),
   ADR-0134 (API-key capabilities), ADR-0144 (mail recovery), ADR-0141 (Spaces)

@@ -11,16 +11,16 @@ that carried the Pages custom domain are both gone.
 
 ```
 docs/site/
-├── index.html        # single-page site (Tailwind + Alpine)
+├── index.html            # the home page (Tailwind + Alpine from their CDNs; rewritten below)
+├── about.html, vayuweb.html, webx.html
+├── sponsors/index.html
+├── vayumail/privacy/index.html
 ├── .well-known/
-│   └── security.txt  # RFC 9116 contact — see "The expiry date is live" below
-├── assets/
-│   ├── style.css     # premium styles (wind, tilt, marquee, reveal)
-│   ├── app.js        # aurora canvas, cursor aura, magnetic hover, Alpine root
-│   ├── mark.png      # V + wind mark (light, for dark bg)
-│   ├── wordmark.png  # full logo (light)
-│   └── favicon-*.png
-└── (screenshots/)    # NOT in this folder — see below
+│   └── security.txt      # RFC 9116 contact — see "The expiry date is live" below
+└── assets/
+    ├── style.css, app.js
+    ├── logo-dark.png, mark-dark.png, favicon-{32,180,512}.png
+    └── vayuweb-*.png     # VayuWeb's marks and favicons
 ```
 
 The gallery images live in `docs/screenshots/`, outside this folder.

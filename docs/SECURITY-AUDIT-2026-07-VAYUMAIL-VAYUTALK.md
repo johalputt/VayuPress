@@ -1,5 +1,7 @@
 # Security audit — VayuMail and VayuTalk
 
+> **A record (checked 2026-10-25).** The audit as written in July 2026; what was done about each finding is in [CHANGELOG.md](../CHANGELOG.md). The current security posture is in [SECURITY.md](SECURITY.md) and [THREAT-MODEL.md](THREAT-MODEL.md).
+
 **Date:** 2026-07 · **Scope:** `internal/vayuos/mail`, `internal/vayuos/vayutalk`, and
 their HTTP surfaces in `cmd/vayupress`. **Method:** adversarial source review of the
 authentication, authorization, protocol-state, path-handling and resource-limit

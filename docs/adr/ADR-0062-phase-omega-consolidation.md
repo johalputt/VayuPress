@@ -2,6 +2,11 @@
 
 **Status:** Accepted  
 **Date:** 2026-06-13  
+
+> **As built (checked 2026-10-25).** No `internal/profiling` package exists.
+> The rate-limited pprof handler is `pprofMux` in
+> `cmd/vayupress/handlers_admin.go`, counted by
+> `vayupress_pprof_accesses_total`.
 **Deciders:** VayuPress Maintainers
 
 ---

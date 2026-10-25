@@ -3,6 +3,13 @@
 **Status:** Accepted  
 **Date:** 2026-06-13  
 
+> **As built (checked 2026-10-25).** No `internal/migrations` package or
+> `internal/db/config.go` exists. Migrations run whole-file from the embedded
+> set in `internal/db` (`runMigrations`, with checksums checked by
+> `verifyMigrationChecksums`), and the SQLite settings this ADR asks for
+> (WAL, busy_timeout, foreign keys, synchronous=NORMAL) are in the DSNs in
+> `internal/db/db.go`. The decision stands; the paths below are as proposed.
+
 ## Context
 
 Three P0 gaps:

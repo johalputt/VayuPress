@@ -1,6 +1,10 @@
 # ADR-0071 — Theme Studio: A Safe, Token-Driven Theme Editor that Surpasses Tumblr
 
 **Status:** Proposed
+
+> **Not built as proposed (checked 2026-10-25).** No `internal/themelang`
+> exists. Themes are compiled from tokens by `internal/theme` (`compiler.go`,
+> `catalog.go`); there is no operator template language.
 **Date:** 2026-06-20
 **Deciders:** VayuPress Maintainers
 **Target release:** v1.4.0

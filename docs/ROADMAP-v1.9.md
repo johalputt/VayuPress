@@ -1,5 +1,7 @@
 # VayuPress v1.9.0 Roadmap — "Stable Private Email"
 
+> **A record (checked 2026-10-25).** The plan for v1.9, kept as written. What shipped is in [CHANGELOG.md](../CHANGELOG.md); the mail it describes is now VayuMail, documented in [MAIL-RECOVERY.md](MAIL-RECOVERY.md) and [OPERATIONS.md](OPERATIONS.md).
+
 > Theme: finish the sovereignty story started in v1.8.0 by making **self-hosted
 > email genuinely usable**, while staying inside the Operational Simplicity
 > Doctrine (one binary, low resource, easy maintenance).

@@ -6,8 +6,12 @@
 > they differ, `SPEC.md` wins.
 
 VayuPress plugins are **out-of-process** programs the host launches inside a
-sandbox (seccomp-BPF syscall filtering, PID/IPC/mount namespaces, cgroups v2
-limits, dropped capabilities, and explicit path/network allowlists — ADR-0056).
+sandbox: its own PID, IPC and network namespaces (no network unless granted),
+an optional private mount tree, cgroup v2 limits, an optional `uid:gid` to run
+as, a verified binary hash, a parent environment it never inherits, and
+explicit path/network allowlists (ADR-0056). A seccomp syscall filter and a
+capability drop are written (`internal/sandbox/confinement_linux.go`) but not
+yet applied to the plugin process, so neither is a control today.
 A plugin can be written in any language; it only has to speak the line-oriented
 JSON IPC protocol below.
 

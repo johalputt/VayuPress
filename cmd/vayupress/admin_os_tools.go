@@ -242,7 +242,7 @@ func (a *App) handleOSTools(w http.ResponseWriter, r *http.Request) {
 func pluginRegistryHTML() string {
 	stats := plugins.SubprocessStats()
 	if len(stats) == 0 {
-		return `<p class="muted text-sm">None installed. A sandboxed plugin runs as its own process (seccomp, namespaces, a capability allowlist) and speaks the JSON protocol in <code>docs/plugins/SPEC.md</code>.</p>`
+		return `<p class="muted text-sm">None installed. A sandboxed plugin runs as its own process (its own namespaces, cgroup limits, a path and network allowlist) and speaks the JSON protocol in <code>docs/plugins/SPEC.md</code>.</p>`
 	}
 	var rows strings.Builder
 	for _, s := range stats {

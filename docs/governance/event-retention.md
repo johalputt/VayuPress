@@ -32,6 +32,9 @@ These compose: the outbox is *durable + replayable + audit-grade*; the CSP ring 
 | **Mode journal** (`*.modes`) | durable · replayable · audit-grade | **Yes** for mode history | Every transition with cause; reloaded at boot. |
 | **Policy evaluations** (`policy_evaluations`) | durable · audit-grade | **Yes** for policy verdicts | Provenance log of every policy run (Ω11). |
 | **Structured logs** (`logging.LogJSON`) | durable · audit-grade | **Yes** for diagnostics | Shipped to the log pipeline; secret-redacted; carries `severity`. |
+| **Audit log** (`audit_log`, `dbpkg.AuditLog`) | durable · audit-grade | **Yes** for who did what | Append-only by trigger: updates and deletes abort (migration 005). Sign-ins, settings, unlocks, account lockouts. |
+| **Shield events** (`shield_events`) | durable | **Yes** for the shield's counts | Hashed, no addresses; aged out by `botdb.PurgeEvents`. |
+| **Analytics** (`analytics_*`, `vayuanalytics_*`) | durable | **Yes** for traffic figures | Kept `ANALYTICS_RETAIN_DAYS` (default 365), shorter per site where a site sets it; purged daily by `purgeExpiredAnalytics`. |
 | **Metrics** (`/metrics`) | durable (scraped) · operator-cognition | No — aggregates | Counters/histograms; retention lives in the scraper (Prometheus). |
 | **Unified Operational Timeline** | operator-cognition (synthesized) | **No** — a *view* | Re-derived per request from the stores above + the CSP ring. Carries provenance + causal lineage for traversal, but is **not itself a store**. |
 | **CSP violation ring** | ephemeral · operator-cognition | No | Last 10, process-local. The durable record is the CSP log line + `vayupress_csp_violations_total`. |
@@ -46,7 +49,8 @@ These compose: the outbox is *durable + replayable + audit-grade*; the CSP ring 
    and process-local; its durable shadow is the log + metric. No alert, audit, or
    replay may depend on the ring.
 3. **Audit-grade stores are append-only / tamper-evident.** Mode journal, policy
-   evaluations, and the WORM audit log are never mutated in place.
+   evaluations, and the WORM audit log (`audit_log`, enforced by its triggers) are
+   never mutated in place.
 4. **Replay is reserved for durable + replayable stores.** Only the outbox and
    mode journal are designed to be re-driven; operator-cognition surfaces are not
    replay sources.
