@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.14] — 2026-10-25
+
+Limits that are yours to set (API and MCP keys, unlimited included), sign-in attempts limited per account at every door, ads on the pages you choose, and a Right now that says where readers are, with flags and cities.
+
 ### Changed
 
 - **Visitor cities without a CDN.** A city was named only when a CDN in
