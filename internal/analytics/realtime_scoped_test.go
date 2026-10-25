@@ -56,3 +56,59 @@ func TestRightNowCountsReadersAndOneSiteAlone(t *testing.T) {
 		t.Errorf("site two: %d readers, pages %+v; want 2 readers on /c", two.ActiveVisitors, two.ActivePages)
 	}
 }
+
+// Right now says where its readers are, what they read on and how they
+// arrived, each reader counted once in each list however many pages they
+// read, and a city by its country: Paris, France is not Paris, Texas.
+func TestRightNowSaysWhereReadersAreAndWhatTheyReadOn(t *testing.T) {
+	s := newExtStore(t)
+	s.UseVisits(vasession.NewMasterHasher([]byte("live")))
+	now := time.Now().UTC()
+	s.now = func() time.Time { return now }
+	collect := func(who contractReader, path, ref string, geo GeoInfo) {
+		t.Helper()
+		req := CollectRequest{URL: path, Hostname: "s1.test", EventType: 1, Lang: "en", Referrer: ref, Geo: geo}
+		if err := s.Collect(context.Background(), req, who.ip, who.ua, "s1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r4 := contractReader{"198.51.100.4", "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) Chrome/130.0"}
+	google := "https://www.google.com/"
+	pune := GeoInfo{Country: "IN", Region: "Maharashtra", City: "Pune"}
+	collect(r1, "/a", google, pune)
+	collect(r1, "/b", google, pune) // one reader, two pages
+	collect(r2, "/a", google, GeoInfo{Country: "US", City: "Austin"})
+	collect(r3, "/a", "", GeoInfo{Country: "US", City: "Paris"})
+	collect(r4, "/a", google, GeoInfo{Country: "FR", City: "Paris"})
+
+	rs, err := s.RealtimeScoped(context.Background(), "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cities := map[string]int{}
+	for _, c := range rs.ActiveCities {
+		cities[c.City+"/"+c.Country] = c.Count
+	}
+	if len(cities) != 4 || cities["Pune/IN"] != 1 || cities["Austin/US"] != 1 || cities["Paris/US"] != 1 || cities["Paris/FR"] != 1 {
+		t.Errorf("cities %+v, want Pune/IN, Austin/US, Paris/US and Paris/FR, one reader each", rs.ActiveCities)
+	}
+	counts := func(list []AudienceStat) map[string]int {
+		m := map[string]int{}
+		for _, a := range list {
+			m[a.Label] = a.Count
+		}
+		return m
+	}
+	if d := counts(rs.ActiveDevices); len(d) != 2 || d["Desktop"] != 3 || d["Mobile"] != 1 {
+		t.Errorf("devices %+v, want Desktop 3 and Mobile 1", rs.ActiveDevices)
+	}
+	if b := counts(rs.ActiveBrowsers); len(b) != 3 || b["Chrome"] != 2 {
+		t.Errorf("browsers %+v, want three, Chrome with two readers", rs.ActiveBrowsers)
+	}
+	if c := counts(rs.ActiveChannels); len(c) != 2 || c["Organic search"] != 3 || c["Direct"] != 1 {
+		t.Errorf("channels %+v, want Organic search 3 and Direct 1", rs.ActiveChannels)
+	}
+	if len(rs.ActiveChannels) == 2 && rs.ActiveChannels[0].Label != "Organic search" {
+		t.Errorf("channels %+v are not largest first", rs.ActiveChannels)
+	}
+}

@@ -505,7 +505,8 @@ func osPeriodSelector(base string, days int) ui.HTML {
 }
 
 // osLiveCard is who is reading the site now: their count, as a figure, the
-// pages they are on and where they came from, filled every 10 s from src by
+// pages they are on, where they came from, the countries (with their flags)
+// and cities they are in and what they read on, filled every 10 s from src by
 // admin-os-intel.js. A count in ink, not an accent number beside a LIVE pill
 // and pulsing rings: it is the same kind of figure as the band's.
 func osLiveCard(src string) string {
@@ -516,6 +517,16 @@ func osLiveCard(src string) string {
   <div class="vp-bars" data-live-pages><p class="table-empty">Counting…</p></div>
   <h3 class="sa-panel__title">Referrers</h3>
   <div class="vp-bars" data-live-referrers><p class="table-empty">Counting…</p></div>
+  <h3 class="sa-panel__title">How they arrived</h3>
+  <div class="vp-bars" data-live-channels><p class="table-empty">Counting…</p></div>
+  <h3 class="sa-panel__title">Countries</h3>
+  <div class="vp-bars" data-live-countries><p class="table-empty">Counting…</p></div>
+  <h3 class="sa-panel__title">Cities</h3>
+  <div class="vp-bars" data-live-cities><p class="table-empty">Counting…</p></div>
+  <h3 class="sa-panel__title">Devices</h3>
+  <div class="vp-bars" data-live-devices><p class="table-empty">Counting…</p></div>
+  <h3 class="sa-panel__title">Browsers</h3>
+  <div class="vp-bars" data-live-browsers><p class="table-empty">Counting…</p></div>
 </div>`
 }
 
@@ -535,7 +546,7 @@ func osGeoSection(countries, regions, cities []analytics.AudienceStat) string {
 		if name == "" {
 			name = c.Label
 		}
-		countryBars = append(countryBars, osChartBar{Label: name, Value: c.Count})
+		countryBars = append(countryBars, osChartBar{Label: name, Value: c.Count, Flag: c.Label})
 		if cont := continentName(c.Label); cont != "" {
 			contAgg[cont] += c.Count
 		}

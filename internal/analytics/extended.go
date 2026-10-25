@@ -583,8 +583,19 @@ type RealtimeStats struct {
 	ActiveVisitors  int            `json:"active_visitors"`
 	ActivePages     []RealtimePage `json:"active_pages"`
 	ActiveCountries []AudienceStat `json:"active_countries"`
+	ActiveCities    []RealtimeCity `json:"active_cities"`
+	ActiveDevices   []AudienceStat `json:"active_devices"`
+	ActiveBrowsers  []AudienceStat `json:"active_browsers"`
+	ActiveChannels  []AudienceStat `json:"active_channels"`
 	ActiveReferrers []AudienceStat `json:"active_referrers"`
 	WindowMinutes   int            `json:"window_minutes"`
+}
+
+// RealtimeCity is a city active readers are in, with its country.
+type RealtimeCity struct {
+	City    string `json:"city"`
+	Country string `json:"country"`
+	Count   int    `json:"count"`
 }
 
 // RealtimePage is a page with active visitor count.
@@ -608,6 +619,10 @@ func (s *Store) RealtimeScoped(ctx context.Context, scope string) (*RealtimeStat
 	rs := &RealtimeStats{
 		ActivePages:     []RealtimePage{},
 		ActiveCountries: []AudienceStat{},
+		ActiveCities:    []RealtimeCity{},
+		ActiveDevices:   []AudienceStat{},
+		ActiveBrowsers:  []AudienceStat{},
+		ActiveChannels:  []AudienceStat{},
 		ActiveReferrers: []AudienceStat{},
 		WindowMinutes:   5,
 	}
@@ -641,16 +656,67 @@ func (s *Store) RealtimeScoped(ctx context.Context, scope string) (*RealtimeStat
 		rows.Close()
 	}
 
-	// Active readers with no proxy-supplied country are bucketed as "Unknown"
-	// (Label empty) so the live panel still accounts for everyone rather than
-	// silently dropping them. VayuPress does no GeoIP — country is only known
-	// when a reverse proxy sets a geo header.
+	// Active readers with no country (no proxy header, and an address the
+	// embedded table cannot place) are bucketed as "Unknown" (Label empty) so
+	// the live panel still accounts for everyone rather than silently
+	// dropping them.
 	var unknownCountry int
 	_ = s.readDB().QueryRowContext(ctx,
 		`SELECT COUNT(DISTINCT p.visitor_id) FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id WHERE p.created_at>=?`+pclause+` AND COALESCE(s.country,'')=''`, args...).
 		Scan(&unknownCountry)
 	if unknownCountry > 0 {
 		rs.ActiveCountries = append(rs.ActiveCountries, AudienceStat{Label: "", Count: unknownCountry})
+	}
+
+	// What active readers read on, and the cities they are in, from their
+	// visits, each counted once however many pages they read.
+	visitColumn := func(col string) []AudienceStat {
+		out := []AudienceStat{}
+		rows, err := s.readDB().QueryContext(ctx,
+			`SELECT s.`+col+`,COUNT(DISTINCT p.visitor_id) FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id WHERE p.created_at>=?`+pclause+` AND s.`+col+`!='' GROUP BY s.`+col+` ORDER BY 2 DESC LIMIT 10`, args...)
+		if err != nil {
+			return out
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var a AudienceStat
+			if err := rows.Scan(&a.Label, &a.Count); err == nil {
+				out = append(out, a)
+			}
+		}
+		return out
+	}
+	rs.ActiveDevices = visitColumn("device")
+	rs.ActiveBrowsers = visitColumn("browser")
+	if rows, err := s.readDB().QueryContext(ctx,
+		`SELECT s.city,s.country,COUNT(DISTINCT p.visitor_id) FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id WHERE p.created_at>=?`+pclause+` AND s.city!='' GROUP BY s.city,s.country ORDER BY 3 DESC LIMIT 10`, args...); err == nil {
+		for rows.Next() {
+			var c RealtimeCity
+			if err := rows.Scan(&c.City, &c.Country, &c.Count); err == nil {
+				rs.ActiveCities = append(rs.ActiveCities, c)
+			}
+		}
+		rows.Close()
+	}
+
+	// How active readers arrived, by the channels the reports use: each
+	// reader counted once in each channel they arrived by.
+	if rows, err := s.readDB().QueryContext(ctx,
+		`SELECT DISTINCT referrer,visitor_id FROM analytics_pageviews WHERE created_at>=?`+clause+` AND event_type=1`, args...); err == nil {
+		buckets := map[string]int{}
+		for rows.Next() {
+			var ref, visitor string
+			if err := rows.Scan(&ref, &visitor); err == nil {
+				buckets[s.channelOf(ref)]++
+			}
+		}
+		rows.Close()
+		for _, l := range channelLabels {
+			if buckets[l.label] > 0 {
+				rs.ActiveChannels = append(rs.ActiveChannels, AudienceStat{Label: l.label, Count: buckets[l.label]})
+			}
+		}
+		sort.SliceStable(rs.ActiveChannels, func(i, j int) bool { return rs.ActiveChannels[i].Count > rs.ActiveChannels[j].Count })
 	}
 
 	// How active readers arrived (referrer host, recorded at ingest).

@@ -110,10 +110,10 @@ func TestATrendNeedsTwoDaysWithViews(t *testing.T) {
 	}
 }
 
-// Who is reading now: the count is a figure like the band's, with the pages
-// and referrers the script fills, and nothing that restates it (a LIVE pill,
-// pulsing rings) or says nothing (a country list with no location known).
-func TestLiveCardIsAFigureAndTwoLists(t *testing.T) {
+// Who is reading now: the count is a figure like the band's, with the lists
+// the script fills (pages, referrers, channels, countries, cities, devices,
+// browsers), and nothing that restates it (a LIVE pill, pulsing rings).
+func TestLiveCardIsAFigureAndItsLists(t *testing.T) {
 	out := osLiveCard("/os/api/analytics/realtime")
 	assertCSPSafe(t, "osLiveCard", out)
 	for _, want := range []string{
@@ -122,12 +122,17 @@ func TestLiveCardIsAFigureAndTwoLists(t *testing.T) {
 		`data-live-window`, `data-live-updated`,
 		`<div class="vp-bars" data-live-pages>`,
 		`<div class="vp-bars" data-live-referrers>`,
+		`<div class="vp-bars" data-live-channels>`,
+		`<div class="vp-bars" data-live-countries>`,
+		`<div class="vp-bars" data-live-cities>`,
+		`<div class="vp-bars" data-live-devices>`,
+		`<div class="vp-bars" data-live-browsers>`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("live card missing %q", want)
 		}
 	}
-	for _, banned := range []string{"vm-live-badge", "vm-live-rings", "data-live-countries", "<tbody"} {
+	for _, banned := range []string{"vm-live-badge", "vm-live-rings", "<tbody"} {
 		if strings.Contains(out, banned) {
 			t.Errorf("live card carries %q", banned)
 		}

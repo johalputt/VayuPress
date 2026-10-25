@@ -44,6 +44,9 @@ func prettyPathText(p string) string {
 type osChartBar struct {
 	Label string
 	Value int
+	// Flag is a country code whose flag is drawn before the label. A code,
+	// not markup: the renderer makes the image from its own flags folder.
+	Flag string
 }
 
 // barWidthClass snaps a 0..100 percentage to the nearest available w-N class
@@ -172,6 +175,9 @@ func osBarList(items []osChartBar, denom osBarDenom, emptyMsg string) string {
 			label = "(unknown)"
 		}
 		lab := html.EscapeString(label)
+		if img := countryFlagImg(it.Flag); img != "" {
+			lab = img + " " + lab
+		}
 		pct := it.Value * 100 / max
 		share := ""
 		if total > 0 {

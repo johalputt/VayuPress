@@ -427,6 +427,16 @@ func (a *App) writeRealtime(w http.ResponseWriter, r *http.Request, scope string
 		resp.ActiveVisitors = data.ActiveVisitors
 		resp.ActivePages = data.ActivePages
 		resp.ActiveReferrers = data.ActiveReferrers
+		resp.ActiveDevices = data.ActiveDevices
+		resp.ActiveBrowsers = data.ActiveBrowsers
+		resp.ActiveChannels = data.ActiveChannels
+		for _, c := range data.ActiveCities {
+			name := c.City
+			if cn := countryName(c.Country); cn != "" {
+				name += ", " + cn
+			}
+			resp.ActiveCities = append(resp.ActiveCities, realtimeCountry{Code: c.Country, Name: name, Flag: countryFlagURL(c.Country), Label: name, Count: c.Count})
+		}
 		if data.WindowMinutes > 0 {
 			resp.WindowMinutes = data.WindowMinutes
 		}
@@ -462,6 +472,10 @@ type realtimeResponse struct {
 	ActiveVisitors  int                      `json:"active_visitors"`
 	ActivePages     []analytics.RealtimePage `json:"active_pages"`
 	ActiveCountries []realtimeCountry        `json:"active_countries"`
+	ActiveCities    []realtimeCountry        `json:"active_cities"` // Name is "City, Country"; Flag the country's
+	ActiveDevices   []analytics.AudienceStat `json:"active_devices"`
+	ActiveBrowsers  []analytics.AudienceStat `json:"active_browsers"`
+	ActiveChannels  []analytics.AudienceStat `json:"active_channels"`
 	ActiveReferrers []analytics.AudienceStat `json:"active_referrers"`
 	WindowMinutes   int                      `json:"window_minutes"`
 }

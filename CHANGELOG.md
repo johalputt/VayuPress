@@ -10,6 +10,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
+- **Right now says where readers are and what they read on.** The live
+  panel showed only the pages being read and the sites readers came from.
+  It now also lists how they arrived (search, social, AI assistants, direct
+  and the rest, as the reports name them), their countries and cities, each
+  with its country's flag, and their devices and browsers: each reader
+  counted once in each list, however many pages they read, and a city with
+  its country, so Paris, France is not Paris, Texas. Location's country list
+  carries the flags as well.
 - **Ads go where you choose.** Every ad slot showed on every page that had
   its placement, pages and posts alike. A slot now shows on every such page
   (as before, and the default), on posts only, on pages only, or only on the

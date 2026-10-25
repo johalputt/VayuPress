@@ -192,13 +192,25 @@
   // makeBar builds one .vp-bar row as the server's osBarList does: a label,
   // the count with its share, and a bar in the one ink every list uses.
   // CSP-safe: DOM API only, no innerHTML.
-  function makeBar(text, value, max, total) {
+  // flag, when given, is a country's flag from the console's own flags
+  // folder, drawn before the label as the server's countryFlagImg does.
+  function makeBar(text, value, max, total, flag) {
     var row = document.createElement('div');
     row.className = 'vp-bar';
     var label = document.createElement('span');
     label.className = 'vp-bar__label';
     label.title = text;
-    label.textContent = text;
+    if (flag && /^\/os\/static\/flags\/[a-z]{2}\.svg$/.test(flag)) {
+      var img = document.createElement('img');
+      img.className = 'vp-flag-img';
+      img.src = flag;
+      img.alt = '';
+      img.width = 20;
+      img.height = 15;
+      label.appendChild(img);
+      label.appendChild(document.createTextNode(' '));
+    }
+    label.appendChild(document.createTextNode(text));
     var val = document.createElement('span');
     val.className = 'vp-bar__val';
     val.appendChild(document.createTextNode(String(value)));
@@ -229,7 +241,7 @@
     var max = 1, total = 0;
     items.forEach(function (it) { var v = it.count || 0; if (v > max) max = v; total += v; });
     items.forEach(function (it) {
-      el.appendChild(makeBar(String(it[labelKey] || it.label || '(unknown)'), it.count || 0, max, total));
+      el.appendChild(makeBar(String(it[labelKey] || it.label || '(unknown)'), it.count || 0, max, total, it.flag));
     });
   }
 
@@ -246,6 +258,11 @@
     if (nounEl) nounEl.textContent = active === 1 ? 'visitor' : 'visitors';
     fill(card.querySelector('[data-live-pages]'), data.active_pages, 'path', 'No one is reading now.');
     fill(card.querySelector('[data-live-referrers]'), data.active_referrers, 'label', 'No one came from another site in the last 5 minutes.');
+    fill(card.querySelector('[data-live-channels]'), data.active_channels, 'label', 'No one is reading now.');
+    fill(card.querySelector('[data-live-countries]'), data.active_countries, 'name', 'No one is reading now.');
+    fill(card.querySelector('[data-live-cities]'), data.active_cities, 'name', 'No city recorded in the last 5 minutes.');
+    fill(card.querySelector('[data-live-devices]'), data.active_devices, 'label', 'No one is reading now.');
+    fill(card.querySelector('[data-live-browsers]'), data.active_browsers, 'label', 'No one is reading now.');
     var updatedEl = card.querySelector('[data-live-updated]');
     if (updatedEl) {
       var t = new Date();
