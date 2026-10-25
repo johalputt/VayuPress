@@ -10,6 +10,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
+- **Ads go where you choose.** Every ad slot showed on every page that had
+  its placement, pages and posts alike. A slot now shows on every such page
+  (as before, and the default), on posts only, on pages only, or only on the
+  pages and posts you list ("/" is the home page). **Never show ads on**
+  takes every ad off the pages and posts it names, whatever their slots
+  say. Both are on Advertising, and take effect at once.
 - **Sign-in attempts are limited per account, at every door.** The lockout
   counted per address, so many addresses could guess one account without
   end, and each door (the site, the console, mail apps over IMAP, POP3 and

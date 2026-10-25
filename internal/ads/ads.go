@@ -67,6 +67,108 @@ func Placements() []struct{ ID, Label string } {
 	}
 }
 
+// Where a slot shows, beyond its placement.
+const (
+	ShowEverywhere = ""       // every page that has the slot's placement
+	ShowPosts      = "posts"  // posts only
+	ShowPages      = "pages"  // pages only
+	ShowChosen     = "chosen" // only the addresses in ShowPaths
+)
+
+// ShowOptions returns the choices for admin UIs, in order.
+func ShowOptions() []struct{ ID, Label string } {
+	return []struct{ ID, Label string }{
+		{ShowEverywhere, "Every page with this placement"},
+		{ShowPosts, "Posts only"},
+		{ShowPages, "Pages only"},
+		{ShowChosen, "Only the pages and posts listed"},
+	}
+}
+
+// ValidShowOn reports whether v is one of ShowOptions.
+func ValidShowOn(v string) bool {
+	return v == ShowEverywhere || v == ShowPosts || v == ShowPages || v == ShowChosen
+}
+
+// Page is the page an ad is asked to show on: its address, and whether it
+// is a post or a page. The home page is "/", neither.
+type Page struct {
+	Path   string
+	Post   bool
+	IsPage bool
+}
+
+// ShowsOn reports whether sl shows on p. A slot set to posts does not show
+// on the home page, which lists posts but is not one.
+func (sl Slot) ShowsOn(p Page) bool {
+	switch sl.ShowOn {
+	case ShowPosts:
+		return p.Post
+	case ShowPages:
+		return p.IsPage
+	case ShowChosen:
+		return HasPath(sl.ShowPaths, p.Path)
+	}
+	return true
+}
+
+// ShowingOn keeps the slots that show on p.
+func ShowingOn(slots []Slot, p Page) []Slot {
+	out := slots[:0:0]
+	for _, sl := range slots {
+		if sl.ShowsOn(p) {
+			out = append(out, sl)
+		}
+	}
+	return out
+}
+
+// Paths reads a list of addresses as an operator types or pastes them, one a
+// line or separated by commas: "post-slug", "/post-slug/" and
+// "https://example.com/post-slug" are all "/post-slug"; "/" is the home page.
+// Blank entries and repeats are dropped.
+func Paths(text string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, f := range strings.FieldsFunc(text, func(r rune) bool { return r == '\n' || r == '\r' || r == ',' }) {
+		p := strings.TrimSpace(f)
+		if i := strings.Index(p, "://"); i >= 0 {
+			p = p[i+3:]
+			if j := strings.IndexByte(p, '/'); j >= 0 {
+				p = p[j:]
+			} else {
+				p = "/"
+			}
+		}
+		if i := strings.IndexAny(p, "?#"); i >= 0 {
+			p = p[:i]
+		}
+		if p == "" {
+			continue
+		}
+		p = "/" + strings.Trim(p, "/")
+		if !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// HasPath reports whether path, read as Paths reads it, is in list.
+func HasPath(list []string, path string) bool {
+	want := Paths(path)
+	if len(want) != 1 {
+		return false
+	}
+	for _, p := range list {
+		if p == want[0] {
+			return true
+		}
+	}
+	return false
+}
+
 // ValidKind reports whether k is a known creative kind.
 func ValidKind(k string) bool {
 	return k == KindImage || k == KindHTML || k == KindAdSense
@@ -84,6 +186,8 @@ type Slot struct {
 	HTML       string    `json:"html,omitempty"` // html creative, or AdSense unit id for adsense kind
 	Enabled    bool      `json:"enabled"`
 	Sort       int       `json:"sort"`
+	ShowOn     string    `json:"show_on"`               // ShowEverywhere, ShowPosts, ShowPages or ShowChosen
+	ShowPaths  []string  `json:"show_paths,omitempty"`  // for ShowChosen
 	OwnerEmail string    `json:"owner_email,omitempty"` // member who submitted a self-serve ad ("" = operator slot)
 	Status     string    `json:"status"`                // approved | pending_payment | pending_review | rejected
 	OrderRef   string    `json:"order_ref,omitempty"`   // the paid order backing a member ad
@@ -105,7 +209,7 @@ type Store struct{ db *sql.DB }
 // New creates a Store backed by db.
 func New(db *sql.DB) *Store { return &Store{db: db} }
 
-const slotCols = `id,name,placement,kind,image_url,link_url,alt_text,html,enabled,sort,owner_email,status,order_ref,created_at,updated_at`
+const slotCols = `id,name,placement,kind,image_url,link_url,alt_text,html,enabled,sort,show_on,show_paths,owner_email,status,order_ref,created_at,updated_at`
 
 // SlotInput carries the editable fields of a slot.
 type SlotInput struct {
@@ -118,26 +222,45 @@ type SlotInput struct {
 	HTML      string
 	Sort      int
 	Enabled   bool
+	ShowOn    string
+	ShowPaths string // as typed; read with Paths
+}
+
+// check validates what Create and Update share, and returns the trimmed name
+// and the chosen addresses as stored.
+func (in SlotInput) check() (name, paths string, err error) {
+	name = strings.TrimSpace(in.Name)
+	if name == "" {
+		return "", "", fmt.Errorf("slot name is required")
+	}
+	if !ValidPlacement(in.Placement) {
+		return "", "", fmt.Errorf("invalid placement %q", in.Placement)
+	}
+	if !ValidKind(in.Kind) {
+		return "", "", fmt.Errorf("invalid creative kind %q", in.Kind)
+	}
+	if !ValidShowOn(in.ShowOn) {
+		return "", "", fmt.Errorf("invalid choice of pages %q", in.ShowOn)
+	}
+	list := Paths(in.ShowPaths)
+	if in.ShowOn == ShowChosen && len(list) == 0 {
+		return "", "", fmt.Errorf("list the pages and posts the slot shows on")
+	}
+	return name, strings.Join(list, "\n"), nil
 }
 
 // Create inserts a new slot and returns it.
 func (s *Store) Create(ctx context.Context, in SlotInput) (*Slot, error) {
-	name := strings.TrimSpace(in.Name)
-	if name == "" {
-		return nil, fmt.Errorf("slot name is required")
-	}
-	if !ValidPlacement(in.Placement) {
-		return nil, fmt.Errorf("invalid placement %q", in.Placement)
-	}
-	if !ValidKind(in.Kind) {
-		return nil, fmt.Errorf("invalid creative kind %q", in.Kind)
+	name, paths, err := in.check()
+	if err != nil {
+		return nil, err
 	}
 	id := "ad_" + randHex(8)
 	en := boolToInt(in.Enabled)
 	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO ad_slots(id,name,placement,kind,image_url,link_url,alt_text,html,enabled,sort) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO ad_slots(id,name,placement,kind,image_url,link_url,alt_text,html,enabled,sort,show_on,show_paths) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
 		id, name, in.Placement, in.Kind, strings.TrimSpace(in.ImageURL), strings.TrimSpace(in.LinkURL),
-		strings.TrimSpace(in.AltText), in.HTML, en, in.Sort); err != nil {
+		strings.TrimSpace(in.AltText), in.HTML, en, in.Sort, in.ShowOn, paths); err != nil {
 		return nil, fmt.Errorf("create slot: %w", err)
 	}
 	return s.GetByID(ctx, id)
@@ -145,20 +268,14 @@ func (s *Store) Create(ctx context.Context, in SlotInput) (*Slot, error) {
 
 // Update edits an existing slot's fields by id.
 func (s *Store) Update(ctx context.Context, id string, in SlotInput) error {
-	name := strings.TrimSpace(in.Name)
-	if name == "" {
-		return fmt.Errorf("slot name is required")
-	}
-	if !ValidPlacement(in.Placement) {
-		return fmt.Errorf("invalid placement %q", in.Placement)
-	}
-	if !ValidKind(in.Kind) {
-		return fmt.Errorf("invalid creative kind %q", in.Kind)
+	name, paths, err := in.check()
+	if err != nil {
+		return err
 	}
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE ad_slots SET name=?,placement=?,kind=?,image_url=?,link_url=?,alt_text=?,html=?,enabled=?,sort=?,updated_at=? WHERE id=?`,
+		`UPDATE ad_slots SET name=?,placement=?,kind=?,image_url=?,link_url=?,alt_text=?,html=?,enabled=?,sort=?,show_on=?,show_paths=?,updated_at=? WHERE id=?`,
 		name, in.Placement, in.Kind, strings.TrimSpace(in.ImageURL), strings.TrimSpace(in.LinkURL),
-		strings.TrimSpace(in.AltText), in.HTML, boolToInt(in.Enabled), in.Sort, time.Now().UTC(), id)
+		strings.TrimSpace(in.AltText), in.HTML, boolToInt(in.Enabled), in.Sort, in.ShowOn, paths, time.Now().UTC(), id)
 	if err != nil {
 		return err
 	}
@@ -317,11 +434,13 @@ func (s *Store) query(ctx context.Context, q string, args ...interface{}) ([]Slo
 func scanSlot(sc interface{ Scan(...interface{}) error }) (*Slot, error) {
 	var sl Slot
 	var enabled int
+	var paths string
 	if err := sc.Scan(&sl.ID, &sl.Name, &sl.Placement, &sl.Kind, &sl.ImageURL, &sl.LinkURL,
-		&sl.AltText, &sl.HTML, &enabled, &sl.Sort, &sl.OwnerEmail, &sl.Status, &sl.OrderRef, &sl.CreatedAt, &sl.UpdatedAt); err != nil {
+		&sl.AltText, &sl.HTML, &enabled, &sl.Sort, &sl.ShowOn, &paths, &sl.OwnerEmail, &sl.Status, &sl.OrderRef, &sl.CreatedAt, &sl.UpdatedAt); err != nil {
 		return nil, err
 	}
 	sl.Enabled = enabled != 0
+	sl.ShowPaths = Paths(paths)
 	if sl.Status == "" {
 		sl.Status = StatusApproved
 	}

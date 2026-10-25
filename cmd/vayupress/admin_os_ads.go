@@ -16,6 +16,7 @@ import (
 	htmpl "html/template"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -35,9 +36,10 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 	adsOn := a.adsEnabled(ctx)
 	googleOn := a.siteSettings != nil && a.siteSettings.FeatureEnabled(ctx, settings.ForPrimary(), settings.KeyFeatureGoogleAds)
 	adsenseClient := a.adsenseClient(ctx)
-	disclosure := ""
+	disclosure, never := "", ""
 	if a.siteSettings != nil {
 		disclosure = a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyAffiliateDisclosure)
+		never = a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyAdsNever)
 	}
 
 	var slots []ads.Slot
@@ -93,13 +95,15 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 		ui.HTML(`<div class="page-lead">`+lead+`</div>`),
 		ui.Section("Member ads", "Paid submissions wait for your approval", ui.HTML(memberAdReviewTable(pendingAds))),
 		ui.Section("Ad slots", "Each fills one placement", ui.HTML(adsSlotsTable(slots))),
-		ui.Section("Pricing and networks", "", ui.Rows(
+		ui.Section("Pricing, networks and pages", "", ui.Rows(
 			ui.Row{Label: "Price of a member ad", Hint: "Charged once per submission, in minor units: 500 is " + priceLabel(a.payCurrency(ctx), 500) + ".", ID: "ad-price",
 				Control: field("ad-price", settings.KeyAdSlotPriceCents, "text", "Price of a member ad", strconv.Itoa(adPrice))},
 			ui.Row{Label: "AdSense publisher ID", Hint: adsense + " Pages that show a unit let Google's ad origins through their CSP.", ID: "ad-adsense-client",
 				Control: field("ad-adsense-client", settings.KeyAdsenseClient, "text", "AdSense publisher ID", adsenseClient)},
 			ui.Row{Label: "Affiliate disclosure", Hint: "Shown above every post while the Affiliate module is on.", ID: "ad-disclosure",
 				Control: field("ad-disclosure", settings.KeyAffiliateDisclosure, "textarea", "Affiliate disclosure", disclosure)},
+			ui.Row{Label: "Never show ads on", Hint: "These pages and posts show no ad, whatever their slots say. One address a line, \"/\" for the home page.", ID: "ad-never",
+				Control: field("ad-never", settings.KeyAdsNever, "textarea", "Never show ads on", never)},
 		)),
 		ui.Sheet("ad-new", "Add an ad slot", ui.HTML(newSlot)),
 		editSheets,
@@ -115,7 +119,7 @@ function show(t,e){if(!msg)return;msg.textContent=t;msg.classList.toggle('is-err
 function jfetch(method,url,payload){var o={method:method,headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()}};if(payload)o.body=JSON.stringify(payload);return fetch(url,o).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});});}
 var createBtn=document.getElementById('ad-create-btn');
 if(createBtn)createBtn.addEventListener('click',function(){
-  var payload={name:val('ad-name'),placement:val('ad-placement'),kind:val('ad-kind'),image_url:val('ad-image'),link_url:val('ad-link'),alt_text:val('ad-alt'),html:val('ad-html'),enabled:true};
+  var payload={name:val('ad-name'),placement:val('ad-placement'),kind:val('ad-kind'),image_url:val('ad-image'),link_url:val('ad-link'),alt_text:val('ad-alt'),html:val('ad-html'),show_on:val('ad-show-on'),show_paths:val('ad-show-paths'),enabled:true};
   if(!payload.name.trim()){show('Give the slot a name',true);return;}
   createBtn.disabled=true;show('Creating…',false);
   jfetch('POST','/os/api/ads',payload).then(function(res){createBtn.disabled=false;if(res.ok){location.reload();}else{show(res.d.detail||res.d.title||'Error',true);}}).catch(function(e){createBtn.disabled=false;show('Error: '+e,true);});
@@ -124,7 +128,7 @@ function val(id){var el=document.getElementById(id);return el?el.value:'';}
 document.querySelectorAll('[data-ad-save]').forEach(function(b){
   b.addEventListener('click',function(){
     var p=b.getAttribute('data-prefix');
-    var payload={name:val(p+'-name'),placement:val(p+'-placement'),kind:val(p+'-kind'),image_url:val(p+'-image'),link_url:val(p+'-link'),alt_text:val(p+'-alt'),html:val(p+'-html'),enabled:b.getAttribute('data-enabled')==='true',sort:parseInt(b.getAttribute('data-sort'),10)||0};
+    var payload={name:val(p+'-name'),placement:val(p+'-placement'),kind:val(p+'-kind'),image_url:val(p+'-image'),link_url:val(p+'-link'),alt_text:val(p+'-alt'),html:val(p+'-html'),show_on:val(p+'-show-on'),show_paths:val(p+'-show-paths'),enabled:b.getAttribute('data-enabled')==='true',sort:parseInt(b.getAttribute('data-sort'),10)||0};
     if(!payload.name.trim()){show('Give the slot a name',true);return;}
     b.disabled=true;show('Saving…',false);
     jfetch('PUT','/os/api/ads/'+encodeURIComponent(b.getAttribute('data-ad-save')),payload).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show(res.d.detail||(res.d.error&&res.d.error.message)||'Error',true);}}).catch(function(e){b.disabled=false;show('Error: '+e,true);});
@@ -263,11 +267,26 @@ func adSlotForm(prefix string, sl ads.Slot) string {
 	}
 	return `<div class="field"><label class="field-label" for="` + id("name") + `">Name</label><input id="` + id("name") + `" class="input" type="text" placeholder="Below-post banner" value="` + html.EscapeString(sl.Name) + `"></div>
 <div class="field"><label class="field-label" for="` + id("placement") + `">Placement</label><select id="` + id("placement") + `" class="select">` + adsPlacementOptions(sl.Placement) + `</select></div>
+<div class="field"><label class="field-label" for="` + id("show-on") + `">Shows on</label><select id="` + id("show-on") + `" class="select">` + adsShowOptions(sl.ShowOn) + `</select></div>
+<div class="field"><label class="field-label" for="` + id("show-paths") + `">The pages and posts it shows on</label><textarea id="` + id("show-paths") + `" class="textarea font-mono" rows="3" placeholder="/about&#10;/a-post">` + html.EscapeString(strings.Join(sl.ShowPaths, "\n")) + `</textarea><span class="field-hint">For "Only the pages and posts listed": one address a line, "/" for the home page.</span></div>
 <div class="field"><label class="field-label" for="` + id("kind") + `">What fills it</label><select id="` + id("kind") + `" class="select">` + kinds + `</select></div>
 <div class="field"><label class="field-label" for="` + id("image") + `">Image URL</label><input id="` + id("image") + `" class="input" type="text" placeholder="/media/banner.png or https://…" value="` + html.EscapeString(sl.ImageURL) + `"><span class="field-hint">For an image and a link.</span></div>
 <div class="field"><label class="field-label" for="` + id("link") + `">Where it links</label><input id="` + id("link") + `" class="input" type="text" placeholder="https://sponsor.example" value="` + html.EscapeString(sl.LinkURL) + `"><span class="field-hint">For an image and a link.</span></div>
 <div class="field"><label class="field-label" for="` + id("alt") + `">Label</label><input id="` + id("alt") + `" class="input" type="text" placeholder="Sponsored by …" value="` + html.EscapeString(sl.AltText) + `"></div>
 <div class="field"><label class="field-label" for="` + id("html") + `">HTML, or the AdSense unit ID</label><textarea id="` + id("html") + `" class="textarea font-mono" rows="3">` + html.EscapeString(sl.HTML) + `</textarea></div>`
+}
+
+// adsShowOptions is the slot form's choice of pages, with selected chosen.
+func adsShowOptions(selected string) string {
+	out := ""
+	for _, o := range ads.ShowOptions() {
+		sel := ""
+		if o.ID == selected {
+			sel = " selected"
+		}
+		out += `<option value="` + html.EscapeString(o.ID) + `"` + sel + `>` + html.EscapeString(o.Label) + `</option>`
+	}
+	return out
 }
 
 // handleOSAdUpdate saves an edited slot. A member's paid ad keeps its review
@@ -287,6 +306,8 @@ func (a *App) handleOSAdUpdate(w http.ResponseWriter, r *http.Request) {
 		HTML      string `json:"html"`
 		Sort      int    `json:"sort"`
 		Enabled   bool   `json:"enabled"`
+		ShowOn    string `json:"show_on"`
+		ShowPaths string `json:"show_paths"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
@@ -297,6 +318,7 @@ func (a *App) handleOSAdUpdate(w http.ResponseWriter, r *http.Request) {
 		Name: body.Name, Placement: body.Placement, Kind: body.Kind,
 		ImageURL: body.ImageURL, LinkURL: body.LinkURL, AltText: body.AltText,
 		HTML: body.HTML, Sort: body.Sort, Enabled: body.Enabled,
+		ShowOn: body.ShowOn, ShowPaths: body.ShowPaths,
 	}); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "ads-error", err.Error(), "")
 		return
@@ -336,6 +358,8 @@ func (a *App) handleOSAdCreate(w http.ResponseWriter, r *http.Request) {
 		HTML      string `json:"html"`
 		Sort      int    `json:"sort"`
 		Enabled   bool   `json:"enabled"`
+		ShowOn    string `json:"show_on"`
+		ShowPaths string `json:"show_paths"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
@@ -345,6 +369,7 @@ func (a *App) handleOSAdCreate(w http.ResponseWriter, r *http.Request) {
 		Name: body.Name, Placement: body.Placement, Kind: body.Kind,
 		ImageURL: body.ImageURL, LinkURL: body.LinkURL, AltText: body.AltText,
 		HTML: body.HTML, Sort: body.Sort, Enabled: body.Enabled,
+		ShowOn: body.ShowOn, ShowPaths: body.ShowPaths,
 	})
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "ads-error", err.Error(), "")

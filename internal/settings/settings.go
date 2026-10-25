@@ -282,6 +282,9 @@ const (
 	// KeyAffiliateDisclosure is the short disclosure text shown above content
 	// when the affiliate module is enabled (FTC-style "contains affiliate links").
 	KeyAffiliateDisclosure = "ads.affiliate_disclosure"
+	// KeyAdsNever lists the pages and posts that show no ad, whatever their
+	// slots say: one address a line, "/" for the home page (ads.Paths).
+	KeyAdsNever = "ads.never"
 
 	// VayuShield — bot protection + Tier-1 (in-binary) DDoS resilience. All of
 	// these are operator-toggleable live from VayuOS → VayuShield
@@ -535,6 +538,7 @@ var RobotsOptions = map[string]bool{
 // editor round-trips it. Anything else is configuration, credentials, network
 // policy or measurements about this specific machine.
 var NotPortable = map[string]bool{
+	KeyAdsNever:                   true,
 	KeyAPIRatePerMin:              true,
 	KeyNoFollowLinks:              true,
 	KeyPageCache:                  true,
@@ -662,6 +666,7 @@ var NotPortable = map[string]bool{
 
 // AllKeys is the canonical set of settings keys accepted by Set/SetMany.
 var AllKeys = map[string]bool{
+	KeyAdsNever:      true,
 	KeyAPIRatePerMin: true,
 	// A hosted site's own VayuShield settings (vayushield/site_policy.go).
 	KeyShieldSitePoW:                true,

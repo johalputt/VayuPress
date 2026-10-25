@@ -34,7 +34,7 @@ func newHomeAdsApp(t *testing.T) (*App, context.Context) {
 	if _, err := db.Exec(`CREATE TABLE site_settings (scope TEXT NOT NULL DEFAULT '', key TEXT NOT NULL, value TEXT NOT NULL DEFAULT '', updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(scope,key))`); err != nil {
 		t.Fatalf("settings schema: %v", err)
 	}
-	if _, err := db.Exec(`CREATE TABLE ad_slots(id TEXT PRIMARY KEY,name TEXT NOT NULL,placement TEXT NOT NULL DEFAULT 'below_post',kind TEXT NOT NULL DEFAULT 'image',image_url TEXT NOT NULL DEFAULT '',link_url TEXT NOT NULL DEFAULT '',alt_text TEXT NOT NULL DEFAULT '',html TEXT NOT NULL DEFAULT '',enabled INTEGER NOT NULL DEFAULT 1,sort INTEGER NOT NULL DEFAULT 0,owner_email TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'approved',order_ref TEXT NOT NULL DEFAULT '',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`); err != nil {
+	if _, err := db.Exec(`CREATE TABLE ad_slots(id TEXT PRIMARY KEY,name TEXT NOT NULL,placement TEXT NOT NULL DEFAULT 'below_post',kind TEXT NOT NULL DEFAULT 'image',image_url TEXT NOT NULL DEFAULT '',link_url TEXT NOT NULL DEFAULT '',alt_text TEXT NOT NULL DEFAULT '',html TEXT NOT NULL DEFAULT '',enabled INTEGER NOT NULL DEFAULT 1,sort INTEGER NOT NULL DEFAULT 0,owner_email TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'approved',order_ref TEXT NOT NULL DEFAULT '',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,show_on TEXT NOT NULL DEFAULT '',show_paths TEXT NOT NULL DEFAULT '')`); err != nil {
 		t.Fatalf("ads schema: %v", err)
 	}
 	a := &App{
@@ -49,7 +49,7 @@ func newHomeAdsApp(t *testing.T) (*App, context.Context) {
 // homepage HTML is returned byte-identical and never claims to use AdSense.
 func TestInjectHomeAdsOffIsNoOp(t *testing.T) {
 	a, ctx := newHomeAdsApp(t)
-	out, adsense := a.injectHomeAds(ctx, "n0nce", homeSkeleton)
+	out, adsense := a.injectHomeAds(ctx, "n0nce", homeSkeleton, ads.Page{Path: "/"})
 	if out != homeSkeleton {
 		t.Errorf("Ads off must be a no-op; HTML changed:\n%s", out)
 	}
@@ -74,7 +74,7 @@ func TestInjectHomeAdsPlacesHeaderAndFooter(t *testing.T) {
 		t.Fatalf("create footer slot: %v", err)
 	}
 
-	out, adsense := a.injectHomeAds(ctx, "n0nce", homeSkeleton)
+	out, adsense := a.injectHomeAds(ctx, "n0nce", homeSkeleton, ads.Page{Path: "/"})
 	if adsense {
 		t.Error("image ads must not report AdSense")
 	}
@@ -112,7 +112,7 @@ func TestInjectHomeAdsAdSenseWidensAndLoads(t *testing.T) {
 		t.Fatalf("create adsense slot: %v", err)
 	}
 
-	out, adsense := a.injectHomeAds(ctx, "n0nce", homeSkeleton)
+	out, adsense := a.injectHomeAds(ctx, "n0nce", homeSkeleton, ads.Page{Path: "/"})
 	if !adsense {
 		t.Fatal("AdSense slot must report usesAdSense so the caller widens the CSP + skips the cache")
 	}
@@ -121,5 +121,60 @@ func TestInjectHomeAdsAdSenseWidensAndLoads(t *testing.T) {
 	}
 	if !strings.Contains(out, `data-ad-client="ca-pub-9876543210"`) {
 		t.Errorf("AdSense unit missing publisher id:\n%s", out)
+	}
+}
+
+// A post's and a page's ads follow the slots' choice of pages, and the
+// never-list takes every ad off the pages it names, home included.
+func TestAdsFollowThePageTheyAreOn(t *testing.T) {
+	a, ctx := newHomeAdsApp(t)
+	if err := a.siteSettings.SetMany(ctx, settings.ForPrimary(), map[string]string{settings.KeyFeatureAds: "on"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, in := range []ads.SlotInput{
+		{Name: "Posts", Placement: ads.PlacementHeader, Kind: ads.KindImage, ImageURL: "/media/posts.png", Enabled: true, ShowOn: ads.ShowPosts},
+		{Name: "Pages", Placement: ads.PlacementHeader, Kind: ads.KindImage, ImageURL: "/media/pages.png", Enabled: true, ShowOn: ads.ShowPages},
+		{Name: "Everywhere", Placement: ads.PlacementHeader, Kind: ads.KindImage, ImageURL: "/media/all.png", Enabled: true},
+	} {
+		if _, err := a.ads.Create(ctx, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	article := `<html><head></head><body><main id="main-content"><article><div class="content" itemprop="articleBody">x</div></article></main></div></body></html>`
+	shown := func(out string) []string {
+		var got []string
+		for _, img := range []string{"posts", "pages", "all"} {
+			if strings.Contains(out, "/media/"+img+".png") {
+				got = append(got, img)
+			}
+		}
+		return got
+	}
+	post, _ := a.injectArticleAds(ctx, "n", article, ads.Page{Path: "/a-post", Post: true})
+	page, _ := a.injectArticleAds(ctx, "n", article, ads.Page{Path: "/about", IsPage: true})
+	home, _ := a.injectHomeAds(ctx, "n", homeSkeleton, ads.Page{Path: "/"})
+	if g := strings.Join(shown(post), ","); g != "posts,all" {
+		t.Errorf("a post shows %q, want posts,all", g)
+	}
+	if g := strings.Join(shown(page), ","); g != "pages,all" {
+		t.Errorf("a page shows %q, want pages,all", g)
+	}
+	if g := strings.Join(shown(home), ","); g != "all" {
+		t.Errorf("the home page shows %q, want all", g)
+	}
+	if err := a.siteSettings.SetMany(ctx, settings.ForPrimary(), map[string]string{settings.KeyAdsNever: "/a-post\n/"}); err != nil {
+		t.Fatal(err)
+	}
+	post, _ = a.injectArticleAds(ctx, "n", article, ads.Page{Path: "/a-post", Post: true})
+	home, _ = a.injectHomeAds(ctx, "n", homeSkeleton, ads.Page{Path: "/"})
+	page, _ = a.injectArticleAds(ctx, "n", article, ads.Page{Path: "/about", IsPage: true})
+	if g := shown(post); len(g) != 0 {
+		t.Errorf("a post on the never-list shows %v", g)
+	}
+	if g := shown(home); len(g) != 0 {
+		t.Errorf("the home page on the never-list shows %v", g)
+	}
+	if g := strings.Join(shown(page), ","); g != "pages,all" {
+		t.Errorf("a page not on the never-list shows %q, want pages,all", g)
 	}
 }
