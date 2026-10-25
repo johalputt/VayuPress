@@ -260,7 +260,8 @@ func geoFromHeaders(r *http.Request) analytics.GeoInfo {
 	// never seen a single request from it. An operator refused that country,
 	// watched it keep arriving, and was right to conclude something was broken —
 	// it was the disagreement itself.
-	country := requestCountry(r, auth.ClientIP(r))
+	ip := auth.ClientIP(r)
+	country := requestCountry(r, ip)
 	region := decode(pick(
 		"CF-Region",                             // Cloudflare (full name, e.g. "California")
 		"CloudFront-Viewer-Country-Region-Name", // AWS CloudFront (name)
@@ -274,6 +275,15 @@ func geoFromHeaders(r *http.Request) analytics.GeoInfo {
 		"X-Vercel-IP-City",       // Vercel (URL-encoded)
 		"X-Geo-City", "X-City", "X-AppEngine-City",
 	))
+	// No city from the edge: the downloaded city table, when it is on.
+	if city == "" {
+		if tr, tc := tableCity(ip, country); tc != "" {
+			city = tc
+			if region == "" {
+				region = tr
+			}
+		}
+	}
 	return analytics.GeoInfo{Country: country, Region: region, City: city}
 }
 

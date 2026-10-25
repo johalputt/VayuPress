@@ -189,7 +189,7 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host
 			analyticsPanel("Devices", listed(audience("device"), "No device recorded yet.")),
 			analyticsPanel("Browsers", listed(audience("browser"), "No browser recorded yet.")),
 			analyticsPanel("Systems", listed(audience("os"), "No system recorded yet."))))),
-		ui.Fold("Where they are", "Country, region and city, coarse only", ui.HTML(osGeoSection(audience("country"), audience("region"), audience("city")))),
+		ui.Fold("Where they are", "Country, region and city, coarse only", ui.HTML(osGeoSection(audience("country"), audience("region"), audience("city"), cityCredit()))),
 		ui.Fold("Campaigns", countOf(len(utm), "tagged source"), ui.HTML(osCampaigns(utm))),
 		ui.Fold("Events", countOf(eventTotal, "custom event"), ui.HTML(osBarList(eventBars, osShareHidden(), "No custom events yet."))),
 		ui.HTML(a.osPerformanceSection(ctx, site, days)),
@@ -203,7 +203,7 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host
 	)
 	return string(ui.Overview(page, ui.Band{Title: "Visitors", Figures: visitorFigures(ov, prev),
 		Chart: ui.HTML(osTrendChart(series, "Page views and visitors a day, "+phrase)),
-		Aside: ui.Section("Right now", "", ui.HTML(osLiveCard(v.base+"/realtime")))}, sections...))
+		Aside: ui.Section("Right now", "", ui.HTML(osLiveCard(v.base+"/realtime", cityCredit())))}, sections...))
 }
 
 // analyticsDefs is where each figure is defined (docs/ANALYTICS.md), so a

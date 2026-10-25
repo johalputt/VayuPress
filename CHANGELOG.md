@@ -10,6 +10,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
+- **Visitor cities without a CDN.** A city was named only when a CDN in
+  front of the install sent one, so an install served directly showed
+  countries and no cities. **Settings › Advanced › Visitor cities**, off by
+  default, downloads DB-IP's free city table (CC BY 4.0, about 130 MB) into
+  the data directory and again each month; Analytics then names the city and
+  region of visitors no proxy header places, and only when the table puts
+  them in the country already recorded for them. The table is not built into
+  the binary, which grows by a third of a megabyte for its reader. Addresses
+  are looked up on the server and never sent anywhere, a damaged or cut-off
+  download is refused and the table in use kept, a failed download is
+  retried after 6 hours, a Tor Space never downloads it, and turning the
+  switch off deletes it. Lists of cities credit DB-IP while it is in use.
 - **Right now says where readers are and what they read on.** The live
   panel showed only the pages being read and the sites readers came from.
   It now also lists how they arrived (search, social, AI assistants, direct

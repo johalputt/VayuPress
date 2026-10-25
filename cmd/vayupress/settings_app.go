@@ -132,6 +132,7 @@ var settingsCategories = []settingsCategory{
 			{Title: "Page cache", Hint: "Home, posts and topics", Fields: []settingField{
 				{ID: "s-page-cache", Key: settings.KeyPageCache, Label: "Keep rendered pages", Hint: "On, each page is drawn once and served from the cache until its content changes. Off, every visit draws its page: use it to check a change as it is drawn, then turn it back on, since pages are slower and under heavy traffic some visitors are asked to try again. Saved as you switch it.", Kind: "toggle", Default: "true", Instant: true},
 			}},
+			{Title: "Visitor cities", Hint: "For Analytics", Custom: settingsCityTable, Terms: "city cities region location geoip geolocation db-ip analytics visitors"},
 			{Title: "Files", Custom: settingsAdvancedFacts, Terms: "cache directory export restore backup storage"},
 		}},
 }

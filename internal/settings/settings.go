@@ -177,6 +177,12 @@ const (
 	// turning it back on serves nothing older than the content.
 	KeyPageCache = "cache.pages"
 
+	// KeyAnalyticsCities turns on the downloaded city table (geoip.FetchCity),
+	// stored "true" or "false"; unset is off. On, the install fetches DB-IP's
+	// City Lite into its data directory each month and Analytics names the
+	// city of a visitor no CDN header placed. Off, the table is deleted.
+	KeyAnalyticsCities = "analytics.cities"
+
 	// KeyMediaAlt stores a JSON object mapping a content-addressed media filename
 	// to its operator-authored alt text, edited in the Media library. Used as the
 	// default alt when inserting that image. Absent keys simply have no default.
@@ -542,6 +548,7 @@ var NotPortable = map[string]bool{
 	KeyAPIRatePerMin:              true,
 	KeyNoFollowLinks:              true,
 	KeyPageCache:                  true,
+	KeyAnalyticsCities:            true,
 	KeyThemeStudioDraft:           true,
 	KeyBrandFavicon:               true,
 	KeySiteTimezone:               true,
@@ -689,6 +696,7 @@ var AllKeys = map[string]bool{
 	KeyAnalyticsSiteRetainLast:      true,
 	KeyNoFollowLinks:                true,
 	KeyPageCache:                    true,
+	KeyAnalyticsCities:              true,
 	KeyThemeStudioDraft:             true,
 	KeyTalkHost:                     true,
 	// The startup-duration ring (ADR-0155 P4). Written by the process itself on
@@ -820,6 +828,7 @@ var AllKeys = map[string]bool{
 var Defaults = map[string]string{
 	KeyNoFollowLinks:           "false",
 	KeyPageCache:               "true",
+	KeyAnalyticsCities:         "false",
 	KeySiteName:                "VayuPress",
 	KeySiteTagline:             "Publishing as an adaptive runtime.",
 	KeySiteDescription:         "Durable by design, observable end to end.",

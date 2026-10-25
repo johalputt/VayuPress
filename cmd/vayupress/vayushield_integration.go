@@ -400,6 +400,7 @@ func (a *App) bootVayuShield() {
 	})
 
 	a.startAnalyticsRetention(queue.DoneCh)
+	a.startCityTable(queue.DoneCh)
 	a.startAlerts(queue.DoneCh)
 	sitehttp.Requests.Start(dbpkg.DB, queue.DoneCh, func(err error) {
 		logging.LogInfo("sitehttp", "request counts not written yet, kept for the next minute: "+err.Error())
