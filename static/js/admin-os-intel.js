@@ -3,16 +3,23 @@
  * Strict CSP: no eval, DOM updates via textContent only.
  */
 
-// consoleLink is h when it is a page of this console, rebuilt from its
-// parsed parts, and '' otherwise. Every link the scripts below follow or
-// draw is read from the page (data-href, data-live-door), and a value there
-// that named another origin or a javascript: URL would run or leave on a
-// click; the server only ever writes /os/ paths, so nothing else is taken.
+// consoleLink is h when it is a page of this console, and '' otherwise.
+// Every link the scripts below follow or draw is read from the page
+// (data-href, data-live-door), and a value there naming another origin or a
+// javascript: URL would run or leave on a click; the server only ever
+// writes /os/ paths, so nothing else is taken. What is kept is rebuilt one
+// piece at a time, each path step, name and value encoded on its own, so no
+// text read from the page is ever a link as written.
 function consoleLink(h) {
   var u;
   try { u = new URL(String(h || ''), window.location.origin); } catch (e) { return ''; }
-  if (u.origin !== window.location.origin || !/^\/os\/[\w\-\/.~%]*$/.test(u.pathname)) return '';
-  return u.pathname + u.search;
+  if (u.origin !== window.location.origin || u.pathname.indexOf('/os/') !== 0) return '';
+  var steps = [], query = [];
+  try {
+    u.pathname.split('/').forEach(function (s) { steps.push(encodeURIComponent(decodeURIComponent(s))); });
+  } catch (e) { return ''; }
+  u.searchParams.forEach(function (v, k) { query.push(encodeURIComponent(k) + '=' + encodeURIComponent(v)); });
+  return steps.join('/') + (query.length ? '?' + query.join('&') : '');
 }
 
 (function () {
