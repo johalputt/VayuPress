@@ -281,6 +281,58 @@
     });
   }
 
+  // The live map: each country shaded by its readers now, its card what
+  // they read and how they came, and a dot on each placed city, a new one
+  // drawn in with a pulse (none under reduced motion).
+  var seenCities = {};
+  function liveMap(card, data) {
+    var map = card.querySelector('[data-live-map]');
+    if (!map) return;
+    var door = card.getAttribute('data-live-door') || '';
+    var counts = {}, max = 0;
+    (data.active_countries || []).forEach(function (c) {
+      if (!c.code) return;
+      counts[c.code] = c.count || 0;
+      if (counts[c.code] > max) max = counts[c.code];
+    });
+    map.querySelectorAll('path[data-code]').forEach(function (p) {
+      var code = p.getAttribute('data-code'), n = counts[code] || 0;
+      if (!n) {
+        ['data-level', 'data-n', 'data-detail', 'data-href'].forEach(function (a) { p.removeAttribute(a); });
+        return;
+      }
+      var level = Math.min(5, 1 + Math.floor(4 * Math.log(1 + n) / Math.log(1 + max)));
+      p.setAttribute('data-level', String(level));
+      p.setAttribute('data-n', n + (n === 1 ? ' reader now' : ' readers now'));
+      var now = (data.countries || {})[code] || {}, lines = [];
+      if (now.pages && now.pages.length) lines.push('Reading ' + now.pages.map(function (x) { return x.path + ' (' + x.count + ')'; }).join(', '));
+      if (now.channels && now.channels.length) lines.push('From ' + now.channels.map(function (x) { return x.label + ' ' + x.count; }).join(' · '));
+      p.setAttribute('data-detail', lines.join('\n'));
+      if (door) p.setAttribute('data-href', door + '&f=' + encodeURIComponent('country:is:' + code));
+    });
+    var g = map.querySelector('[data-map-dots]');
+    if (!g) return;
+    var cities = (data.active_cities || []).filter(function (c) { return c.located; });
+    var top = 0;
+    cities.forEach(function (c) { if (c.count > top) top = c.count; });
+    while (g.firstChild) g.removeChild(g.firstChild);
+    var next = {};
+    cities.forEach(function (c) {
+      var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      var key = c.key + '|' + c.code;
+      next[key] = true;
+      dot.setAttribute('class', 'sa-map__dot' + (seenCities[key] ? '' : ' sa-map__dot--new'));
+      dot.setAttribute('cx', c.x.toFixed(1));
+      dot.setAttribute('cy', c.y.toFixed(1));
+      dot.setAttribute('r', (3 + 5 * Math.sqrt(c.count / (top || 1))).toFixed(1));
+      dot.setAttribute('data-name', c.name);
+      dot.setAttribute('data-n', c.count + (c.count === 1 ? ' reader now' : ' readers now'));
+      if (door) dot.setAttribute('data-href', door + '&f=' + encodeURIComponent('city:is:' + c.key));
+      g.appendChild(dot);
+    });
+    seenCities = next;
+  }
+
   function render(data) {
     var card = document.querySelector('[data-live]');
     if (!card) return;
@@ -299,6 +351,7 @@
     fill(card.querySelector('[data-live-cities]'), data.active_cities, 'name', 'No city recorded in the last 5 minutes.');
     fill(card.querySelector('[data-live-devices]'), data.active_devices, 'label', 'No one is reading now.');
     fill(card.querySelector('[data-live-browsers]'), data.active_browsers, 'label', 'No one is reading now.');
+    liveMap(card, data);
     // The readers a minute over the last half hour, as a line under the
     // count; drawn only once a minute has had one.
     var spark = card.querySelector('[data-live-spark]');
@@ -336,6 +389,61 @@
       poll();
       timer = window.setInterval(poll, 10000);
     }
+  });
+})();
+
+/*
+ * The map (osWorldMap): hovering a shaded country or a city says who is
+ * there, from the figures it carries; clicking it opens the page narrowed to
+ * them. On a touch screen the first tap shows the card and the second opens.
+ */
+(function () {
+  'use strict';
+
+  document.querySelectorAll('[data-map]').forEach(function (map) {
+    var tip = map.querySelector('.sa-map__tip');
+    if (!tip) return;
+    var armed = null;
+    function target(e) {
+      var el = e.target.closest && e.target.closest('[data-n]');
+      return el && map.contains(el) ? el : null;
+    }
+    function show(el, e) {
+      while (tip.firstChild) tip.removeChild(tip.firstChild);
+      var head = document.createElement('div');
+      head.className = 'sa-map__tip-name';
+      head.textContent = el.getAttribute('data-name') || '';
+      tip.appendChild(head);
+      [el.getAttribute('data-n')].concat((el.getAttribute('data-detail') || '').split('\n')).forEach(function (line) {
+        if (!line) return;
+        var d = document.createElement('div');
+        d.textContent = line;
+        tip.appendChild(d);
+      });
+      tip.hidden = false;
+      var box = map.getBoundingClientRect();
+      var x = e.clientX - box.left + 14, y = e.clientY - box.top + 14;
+      if (x + tip.offsetWidth > box.width) x = Math.max(0, e.clientX - box.left - 14 - tip.offsetWidth);
+      tip.style.left = x + 'px';
+      tip.style.top = y + 'px';
+    }
+    map.addEventListener('pointermove', function (e) {
+      if (e.pointerType === 'touch') return;
+      var el = target(e);
+      if (el) show(el, e); else tip.hidden = true;
+    });
+    map.addEventListener('pointerleave', function () { tip.hidden = true; armed = null; });
+    map.addEventListener('click', function (e) {
+      var el = target(e);
+      if (!el) { tip.hidden = true; armed = null; return; }
+      var href = el.getAttribute('data-href');
+      if (e.pointerType === 'touch' && armed !== el) {
+        armed = el;
+        show(el, e);
+        return;
+      }
+      if (href) window.location.href = href;
+    });
   });
 })();
 

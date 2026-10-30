@@ -24,6 +24,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   visit, bounce rate, average visit and conversion; a switch ranks the list
   by any of them, and hovering a row shows them all beside the page's own.
 - **The chart marks the days posts went out**, and its readout names them.
+- **A world map on Audience and Live.** Countries shaded by their readers,
+  cities as dots where the city table places them (the city's centre to a
+  tenth of a degree, kept on the visit: migration 123); hover for who is
+  there, click to narrow the page to them. Drawn from Natural Earth's
+  public-domain outlines, inline: nothing is fetched from anyone else.
 
 ### Changed
 
@@ -32,6 +37,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   another was a Direct arrival, and Direct was most of a site's traffic.
   They now count visits by the referrer each arrived by, kept on the visit
   (migration 122, backfilled).
+- **Live counts arrivals as the reports do**: a reader moving between a
+  site's pages is no Direct arrival.
 - **More AI assistants are named as such**: NotebookLM, Yuanbao, DeepSeek,
   Grok, Le Chat, Meta AI, Kimi and Doubao, which counted as referrals or as
   Google search.

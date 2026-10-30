@@ -685,10 +685,11 @@ func osLiveCard(src, door string) string {
 	return `<div class="vm-liveview" data-live data-live-src="` + esc(src) + `" data-live-door="` + esc(door) + `">
   <div class="vm-live-head"><div class="stat-card"><div class="stat-card__label">Reading now</div><div class="stat-card__value" data-live-count>—</div>
     <div class="stat-card__note"><span data-live-noun>visitors</span> in the last <span data-live-window>5</span> minutes<span data-live-updated></span></div></div>
-  <svg class="vm-live-spark" viewBox="0 0 300 40" preserveAspectRatio="none" aria-hidden="true"><polyline data-live-spark points=""></polyline></svg></div>
+  <svg class="vm-live-spark" viewBox="0 0 300 40" preserveAspectRatio="none" aria-hidden="true"><polyline data-live-spark points=""></polyline></svg></div>` +
+		osWorldMap(nil, nil, true) + `
   <div class="sa-cols sa-cols--3">` +
 		panel("Pages", "data-live-pages", "path") + panel("How they arrived", "data-live-channels", "visit_channel") + panel("Referrers", "data-live-referrers", "visit_referrer") +
-		panel("Countries", "data-live-countries", "country") + panel("Cities", "data-live-cities", "city") + panel("Devices", "data-live-devices", "device") +
+		panel("Countries", "data-live-countries data-live-max=\"10\"", "country") + panel("Cities", "data-live-cities data-live-max=\"10\"", "city") + panel("Devices", "data-live-devices", "device") +
 		panel("Browsers", "data-live-browsers", "browser") + `</div>
 </div>`
 }

@@ -407,10 +407,24 @@ for (const width of [1280, 1024, 390]) {
   });
 }
 
+// oneReader sends one reader's page view, as a browser's beacon, and waits
+// for it in the live count, which reads the visits themselves. The collector
+// takes 120 beacons a minute from an address, and the whole suite's pages
+// are one address, so a beacon refused for that is sent again once the
+// minute has room.
+async function oneReader(page, path, referrer) {
+  await expect.poll(async () => (await page.request.post("/api/v1/analytics/collect", {
+    headers: { "Content-Type": "application/json", "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36" },
+    data: { u: path, r: referrer, t: "A row", h: "localhost", event_type: 1 },
+  })).status(), { timeout: 75000, intervals: [3000] }).toBe(204);
+  await expect.poll(async () => (await (await page.request.get("/os/analytics/realtime")).json()).active_visitors, { timeout: 15000 }).toBeGreaterThan(0);
+}
+
 // A row is the way into its readers: anywhere on it (here its count) opens
 // the overview of them, the bar names what the page is narrowed to, and its
 // way off brings the whole page back.
 test("a row narrows Analytics to its readers, and the bar takes it off", async ({ page }) => {
+  test.setTimeout(120000);
   await openConsole(page);
   const settle = async () => {
     const counting = page.getByText("This is counted in the background");
@@ -423,12 +437,7 @@ test("a row narrows Analytics to its readers, and the bar takes it off", async (
   // browser sends it, waited for in the live count, which reads the visits
   // themselves; the page is then asked for a period no earlier visit has
   // cached.
-  const sent = await page.request.post("/api/v1/analytics/collect", {
-    headers: { "Content-Type": "application/json", "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36" },
-    data: { u: "/a-row-to-follow", r: "https://example.org/", t: "A row", h: "localhost", event_type: 1 },
-  });
-  expect(sent.status()).toBe(204);
-  await expect.poll(async () => (await (await page.request.get("/os/analytics/realtime")).json()).active_visitors, { timeout: 15000 }).toBeGreaterThan(0);
+  await oneReader(page, "/a-row-to-follow", "https://example.org/");
   await page.goto("/os/analytics?view=audience&days=7");
   await settle();
   const row = page.locator(".vp-bar--door").first();
@@ -450,13 +459,9 @@ test("a row narrows Analytics to its readers, and the bar takes it off", async (
 // runs, Bounce redraws the rows as rates, and hovering a row lays out every
 // measure of its visits beside the page's own.
 test("a list ranks by what its visits did, and a row's card says all of it", async ({ page }) => {
+  test.setTimeout(120000);
   await openConsole(page);
-  const sent = await page.request.post("/api/v1/analytics/collect", {
-    headers: { "Content-Type": "application/json", "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36" },
-    data: { u: "/a-measured-row", r: "https://example.net/", t: "A row", h: "localhost", event_type: 1 },
-  });
-  expect(sent.status()).toBe(204);
-  await expect.poll(async () => (await (await page.request.get("/os/analytics/realtime")).json()).active_visitors, { timeout: 15000 }).toBeGreaterThan(0);
+  await oneReader(page, "/a-measured-row", "https://example.net/");
   await page.goto("/os/analytics?view=audience&days=90");
   const counting = page.getByText("This is counted in the background");
   for (let i = 0; i < 20 && (await counting.count()) > 0; i++) {
@@ -475,6 +480,38 @@ test("a list ranks by what its visits did, and a row's card says all of it", asy
   await row.hover();
   await expect(row.locator(".vp-bar__card")).toBeVisible();
   await expect(row.locator(".vp-bar__card")).toContainText("Pages a visit");
+});
+
+// The map's card and click: a country carrying what the server writes for it
+// (the Go tests hold what that is; this install's readers are all on
+// loopback, which no table places) says it on hover, and a click opens the
+// page narrowed to it. Done right after the live poll has drawn, so the next
+// one, ten seconds on, cannot clear it first.
+test("a country on the map says who is there and opens their readers", async ({ page }) => {
+  await openConsole(page);
+  await page.goto("/os/analytics?view=live");
+  const counting = page.getByText("This is counted in the background");
+  for (let i = 0; i < 20 && (await counting.count()) > 0; i++) {
+    await page.waitForTimeout(1000);
+    await page.reload();
+  }
+  await expect(page.locator("[data-live-count]")).not.toHaveText("—");
+  const india = page.locator('[data-live-map] path[data-code="IN"]');
+  await india.evaluate((p) => {
+    p.setAttribute("data-level", "3");
+    p.setAttribute("data-n", "4 readers now");
+    p.setAttribute("data-detail", "Reading /a (3)\nFrom Organic search 4");
+    p.setAttribute("data-href", "/os/analytics?view=live&f=country%3Ais%3AIN");
+  });
+  await india.hover();
+  const tip = page.locator("[data-live-map] .sa-map__tip");
+  await expect(tip).toBeVisible();
+  await expect(tip).toContainText("India");
+  await expect(tip).toContainText("4 readers now");
+  await expect(tip).toContainText("From Organic search 4");
+  await india.click();
+  await expect(page).toHaveURL(/f=country%3Ais%3AIN/);
+  await expect(page.locator(".sa-focus__chip")).toContainText("In India");
 });
 
 // On a laptop screen the rail starts as icons, since with an app's section list

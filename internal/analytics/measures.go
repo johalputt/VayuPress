@@ -93,3 +93,38 @@ func (s *Store) VisitMeasuresScoped(ctx context.Context, scope, dim string, days
 	}
 	return out, rows.Err()
 }
+
+// CityPoint is a city readers were in over a period, where the city table
+// placed it (migration 123), for the map.
+type CityPoint struct {
+	City, Country string
+	Lat, Lon      float64
+	Visitors      int
+}
+
+// CityPointsScoped is the placed cities of scope's visits begun in the
+// period, the readers ctx is narrowed to alone, the limit with the most
+// visitors first. A visit the table did not place is on no city.
+func (s *Store) CityPointsScoped(ctx context.Context, scope string, days, limit int) ([]CityPoint, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 200
+	}
+	from, until := span.Days(ctx, time.Now(), days)
+	clause, sargs := s.visitScope(ctx, scope, "s", from, until)
+	rows, err := s.readDB().QueryContext(ctx, `SELECT s.city, s.country, AVG(s.lat), AVG(s.lon), COUNT(DISTINCT s.visitor_id)
+		FROM analytics_sessions s WHERE s.created_at>=? AND s.created_at<? AND s.events>0 AND s.lat IS NOT NULL AND s.lon IS NOT NULL AND s.city<>''`+clause+`
+		GROUP BY s.city, s.country ORDER BY 5 DESC, 1 LIMIT ?`, append(append([]any{from, until}, sargs...), limit)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []CityPoint{}
+	for rows.Next() {
+		var p CityPoint
+		if err := rows.Scan(&p.City, &p.Country, &p.Lat, &p.Lon, &p.Visitors); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}

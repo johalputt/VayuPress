@@ -2789,6 +2789,45 @@
 
 .vp-os .vp-bar--door .vp-bar__door:focus-visible::after { outline: 2px solid var(--brand); outline-offset: -2px; }
 
+/* The map of readers: land in the faintest press, a country with readers in
+   the accent at one of five strengths, a city as an accent dot ringed in
+   the surface. One ink, as the bars: a stronger shade is more readers. */
+.vp-os .sa-map { position: relative; margin: 0 0 var(--space-5); }
+
+.vp-os .sa-map__svg { display: block; width: 100%; height: auto; }
+
+.vp-os .sa-map__c { fill: var(--surface-press); stroke: var(--surface-1); stroke-width: 0.6; vector-effect: non-scaling-stroke; }
+
+.vp-os .sa-map__c[data-level] { fill: var(--accent); cursor: pointer; }
+
+.vp-os .sa-map__c[data-level="1"] { fill-opacity: 0.22; }
+
+.vp-os .sa-map__c[data-level="2"] { fill-opacity: 0.38; }
+
+.vp-os .sa-map__c[data-level="3"] { fill-opacity: 0.55; }
+
+.vp-os .sa-map__c[data-level="4"] { fill-opacity: 0.74; }
+
+.vp-os .sa-map__c[data-level="5"] { fill-opacity: 0.92; }
+
+.vp-os .sa-map__c[data-level]:hover { stroke: var(--text-1); }
+
+.vp-os .sa-map__dot { fill: var(--accent); stroke: var(--surface-1); stroke-width: 1; vector-effect: non-scaling-stroke; cursor: pointer; transform-box: fill-box; transform-origin: center; }
+
+.vp-os .sa-map__dot:hover { stroke: var(--text-1); }
+
+.vp-os .sa-map__dot--new { animation: sa-map-arrive 1.2s ease-out 1; }
+
+@keyframes sa-map-arrive { from { transform: scale(2.4); opacity: 0.3; } to { transform: scale(1); opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .vp-os .sa-map__dot--new { animation: none; }
+}
+
+.vp-os .sa-map__tip { position: absolute; z-index: 3; min-width: 180px; max-width: 320px; padding: 10px 12px; font-size: 12.5px; line-height: 1.5; color: var(--text-2); background: var(--surface-float); border: 1px solid var(--border-1); border-radius: 10px; box-shadow: var(--shadow-3); pointer-events: none; }
+
+.vp-os .sa-map__tip-name { font-weight: 600; color: var(--text-1); }
+
 /* A measured list: the switch that ranks it by another measure (shown once
    its script runs), and a row's card, every measure of its visits beside
    the page's own, on hover or focus where there is a pointer to hover. */

@@ -123,8 +123,8 @@ func TestLiveCardIsAFigureAndItsLists(t *testing.T) {
 		`<div class="vp-bars" data-live-pages data-live-dim="path">`,
 		`<div class="vp-bars" data-live-referrers data-live-dim="visit_referrer">`,
 		`<div class="vp-bars" data-live-channels data-live-dim="visit_channel">`,
-		`<div class="vp-bars" data-live-countries data-live-dim="country">`,
-		`<div class="vp-bars" data-live-cities data-live-dim="city">`,
+		`<div class="vp-bars" data-live-countries data-live-max="10" data-live-dim="country">`,
+		`<div class="vp-bars" data-live-cities data-live-max="10" data-live-dim="city">`,
 		`<div class="vp-bars" data-live-devices data-live-dim="device">`,
 		`<div class="vp-bars" data-live-browsers data-live-dim="browser">`,
 	} {

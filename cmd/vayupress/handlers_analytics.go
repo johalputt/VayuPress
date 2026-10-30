@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/worldmap"
 )
 
 // ── Ingest rate limiting ─────────────────────────────────────────────────────
@@ -275,16 +277,19 @@ func geoFromHeaders(r *http.Request) analytics.GeoInfo {
 		"X-Vercel-IP-City",       // Vercel (URL-encoded)
 		"X-Geo-City", "X-City", "X-AppEngine-City",
 	))
-	// No city from the edge: the downloaded city table, when it is on.
+	// No city from the edge: the downloaded city table, when it is on, which
+	// also places the city on the map. An edge's city has no coordinate.
+	g := analytics.GeoInfo{Country: country, Region: region, City: city}
 	if city == "" {
-		if tr, tc := tableCity(ip, country); tc != "" {
-			city = tc
+		if p := tableCity(ip, country); p.City != "" {
+			g.City = p.City
 			if region == "" {
-				region = tr
+				g.Region = p.Region
 			}
+			g.Lat, g.Lon, g.Located = p.Lat, p.Lon, p.Located
 		}
 	}
-	return analytics.GeoInfo{Country: country, Region: region, City: city}
+	return g
 }
 
 // ── Protected extended endpoints ─────────────────────────────────────────────
@@ -442,12 +447,21 @@ func (a *App) writeRealtime(w http.ResponseWriter, r *http.Request, scope string
 		resp.ActiveBrowsers = data.ActiveBrowsers
 		resp.ActiveChannels = data.ActiveChannels
 		resp.ActiveByMinute = data.ActiveByMinute
+		resp.Countries = data.Countries
 		for _, c := range data.ActiveCities {
 			name := c.City
 			if cn := countryName(c.Country); cn != "" {
 				name += ", " + cn
 			}
-			resp.ActiveCities = append(resp.ActiveCities, realtimeCountry{Code: c.Country, Key: c.City, Name: name, Flag: countryFlagURL(c.Country), Label: name, Count: c.Count})
+			city := realtimeCountry{Code: c.Country, Key: c.City, Name: name, Flag: countryFlagURL(c.Country), Label: name, Count: c.Count}
+			if c.Located {
+				// Placed where the map draws it, by the map's own projection,
+				// to the tenth of a unit the drawn dots are.
+				x, y := worldmap.Project(c.Lat, c.Lon)
+				city.X, city.Y = math.Round(x*10)/10, math.Round(y*10)/10
+				city.Located = true
+			}
+			resp.ActiveCities = append(resp.ActiveCities, city)
 		}
 		if data.WindowMinutes > 0 {
 			resp.WindowMinutes = data.WindowMinutes
@@ -480,6 +494,10 @@ type realtimeCountry struct {
 	Flag  string `json:"flag"`  // served SVG URL, or "" when unavailable
 	Label string `json:"label"` // = Name; kept so older cached JS still shows text
 	Count int    `json:"count"`
+	// X and Y are a placed city's point on the live map (worldmap.Project).
+	X       float64 `json:"x,omitempty"`
+	Y       float64 `json:"y,omitempty"`
+	Located bool    `json:"located,omitempty"`
 }
 
 // realtimeResponse is the live-analytics payload: identical to the store's
@@ -495,6 +513,9 @@ type realtimeResponse struct {
 	ActiveReferrers []analytics.AudienceStat `json:"active_referrers"`
 	WindowMinutes   int                      `json:"window_minutes"`
 	ActiveByMinute  []int                    `json:"active_by_minute"`
+	// Countries is each active country's pages and ways in, for the live
+	// map's card.
+	Countries map[string]analytics.CountryNow `json:"countries"`
 }
 
 func (a *App) handleAnalyticsSessions(w http.ResponseWriter, r *http.Request) {

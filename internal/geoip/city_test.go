@@ -31,8 +31,8 @@ func useTestCity(t *testing.T) {
 // A loaded table names the country, region and city of an address, and a
 // city by its own country: Paris, France and Paris, Texas are told apart.
 func TestTheCityTableNamesWhereAnAddressIs(t *testing.T) {
-	if c, r, ci := City("198.51.100.7"); c != "" || r != "" || ci != "" {
-		t.Fatalf("with no table loaded, City answered %q %q %q", c, r, ci)
+	if p := City("198.51.100.7"); p != (Place{}) {
+		t.Fatalf("with no table loaded, City answered %+v", p)
 	}
 	useTestCity(t)
 	for ip, want := range map[string][3]string{
@@ -42,19 +42,29 @@ func TestTheCityTableNamesWhereAnAddressIs(t *testing.T) {
 		"2001:db8::1":        {"DE", "Berlin", "Berlin"},
 		"::ffff:203.0.113.9": {"US", "Texas", "Paris"},
 	} {
-		c, r, ci := City(ip)
-		if [3]string{c, r, ci} != want {
-			t.Errorf("City(%s) = %q %q %q, want %q", ip, c, r, ci, want)
+		p := City(ip)
+		if [3]string{p.Country, p.Region, p.City} != want {
+			t.Errorf("City(%s) = %+v, want %q", ip, p, want)
 		}
 	}
 	for _, ip := range []string{"10.0.0.1", "::ffff:10.0.0.1", "127.0.0.1", "192.0.2.1", "not an address"} {
-		if c, _, ci := City(ip); c != "" || ci != "" {
-			t.Errorf("City(%s) placed it in %q %q", ip, ci, c)
+		if p := City(ip); p != (Place{}) {
+			t.Errorf("City(%s) placed it: %+v", ip, p)
 		}
 	}
 	t.Setenv("ANALYTICS_GEOIP", "off")
-	if _, _, ci := City("198.51.100.7"); ci != "" {
-		t.Errorf("with resolution switched off, City still answered %q", ci)
+	if p := City("198.51.100.7"); p != (Place{}) {
+		t.Errorf("with resolution switched off, City still answered %+v", p)
+	}
+}
+
+// A city's coordinate is the table's, to a tenth of a degree: Pune's
+// 18.5204, 73.8567 is 18.5, 73.9.
+func TestACityIsPlacedToATenthOfADegree(t *testing.T) {
+	useTestCity(t)
+	p := City("198.51.100.7")
+	if !p.Located || p.Lat != 18.5 || p.Lon != 73.9 {
+		t.Errorf("Pune = %+v, want located at 18.5, 73.9", p)
 	}
 }
 
@@ -94,8 +104,8 @@ func TestADamagedCityTableIsRefused(t *testing.T) {
 	if err := LoadCity(country); err == nil || !strings.Contains(err.Error(), "not a city table") {
 		t.Errorf("a country table was not refused as one: %v", err)
 	}
-	if _, _, ci := City("198.51.100.7"); ci != "Pune" {
-		t.Errorf("a refused table displaced the one in use (City = %q)", ci)
+	if p := City("198.51.100.7"); p.City != "Pune" {
+		t.Errorf("a refused table displaced the one in use (City = %+v)", p)
 	}
 }
 
@@ -138,7 +148,7 @@ func TestTheCityTableIsFetchedFromTheNewestMonth(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, CityFile)); err != nil {
 		t.Errorf("the table is not in the data directory: %v", err)
 	}
-	if _, _, ci := City("198.51.100.7"); ci != "Pune" {
+	if ci := City("198.51.100.7").City; ci != "Pune" {
 		t.Errorf("the fetched table is not in use (City = %q)", ci)
 	}
 	if left, _ := filepath.Glob(filepath.Join(dir, ".dbip-city-*")); len(left) != 0 {
@@ -198,7 +208,7 @@ func TestABadDownloadKeepsTheTableInUse(t *testing.T) {
 			if left, _ := os.ReadDir(dir); len(left) != 0 {
 				t.Errorf("the refused download left %v behind", left)
 			}
-			if _, _, ci := City("198.51.100.7"); ci != "Pune" {
+			if ci := City("198.51.100.7").City; ci != "Pune" {
 				t.Errorf("the refused download displaced the table in use (City = %q)", ci)
 			}
 		})

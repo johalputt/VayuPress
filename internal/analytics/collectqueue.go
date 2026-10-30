@@ -100,6 +100,15 @@ func (s *Store) CollectAsync(req CollectRequest, ip, ua, domainID string) {
 	c.mu.Unlock()
 }
 
+// point is a coordinate as the visit row stores it: NULL when the city table
+// did not place the reader.
+func point(v float64, located bool) any {
+	if !located {
+		return nil
+	}
+	return v
+}
+
 // buildCollectEvent normalises one beacon and decides its visit. Returns nil
 // when the event must not be stored: no identity can be derived (no salt), or
 // it is the visit's last page view delivered again.
@@ -145,7 +154,7 @@ func (s *Store) buildCollectEvent(req CollectRequest, ip, ua, domainID string) *
 	ev := &collectEvent{
 		sessionArgs: []any{hit.Session, hit.Visitor, coarseBrowser(ua), coarseOS(ua), coarseDevice(ua), "", "",
 			trunc(req.Geo.Country, 2), trunc(req.Geo.Region, 80), trunc(req.Geo.City, 120), now,
-			domainID, now, view, landing, arrived},
+			domainID, now, view, landing, arrived, point(req.Geo.Lat, req.Geo.Located), point(req.Geo.Lon, req.Geo.Located)},
 		pvArgs: []any{eventID, hit.Session, path, query, trunc(req.PageTitle, 300), ref, trunc(host, 200),
 			trunc(req.UTMSource, 100), trunc(req.UTMMedium, 100), trunc(req.UTMCampaign, 100),
 			trunc(req.UTMContent, 100), trunc(req.UTMTerm, 100), et, name, now, domainID, hit.Visitor},
@@ -266,7 +275,9 @@ func (s *Store) applyCollectBatch(ctx context.Context, batch []collectEvent) err
 	// (migration 122). A visit that opened on a custom event lands, and
 	// arrives, on its first page view: both are set together, read against
 	// the row as it was.
-	ss, err := tx.PrepareContext(ctx, `INSERT INTO analytics_sessions(id,visitor_id,browser,os,device,screen,language,country,region,city,created_at,domain_id,last_at,events,views,landing,referrer) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)
+	// Its city's coordinate (migration 123) is the first event's, as its
+	// place is.
+	ss, err := tx.PrepareContext(ctx, `INSERT INTO analytics_sessions(id,visitor_id,browser,os,device,screen,language,country,region,city,created_at,domain_id,last_at,events,views,landing,referrer,lat,lon) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET last_at=MAX(COALESCE(last_at,excluded.last_at),excluded.last_at), events=events+1, views=views+excluded.views,
 		  landing=CASE WHEN landing='' THEN excluded.landing ELSE landing END,
 		  referrer=CASE WHEN landing='' THEN excluded.referrer ELSE referrer END`)

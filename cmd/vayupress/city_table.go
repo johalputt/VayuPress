@@ -136,16 +136,16 @@ func (a *App) syncCityTable(ctx context.Context) {
 	logging.LogInfo("geoip", "city table fetched")
 }
 
-// tableCity is the city and region the city table names for ip, when it
+// tableCity is where the city table places ip, when it
 // places it in country, the country every other part of the install uses
 // for this visitor (requestCountry). A city in another country than the one
 // recorded would put the reader in two places at once, so it is left out.
-func tableCity(ip, country string) (region, city string) {
-	c, r, ci := geoip.City(ip)
-	if c == "" || c != country {
-		return "", ""
+func tableCity(ip, country string) geoip.Place {
+	p := geoip.City(ip)
+	if p.Country == "" || p.Country != country {
+		return geoip.Place{}
 	}
-	return r, ci
+	return p
 }
 
 // settingsCityTable is the switch, with what the table is doing now.

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/netip"
 	"os"
@@ -67,36 +68,54 @@ type cityRecord struct {
 	Subdivisions []struct {
 		Names map[string]string `maxminddb:"names"`
 	} `maxminddb:"subdivisions"`
+	Location struct {
+		Latitude  *float64 `maxminddb:"latitude"`
+		Longitude *float64 `maxminddb:"longitude"`
+	} `maxminddb:"location"`
 }
 
-// City returns the country code, region and city the table names for ip, or
-// empty strings when no table is loaded, the address is private or reserved,
-// or the table does not place it. Resolution switched off (ANALYTICS_GEOIP)
-// switches this off too.
-func City(ip string) (country, region, city string) {
+// Place is where the city table puts an address: its country's code, its
+// region and city, and the city's coordinate when the table gives one,
+// rounded to a tenth of a degree (about 11 km): the city's own centre as the
+// table records it, never a reader's position, and no finer than a map of
+// the world needs.
+type Place struct {
+	Country, Region, City string
+	Lat, Lon              float64
+	Located               bool
+}
+
+// City is where the table places ip, or the zero Place when no table is
+// loaded, the address is private or reserved, or the table does not place
+// it. Resolution switched off (ANALYTICS_GEOIP) switches this off too.
+func City(ip string) Place {
 	if !Enabled() {
-		return "", "", ""
+		return Place{}
 	}
 	addr, err := netip.ParseAddr(strings.TrimSpace(ip))
 	if err != nil {
-		return "", "", ""
+		return Place{}
 	}
 	if addr.IsPrivate() || addr.IsLoopback() || addr.IsUnspecified() || addr.IsLinkLocalUnicast() {
-		return "", "", ""
+		return Place{}
 	}
 	cityMu.RLock()
 	defer cityMu.RUnlock()
 	if cityReader == nil {
-		return "", "", ""
+		return Place{}
 	}
 	var rec cityRecord
 	if err := cityReader.Lookup(addr).Decode(&rec); err != nil {
-		return "", "", ""
+		return Place{}
 	}
+	p := Place{Country: strings.ToUpper(rec.Country.ISOCode), City: rec.City.Names["en"]}
 	if len(rec.Subdivisions) > 0 {
-		region = rec.Subdivisions[0].Names["en"]
+		p.Region = rec.Subdivisions[0].Names["en"]
 	}
-	return strings.ToUpper(rec.Country.ISOCode), region, rec.City.Names["en"]
+	if lat, lon := rec.Location.Latitude, rec.Location.Longitude; lat != nil && lon != nil {
+		p.Lat, p.Lon, p.Located = math.Round(*lat*10)/10, math.Round(*lon*10)/10, true
+	}
+	return p
 }
 
 // CityLoaded reports whether a city table is in use, and when it was built.

@@ -280,7 +280,8 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host
 				analyticsPanel("Devices", measured("device", "visitors", 100, "No device recorded yet.")),
 				analyticsPanel("Browsers", measured("browser", "visitors", 100, "No browser recorded yet.")),
 				analyticsPanel("Systems", measured("os", "visitors", 100, "No system recorded yet.")))))),
-			part("location", ui.Section("Where they are", "Country, region and city, coarse only", ui.HTML(osGeoSection(audience("country"), audience("region"), audience("city"), door)))))
+			part("location", ui.Section("Where they are", "Country, region and city, coarse only",
+				ui.HTML(a.audienceMap(ctx, site, days, door)+osGeoSection(audience("country"), audience("region"), audience("city"), door)))))
 	case "sources":
 		utm, _ := st.UTMStatsScoped(ctx, site, days)
 		sections = append(sections,
@@ -402,6 +403,38 @@ func (a *App) pageTitles(ctx context.Context, v analyticsView, pages []analytics
 	// no article is: nothing on the page is wrong, only plainer.
 	_ = rows.Err()
 	return out
+}
+
+// audienceMap is Audience's map: each country shaded by its visitors over
+// the period, its card their share and how their visits went, and a dot on
+// each city the city table placed; each is the way into its readers.
+func (a *App) audienceMap(ctx context.Context, site string, days int, door func(dim, value string) string) string {
+	st := a.analytics
+	countries, err := st.VisitMeasuresScoped(ctx, site, "country", days, 250)
+	if err != nil || len(countries) == 0 {
+		return ""
+	}
+	total := 0
+	for _, m := range countries {
+		total += m.Visitors
+	}
+	shaded := make(map[string]mapCountry, len(countries))
+	for _, m := range countries {
+		detail := pctText(100*float64(m.Visitors)/float64(total)) + " of visitors\nPages a visit " + strconv.FormatFloat(m.PagesPerVisit(), 'f', 1, 64) +
+			"\nBounce " + pctText(m.BounceRate())
+		if m.Long > 0 {
+			detail += "\nAverage visit " + osDuration(m.AvgVisit())
+		}
+		shaded[m.Key] = mapCountry{n: m.Visitors, said: countOf(m.Visitors, "visitor"), detail: detail, href: door("country", m.Key)}
+	}
+	var dots []mapDot
+	if points, err := st.CityPointsScoped(ctx, site, days, 300); err == nil {
+		for _, p := range points {
+			dots = append(dots, mapDot{lat: p.Lat, lon: p.Lon, n: p.Visitors, name: p.City + ", " + countryName(p.Country),
+				said: countOf(p.Visitors, "visitor"), href: door("city", p.City)})
+		}
+	}
+	return osWorldMap(shaded, dots, false)
 }
 
 // postsByDay is the titles of v's posts published in [from, until), by

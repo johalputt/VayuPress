@@ -125,6 +125,10 @@ type GeoInfo struct {
 	Country string // ISO-3166 alpha-2 (e.g. "US"), uppercased
 	Region  string
 	City    string
+	// Lat and Lon are the city's coordinate, when the city table placed it
+	// (geoip.Place): the city's centre, never the reader's.
+	Lat, Lon float64
+	Located  bool
 }
 
 // maxEventDataProps bounds how many custom-event properties a single beacon may
@@ -612,6 +616,8 @@ type RealtimeStats struct {
 	// ActiveByMinute is the readers in each of the last 30 minutes, oldest
 	// first, the current minute last: the line under the live count.
 	ActiveByMinute []int `json:"active_by_minute"`
+	// Countries is each active country's readers at a glance (CountryNow).
+	Countries map[string]CountryNow `json:"countries"`
 }
 
 // RealtimeCity is a city active readers are in, with its country.
@@ -619,6 +625,18 @@ type RealtimeCity struct {
 	City    string `json:"city"`
 	Country string `json:"country"`
 	Count   int    `json:"count"`
+	// Lat and Lon are the city's coordinate when the city table placed its
+	// readers (migration 123), for the map.
+	Lat     float64 `json:"lat,omitempty"`
+	Lon     float64 `json:"lon,omitempty"`
+	Located bool    `json:"located,omitempty"`
+}
+
+// CountryNow is what a country's active readers are doing: the pages most
+// read and the ways most arrived by, for the live map's card.
+type CountryNow struct {
+	Pages    []RealtimePage `json:"pages"`
+	Channels []AudienceStat `json:"channels"`
 }
 
 // RealtimePage is a page with active visitor count.
@@ -695,7 +713,7 @@ func (s *Store) RealtimeScoped(ctx context.Context, scope string) (*RealtimeStat
 
 	// Where active readers are (proxy-supplied country only; empty otherwise).
 	if rows, err := s.readDB().QueryContext(ctx,
-		`SELECT s.country,COUNT(DISTINCT p.visitor_id) FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id WHERE p.created_at>=?`+pclause+` AND s.country!='' GROUP BY s.country ORDER BY 2 DESC LIMIT 10`, args...); err == nil {
+		`SELECT s.country,COUNT(DISTINCT p.visitor_id) FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id WHERE p.created_at>=?`+pclause+` AND s.country!='' GROUP BY s.country ORDER BY 2 DESC LIMIT 250`, args...); err == nil {
 		for rows.Next() {
 			var a AudienceStat
 			if err := rows.Scan(&a.Label, &a.Count); err == nil {
@@ -738,20 +756,70 @@ func (s *Store) RealtimeScoped(ctx context.Context, scope string) (*RealtimeStat
 	rs.ActiveDevices = visitColumn("device")
 	rs.ActiveBrowsers = visitColumn("browser")
 	if rows, err := s.readDB().QueryContext(ctx,
-		`SELECT s.city,s.country,COUNT(DISTINCT p.visitor_id) FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id WHERE p.created_at>=?`+pclause+` AND s.city!='' GROUP BY s.city,s.country ORDER BY 3 DESC LIMIT 10`, args...); err == nil {
+		`SELECT s.city,s.country,COUNT(DISTINCT p.visitor_id),AVG(s.lat),AVG(s.lon) FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id WHERE p.created_at>=?`+pclause+` AND s.city!='' GROUP BY s.city,s.country ORDER BY 3 DESC LIMIT 100`, args...); err == nil {
 		for rows.Next() {
 			var c RealtimeCity
-			if err := rows.Scan(&c.City, &c.Country, &c.Count); err == nil {
+			var lat, lon sql.NullFloat64
+			if err := rows.Scan(&c.City, &c.Country, &c.Count, &lat, &lon); err == nil {
+				c.Lat, c.Lon, c.Located = lat.Float64, lon.Float64, lat.Valid && lon.Valid
 				rs.ActiveCities = append(rs.ActiveCities, c)
 			}
 		}
 		rows.Close()
 	}
 
-	// How active readers arrived, by the channels the reports use: each
-	// reader counted once in each channel they arrived by.
+	// Each country's readers at a glance: its pages and its ways in, the
+	// three most of each.
+	rs.Countries = map[string]CountryNow{}
 	if rows, err := s.readDB().QueryContext(ctx,
-		`SELECT DISTINCT referrer,visitor_id FROM analytics_pageviews WHERE created_at>=?`+clause+` AND event_type=1`, args...); err == nil {
+		`SELECT s.country,p.url_path,COUNT(DISTINCT p.visitor_id) FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id WHERE p.created_at>=?`+pclause+` AND s.country!='' AND p.event_type=1 GROUP BY 1,2 ORDER BY 1,3 DESC,2`, args...); err == nil {
+		for rows.Next() {
+			var c string
+			var pg RealtimePage
+			if rows.Scan(&c, &pg.Path, &pg.Count) == nil && len(rs.Countries[c].Pages) < 3 {
+				now := rs.Countries[c]
+				now.Pages = append(now.Pages, pg)
+				rs.Countries[c] = now
+			}
+		}
+		rows.Close()
+	}
+	if rows, err := s.readDB().QueryContext(ctx,
+		`SELECT DISTINCT s.country,s.referrer,s.visitor_id FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id WHERE p.created_at>=?`+pclause+` AND s.country!=''`, args...); err == nil {
+		by := map[string]map[string]int{}
+		for rows.Next() {
+			var c, ref, visitor string
+			if rows.Scan(&c, &ref, &visitor) == nil {
+				if by[c] == nil {
+					by[c] = map[string]int{}
+				}
+				by[c][s.channelOf(ref)]++
+			}
+		}
+		rows.Close()
+		for c, counts := range by {
+			var chs []AudienceStat
+			for _, l := range channelLabels {
+				if counts[l.label] > 0 {
+					chs = append(chs, AudienceStat{Label: l.label, Count: counts[l.label], Key: string(l.cat)})
+				}
+			}
+			sort.SliceStable(chs, func(i, j int) bool { return chs[i].Count > chs[j].Count })
+			if len(chs) > 3 {
+				chs = chs[:3]
+			}
+			now := rs.Countries[c]
+			now.Channels = chs
+			rs.Countries[c] = now
+		}
+	}
+
+	// How active readers arrived, by the channels the reports use: each
+	// reader counted once in each channel their visits arrived by, as How
+	// they found you counts (a move between the site's own pages is no
+	// arrival).
+	if rows, err := s.readDB().QueryContext(ctx,
+		`SELECT DISTINCT s.referrer,s.visitor_id FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id WHERE p.created_at>=?`+pclause, args...); err == nil {
 		buckets := map[string]int{}
 		for rows.Next() {
 			var ref, visitor string
@@ -775,11 +843,12 @@ func (s *Store) RealtimeScoped(ctx context.Context, scope string) (*RealtimeStat
 	// place the same predicate was needed and the third place it was missing —
 	// which is why they now share selfHostPatterns rather than each carrying a
 	// copy of the WHERE clause.
-	liveNotSelf, liveSelfArgs := s.selfHostExclusion("referrer")
+	// Counted by the referrer each visit arrived by, as Referrers counts.
+	liveNotSelf, liveSelfArgs := s.selfHostExclusion("s.referrer")
 	if rows, err := s.readDB().QueryContext(ctx,
-		`SELECT referrer,COUNT(DISTINCT visitor_id) FROM analytics_pageviews
-		 WHERE created_at>=?`+clause+` AND referrer!=''`+liveNotSelf+
-			` GROUP BY +referrer ORDER BY 2 DESC LIMIT 10`,
+		`SELECT s.referrer,COUNT(DISTINCT s.visitor_id) FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id
+		 WHERE p.created_at>=?`+pclause+` AND s.referrer!=''`+liveNotSelf+
+			` GROUP BY +s.referrer ORDER BY 2 DESC LIMIT 10`,
 		append(args, liveSelfArgs...)...); err == nil {
 		for rows.Next() {
 			var a AudienceStat

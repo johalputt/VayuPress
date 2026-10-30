@@ -1,0 +1,4 @@
+-- Down for 123: nothing to undo by hand.
+--
+-- SQLite drops a column only by rebuilding the table, and both columns are
+-- additive and NULL by default, which an older binary never reads.
