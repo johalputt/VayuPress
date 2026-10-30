@@ -62,6 +62,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - **An export** counted the last 30 days whatever the page showed; it
   counts the page's dates.
 
+### Security
+
+- **A link the Analytics scripts draw or follow is a console page or
+  nothing.** The live lists' rows and the map's countries and cities read
+  their links from the page (`data-live-door`, `data-href`); a value there
+  naming another origin or a `javascript:` URL would have been followed or
+  run. Only a same-origin `/os/` path, rebuilt from its parsed parts, is
+  taken (`consoleLink` in `admin-os-intel.js`).
+- **go-jose v4.1.6** (indirect, through the signature verifier of
+  updates): a JWK with an oversized RSA modulus could stall the parser, and
+  malformed JSON or a CBC-HMAC token could panic it.
+
 ## [3.18.17] — 2026-10-30
 
 Analytics as a bar of views, each its own page with its sections open; a period of dates you choose; and how long the figures are kept, at the end of the bar.

@@ -2,6 +2,19 @@
  * admin-os-intel.js — SEO dashboard actions for VayuOS (ADR-0068, Phase 6).
  * Strict CSP: no eval, DOM updates via textContent only.
  */
+
+// consoleLink is h when it is a page of this console, rebuilt from its
+// parsed parts, and '' otherwise. Every link the scripts below follow or
+// draw is read from the page (data-href, data-live-door), and a value there
+// that named another origin or a javascript: URL would run or leave on a
+// click; the server only ever writes /os/ paths, so nothing else is taken.
+function consoleLink(h) {
+  var u;
+  try { u = new URL(String(h || ''), window.location.origin); } catch (e) { return ''; }
+  if (u.origin !== window.location.origin || !/^\/os\/[\w\-\/.~%]*$/.test(u.pathname)) return '';
+  return u.pathname + u.search;
+}
+
 (function () {
   'use strict';
 
@@ -206,6 +219,7 @@
   // flag, when given, is a country's flag from the console's own flags
   // folder, drawn before the label as the server's countryFlagImg does.
   function makeBar(text, value, max, total, flag, href) {
+    href = consoleLink(href);
     var row = document.createElement('div');
     row.className = href ? 'vp-bar vp-bar--door' : 'vp-bar';
     var label = document.createElement('span');
@@ -436,7 +450,7 @@
     map.addEventListener('click', function (e) {
       var el = target(e);
       if (!el) { tip.hidden = true; armed = null; return; }
-      var href = el.getAttribute('data-href');
+      var href = consoleLink(el.getAttribute('data-href'));
       if (e.pointerType === 'touch' && armed !== el) {
         armed = el;
         show(el, e);
