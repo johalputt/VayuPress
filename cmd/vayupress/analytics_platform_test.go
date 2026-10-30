@@ -80,7 +80,7 @@ func TestThePrimarysPageIsItsOwnVisits(t *testing.T) {
 	if _, err := a.analytics.CreateSegment(ctx, analytics.ScopeAllDomains, "The operator's readers", []analytics.ExploreFilter{{Dim: "device", Op: analytics.FilterIsNot, Value: "bot"}}); err != nil {
 		t.Fatal(err)
 	}
-	primary := a.renderSiteAnalyticsBody(ctx, primaryView, "example.test", 7)
+	primary := renderAllAnalyticsViews(a, ctx, primaryView, "example.test", 7)
 	for _, want := range []string{"/home", "2 visitors to example.test", "Reached /a", "The operator&#39;s readers", `href="/os/analytics?days=7"`, `data-live-src="/os/analytics/realtime"`} {
 		if !strings.Contains(primary, want) {
 			t.Errorf("the primary's page has no %q", want)
@@ -93,11 +93,11 @@ func TestThePrimarysPageIsItsOwnVisits(t *testing.T) {
 	if !strings.Contains(primary, "<td>0 <span") {
 		t.Error("the install's goal on the primary's page counts other sites' visits")
 	}
-	platform := a.renderSiteAnalyticsBody(ctx, platformView, "every site", 7)
+	platform := renderAllAnalyticsViews(a, ctx, platformView, "every site", 7)
 	if !strings.Contains(platform, "<td>3 <span") || !strings.Contains(platform, "Every site&#39;s analytics") || !strings.Contains(platform, ">Each site<") {
 		t.Error("Platform does not count the install's goal over every site, under its name, with each site's share")
 	}
-	if hosted := a.renderSiteAnalyticsBody(ctx, hostedView(one), one.Host, 7); strings.Contains(hosted, "Reached /a") {
+	if hosted := renderAllAnalyticsViews(a, ctx, hostedView(one), one.Host, 7); strings.Contains(hosted, "Reached /a") {
 		t.Error("a hosted site's page lists the install's goal")
 	}
 }
@@ -223,10 +223,10 @@ func TestThePrimaryHasItsOwnAlerts(t *testing.T) {
 	if u, _ := a.alerts.UnseenBySite(ctx); len(u) != 1 || u[0].Site != "" {
 		t.Errorf("the primary's view did not fire its alert: %+v", u)
 	}
-	if got := alertPage(""); got != "/os/analytics#alerts" {
+	if got := alertPage(""); got != "/os/analytics?view=goals#alerts" {
 		t.Errorf("the primary's alerts are at %q", got)
 	}
-	if got := alertPage(alerts.Install); got != "/os/platform/analytics#alerts" {
+	if got := alertPage(alerts.Install); got != "/os/platform/analytics?view=goals#alerts" {
 		t.Errorf("every site's alerts are at %q", got)
 	}
 }
@@ -294,7 +294,7 @@ func TestTheConsoleServesThePrimarysOwnPage(t *testing.T) {
 
 // The install's alerts count every site, so they are on every site's page;
 // the primary's page tells an administrator so, and an editor not at all.
-// Its own alerts are a fold, with How this works after it.
+// Its own alerts are on Goals.
 func TestThePrimarysPageSaysWhereEverySitesAlertsAre(t *testing.T) {
 	t.Cleanup(func() { settleDash(t) })
 	a, _ := alertsApp(t)
@@ -302,20 +302,17 @@ func TestThePrimarysPageSaysWhereEverySitesAlertsAre(t *testing.T) {
 	if w := alertCall(a, a.handleOSAlertCreate, http.MethodPost, "/os/api/analytics/alerts", nil, "", alertJSON(""), users.RoleAdmin); w.Code != http.StatusOK {
 		t.Fatalf("every site's alert answered %d: %s", w.Code, w.Body.String())
 	}
-	const pointer = `<a href="/os/platform/analytics#alerts">Every site&#39;s analytics</a>`
+	const pointer = `<a href="/os/platform/analytics?view=goals#alerts">Every site&#39;s analytics</a>`
 	for role, want := range map[string]bool{users.RoleAdmin: true, users.RoleEditor: false} {
-		r := httptest.NewRequest(http.MethodGet, "/os/analytics", nil)
+		r := httptest.NewRequest(http.MethodGet, "/os/analytics?view=goals", nil)
 		r = r.WithContext(context.WithValue(r.Context(), ctxUserKey, &users.User{ID: "u-" + role, Role: role}))
 		w := httptest.NewRecorder()
 		a.handleOSAnalytics(w, r)
 		if got := strings.Contains(w.Body.String(), pointer); got != want {
 			t.Errorf("%s: the pointer to every site's alerts shown %v, want %v", role, got, want)
 		}
-		// How this works closes the page, after every fold, the alerts read
-		// off the request included.
-		body := w.Body.String()
-		if i, j := strings.LastIndex(body, `<details class="sa-fold"><summary class="section-head"><h2 class="section-head__title">Alerts`), strings.LastIndex(body, "How this works"); i < 0 || j < i {
-			t.Errorf("%s: How this works (at %d) is not after the Alerts fold (at %d)", role, j, i)
+		if !strings.Contains(w.Body.String(), `<section><div class="section-head"><h2 class="section-head__title">Alerts`) {
+			t.Errorf("%s: Goals has no Alerts", role)
 		}
 	}
 }
@@ -328,7 +325,7 @@ func TestEverySitesPageShowsWhatTheAPIReturns(t *testing.T) {
 	openMigratedDB(t)
 	a := &App{analytics: analytics.New(dbpkg.DB)}
 	seedTwoSites(t)
-	page := a.renderSiteAnalyticsBody(context.Background(), platformView, "every site", 7)
+	page := renderAllAnalyticsViews(a, context.Background(), platformView, "every site", 7)
 
 	var ov analytics.Overview
 	readAPI(t, a.handleAnalyticsOverview, "/api/v1/analytics/overview?days=7", &ov)

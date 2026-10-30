@@ -40,6 +40,15 @@ func Overview(p OverviewPage, band Band, sections ...HTML) HTML {
 	}
 	b.WriteString(`</div>` + string(p.Tabs))
 
+	// A page of sections with no figures (an Analytics view other than its
+	// overview) has no band.
+	if band.Title == "" && band.Sentence == "" && len(band.Figures) == 0 && band.Chart == "" && band.Aside == "" {
+		for _, s := range sections {
+			b.WriteString(string(s))
+		}
+		b.WriteString(`</div>`)
+		return HTML(b.String())
+	}
 	cls := "sa-overview__band"
 	if band.Aside == "" {
 		cls += " sa-overview__band--full"

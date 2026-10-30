@@ -25,6 +25,22 @@ page. Its live panel, exports and alerts are the install-wide ones under
 `osPathMinLevel` (`cmd/vayupress/handlers_auth.go`) and the test that holds
 it is `analytics_platform_test.go`.
 
+## How a page is laid out
+
+Each Analytics page is a bar of views, each its own address (`?view=`) with
+the period kept (`?days=`): **Overview** (the figures, every day's page
+views and visitors, who is reading now, the top pages and how readers
+arrived), **Audience** (devices, browsers, systems; countries, continents,
+regions and cities), **Sources** (referrers, channels, campaigns),
+**Content** (top and landing pages, what the content did, searches),
+**Behaviour** (what readers did, journeys, custom events),
+**Performance**, **Goals** (goals, segments, alerts, and a hosted site's
+retention) and **Live** (who is reading now, by page, channel, referrer,
+country, city, device and browser, with the readers a minute over the last
+half hour). A view counts only what it shows and is cached on its own
+(`renderSiteAnalyticsBody` in `cmd/vayupress/admin_os_scoped_analytics.go`);
+`analytics_overview_test.go` holds every part of the page to its view.
+
 ## What is recorded
 
 One row per event in `analytics_pageviews`: a page view or a custom event,

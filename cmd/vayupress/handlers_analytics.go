@@ -440,6 +440,7 @@ func (a *App) writeRealtime(w http.ResponseWriter, r *http.Request, scope string
 		resp.ActiveDevices = data.ActiveDevices
 		resp.ActiveBrowsers = data.ActiveBrowsers
 		resp.ActiveChannels = data.ActiveChannels
+		resp.ActiveByMinute = data.ActiveByMinute
 		for _, c := range data.ActiveCities {
 			name := c.City
 			if cn := countryName(c.Country); cn != "" {
@@ -488,6 +489,7 @@ type realtimeResponse struct {
 	ActiveChannels  []analytics.AudienceStat `json:"active_channels"`
 	ActiveReferrers []analytics.AudienceStat `json:"active_referrers"`
 	WindowMinutes   int                      `json:"window_minutes"`
+	ActiveByMinute  []int                    `json:"active_by_minute"`
 }
 
 func (a *App) handleAnalyticsSessions(w http.ResponseWriter, r *http.Request) {

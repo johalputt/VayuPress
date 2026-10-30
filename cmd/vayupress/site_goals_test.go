@@ -57,7 +57,7 @@ func TestAGoalBelongsToItsSite(t *testing.T) {
 		t.Errorf("site two shows another site's goals: %+v", two)
 	}
 
-	page := a.renderSiteAnalyticsBody(ctx, hostedView(domain.Domain{ID: "s2"}), "two.test", 30)
+	page := renderAllAnalyticsViews(a, ctx, hostedView(domain.Domain{ID: "s2"}), "two.test", 30)
 	if strings.Contains(page, "Signed up") || strings.Contains(page, ">Old<") {
 		t.Error("site two's page shows a goal that is not its own")
 	}

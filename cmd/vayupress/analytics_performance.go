@@ -41,7 +41,7 @@ func vitalsOf(v *vastore.WebVitals) []vital {
 // site, or analytics.ScopeAllDomains).
 func (a *App) osPerformanceSection(ctx context.Context, scope string, days int) string {
 	server, byDay := a.serverMeasured(ctx, scope, days)
-	return string(ui.Fold("Performance", "Readers' browsers and this server, over the period", ui.HTML(analyticsCols(
+	return string(ui.Section("Performance", "Readers' browsers and this server, over the period", ui.HTML(analyticsCols(
 		analyticsPanel("What readers' browsers measured", a.readerVitals(ctx, scope, days)),
 		analyticsPanel("What the server measured", server),
 	)+byDay+string(ui.Explain(ui.HTML(`<p>A reader's browser measures each page it loads, and the figure is the 75th percentile of those readings. Response to input is reported only when a reader interacted, and layout shift only by browsers that measure it.</p>`+

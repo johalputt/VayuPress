@@ -44,7 +44,7 @@ func (a *App) osBehaviourSection(ctx context.Context, scope, explore string, day
 		}
 		return analyticsPanel(title, osBarList(bars, osShareOf(int(res.Total)), empty)+more)
 	}
-	return string(ui.Fold("What readers did", "Where visits ended, links out, downloads, how far they read", ui.HTML(analyticsCols(
+	return string(ui.Section("What readers did", "Where visits ended, links out, downloads, how far they read", ui.HTML(analyticsCols(
 		part("Where visits ended", analytics.ExploreVisits, "exit", "No visit recorded yet."),
 		part("Links out", analytics.ExploreOutbound, "event", "No link off the site followed yet."),
 		part("Downloads", analytics.ExploreDownloads, "event", "No file fetched yet."),

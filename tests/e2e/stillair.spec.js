@@ -374,33 +374,29 @@ for (const [device, use] of [
   });
 }
 
-// Analytics opens what it is for and folds the rest, and the lint above
-// reads a closed fold as not there. So the same lint reads the pages again
-// with every fold opened, at each width: what a reader opens is held to the
-// scale too. The explanation count is the one rule left out, since it is
-// about what a page shows before anything is opened.
+// Analytics is a bar of views, and the lint above reads only the overview.
+// So the same lint reads every view, at each width. The explanation count is
+// the one rule left out, since the views share one How this works.
 for (const width of [1280, 1024, 390]) {
-  test(`Analytics with every fold opened passes the design lint, at ${width}px`, async ({ page }) => {
-    test.setTimeout(120000);
+  test(`Every Analytics view passes the design lint, at ${width}px`, async ({ page }) => {
+    test.setTimeout(360000);
     await page.setViewportSize({ width, height: 900 });
     await openConsole(page);
     const findings = [];
-    for (const href of ["/os/analytics", "/os/platform/analytics"]) {
-      await page.goto(href);
-      const counting = page.getByText("This is counted in the background");
-      for (let i = 0; i < 20 && (await counting.count()) > 0; i++) {
-        await page.waitForTimeout(1000);
-        await page.reload();
-      }
-      await page.waitForLoadState("load");
-      const folds = await page.evaluate(() => {
-        const all = [...document.querySelectorAll("main details.sa-fold")];
-        all.forEach((d) => { d.open = true; });
-        return all.length;
-      });
-      if (folds < 10) findings.push(`${href}: ${folds} folds, so the page was not read`);
-      for (const f of await page.evaluate(lintPage)) {
-        if (!/characters of explanation on show/.test(f)) findings.push(`${href}: ${f}`);
+    for (const base of ["/os/analytics", "/os/platform/analytics"]) {
+      for (const view of ["overview", "audience", "sources", "content", "behaviour", "performance", "goals", "live"]) {
+        const href = base + (view === "overview" ? "" : "?view=" + view);
+        await page.goto(href);
+        const counting = page.getByText("This is counted in the background");
+        for (let i = 0; i < 20 && (await counting.count()) > 0; i++) {
+          await page.waitForTimeout(1000);
+          await page.reload();
+        }
+        await page.waitForLoadState("load");
+        if ((await page.locator("main [data-part]").count()) === 0) findings.push(`${href}: no part of the view drawn, so it was not read`);
+        for (const f of await page.evaluate(lintPage)) {
+          if (!/characters of explanation on show/.test(f)) findings.push(`${href}: ${f}`);
+        }
       }
     }
     expect(findings).toEqual([]);

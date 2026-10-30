@@ -157,17 +157,19 @@ func (c *adminFragmentCache) keys(prefix string) []string {
 	return out
 }
 
-// refreshSiteAnalytics rebuilds every cached window of v's Analytics, after a
-// change the page shows (a goal or segment added or removed): without it the
-// page went on without it for up to the fragment's TTL.
+// refreshSiteAnalytics rebuilds every cached view and window of v's
+// Analytics, after a change the page shows (a goal or segment added or
+// removed): without it the page went on without it for up to the fragment's
+// TTL.
 func (a *App) refreshSiteAnalytics(v analyticsView, host string) {
 	prefix := siteAnalyticsPrefix(v)
 	for _, key := range adminDash.keys(prefix) {
-		days, err := strconv.Atoi(strings.TrimPrefix(key, prefix))
-		if err != nil {
+		view, d, ok := strings.Cut(strings.TrimPrefix(key, prefix), ":")
+		days, err := strconv.Atoi(d)
+		if !ok || err != nil {
 			continue
 		}
-		adminDash.warm(key, func(ctx context.Context) string { return a.renderSiteAnalyticsBody(ctx, v, host, days) })
+		adminDash.warm(key, func(ctx context.Context) string { return a.renderSiteAnalyticsBody(ctx, v, host, days, view) })
 	}
 }
 
@@ -180,11 +182,11 @@ func (a *App) startDashboardWarmer(done <-chan struct{}) {
 	warm := func() {
 		if a.analytics != nil {
 			host := a.primaryHost(context.Background())
-			adminDash.warm(siteAnalyticsKey(primaryView, 30), func(ctx context.Context) string {
-				return a.renderSiteAnalyticsBody(ctx, primaryView, host, 30)
+			adminDash.warm(siteAnalyticsKey(primaryView, "overview", 30), func(ctx context.Context) string {
+				return a.renderSiteAnalyticsBody(ctx, primaryView, host, 30, "overview")
 			})
-			adminDash.warm(siteAnalyticsKey(platformView, 30), func(ctx context.Context) string {
-				return a.renderSiteAnalyticsBody(ctx, platformView, "every site", 30)
+			adminDash.warm(siteAnalyticsKey(platformView, "overview", 30), func(ctx context.Context) string {
+				return a.renderSiteAnalyticsBody(ctx, platformView, "every site", 30, "overview")
 			})
 			adminDash.warm(homeVisitorsKey, a.renderHomeVisitors)
 		}

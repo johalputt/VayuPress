@@ -107,7 +107,7 @@ func TestTheScopeNoteAppearsOnlyWhereItIsTrue(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := &App{analytics: analytics.New(dbpkg.DB), domains: reg}
-	one := a.renderSiteAnalyticsBody(context.Background(), platformView, "every site", 30)
+	one := renderAllAnalyticsViews(a, context.Background(), platformView, "every site", 30)
 	if one == "" {
 		t.Fatal("the report did not render")
 	}
@@ -117,7 +117,7 @@ func TestTheScopeNoteAppearsOnlyWhereItIsTrue(t *testing.T) {
 	if _, err := dbpkg.DB.Exec(`INSERT INTO domains(id,host,site_type,is_primary,status,created_at,updated_at) VALUES('c','client.example','blog',0,'active',datetime('now'),datetime('now'))`); err != nil {
 		t.Fatal(err)
 	}
-	two := a.renderSiteAnalyticsBody(context.Background(), platformView, "every site", 30)
+	two := renderAllAnalyticsViews(a, context.Background(), platformView, "every site", 30)
 	for _, want := range []string{"These figures add up all 2 sites", "Each site's own are its page, linked under Each site."} {
 		if !strings.Contains(two, want) {
 			t.Errorf("an install serving two sites: missing %q", want)

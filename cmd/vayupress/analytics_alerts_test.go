@@ -136,7 +136,7 @@ func TestAFiringIsInTheBellUntilSeen(t *testing.T) {
 			line = &bell[i]
 		}
 	}
-	if line == nil || line.Href != "/os/d/c1/analytics#alerts" || line.Severity != "danger" || line.line() != "1 alert fired on one.example" {
+	if line == nil || line.Href != "/os/d/c1/analytics?view=goals#alerts" || line.Severity != "danger" || line.line() != "1 alert fired on one.example" {
 		t.Fatalf("the bell's alert line is %+v", line)
 	}
 	h, _ := a.alerts.History(ctx, "c1", 5)

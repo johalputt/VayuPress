@@ -20,10 +20,14 @@ import (
 	"context"
 	htmpl "html/template"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/alerts"
 	"github.com/johalputt/vayupress/internal/analytics"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/ui"
 )
@@ -55,33 +59,42 @@ func (a *App) writeSiteAnalytics(w http.ResponseWriter, r *http.Request, v analy
 		return
 	}
 	days, _ := analyticsPeriod(r)
+	view := analyticsViewOf(r)
 	// Counted off the request, in the cache the install's Analytics uses: an
 	// exact count of a busy site's visitors over a month reads every view in
 	// it (0.3 s at a million events, 1.1 s for the whole install), and no
 	// console page waits on that.
-	body, ready := adminDash.get(siteAnalyticsKey(v, days), analyticsFragmentTTL, func(ctx context.Context) string {
-		return a.renderSiteAnalyticsBody(ctx, v, host, days)
+	body, ready := adminDash.get(siteAnalyticsKey(v, view, days), analyticsFragmentTTL, func(ctx context.Context) string {
+		return a.renderSiteAnalyticsBody(ctx, v, host, days, view)
 	})
 	if !ready {
 		body = string(ui.Overview(ui.OverviewPage{Title: v.title(), State: ui.Text("Counting " + analyticsPhrase(days) + " for " + host),
-			Actions: osPeriodSelector(v.base, days)},
+			Actions: osPeriodSelector(v.base, view, days), Tabs: analyticsTabs(v.base, view, days)},
 			ui.Band{Title: "Visitors", Chart: `<p class="table-empty">This is counted in the background; reload in a few seconds.</p>`}))
 	}
-	// The settings are read off the request, not the cache, so a save shows
-	// at once. The primary keeps the install's retention, set in Settings.
-	if v.hosted {
-		body += a.siteRetentionSection(r.Context(), v.d, nonce)
-	}
-	body += a.alertsSection(r.Context(), v.alert, v.alertsAPI(), cfg.AccessLevel >= accessAdmin, nonce)
-	// The install's alerts count every site together, so they are kept on
-	// every site's page; an administrator made them here before, and is told
-	// where they went.
-	if !v.hosted && cfg.AccessLevel >= accessAdmin && a.alerts != nil {
-		if all, _ := a.alerts.List(r.Context(), platformView.alert); len(all) > 0 {
-			body += `<p class="settings-row-hint">Alerts on every site together: <a href="` + platformAnalyticsBase + `#alerts">` + string(ui.Text(platformAnalyticsTitle)) + `</a>.</p>`
+	// Goals holds what is set rather than counted: the alerts, and a hosted
+	// site's retention. They are read off the request, not the cache, so a
+	// save shows at once. The primary keeps the install's retention, set in
+	// Settings.
+	if view == "goals" {
+		body += a.alertsSection(r.Context(), v.alert, v.alertsAPI(), cfg.AccessLevel >= accessAdmin, nonce)
+		// The install's alerts count every site together, so they are kept on
+		// every site's page; an administrator made them here before, and is
+		// told where they went.
+		if !v.hosted && cfg.AccessLevel >= accessAdmin && a.alerts != nil {
+			if all, _ := a.alerts.List(r.Context(), platformView.alert); len(all) > 0 {
+				body += `<p class="settings-row-hint">Alerts on every site together: <a href="` + alertPage(alerts.Install) + `">` + string(ui.Text(platformAnalyticsTitle)) + `</a>.</p>`
+			}
+		}
+		if v.hosted {
+			body += a.siteRetentionSection(r.Context(), v.d, nonce)
 		}
 	}
-	body += string(analyticsExplain(v, host))
+	// How this works is the page's, said once, under the overview: a view's
+	// own sections say what they count, and Where they are has its own.
+	if view == "overview" {
+		body += string(analyticsExplain(v, host))
+	}
 	// The live panel's poller; the body above is cached, the script is not.
 	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js?v=` + assetVer("js/admin-os-intel.js") + `"></script>`
 	writeOSHTML(w, r, adminOSLayout(nonce, title, app, cfg, htmpl.HTML(body)))
@@ -98,21 +111,64 @@ func analyticsExplain(v analyticsView, host string) ui.HTML {
 	return ui.Explain(ui.HTML(explain + ` A visit is a reader's pages with no 30-minute gap; a visitor is recognised within a day by a salted hash that changes daily, so "visitors" over a week counts a person once for each day they came. Nothing here uses a cookie, and nothing leaves this server. <a href="/docs/ANALYTICS" target="_blank" rel="noopener">What each figure means</a>.</p>`))
 }
 
-// siteAnalyticsKey is the cache key of v's page for a window, under
+// analyticsViews are an Analytics page's sections, in the order its bar
+// lists them. Each is its own view (?view=), counted and cached on its own:
+// thirteen folds on one page gave no way to reach a part but by scrolling
+// past the rest, and every visit counted all of them.
+var analyticsViews = []struct{ id, label string }{
+	{"overview", "Overview"}, {"audience", "Audience"}, {"sources", "Sources"}, {"content", "Content"},
+	{"behaviour", "Behaviour"}, {"performance", "Performance"}, {"goals", "Goals"}, {"live", "Live"},
+}
+
+// analyticsViewOf is the view r asks for, or the overview.
+func analyticsViewOf(r *http.Request) string {
+	want := r.URL.Query().Get("view")
+	for _, v := range analyticsViews {
+		if v.id == want {
+			return want
+		}
+	}
+	return "overview"
+}
+
+// analyticsHref is base's page for view over days: the overview and the
+// default period are left out, so the page's own address stays as it was.
+func analyticsHref(base, view string, days int) string {
+	q := url.Values{}
+	if view != "overview" {
+		q.Set("view", view)
+	}
+	if days != 30 {
+		q.Set("days", strconv.Itoa(days))
+	}
+	if len(q) == 0 {
+		return base
+	}
+	return base + "?" + q.Encode()
+}
+
+// analyticsTabs is the section bar: each view a link, the period kept.
+func analyticsTabs(base, view string, days int) ui.HTML {
+	tabs := make([]ui.Tab, 0, len(analyticsViews))
+	for _, v := range analyticsViews {
+		tabs = append(tabs, ui.Tab{Label: v.label, Href: analyticsHref(base, v.id, days), Current: v.id == view})
+	}
+	return ui.Tabs("Analytics", tabs...)
+}
+
+// siteAnalyticsKey is the cache key of v's view for a window, under
 // siteAnalyticsPrefix: its scope, "" for the primary.
-func siteAnalyticsKey(v analyticsView, days int) string {
-	return siteAnalyticsPrefix(v) + strconv.Itoa(days)
+func siteAnalyticsKey(v analyticsView, view string, days int) string {
+	return siteAnalyticsPrefix(v) + view + ":" + strconv.Itoa(days)
 }
 
 func siteAnalyticsPrefix(v analyticsView) string { return "site-analytics:" + v.scope + ":" }
 
-// renderSiteAnalyticsBody is v's report: one site's, or every site's on
-// Platform. Every reader is given v.scope (a site's id as the ingest wrote
-// it, "" for the primary, or every site), so nothing here can count another
-// site's traffic. What the page is opened for is laid open (the figures, the
-// trend, who is reading now, the pages read and where readers came from);
-// every other section is a fold whose head still says what it holds.
-func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host string, days int) string {
+// renderSiteAnalyticsBody is one view of v's report: one site's, or every
+// site's on Platform. Every reader is given v.scope (a site's id as the
+// ingest wrote it, "" for the primary, or every site), so nothing here can
+// count another site's traffic. A view counts only what it shows.
+func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host string, days int, view string) string {
 	st := a.analytics
 	site, explore, phrase := v.scope, v.base+"/explore", analyticsPhrase(days)
 	title, whose := v.title(), host
@@ -125,85 +181,122 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host
 		scopeNote = note
 	}
 	exportBtn, exportSheet := osExportSheet(v.base+"/export", days)
-	page := ui.OverviewPage{Title: title, Actions: osPeriodSelector(v.base, days) + exploreButton(explore, days) + exportBtn}
+	page := ui.OverviewPage{Title: title, Actions: osPeriodSelector(v.base, view, days) + exploreButton(explore, days) + exportBtn,
+		Tabs: analyticsTabs(v.base, view, days)}
 	ov, err := st.OverviewSinceScoped(ctx, site, days)
 	if err != nil {
 		page.State = ui.Text("The figures could not be read: " + err.Error())
-		return string(ui.Overview(page, ui.Band{Title: "Visitors"}))
+		return string(ui.Overview(page, ui.Band{}))
 	}
-	now := time.Now().UTC()
-	prev, _ := st.OverviewBetweenScoped(ctx, site, now.AddDate(0, 0, -(2*days-1)).Format("2006-01-02"), now.AddDate(0, 0, -(days-1)).Format("2006-01-02"))
-	series, _ := st.PageviewSeriesScoped(ctx, site, days)
-	top, _ := st.TopPagesScoped(ctx, site, days, 10)
-	landing, _ := st.LandingPagesScoped(ctx, site, days, 10)
-	refs, _ := st.TopReferrersScoped(ctx, site, days, 10)
-	channels, _ := st.ChannelsScoped(ctx, site, days)
-	audience := func(col string) []analytics.AudienceStat {
-		out, _ := st.AudienceScoped(ctx, site, col, days)
-		return out
-	}
-	events, _ := st.CustomEventsScoped(ctx, site, days)
-	utm, _ := st.UTMStatsScoped(ctx, site, days)
-
 	page.State = ui.Text("No visits to " + whose + " " + analyticsWhen(days))
 	if ov.UniqueVisitors > 0 {
 		page.State = ui.Text(countOf(ov.UniqueVisitors, "visitor") + " to " + whose + " " + analyticsWhen(days))
 	}
 
-	pageBars := make([]osChartBar, 0, len(top))
-	for _, p := range top {
-		pageBars = append(pageBars, osChartBar{Label: prettyPathText(p.Path), Value: p.Pageviews})
-	}
-	landBars := make([]osChartBar, 0, len(landing))
-	for _, l := range landing {
-		landBars = append(landBars, osChartBar{Label: prettyPathText(l.Path), Value: l.Visits})
-	}
-	refBars := make([]osChartBar, 0, len(refs))
-	refTotal := 0
-	for _, r := range refs {
-		refBars = append(refBars, osChartBar{Label: r.Referrer, Value: r.Count})
-		refTotal += r.Count
-	}
-	eventBars := make([]osChartBar, 0, len(events))
-	eventTotal := 0
-	for _, e := range events {
-		eventBars = append(eventBars, osChartBar{Label: e.Name, Value: e.Count})
-		eventTotal += e.Count
-	}
 	listed := func(items []analytics.AudienceStat, empty string) string {
 		return osBarList(osBarsFromAudience(items), osShareOfListed(), empty)
 	}
-
-	var sections []ui.HTML
-	if v.all() {
-		sections = append(sections, scopeNote, ui.HTML(a.osEachSiteSection(ctx, days)))
+	audience := func(col string) []analytics.AudienceStat {
+		out, _ := st.AudienceScoped(ctx, site, col, days)
+		return out
 	}
-	sections = append(sections,
-		ui.HTML(analyticsCols(
-			string(ui.Section("Top pages", "Page views", ui.HTML(osBarList(pageBars, osShareOf(ov.TotalPageviews), "No page views recorded yet.")))),
-			string(ui.Section("Landing pages", "Where visits began", ui.HTML(osBarList(landBars, osShareOf(ov.TotalVisits), "No visits recorded yet.")))))),
-		ui.HTML(analyticsCols(
-			string(ui.Section("Referrers", "Other sites that sent readers", ui.HTML(osBarList(refBars, osShareOf(refTotal), "No links from other sites yet.")))),
-			string(ui.Section("How they found you", "From the referrer alone", ui.HTML(osBarList(osBarsFromAudience(channels), osShareOfListed(), "Visitors are grouped here once they arrive.")))))),
-		ui.Fold("What they read on", "Devices, browsers and systems", ui.HTML(analyticsCols(
-			analyticsPanel("Devices", listed(audience("device"), "No device recorded yet.")),
-			analyticsPanel("Browsers", listed(audience("browser"), "No browser recorded yet.")),
-			analyticsPanel("Systems", listed(audience("os"), "No system recorded yet."))))),
-		ui.Fold("Where they are", "Country, region and city, coarse only", ui.HTML(osGeoSection(audience("country"), audience("region"), audience("city")))),
-		ui.Fold("Campaigns", countOf(len(utm), "tagged source"), ui.HTML(osCampaigns(utm))),
-		ui.Fold("Events", countOf(eventTotal, "custom event"), ui.HTML(osBarList(eventBars, osShareHidden(), "No custom events yet."))),
-		ui.HTML(a.osPerformanceSection(ctx, site, days)),
-		ui.HTML(a.osSearchesSection(ctx, site, days)),
-		ui.HTML(a.osGoalsSectionOf(ctx, v, days)),
-		ui.HTML(a.osSegmentsSection(ctx, v, days)),
-		ui.HTML(a.osBehaviourSection(ctx, site, explore, days)),
-		ui.HTML(a.osContentSection(ctx, site, explore, days)),
-		ui.HTML(a.osJourneySection(ctx, site, days)),
-		exportSheet,
-	)
-	return string(ui.Overview(page, ui.Band{Title: "Visitors", Figures: visitorFigures(ov, prev),
-		Chart: ui.HTML(osTrendChart(series, "Page views and visitors a day, "+phrase)),
-		Aside: ui.Section("Right now", "", ui.HTML(osLiveCard(v.base+"/realtime")))}, sections...))
+	pages := func(n int) string {
+		top, _ := st.TopPagesScoped(ctx, site, days, n)
+		titles := a.pageTitles(ctx, v, top)
+		bars := make([]osChartBar, 0, len(top))
+		for _, p := range top {
+			bars = append(bars, osChartBar{Label: titles[p.Path], Value: p.Pageviews, Hint: p.Path})
+		}
+		return osBarList(bars, osShareOf(ov.TotalPageviews), "No page views recorded yet.")
+	}
+	channels := func() string {
+		ch, _ := st.ChannelsScoped(ctx, site, days)
+		return osBarList(osBarsFromAudience(ch), osShareOfListed(), "Visitors are grouped here once they arrive.")
+	}
+	more := func(label, to string) string {
+		return `<a class="sa-more" href="` + esc(analyticsHref(v.base, to, days)) + `">` + esc(label) + ` →</a>`
+	}
+	part := func(id string, h ui.HTML) ui.HTML { return ui.HTML(`<div data-part="`+id+`">`) + h + `</div>` }
+
+	var band ui.Band
+	var sections []ui.HTML
+	switch view {
+	case "overview":
+		now := time.Now().UTC()
+		prev, _ := st.OverviewBetweenScoped(ctx, site, now.AddDate(0, 0, -(2*days-1)).Format("2006-01-02"), now.AddDate(0, 0, -(days-1)).Format("2006-01-02"))
+		series, _ := st.PageviewSeriesScoped(ctx, site, days)
+		// The figures take the page's width, in one row; the days and who is
+		// reading now sit beneath, side by side.
+		band = ui.Band{Title: "Visitors", Figures: visitorFigures(ov, prev)}
+		trend := osTrendChart(series, "Page views and visitors a day, "+phrase)
+		if trend == "" {
+			trend = `<p class="table-empty">The days are drawn once two of them have views.</p>`
+		}
+		sections = append(sections, ui.HTML(`<div class="sa-cols sa-cols--lead">`)+
+			part("trend", ui.Section("Every day", "Page views and visitors", ui.HTML(trend)))+
+			part("now", ui.Section("Right now", "", ui.HTML(osLiveCompact(v.base+"/realtime", analyticsHref(v.base, "live", days)))))+`</div>`)
+		if v.all() {
+			sections = append(sections, scopeNote, part("each-site", ui.HTML(a.osEachSiteSection(ctx, days))))
+		}
+		sections = append(sections, ui.HTML(analyticsCols(
+			string(part("top-pages", ui.Section("Top pages", "Page views", ui.HTML(pages(5)+more("All pages", "content"))))),
+			string(part("channels", ui.Section("How they found you", "From the referrer alone", ui.HTML(channels()+more("All sources", "sources"))))))))
+	case "audience":
+		sections = append(sections,
+			part("devices", ui.Section("What they read on", "Devices, browsers and systems", ui.HTML(analyticsCols(
+				analyticsPanel("Devices", listed(audience("device"), "No device recorded yet.")),
+				analyticsPanel("Browsers", listed(audience("browser"), "No browser recorded yet.")),
+				analyticsPanel("Systems", listed(audience("os"), "No system recorded yet.")))))),
+			part("location", ui.Section("Where they are", "Country, region and city, coarse only", ui.HTML(osGeoSection(audience("country"), audience("region"), audience("city"))))))
+	case "sources":
+		refs, _ := st.TopReferrersScoped(ctx, site, days, 25)
+		refBars := make([]osChartBar, 0, len(refs))
+		refTotal := 0
+		for _, r := range refs {
+			refBars = append(refBars, osChartBar{Label: r.Referrer, Value: r.Count})
+			refTotal += r.Count
+		}
+		utm, _ := st.UTMStatsScoped(ctx, site, days)
+		sections = append(sections,
+			ui.HTML(analyticsCols(
+				string(part("referrers", ui.Section("Referrers", "Other sites that sent readers", ui.HTML(osBarList(refBars, osShareOf(refTotal), "No links from other sites yet."))))),
+				string(part("channels", ui.Section("How they found you", "From the referrer alone", ui.HTML(channels())))))),
+			part("campaigns", ui.Section("Campaigns", countOf(len(utm), "tagged source"), ui.HTML(osCampaigns(utm)))))
+	case "content":
+		landing, _ := st.LandingPagesScoped(ctx, site, days, 25)
+		landBars := make([]osChartBar, 0, len(landing))
+		for _, l := range landing {
+			landBars = append(landBars, osChartBar{Label: prettyPathText(l.Path), Value: l.Visits, Hint: l.Path})
+		}
+		sections = append(sections,
+			ui.HTML(analyticsCols(
+				string(part("top-pages", ui.Section("Top pages", "Page views", ui.HTML(pages(25))))),
+				string(part("landing", ui.Section("Landing pages", "Where visits began", ui.HTML(osBarList(landBars, osShareOf(ov.TotalVisits), "No visits recorded yet."))))))),
+			part("content", ui.HTML(a.osContentSection(ctx, site, explore, days))),
+			part("searches", ui.HTML(a.osSearchesSection(ctx, site, days))))
+	case "behaviour":
+		events, _ := st.CustomEventsScoped(ctx, site, days)
+		eventBars := make([]osChartBar, 0, len(events))
+		eventTotal := 0
+		for _, e := range events {
+			eventBars = append(eventBars, osChartBar{Label: e.Name, Value: e.Count})
+			eventTotal += e.Count
+		}
+		sections = append(sections,
+			part("behaviour", ui.HTML(a.osBehaviourSection(ctx, site, explore, days))),
+			part("journeys", ui.HTML(a.osJourneySection(ctx, site, days))),
+			part("events", ui.Section("Events", countOf(eventTotal, "custom event"), ui.HTML(osBarList(eventBars, osShareHidden(), "No custom events yet.")))))
+	case "performance":
+		sections = append(sections, part("performance", ui.HTML(a.osPerformanceSection(ctx, site, days))))
+	case "goals":
+		sections = append(sections,
+			part("goals", ui.HTML(a.osGoalsSectionOf(ctx, v, days))),
+			part("segments", ui.HTML(a.osSegmentsSection(ctx, v, days))))
+	case "live":
+		sections = append(sections, part("live", ui.Section("Right now", "Readers in the last 5 minutes, every 10 seconds", ui.HTML(osLiveCard(v.base+"/realtime")))))
+	}
+	sections = append(sections, exportSheet)
+	return string(ui.Overview(page, band, sections...))
 }
 
 // analyticsDefs is where each figure is defined (docs/ANALYTICS.md), so a
@@ -222,12 +315,12 @@ func visitorFigures(ov, prev *analytics.Overview) []ui.Figure {
 		prev = &analytics.Overview{}
 	}
 	figs := []ui.Figure{
-		{Value: strconv.Itoa(ov.UniqueVisitors), Label: "Visitors", Note: analyticsChange(ov.UniqueVisitors, prev.UniqueVisitors), Def: analyticsDefs + "visitor"},
-		{Value: strconv.Itoa(ov.TotalPageviews), Label: "Page views", Note: analyticsChange(ov.TotalPageviews, prev.TotalPageviews), Def: analyticsDefs + "page-view"},
+		{Value: humanCount(ov.UniqueVisitors), Label: "Visitors", Note: analyticsChange(ov.UniqueVisitors, prev.UniqueVisitors), Def: analyticsDefs + "visitor"},
+		{Value: humanCount(ov.TotalPageviews), Label: "Page views", Note: analyticsChange(ov.TotalPageviews, prev.TotalPageviews), Def: analyticsDefs + "page-view"},
 	}
 	if ov.TotalVisits > 0 {
 		figs = append(figs,
-			ui.Figure{Value: strconv.Itoa(ov.TotalVisits), Label: "Visits", Note: analyticsChange(ov.TotalVisits, prev.TotalVisits), Def: analyticsDefs + "visit"},
+			ui.Figure{Value: humanCount(ov.TotalVisits), Label: "Visits", Note: analyticsChange(ov.TotalVisits, prev.TotalVisits), Def: analyticsDefs + "visit"},
 			ui.Figure{Value: strconv.FormatFloat(ov.BounceRate, 'f', 0, 64) + "%", Label: "Bounce rate", Note: "Visits of one page and nothing else", Def: analyticsDefs + "bounce"})
 	}
 	if ov.AvgDuration > 0 {
@@ -243,4 +336,46 @@ func osDuration(sec float64) string {
 		return strconv.Itoa(s) + "s"
 	}
 	return strconv.Itoa(s/60) + "m " + strconv.Itoa(s%60) + "s"
+}
+
+// pageTitles names each listed page as its post does, so a list of pages
+// reads as titles rather than slugs cut at forty characters; the path stays
+// in the row's tooltip. A path that is not a post (the home page, a tag, a
+// page of a custom site) keeps its path. Posts are looked up on v's own
+// site; Platform's lists, which add every site up, look on any.
+func (a *App) pageTitles(ctx context.Context, v analyticsView, pages []analytics.PageStat) map[string]string {
+	out := make(map[string]string, len(pages))
+	slugs := make([]any, 0, len(pages))
+	bySlug := map[string]string{}
+	for _, p := range pages {
+		out[p.Path] = prettyPathText(p.Path)
+		// A path with more than one segment matches no slug and is simply
+		// not found.
+		slug := strings.TrimSuffix(strings.TrimPrefix(p.Path, "/"), "/")
+		if slug != "" {
+			slugs = append(slugs, slug)
+			bySlug[slug] = p.Path
+		}
+	}
+	if len(slugs) == 0 || dbpkg.DB == nil {
+		return out
+	}
+	q := `SELECT slug,title FROM articles WHERE slug IN (?` + strings.Repeat(",?", len(slugs)-1) + `)`
+	args := slugs
+	if !v.all() {
+		q += ` AND domain_id=?`
+		args = append(args, v.scope)
+	}
+	rows, err := dbpkg.Reader().QueryContext(ctx, q, args...)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var slug, title string
+		if rows.Scan(&slug, &title) == nil && strings.TrimSpace(title) != "" {
+			out[bySlug[slug]] = strings.TrimSpace(title)
+		}
+	}
+	return out
 }

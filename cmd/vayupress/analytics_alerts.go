@@ -107,11 +107,11 @@ func alertWhere(site string, hosts map[string]string) string {
 func alertPage(site string) string {
 	switch site {
 	case alerts.Install:
-		return platformAnalyticsBase + "#alerts"
+		return platformAnalyticsBase + "?view=goals#alerts"
 	case "":
-		return primaryAnalyticsBase + "#alerts"
+		return primaryAnalyticsBase + "?view=goals#alerts"
 	}
-	return "/os/d/" + site + "/analytics#alerts"
+	return "/os/d/" + site + "/analytics?view=goals#alerts"
 }
 
 // mailAlert sends a firing to its alert's address and says what became of it,
@@ -338,7 +338,7 @@ func (a *App) alertsSection(ctx context.Context, site, api string, admin bool, n
 	}
 	// Folded like the page's detail, and open when a firing is not yet seen:
 	// that is the one thing here to act on.
-	out := string(ui.Fold("Alerts", countOf(len(list), "alert")+", checked every minute", ui.HTML(b.String())))
+	out := string(ui.Section("Alerts", countOf(len(list), "alert")+", checked every minute", ui.HTML(b.String())))
 	if unseen > 0 {
 		out = string(ui.Section("Alerts", countOf(unseen, "firing")+" not yet seen", ui.HTML(b.String())))
 	}

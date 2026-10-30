@@ -28,7 +28,7 @@ func TestTheBandIsTheReadersFiguresEachLinkedToItsDefinition(t *testing.T) {
 	}
 	want := []string{
 		"Visitors = 400 | Up 100% on the period before | /docs/ANALYTICS#visitor",
-		"Page views = 1327 | The same as the period before | /docs/ANALYTICS#page-view",
+		"Page views = 1,327 | The same as the period before | /docs/ANALYTICS#page-view",
 		// A period before with no visits has no change to give.
 		"Visits = 500 |  | /docs/ANALYTICS#visit",
 		"Bounce rate = 40% | Visits of one page and nothing else | /docs/ANALYTICS#bounce",
@@ -72,7 +72,7 @@ func TestTodayIsSaidAsTheDaySoFarInUTC(t *testing.T) {
 	if days, words := analyticsPeriod(r); days != 1 || words != "today, since midnight UTC" {
 		t.Errorf("?days=1 = %d, %q", days, words)
 	}
-	if got := osPeriodSelector("/os/analytics", 1); !strings.Contains(string(got), `aria-current="page" href="/os/analytics?days=1">Today<`) {
+	if got := osPeriodSelector("/os/analytics", "overview", 1); !strings.Contains(string(got), `href="/os/analytics?days=1" aria-current="true">Today<`) {
 		t.Errorf("the chooser does not name today: %s", got)
 	}
 	for days, want := range map[int]string{1: "today, since midnight UTC", 30: "in the last 30 days"} {

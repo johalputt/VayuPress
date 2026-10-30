@@ -29,13 +29,13 @@ func TestAGoalChangeReachesTheCachedReport(t *testing.T) {
 	a := &App{analytics: analytics.New(dbpkg.DB)}
 	// The install's goals are on two cached pages: Platform's, and the
 	// primary site's own, which counts them over its visits.
-	key := siteAnalyticsKey(platformView, 30)
+	key := siteAnalyticsKey(platformView, "goals", 30)
 	compute := func(ctx context.Context) string {
-		return a.renderSiteAnalyticsBody(ctx, platformView, "every site", 30)
+		return a.renderSiteAnalyticsBody(ctx, platformView, "every site", 30, "goals")
 	}
-	primaryKey := siteAnalyticsKey(primaryView, 30)
+	primaryKey := siteAnalyticsKey(primaryView, "goals", 30)
 	primaryCompute := func(ctx context.Context) string {
-		return a.renderSiteAnalyticsBody(ctx, primaryView, a.primaryHost(ctx), 30)
+		return a.renderSiteAnalyticsBody(ctx, primaryView, a.primaryHost(ctx), 30, "goals")
 	}
 	platform := func() string { h, _ := adminDash.get(key, time.Hour, compute); return h }
 	primary := func() string { h, _ := adminDash.get(primaryKey, time.Hour, primaryCompute); return h }

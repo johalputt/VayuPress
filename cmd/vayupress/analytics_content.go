@@ -60,14 +60,14 @@ func (a *App) osContentSection(ctx context.Context, scope, explore string, days 
 	const title = "What the content did"
 	rep, err := a.contentReport(ctx, scope, days)
 	if err != nil {
-		return string(ui.Fold(title, "", ui.Callout("danger", ui.Text("Not counted: "+err.Error()))))
+		return string(ui.Section(title, "", ui.Callout("danger", ui.Text("Not counted: "+err.Error()))))
 	}
 	listed := false
 	for _, c := range rep.Categories {
 		listed = listed || c.Total > 0
 	}
 	if !listed {
-		return string(ui.Fold(title, "No page has met a category yet", ui.HTML(`<p class="table-empty">No page has met a category yet.</p>`)))
+		return string(ui.Section(title, "No page has met a category yet", ui.HTML(`<p class="table-empty">No page has met a category yet.</p>`)))
 	}
 	panels := make([]string, 0, len(rep.Categories))
 	var why string
@@ -96,7 +96,7 @@ func (a *App) osContentSection(ctx context.Context, scope, explore string, days 
 	}
 	why += `<p>No page is called good or bad: each category is a measured rule, and each page says the figures that put it there. ` +
 		strconv.Itoa(rep.Compared) + ` pages had views enough to compare, and ` + strconv.Itoa(rep.Engagement) + ` of them readings enough as well.</p>`
-	return string(ui.Fold(title, "Pages by what was measured of them over the period",
+	return string(ui.Section(title, "Pages by what was measured of them over the period",
 		ui.HTML(`<div class="sa-editorial">`+analyticsCols(panels...)+`</div>`+string(ui.Explain(ui.HTML(why))))))
 }
 

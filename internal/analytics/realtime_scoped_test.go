@@ -112,3 +112,39 @@ func TestRightNowSaysWhereReadersAreAndWhatTheyReadOn(t *testing.T) {
 		t.Errorf("channels %+v are not largest first", rs.ActiveChannels)
 	}
 }
+
+// The line under the live count is the readers in each of the last 30
+// minutes, oldest first: a reader counted once in each minute they read in,
+// and nothing from before the half hour.
+func TestRightNowCountsReadersEachMinute(t *testing.T) {
+	s := newExtStore(t)
+	s.UseVisits(vasession.NewMasterHasher([]byte("live")))
+	now := time.Now().UTC().Truncate(time.Minute).Add(20 * time.Second)
+	at := func(ago time.Duration, who contractReader, path string) {
+		t.Helper()
+		s.now = func() time.Time { return now.Add(-ago) }
+		if err := s.Collect(context.Background(), CollectRequest{URL: path, Hostname: "s1.test", EventType: 1, Lang: "en"}, who.ip, who.ua, "s1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	at(40*time.Minute, r1, "/old") // before the half hour
+	at(2*time.Minute, r1, "/a")
+	at(2*time.Minute, r1, "/b") // the same reader, the same minute: once
+	at(2*time.Minute, r2, "/a")
+	at(0, r3, "/c")
+	s.now = func() time.Time { return now }
+	rs, err := s.RealtimeScoped(context.Background(), "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rs.ActiveByMinute) != 30 {
+		t.Fatalf("%d minutes, want 30", len(rs.ActiveByMinute))
+	}
+	want := make([]int, 30)
+	want[27], want[29] = 2, 1
+	for i := range want {
+		if rs.ActiveByMinute[i] != want[i] {
+			t.Fatalf("readers a minute %v, want %v", rs.ActiveByMinute, want)
+		}
+	}
+}

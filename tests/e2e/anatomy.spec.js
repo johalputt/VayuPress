@@ -163,29 +163,29 @@ test("every console page keeps to the page grammar, or at least no further from 
   expect(findings).toEqual([]);
 });
 
-// Analytics folds its detail, and the walk above measures only what shows.
-// Opened, the folds are held to the same rules: no box in a box, no badge,
-// no zero figure, no form loose in the page.
-test("Analytics with every fold opened keeps to the page grammar", async ({ page }) => {
-  test.setTimeout(120000);
+// Analytics is a bar of views, and the walk above measures only the one the
+// rail opens. Every view is held to the same rules: no box in a box, no
+// badge, no zero figure, no form loose in the page.
+test("Every Analytics view keeps to the page grammar", async ({ page }) => {
+  test.setTimeout(360000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/os");
   await page.waitForLoadState("networkidle");
   const findings = [];
-  for (const href of ["/os/analytics", "/os/platform/analytics"]) {
-    await page.goto(href);
-    for (let i = 0; i < 20 && (await page.getByText("This is counted in the background").count()) > 0; i++) {
-      await page.waitForTimeout(1000);
-      await page.reload();
+  // Each page is a bar of views; every view is measured, each counted in
+  // the background on its first visit, so the placeholder is waited out.
+  for (const base of ["/os/analytics", "/os/platform/analytics"]) {
+    for (const view of ["overview", "audience", "sources", "content", "behaviour", "performance", "goals", "live"]) {
+      const href = base + (view === "overview" ? "" : "?view=" + view);
+      await page.goto(href);
+      for (let i = 0; i < 20 && (await page.getByText("This is counted in the background").count()) > 0; i++) {
+        await page.waitForTimeout(1000);
+        await page.reload();
+      }
+      await page.waitForLoadState("networkidle");
+      if ((await page.locator("main [data-part]").count()) === 0) findings.push(`${href}: no part of the view drawn, so it was not measured`);
+      for (const f of ruleBreaks(await page.evaluate(anatomy))) findings.push(`${href}: ${f}`);
     }
-    await page.waitForLoadState("networkidle");
-    const folds = await page.evaluate(() => {
-      const all = [...document.querySelectorAll("main details.sa-fold")];
-      all.forEach((d) => { d.open = true; });
-      return all.length;
-    });
-    if (folds < 10) findings.push(`${href}: ${folds} folds, so the page was not measured`);
-    for (const f of ruleBreaks(await page.evaluate(anatomy))) findings.push(`${href}: ${f}`);
   }
   expect(findings).toEqual([]);
 });

@@ -110,12 +110,12 @@ func (a *App) osSegmentsSection(ctx context.Context, v analyticsView, days int) 
 	scope, explore := v.scope, v.base+"/explore"
 	list, err := a.analytics.ListSegments(ctx, v.defs)
 	if err != nil || len(list) == 0 {
-		return string(ui.Fold("Segments", "Saved filters, none yet", ui.HTML(`<p class="table-empty">No segments yet. Save one from the <a href="`+
+		return string(ui.Section("Segments", "Saved filters, none yet", ui.HTML(`<p class="table-empty">No segments yet. Save one from the <a href="`+
 			html.EscapeString(explore+"?days="+strconv.Itoa(days))+`">Explorer</a>.</p>`)))
 	}
 	all, err := a.analytics.Explore(ctx, analytics.ExploreQuery{Scope: scope, Metric: analytics.ExploreVisitors, Days: days})
 	if err != nil {
-		return string(ui.Fold("Segments", "", ui.Callout("danger", ui.Text("The segments could not be counted: "+err.Error()))))
+		return string(ui.Section("Segments", "", ui.Callout("danger", ui.Text("The segments could not be counted: "+err.Error()))))
 	}
 	rows := make([][]ui.HTML, 0, len(list))
 	for _, g := range list {
@@ -130,7 +130,7 @@ func (a *App) osSegmentsSection(ctx context.Context, v analyticsView, days int) 
 			ui.Text(count), ui.HTML(share),
 		})
 	}
-	return string(ui.Fold("Segments", countOf(len(list), "segment")+", visitors in each", ui.Table([]string{"Segment", "Visitors", "Share"}, rows, "")))
+	return string(ui.Section("Segments", countOf(len(list), "segment")+", visitors in each", ui.Table([]string{"Segment", "Visitors", "Share"}, rows, "")))
 }
 
 // exploreSegments is the Explorer's part for segments: the scope's

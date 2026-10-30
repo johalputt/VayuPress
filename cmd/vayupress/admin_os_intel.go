@@ -493,15 +493,41 @@ func analyticsWhen(days int) string {
 	return "in " + analyticsPhrase(days)
 }
 
-// osPeriodSelector renders the period chooser as a row of links (GET, no JS).
-func osPeriodSelector(base string, days int) ui.HTML {
-	segs := make([]ui.Segment, 0, len(analyticsPeriodOptions))
+// osPeriodSelector is the period chooser: one button naming the period, its
+// menu the others, each a link (GET, no script) that keeps the view. Eight
+// buttons in a row, each the weight of Explore and Export, were the loudest
+// thing on the page.
+func osPeriodSelector(base, view string, days int) ui.HTML {
+	cur := "Last 30 days"
+	var items strings.Builder
 	for _, o := range analyticsPeriodOptions {
-		segs = append(segs, ui.Segment{Label: o.Label, Href: base + "?days=" + strconv.Itoa(o.Days), Count: -1, On: o.Days == days})
+		label := o.Label
+		if o.Days > 1 {
+			label = "Last " + label
+		}
+		on := ""
+		if o.Days == days {
+			cur, on = label, ` aria-current="true"`
+		}
+		items.WriteString(`<a class="sa-menu__item" role="menuitem" href="` + esc(analyticsHref(base, view, o.Days)) + `"` + on + `>` + esc(label) + `</a>`)
 	}
 	// data-period: the analytics script marks the chooser as loading while the
 	// chosen range is fetched.
-	return `<div data-period>` + ui.Segments("Period", segs...) + `</div>`
+	return ui.HTML(`<details class="sa-pop" data-period><summary class="btn btn--sm">` + esc(cur) + `</summary>` +
+		`<div class="sa-pop__panel sa-menu" role="menu">` + items.String() + `</div></details>`)
+}
+
+// osLiveCompact is Right now on the overview: the count, the readers over
+// the last half hour, and the three pages most read now, with the way to the
+// Live view and its lists. Filled by admin-os-intel.js from src, as the card.
+func osLiveCompact(src, liveHref string) string {
+	return `<div class="vm-liveview vm-liveview--compact" data-live data-live-src="` + esc(src) + `">
+  <div class="stat-card"><div class="stat-card__value" data-live-count>—</div>
+    <div class="stat-card__note"><span data-live-noun>visitors</span> in the last <span data-live-window>5</span> minutes<span data-live-updated></span></div></div>
+  <svg class="vm-live-spark" viewBox="0 0 300 40" preserveAspectRatio="none" aria-hidden="true"><polyline data-live-spark points=""></polyline></svg>
+  <div class="vp-bars" data-live-pages data-live-max="3"><p class="table-empty">Counting…</p></div>
+  <a class="sa-more" href="` + esc(liveHref) + `">Open Live →</a>
+</div>`
 }
 
 // osLiveCard is who is reading the site now: their count, as a figure, the
@@ -510,23 +536,17 @@ func osPeriodSelector(base string, days int) ui.HTML {
 // admin-os-intel.js. A count in ink, not an accent number beside a LIVE pill
 // and pulsing rings: it is the same kind of figure as the band's.
 func osLiveCard(src string) string {
+	panel := func(title, attr string) string {
+		return `<div><h3 class="sa-panel__title">` + title + `</h3><div class="vp-bars" ` + attr + `><p class="table-empty">Counting…</p></div></div>`
+	}
 	return `<div class="vm-liveview" data-live data-live-src="` + esc(src) + `">
-  <div class="stat-card"><div class="stat-card__label">Reading now</div><div class="stat-card__value" data-live-count>—</div>
+  <div class="vm-live-head"><div class="stat-card"><div class="stat-card__label">Reading now</div><div class="stat-card__value" data-live-count>—</div>
     <div class="stat-card__note"><span data-live-noun>visitors</span> in the last <span data-live-window>5</span> minutes<span data-live-updated></span></div></div>
-  <h3 class="sa-panel__title">Pages</h3>
-  <div class="vp-bars" data-live-pages><p class="table-empty">Counting…</p></div>
-  <h3 class="sa-panel__title">Referrers</h3>
-  <div class="vp-bars" data-live-referrers><p class="table-empty">Counting…</p></div>
-  <h3 class="sa-panel__title">How they arrived</h3>
-  <div class="vp-bars" data-live-channels><p class="table-empty">Counting…</p></div>
-  <h3 class="sa-panel__title">Countries</h3>
-  <div class="vp-bars" data-live-countries><p class="table-empty">Counting…</p></div>
-  <h3 class="sa-panel__title">Cities</h3>
-  <div class="vp-bars" data-live-cities><p class="table-empty">Counting…</p></div>
-  <h3 class="sa-panel__title">Devices</h3>
-  <div class="vp-bars" data-live-devices><p class="table-empty">Counting…</p></div>
-  <h3 class="sa-panel__title">Browsers</h3>
-  <div class="vp-bars" data-live-browsers><p class="table-empty">Counting…</p></div>
+  <svg class="vm-live-spark" viewBox="0 0 300 40" preserveAspectRatio="none" aria-hidden="true"><polyline data-live-spark points=""></polyline></svg></div>
+  <div class="sa-cols sa-cols--3">` +
+		panel("Pages", "data-live-pages") + panel("How they arrived", "data-live-channels") + panel("Referrers", "data-live-referrers") +
+		panel("Countries", "data-live-countries") + panel("Cities", "data-live-cities") + panel("Devices", "data-live-devices") +
+		panel("Browsers", "data-live-browsers") + `</div>
 </div>`
 }
 
@@ -601,7 +621,7 @@ func (a *App) osGoalsSectionOf(ctx context.Context, v analyticsView, days int) s
     <input id="goal-target" class="input" type="text" data-goal-target placeholder="/thank-you  or  signup" required></div>
   <div class="mt-3 sa-list__sheet-actions"><button class="btn btn--primary btn--sm" type="submit">Add goal</button></div>
 </form>`))
-	return string(ui.Fold("Goals", countOf(len(results), "goal")+", the share of visitors who reach each", ui.HTML(`<div data-goals data-goal-base="`+esc(base)+`">
+	return string(ui.Section("Goals", countOf(len(results), "goal")+", the share of visitors who reach each", ui.HTML(`<div data-goals data-goal-base="`+esc(base)+`">
   <button type="button" class="btn btn--ghost btn--sm" data-sheet="goal-new">`+saIcon("plus")+` New goal</button>
   <div class="table-wrap"><table class="table">
     <thead><tr><th>Goal</th><th>Reached by</th><th>Target</th><th>Completions</th><th>Conversion</th><th></th></tr></thead>
@@ -615,7 +635,7 @@ func (a *App) osGoalsSectionOf(ctx context.Context, v analyticsView, days int) s
 func (a *App) osSearchesSection(ctx context.Context, scope string, days int) string {
 	stats, _ := a.analytics.SearchesScoped(ctx, scope, days, 20)
 	if len(stats) == 0 {
-		return string(ui.Fold("Searches", "What readers looked for with the site's search",
+		return string(ui.Section("Searches", "What readers looked for with the site's search",
 			ui.HTML(`<p class="table-empty">No searches yet.</p>`+string(ui.Explain(`<p>Searches made from the site's search page show here; a query that looks like an email address or a long number is never kept.</p>`)))))
 	}
 	// Bars, as every other top list here: a four-column table did not fit
@@ -650,7 +670,7 @@ func (a *App) osSearchesSection(ctx context.Context, scope string, days int) str
 			analyticsPanel("Opened after searching", osBarList(pages, osShareOf(next.Opened), "No search has been followed by a page yet.")),
 			analyticsPanel("Searched again as", osBarList(again, osShareOf(next.Refined), "No search has been tried again in other words yet.")))
 	}
-	return string(ui.Fold("Searches", "What readers looked for with the site's search", ui.HTML(body)))
+	return string(ui.Section("Searches", "What readers looked for with the site's search", ui.HTML(body)))
 }
 
 // noGoalsYet is the goals table's empty row; the script writes the same words
@@ -678,7 +698,7 @@ func (a *App) osJourneySection(ctx context.Context, scope string, days int) stri
 		}
 		bars = append(bars, osChartBar{Label: prettyPathText(f.From) + " → " + prettyPathText(f.To), Value: f.Count})
 	}
-	return string(ui.Fold("Journeys", countOf(len(flows), "way")+" from one page to another",
+	return string(ui.Section("Journeys", countOf(len(flows), "way")+" from one page to another",
 		ui.HTML(osBarList(bars, osShareHidden(), "No visit went from one page to another yet."))))
 }
 

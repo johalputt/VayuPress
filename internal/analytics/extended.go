@@ -589,6 +589,9 @@ type RealtimeStats struct {
 	ActiveChannels  []AudienceStat `json:"active_channels"`
 	ActiveReferrers []AudienceStat `json:"active_referrers"`
 	WindowMinutes   int            `json:"window_minutes"`
+	// ActiveByMinute is the readers in each of the last 30 minutes, oldest
+	// first, the current minute last: the line under the live count.
+	ActiveByMinute []int `json:"active_by_minute"`
 }
 
 // RealtimeCity is a city active readers are in, with its country.
@@ -629,6 +632,28 @@ func (s *Store) RealtimeScoped(ctx context.Context, scope string) (*RealtimeStat
 	clause, carg := domainClause(scope)
 	pclause, _ := domainClauseOn("p", scope)
 	args := append([]any{since}, carg...)
+
+	// Readers a minute over the last half hour, each counted once in each
+	// minute they read in.
+	now := s.now().UTC().Truncate(time.Minute)
+	rs.ActiveByMinute = make([]int, 30)
+	if rows, err := s.readDB().QueryContext(ctx,
+		`SELECT substr(created_at,1,16),COUNT(DISTINCT visitor_id) FROM analytics_pageviews WHERE created_at>=?`+clause+` GROUP BY 1`,
+		append([]any{now.Add(-29 * time.Minute).Format("2006-01-02 15:04:05")}, carg...)...); err == nil {
+		for rows.Next() {
+			var minute string
+			var n int
+			if rows.Scan(&minute, &n) != nil {
+				continue
+			}
+			if t, err := time.Parse("2006-01-02 15:04", strings.Replace(minute, "T", " ", 1)); err == nil {
+				if i := 29 - int(now.Sub(t)/time.Minute); i >= 0 && i < 30 {
+					rs.ActiveByMinute[i] = n
+				}
+			}
+		}
+		rows.Close()
+	}
 	_ = s.readDB().QueryRowContext(ctx,
 		`SELECT COUNT(DISTINCT visitor_id) FROM analytics_pageviews WHERE created_at>=?`+clause, args...).
 		Scan(&rs.ActiveVisitors)

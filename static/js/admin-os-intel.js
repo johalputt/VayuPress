@@ -189,6 +189,17 @@
     return 'w-' + (Math.floor((pct + 2) / 5) * 5);
   }
 
+  // shareText is a share as the server's osShareLabel writes it: whole from
+  // ten percent, one decimal below, and "<0.1%" for less.
+  function shareText(value, total) {
+    if (total <= 0 || value <= 0) return '0%';
+    if (value >= total) return '100%';
+    var p = value * 100 / total;
+    if (p >= 10) return Math.floor(p) + '%';
+    if (p >= 0.1) return p.toFixed(1) + '%';
+    return '<0.1%';
+  }
+
   // makeBar builds one .vp-bar row as the server's osBarList does: a label,
   // the count with its share, and a bar in the one ink every list uses.
   // CSP-safe: DOM API only, no innerHTML.
@@ -217,7 +228,7 @@
     if (total > 0) {
       var pctSpan = document.createElement('span');
       pctSpan.className = 'vp-bar__pct';
-      pctSpan.textContent = Math.round(value * 100 / total) + '%';
+      pctSpan.textContent = shareText(value, total);
       val.appendChild(pctSpan);
     }
     var track = document.createElement('span');
@@ -240,6 +251,10 @@
     if (!items.length) { emptyState(el, emptyMsg); return; }
     var max = 1, total = 0;
     items.forEach(function (it) { var v = it.count || 0; if (v > max) max = v; total += v; });
+    // The overview's card shows the first few (data-live-max), the shares
+    // still taken of everyone reading.
+    var limit = parseInt(el.getAttribute('data-live-max'), 10);
+    if (limit > 0) items = items.slice(0, limit);
     items.forEach(function (it) {
       el.appendChild(makeBar(String(it[labelKey] || it.label || '(unknown)'), it.count || 0, max, total, it.flag));
     });
@@ -263,6 +278,16 @@
     fill(card.querySelector('[data-live-cities]'), data.active_cities, 'name', 'No city recorded in the last 5 minutes.');
     fill(card.querySelector('[data-live-devices]'), data.active_devices, 'label', 'No one is reading now.');
     fill(card.querySelector('[data-live-browsers]'), data.active_browsers, 'label', 'No one is reading now.');
+    // The readers a minute over the last half hour, as a line under the
+    // count; drawn only once a minute has had one.
+    var spark = card.querySelector('[data-live-spark]');
+    var mins = data.active_by_minute || [];
+    if (spark && mins.length > 1) {
+      var top = Math.max.apply(null, mins.concat([1]));
+      spark.setAttribute('points', mins.map(function (n, i) {
+        return (i * 300 / (mins.length - 1)).toFixed(1) + ',' + (38 - n * 36 / top).toFixed(1);
+      }).join(' '));
+    }
     var updatedEl = card.querySelector('[data-live-updated]');
     if (updatedEl) {
       var t = new Date();

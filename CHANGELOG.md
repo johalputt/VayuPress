@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+
+- **Analytics is a bar of views.** The page was the figures and five lists,
+  then thirteen closed folds and a tower of seven live lists beside the
+  chart. It is now Overview, Audience, Sources, Content, Behaviour,
+  Performance, Goals and Live, each its own address, linkable and counted on
+  its own, with every part the page had on one of them. The overview is the
+  five figures in one row (written with thousands separators), every day's
+  page views and visitors beside who is reading now (the count, the readers
+  a minute over the last half hour, and the three pages most read), and the
+  top pages and how readers arrived. The period is one menu that keeps the
+  view. Lists name a post by its title, with the path on hover.
+- **Bar lists read as one shape.** A row's proportion is a soft fill behind
+  it rather than a stripe under it, so a small row is visibly small; a share
+  below ten percent is written to one decimal.
+
 ## [3.18.16] — 2026-10-30
 
 The docs checked against the code, the plugin sandbox described as it is enforced, and a hosted site's Analytics no longer linking the install's Settings.

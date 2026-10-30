@@ -47,6 +47,9 @@ type osChartBar struct {
 	// Flag is a country code whose flag is drawn before the label. A code,
 	// not markup: the renderer makes the image from its own flags folder.
 	Flag string
+	// Hint is what the row's tooltip says when it is not the label: a page's
+	// path under its title.
+	Hint string
 }
 
 // barWidthClass snaps a 0..100 percentage to the nearest available w-N class
@@ -185,8 +188,12 @@ func osBarList(items []osChartBar, denom osBarDenom, emptyMsg string) string {
 		if total > 0 {
 			share = `<span class="vp-bar__pct">` + osShareLabel(it.Value, total) + `</span>`
 		}
+		hint := label
+		if it.Hint != "" {
+			hint = it.Hint
+		}
 		out += `<div class="vp-bar">` +
-			`<span class="vp-bar__label" title="` + html.EscapeString(label) + `">` + lab + `</span>` +
+			`<span class="vp-bar__label" title="` + html.EscapeString(hint) + `">` + lab + `</span>` +
 			`<span class="vp-bar__val">` + humanCount(it.Value) + share + `</span>` +
 			`<span class="vp-bar__track"><span class="vp-bar__fill ` + barWidthClass(pct) + `"></span></span>` +
 			`</div>`
