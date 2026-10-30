@@ -29,6 +29,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   how its readers arrived, the page before it and what came next, each of
   its links with how many followed it, how far down it was read a tenth at
   a time, its speed and the goals its readers reached.
+- **The latest visits, each as it went** (administrators only), on Live,
+  on a narrowed page and on a page's report: when, from where, on what, by
+  which referrer, then the pages read in order (each a way to its report),
+  links out, files, events and searches, and how long it stayed. Nothing
+  names a reader: no identifier is shown, no two days' visits are joined,
+  a city is named only once five visits share it, and what was searched is
+  never set beside a visit.
 - **A world map on Audience and Live.** Countries shaded by their readers,
   cities as dots where the city table places them (the city's centre to a
   tenth of a degree, kept on the visit: migration 123); hover for who is

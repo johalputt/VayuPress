@@ -115,6 +115,26 @@ footer, which are on every page. A link to another of the site's pages is
 counted by the visits that went there next; a link out by its link-out
 events.
 
+## The latest visits
+
+An administrator sees, on Live, on a page narrowed to some readers and on a
+page's report, the latest hundred visits of those readers over the period,
+each as it went: when it began, the country it came from, on what device
+and browser, by which referrer, then its steps in order (the pages read,
+each a way to its report; links out; files fetched; custom events; a search
+of the site) and how long it stayed. A visit of more than twelve steps
+shows its first twelve and how many more.
+
+A visit is all a line is. The visitor hash changes every day and is never
+shown, so no two days' visits are joined into a person. A city is named
+only when at least five of the period's visits came from it, else the
+country alone, so a small site's one reader in a small town is not picked
+out. What was searched is the search report's, counted over every reader,
+and is not set beside a visit: the line says a search was made, not what.
+An editor sees the figures and not the log; the log is read on each visit
+to the page, never from the cache an editor's visit to the same address
+would be served.
+
 ## The map
 
 Audience draws the world with each country shaded by its visitors over the

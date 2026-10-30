@@ -102,6 +102,12 @@ func (a *App) writeSiteAnalytics(w http.ResponseWriter, r *http.Request, v analy
 			body += a.siteRetentionSection(r.Context(), v.d, nonce)
 		}
 	}
+	// The latest visits, each as it went, for an administrator alone: read
+	// off the request, never the cache, which serves one address to every
+	// role that opens it.
+	if read, ok := visitLogReaders(view, per); ok && ready && cfg.AccessLevel >= accessAdmin {
+		body += string(a.osVisitLog(a.scoped(r.Context(), read), v, per, time.Now()))
+	}
 	// How this works is the page's, said once, under the overview: a view's
 	// own sections say what they count, and Where they are has its own.
 	if view == "overview" {
