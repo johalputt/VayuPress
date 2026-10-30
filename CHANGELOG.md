@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.19] — 2026-10-30
+
+Behaviour and the ranked lists of a busy install's Analytics counted again: a visit's own events are read through the visit.
+
 ### Fixed
 
 - **Behaviour on a busy install read "Not counted: context deadline
