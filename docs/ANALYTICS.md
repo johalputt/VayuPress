@@ -174,6 +174,51 @@ Global Privacy Control) are never recorded.
 No IP address, no User-Agent string and no cookie is stored. The time on every
 row is the server's: the script sends none.
 
+A site whose click map is on also keeps counts of where its pages were
+clicked (`analytics_heat`, below). Nothing else is recorded for it.
+
+## The click map
+
+Off for every site until an administrator turns it on, in that site's
+Goals, for every page load or for one in 4 or one in 10. The server decides,
+never the page: the script that records clicks is served only to a site that
+has the map on, and the endpoint that takes them (`/api/v1/analytics/clicks`)
+refuses every other site's, so a copy of the script cached before the map was
+turned off records nothing. Its other rules are the collector's: a reader's
+opt-out (Do Not Track, Global Privacy Control) is honoured, an automated
+client and a refused country are not counted, and one address has the
+collector's rate.
+
+A click is never kept. It is added to a count: the clicks on one page, on
+one day, at one width class (a window under 640 pixels is a phone, under
+1024 a tablet, else a desktop), on one element, in one tenth of that element
+across and one down. The element is its path of tags from the page's body,
+each with its place among the siblings of its tag (`article>p:3>a`): never
+its text, class, id or any attribute, and a path that carries anything else
+is refused. A click in a field, a text area or an editable region is never
+taken, nor more than fifty from one page. Two counts ride with it: a burst
+(the third click on one element within a second, a reader trying something
+that did not answer) and a click on nothing (on what is no link or control).
+Because the counts are never kept apart, no reader's clicks can be put back
+together. They are kept as long as the site's other analytics, and purged
+with them.
+
+A page's report shows its map at the width chosen: the elements most clicked,
+with their bursts and clicks on nothing, and, for the primary site's pages,
+the page itself, as a reader is served it, with each tenth's clicks drawn
+over it. The page is rendered on the server and shown in a frame that runs
+none of its scripts, so looking at the map records nothing. A hosted site's
+pages are listed but not drawn, since its pages and their files are served
+at its own address. A click is not kept with its visit, so the report's
+filters do not narrow the map, and it says so.
+
+For the site's privacy notice, which the install does not write:
+
+> On some visits, this site counts where on a page readers click: the part
+> of the page clicked and the size of the screen, added to a daily count.
+> Nothing typed is recorded, no cookie is set, and the counts cannot be
+> traced to a reader.
+
 ## Definitions
 
 ### Page view

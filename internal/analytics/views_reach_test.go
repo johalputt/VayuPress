@@ -154,6 +154,7 @@ func TestPurgeSiteRemovesOnlyThatSitesOldRows(t *testing.T) {
 		{`INSERT INTO analytics_event_data(event_id,property_key,property_value,created_at) VALUES('po','k','v',?),('pn','k','v',?),('qo','k','v',?)`, []any{f(old), f(recent), f(old)}},
 		{`INSERT INTO analytics_revenue(id,session_id,amount,currency,created_at) VALUES('ro','so',100,'INR',?),('rn','sn',100,'INR',?),('xo','to',100,'INR',?)`, []any{f(old), f(recent), f(old)}},
 		{`INSERT INTO analytics_rollup_daily(day,domain_id,uniques_hll) VALUES(?,'s1',x''),(?,'s1',x''),(?,'s2',x'')`, []any{old.Format("2006-01-02"), recent.Format("2006-01-02"), old.Format("2006-01-02")}},
+		{`INSERT INTO analytics_heat(domain_id,path,day,width,element,x,y,clicks) VALUES('s1','/a',?,'phone','a',0,0,1),('s1','/a',?,'phone','a',0,0,1),('s2','/a',?,'phone','a',0,0,1)`, []any{old.Format("2006-01-02"), recent.Format("2006-01-02"), old.Format("2006-01-02")}},
 	} {
 		if _, err := dbpkg.DB.Exec(q.sql, q.args...); err != nil {
 			t.Fatalf("%s: %v", q.sql, err)
@@ -163,10 +164,10 @@ func TestPurgeSiteRemovesOnlyThatSitesOldRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 5 {
-		t.Errorf("removed %d rows, want 5: site one's old view, its property, its visit, its revenue and its sketch", n)
+	if n != 6 {
+		t.Errorf("removed %d rows, want 6: site one's old view, its property, its visit, its revenue, its sketch and its clicks", n)
 	}
-	for table, want := range map[string]int{"analytics_sessions": 3, "analytics_pageviews": 2, "analytics_event_data": 2, "analytics_revenue": 2, "analytics_rollup_daily": 2} {
+	for table, want := range map[string]int{"analytics_sessions": 3, "analytics_pageviews": 2, "analytics_event_data": 2, "analytics_revenue": 2, "analytics_rollup_daily": 2, "analytics_heat": 2} {
 		var got int
 		_ = dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM ` + table).Scan(&got)
 		if got != want {

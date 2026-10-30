@@ -297,6 +297,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 
 	// VayuAnalytics — public ingest + tracking script (no auth; body-capped and per-IP rate-limited).
 	r.Post("/api/v1/analytics/collect", a.handleAnalyticsCollect)
+	r.Post("/api/v1/analytics/clicks", a.handleAnalyticsClicks)
 	r.Get("/static/vp-analytics.js", a.handleAnalyticsScript)
 
 	// VayuShield challenge surface + VayuAnalytics Enterprise engagement beacons

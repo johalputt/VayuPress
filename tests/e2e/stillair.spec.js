@@ -460,6 +460,44 @@ test("a row narrows Analytics to its readers, and the bar takes it off", async (
 // A list of visits ranks by what they did: its switch shows once the script
 // runs, Bounce redraws the rows as rates, and hovering a row lays out every
 // measure of its visits beside the page's own.
+// The click map, end to end: turned on in Goals, the page's own recorder
+// takes a reader's click on the article's heading, the report lists the
+// element (a heading is no link: a click on nothing), and the page drawn in
+// the console's frame carries the click over it. The reader is a browser of
+// its own with an ordinary Chrome's name, since only a reader is counted;
+// the visit is tried again while the collector's minute has no room. The
+// map is turned off again whatever happens, as it is the install's.
+test("a page's clicks, once its site records them, are on its report", async ({ page, browser }) => {
+  test.setTimeout(150000);
+  const set = async (value, said) => {
+    await page.goto("/os/analytics?view=goals&days=7");
+    await page.selectOption("#click-map-sample", value);
+    await page.click("[data-click-map-button]");
+    await expect(page.locator("#click-map-status")).toHaveText(said);
+  };
+  await set("1", "Saved");
+  const slug = "/" + (process.env.ARTICLE_SLUG || "hello-vayupress");
+  const report = "/os/analytics?view=page&days=7&cw=desktop&page=" + encodeURIComponent(slug);
+  const reader = await browser.newContext({
+    viewport: { width: 1280, height: 900 },
+    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36",
+  });
+  try {
+    const p = await reader.newPage();
+    await expect.poll(async () => {
+      await p.goto(slug);
+      await p.locator("h1").first().click();
+      await p.goto("about:blank");
+      return (await (await page.request.get(report)).text()).match(/<span title="[^"]*h1">[^<]*<\/span><\/td><td>\d+<\/td><td>\d+<\/td><td>[1-9]/) !== null;
+    }, { timeout: 90000, intervals: [3000] }).toBe(true);
+    await page.goto(report);
+    await expect(page.locator(".sa-heat__dot").first()).toBeAttached({ timeout: 15000 });
+  } finally {
+    await reader.close();
+    await set("0", "Saved");
+  }
+});
+
 test("a list ranks by what its visits did, and a row's card says all of it", async ({ page }) => {
   test.setTimeout(120000);
   await openConsole(page);

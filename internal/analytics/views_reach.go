@@ -115,6 +115,7 @@ func (s *Store) PurgeSite(ctx context.Context, site string, retainDays int) (int
 		{`DELETE FROM analytics_pageviews WHERE domain_id=? AND created_at<?`, []any{site, at}},
 		{`DELETE FROM analytics_sessions WHERE domain_id=? AND created_at<?`, []any{site, at}},
 		{`DELETE FROM analytics_rollup_daily WHERE domain_id=? AND day<?`, []any{site, day}},
+		{`DELETE FROM analytics_heat WHERE domain_id=? AND day<?`, []any{site, day}},
 	} {
 		res, err := s.db.ExecContext(ctx, q.sql, q.args...)
 		if err != nil {

@@ -604,3 +604,59 @@ function consoleLink(h) {
     });
   });
 })();
+
+// The click map: the page in its frame at its width class, scaled to the
+// column, with each element's clicks as dots over it, one for each tenth of
+// the element across and down, sized and inked by its share of the most.
+(function () {
+  'use strict';
+  // A path's steps from the body, a bare tag the first of its kind.
+  function selector(path) {
+    return 'body>' + path.split('>').map(function (s) {
+      var p = s.split(':');
+      return p[0] + ':nth-of-type(' + (p[1] || 1) + ')';
+    }).join('>');
+  }
+  document.querySelectorAll('.sa-heat').forEach(function (box) {
+    var stage = box.querySelector('.sa-heat__stage');
+    var frame = box.querySelector('.sa-heat__frame');
+    var layer = box.querySelector('.sa-heat__layer');
+    var width = Number(box.getAttribute('data-heat-width')) || 1280;
+    var data;
+    try { data = JSON.parse(box.getAttribute('data-heat') || '[]'); } catch (e) { return; }
+    var max = 1;
+    data.forEach(function (e) { e.c.forEach(function (n) { if (n > max) max = n; }); });
+    function draw() {
+      var doc = frame.contentDocument;
+      if (!doc || !doc.body) return;
+      frame.style.width = width + 'px';
+      var height = doc.documentElement.scrollHeight;
+      frame.style.height = height + 'px';
+      var scale = Math.min(1, box.clientWidth / width);
+      stage.style.width = width + 'px';
+      stage.style.transform = 'scale(' + scale + ')';
+      box.style.height = Math.ceil(height * scale) + 'px';
+      layer.textContent = '';
+      data.forEach(function (e) {
+        var el;
+        try { el = doc.querySelector(selector(e.e)); } catch (x) { return; }
+        if (!el) return;
+        var r = el.getBoundingClientRect();
+        e.c.forEach(function (n, k) {
+          if (!n) return;
+          var dot = document.createElement('span');
+          var size = 8 + 24 * Math.sqrt(n / max);
+          dot.className = 'sa-heat__dot';
+          dot.style.left = (r.left + r.width * (Math.floor(k / 10) + 0.5) / 10) + 'px';
+          dot.style.top = (r.top + r.height * (k % 10 + 0.5) / 10) + 'px';
+          dot.style.width = dot.style.height = size + 'px';
+          dot.style.opacity = String(0.25 + 0.6 * n / max);
+          layer.appendChild(dot);
+        });
+      });
+    }
+    frame.addEventListener('load', draw);
+    if (frame.contentDocument && frame.contentDocument.readyState === 'complete') draw();
+    window.addEventListener('resize', draw);
+  });
+})();

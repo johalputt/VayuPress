@@ -1166,6 +1166,20 @@ func (s *Store) PurgeOlderThan(ctx context.Context, retentionDays int) (int64, e
 			total += n
 		}
 	}
+	// The click map's counts are by day, and a day that is not one sorts
+	// at or after notADate, as a time does.
+	for _, q := range []struct {
+		sql string
+		arg string
+	}{{`DELETE FROM analytics_heat WHERE day<?`, cutoff.Format("2006-01-02")}, {`DELETE FROM analytics_heat WHERE day>=?`, notADate}} {
+		res, err := s.db.ExecContext(ctx, q.sql, q.arg)
+		if err != nil {
+			return total, err
+		}
+		if n, e := res.RowsAffected(); e == nil {
+			total += n
+		}
+	}
 	return total, nil
 }
 

@@ -2872,6 +2872,20 @@
 
 .vp-os .sa-trails__meta { font-size: 12.5px; color: var(--text-3); }
 
+/* A page's click map: the page in a frame at its width class, scaled to
+   the column by the console's script, with its clicks drawn over it. */
+.vp-os .sa-heat__widths { margin: 0 0 var(--space-4); font-size: 13px; color: var(--text-3); }
+
+.vp-os .sa-heat { position: relative; overflow: hidden; margin: 0 0 var(--space-5); border: 1px solid var(--border-1); border-radius: 6px; background: var(--bg-surface); }
+
+.vp-os .sa-heat__stage { position: relative; transform-origin: 0 0; }
+
+.vp-os .sa-heat__frame { display: block; width: 100%; border: 0; pointer-events: none; }
+
+.vp-os .sa-heat__layer { position: absolute; inset: 0; pointer-events: none; }
+
+.vp-os .sa-heat__dot { position: absolute; border-radius: 50%; background: var(--accent); transform: translate(-50%, -50%); }
+
 /* The readers a page is narrowed to, under its section bar. */
 .vp-os .sa-focus { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin-top: var(--space-4); }
 

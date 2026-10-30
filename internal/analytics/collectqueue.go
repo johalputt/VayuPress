@@ -77,6 +77,11 @@ type evCollector struct {
 	// flushing serialises flushes: the batch at the front stays in q until
 	// it is written, so two flushes would write it twice.
 	flushing sync.Mutex
+
+	// heat is the click map's counts since the last flush (heat.go), and
+	// heatDropped the clicks refused past its cap.
+	heat        map[heatBucket]heatCount
+	heatDropped int64
 }
 
 // CollectAsync normalises a beacon exactly like Collect and queues it without
@@ -227,6 +232,9 @@ func (s *Store) FlushEvents(ctx context.Context) error {
 	}
 	c.flushing.Lock()
 	defer c.flushing.Unlock()
+	// The click map's counts are written first and apart: a refusal of
+	// theirs keeps them for the next flush and holds no beacon back.
+	heatErr := s.flushHeat(ctx)
 	for {
 		c.mu.Lock()
 		n := len(c.q)
@@ -238,7 +246,7 @@ func (s *Store) FlushEvents(ctx context.Context) error {
 		batch := c.q[:n:n]
 		c.mu.Unlock()
 		if n == 0 {
-			return nil
+			return heatErr
 		}
 		err := s.applyCollectBatch(ctx, batch)
 		c.mu.Lock()

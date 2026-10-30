@@ -392,6 +392,11 @@ const (
 	KeyAnalyticsSiteRetainDays = "analytics.site_retain_days"
 	KeyAnalyticsSiteRetainLast = "analytics.site_retain_last"
 
+	// KeyAnalyticsClickMap turns on a site's click map: empty is off, a
+	// number N records the clicks of one page load in N. Off by default,
+	// since it records something the install does not otherwise collect.
+	KeyAnalyticsClickMap = "analytics.click_map"
+
 	// KeyAnalyticsBeacon toggles the VayuAnalytics engagement beacon (time on
 	// page / scroll depth) injected on public pages. Default ON — it is
 	// cookieless and stores no PII, the same posture as the existing view
@@ -653,6 +658,7 @@ var NotPortable = map[string]bool{
 	KeySiteAllowPayment:             true,
 	KeyAnalyticsSiteRetainDays:      true,
 	KeyAnalyticsSiteRetainLast:      true,
+	KeyAnalyticsClickMap:            true,
 	KeyAnalyticsBeacon:              true,
 	KeyVeilEnabled:                  true,
 	KeyVayuKeepEnabled:              true,
@@ -694,6 +700,7 @@ var AllKeys = map[string]bool{
 	KeySiteAllowPayment:             true,
 	KeyAnalyticsSiteRetainDays:      true,
 	KeyAnalyticsSiteRetainLast:      true,
+	KeyAnalyticsClickMap:            true,
 	KeyNoFollowLinks:                true,
 	KeyPageCache:                    true,
 	KeyAnalyticsCities:              true,

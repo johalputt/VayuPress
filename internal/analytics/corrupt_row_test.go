@@ -58,10 +58,17 @@ func TestACorruptedRowBreaksNoReport(t *testing.T) {
 // with the property of such a view; valid rows of today stay.
 func TestThePurgeRemovesRowsWhoseTimeIsNotADate(t *testing.T) {
 	s := corrupted(t)
+	// The click map's counts go by their day the same way.
+	if _, err := dbpkg.DB.Exec(`INSERT INTO analytics_heat(path,day,width,element,x,y,clicks) VALUES('/a',date('now','-40 days'),'phone','old',0,0,1),('/a',date('now'),'phone','new',0,0,1),('/a','garbage','phone','bad',0,0,1)`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.PurgeOlderThan(context.Background(), 30); err != nil {
 		t.Fatal(err)
 	}
 	for q, want := range map[string]int{
+		`SELECT COUNT(*) FROM analytics_heat WHERE element='old'`:        0,
+		`SELECT COUNT(*) FROM analytics_heat WHERE element='bad'`:        0,
+		`SELECT COUNT(*) FROM analytics_heat WHERE element='new'`:        1,
 		`SELECT COUNT(*) FROM analytics_pageviews WHERE id='bad'`:        0,
 		`SELECT COUNT(*) FROM analytics_event_data WHERE event_id='bad'`: 0,
 		`SELECT COUNT(*) FROM analytics_sessions WHERE id='sb'`:          0,

@@ -112,6 +112,12 @@ window.VayuPress=window.VayuPress||{};window.VayuPress.track=function(n,d){send(
 	if a.siteSettings != nil && a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyAnalyticsBeacon) != "off" {
 		fmt.Fprint(w, vaEngagementJS)
 	}
+	// The click map's recorder, on a site whose operator turned it on
+	// (analytics_clickmap.go); the hour's cache above bounds how long a
+	// copy sends after it is turned off, and the endpoint refuses those.
+	if n := a.clickMapSample(r.Context(), a.contentScope(r)); n > 0 {
+		fmt.Fprint(w, clickMapJS(n))
+	}
 }
 
 // ── Legacy privacy-first summary (unchanged) ─────────────────────────────────

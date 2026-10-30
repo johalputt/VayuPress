@@ -101,6 +101,14 @@ func (a *App) writeSiteAnalytics(w http.ResponseWriter, r *http.Request, v analy
 		if v.hosted {
 			body += a.siteRetentionSection(r.Context(), v.d, nonce)
 		}
+		if cfg.AccessLevel >= accessAdmin {
+			body += a.clickMapSection(r.Context(), v, nonce)
+		}
+	}
+	// A page's click map is read off the request: its width is the
+	// address's own, and it is cheap, one page's counts.
+	if view == "page" && ready {
+		body += a.osClickMap(r, v, per, cfg.AccessLevel >= accessAdmin)
 	}
 	// The latest visits, each as it went, for an administrator alone: read
 	// off the request, never the cache, which serves one address to every
