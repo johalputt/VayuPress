@@ -134,6 +134,10 @@ func TestShareLabelPrecision(t *testing.T) {
 		{436, 813, "53%"},
 		{1344, 1401, "95%"},
 		{1, 1000, "0.1%"},
+		{37, 1000, "3.7%"}, // below ten, one decimal
+		{99, 1000, "9.9%"},
+		{100, 1000, "10%"},    // ten and above, whole
+		{1350, 50146, "2.7%"}, // rounded to one decimal
 		{1, 1001, "&lt;0.1%"},
 		{1, 1, "100%"},
 		{500, 100, "100%"}, // total smaller than the row it contains

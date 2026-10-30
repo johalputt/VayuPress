@@ -125,11 +125,13 @@ func osShareLabel(value, total int) string {
 	}
 	pct := float64(value) * 100 / float64(total)
 	switch {
-	case pct >= 1:
+	case pct >= 10:
 		return strconv.Itoa(int(pct)) + "%"
 	case pct >= 0.1:
-		// One decimal keeps the homepage distinguishable from the long tail of
-		// scanned URLs beneath it, which is the whole question this column answers.
+		// One decimal below ten keeps the homepage distinguishable from the long
+		// tail of scanned URLs beneath it, which is the whole question this
+		// column answers, and gives every short share in a list one form: "2.7%"
+		// beside "0.6%", not "2%" beside "0.6%".
 		return strconv.FormatFloat(pct, 'f', 1, 64) + "%"
 	default:
 		// Below a tenth of a percent the exact figure stops meaning anything, but

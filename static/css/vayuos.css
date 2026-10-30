@@ -2747,26 +2747,32 @@
 /* Transient "couldn't load" notice on list pages (e.g. Posts under DB load). */
 .vp-os .load-notice { border-left: 3px solid var(--warn); background: var(--warn-dim); }
 
-/* Horizontal bar list */
-.vp-os .vp-bars { display: flex; flex-direction: column; gap: .7rem; }
+/* Horizontal bar list. A row is its label, its count and share, and its
+   proportion as a soft fill behind the row: a stripe under every row gave a
+   0.1% row the ink of a 95% one, and twenty rows read as twenty lines. */
+.vp-os .vp-bars { display: flex; flex-direction: column; gap: 2px; }
 
-.vp-os .vp-bar { display: grid; grid-template-columns: 1fr auto; gap: .2rem .75rem; align-items: baseline; }
+.vp-os .vp-bar { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .75rem; align-items: center; min-height: 34px; padding: 0 .65rem; border-radius: 7px; }
 
-.vp-os .vp-bar__label { font-size: 14px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.vp-os .vp-bar > :not(.vp-bar__track) { position: relative; }
+
+.vp-os .vp-bar__label { font-size: 14px; color: var(--text-1, var(--text)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
 .vp-os .vp-bar__label a { color: inherit; text-decoration: none; }
 
 .vp-os .vp-bar__label a:hover { color: var(--brand); text-decoration: underline; }
 
-.vp-os .vp-bar__val { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 14px; color: var(--text); white-space: nowrap; }
+.vp-os .vp-bar__val { font-variant-numeric: tabular-nums; font-weight: 500; font-size: 14px; color: var(--text); white-space: nowrap; }
 
-.vp-os .vp-bar__pct { color: var(--text-3); font-weight: 400; margin-left: .4rem; }
+.vp-os .vp-bar__pct { display: inline-block; min-width: 3.4rem; text-align: right; color: var(--text-3); font-weight: 400; font-size: 13px; margin-left: .5rem; }
 
-.vp-os .vp-bar__track { grid-column: 1 / -1; height: 3px; border-radius: var(--radius-small); background: var(--border-1, var(--bg-surface-2)); overflow: hidden; }
+.vp-os .vp-bar__track { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; }
 
 /* One ink for every bar: a bar's length is its figure, and a colour would be
    a second reading of the same number. */
-.vp-os .vp-bar__fill { display: block; height: 100%; border-radius: var(--radius-small); background: var(--text-3); transition: width .4s ease; }
+.vp-os .vp-bar__fill { display: block; height: 100%; border-radius: inherit; background: var(--surface-hover, rgba(40, 36, 28, .05)); transition: width .4s ease; }
+
+.vp-os .vp-bar:hover .vp-bar__fill { background: var(--surface-press, rgba(40, 36, 28, .08)); }
 
 /* Two-series trend chart. Its key is a short stroke of each line. */
 .vp-os .vp-legend__item { display: inline-flex; align-items: center; gap: .5rem; }
