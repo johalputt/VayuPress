@@ -25,9 +25,9 @@ import (
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/focus"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
-	"github.com/johalputt/vayupress/internal/focus"
 	"github.com/johalputt/vayupress/internal/span"
 	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/vayushield/verifiedbot"
@@ -710,7 +710,7 @@ func osGeoSection(countries, regions, cities []analytics.AudienceStat, door func
 		if name == "" {
 			name = c.Label
 		}
-countryBars = append(countryBars, osChartBar{Label: name, Value: c.Count, Flag: c.Label, Href: door("country", c.Label)})
+		countryBars = append(countryBars, osChartBar{Label: name, Value: c.Count, Flag: c.Label, Href: door("country", c.Label)})
 		if cont := continentName(c.Label); cont != "" {
 			contAgg[cont] += c.Count
 		}

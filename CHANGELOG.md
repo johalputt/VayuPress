@@ -19,6 +19,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   rows add up, every view, Live, the Explorer and an export keep the
   filters, and the address carries them. A saved segment opens as the page
   narrowed to it.
+- **A list ranks by what its visits did.** Referrers, How they found you,
+  landing pages, devices, browsers and systems carry, for each row, pages a
+  visit, bounce rate, average visit and conversion; a switch ranks the list
+  by any of them, and hovering a row shows them all beside the page's own.
+- **The chart marks the days posts went out**, and its readout names them.
 
 ### Changed
 

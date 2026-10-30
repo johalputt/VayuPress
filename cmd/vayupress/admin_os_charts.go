@@ -244,7 +244,11 @@ func readoutDate(iso string) string {
 // whose <title> says its counts, the browser's tooltip without the script;
 // admin-os-intel.js reads the same counts from the band and sets a readout
 // at reading size beside the day, with a dot on each line.
-func osTrendChart(series []analytics.DayPageviews, title string) string {
+//
+// posts is the titles of the posts published each day ("2006-01-02"): a day
+// with any is marked under the lines, so a rise is read against what went
+// out that day.
+func osTrendChart(series []analytics.DayPageviews, title string, posts map[string][]string) string {
 	days := 0
 	for _, d := range series {
 		if d.Count > 0 {
@@ -292,9 +296,13 @@ func osTrendChart(series []analytics.DayPageviews, title string) string {
 
 	// A day's band spans the midpoints to its neighbours, so the whole slice
 	// is hoverable.
-	pts := ""
+	pts, marks := "", ""
 	for i, d := range series {
 		x := xAt(i)
+		published, said := postsSaid(posts[d.Date])
+		if published != "" {
+			marks += fmt.Sprintf(`<line class="vp-trend-post" x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f"></line>`, x, baseY-12, x, baseY)
+		}
 		left, right := 0.0, w
 		if i > 0 {
 			left = (xAt(i-1) + x) / 2
@@ -302,10 +310,10 @@ func osTrendChart(series []analytics.DayPageviews, title string) string {
 		if i < n-1 {
 			right = (x + xAt(i+1)) / 2
 		}
-		pts += fmt.Sprintf(`<g class="vp-pt" data-day="%s" data-pv="%d" data-vis="%d"><rect class="vp-pt__hit" x="%.1f" y="0" width="%.1f" height="%.0f"></rect>`,
-			html.EscapeString(readoutDate(d.Date)), d.Count, d.Visitors, left, right-left, h) +
+		pts += fmt.Sprintf(`<g class="vp-pt" data-day="%s" data-pv="%d" data-vis="%d" data-posts="%s"><rect class="vp-pt__hit" x="%.1f" y="0" width="%.1f" height="%.0f"></rect>`,
+			html.EscapeString(readoutDate(d.Date)), d.Count, d.Visitors, html.EscapeString(published), left, right-left, h) +
 			fmt.Sprintf(`<line class="vp-pt__guide" x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f"></line>`, x, padT, x, baseY) +
-			`<title>` + html.EscapeString(prettyChartDate(d.Date)) + `: ` + humanCount(d.Count) + ` page views, ` + humanCount(d.Visitors) + ` visitors</title></g>`
+			`<title>` + html.EscapeString(prettyChartDate(d.Date)) + `: ` + humanCount(d.Count) + ` page views, ` + humanCount(d.Visitors) + ` visitors` + html.EscapeString(said) + `</title></g>`
 	}
 
 	xlabels := `<span>` + html.EscapeString(prettyChartDate(series[0].Date)) + `</span>`
@@ -324,9 +332,27 @@ func osTrendChart(series []analytics.DayPageviews, title string) string {
 		grid +
 		`<polyline class="vp-trend-line vp-trend-line--pv" points="` + pv + `"></polyline>` +
 		`<polyline class="vp-trend-line vp-trend-line--vis" points="` + vis + `"></polyline>` +
-		pts + `</svg><span class="vp-trend-dot" hidden></span><span class="vp-trend-dot vp-trend-dot--vis" hidden></span>` +
+		marks + pts + `</svg><span class="vp-trend-dot" hidden></span><span class="vp-trend-dot vp-trend-dot--vis" hidden></span>` +
 		`<div class="vp-trend-tip" hidden></div></div>` +
 		`<div class="vp-trend-x">` + xlabels + `</div></div>`
+}
+
+// postsSaid is a day's posts as the readout says them (the first three
+// titles and how many more) and as the day's title says them after its
+// figures; both "" for none.
+func postsSaid(titles []string) (readout, title string) {
+	if len(titles) == 0 {
+		return "", ""
+	}
+	shown := titles
+	if len(shown) > 3 {
+		shown = shown[:3]
+	}
+	readout = strings.Join(shown, " · ")
+	if more := len(titles) - len(shown); more > 0 {
+		readout += " and " + strconv.Itoa(more) + " more"
+	}
+	return readout, ". Published: " + readout
 }
 
 // osBarsFromAudience adapts audience stats to bar-list rows.

@@ -79,6 +79,21 @@ count every request the site answered and cannot be narrowed, which the
 section says when a filter is on. A saved segment opens as the page
 narrowed to it, when its filters are ones a page takes.
 
+## Ranking a list by what its visits did
+
+The lists of a visit's own facts (referrers, How they found you, landing
+pages, devices, browsers and systems) count how many, as before, and carry
+on each row what those visits did: pages a visit, bounce rate, average
+visit and the share that converted (a custom event), by the definitions
+below, counted per row in one pass over the visit rows
+(`VisitMeasuresScoped`, `internal/analytics/measures.go`). A switch over the
+list ranks and draws it by any of them, and hovering a row shows them all,
+each beside the page's own figure. A referrer that sends few readers who
+read on is then seen above one that sends many who leave.
+
+The overview's chart marks each day a post was published, and its readout
+names the posts.
+
 ## What is recorded
 
 One row per event in `analytics_pageviews`: a page view or a custom event,

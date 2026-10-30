@@ -36,7 +36,7 @@ func (a *App) osBehaviourSection(ctx context.Context, scope, explore string, day
 			if i == behaviourShown {
 				break
 			}
-bars = append(bars, osChartBar{Label: prettyPathText(r.Key), Value: int(r.Value), Hint: r.Key, Href: door(by, r.Key)})
+			bars = append(bars, osChartBar{Label: prettyPathText(r.Key), Value: int(r.Value), Hint: r.Key, Href: door(by, r.Key)})
 		}
 		more := ""
 		if len(res.Rows) > behaviourShown {

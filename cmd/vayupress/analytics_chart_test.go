@@ -33,7 +33,7 @@ func twoDigit(n int) string {
 // chart's readout; and the chart stays CSP-safe (no inline styles, no
 // scripts, no external hosts).
 func TestTrendChartSaysEachDaysCounts(t *testing.T) {
-	out := osTrendChart(sampleSeries(30), "Traffic")
+	out := osTrendChart(sampleSeries(30), "Traffic", nil)
 	assertCSPSafe(t, "osTrendChart", out)
 	if n := strings.Count(out, `<rect class="vp-pt__hit"`); n != 30 {
 		t.Errorf("%d day bands, want 30", n)
@@ -53,7 +53,7 @@ func TestTrendChartSaysEachDaysCounts(t *testing.T) {
 // the first and last day, the middle one when it falls on a day, and the
 // three gridlines' values.
 func TestTheTrendsWordsAreHTML(t *testing.T) {
-	out := osTrendChart(sampleSeries(27), "Traffic")
+	out := osTrendChart(sampleSeries(27), "Traffic", nil)
 	svg := out[strings.Index(out, "<svg"):strings.Index(out, "</svg>")]
 	if strings.Contains(svg, "<text") {
 		t.Error("the SVG draws text")
@@ -63,7 +63,7 @@ func TestTheTrendsWordsAreHTML(t *testing.T) {
 	}
 	// 28 days have no middle day; a label between two days would name one
 	// it is not over.
-	if even := osTrendChart(sampleSeries(28), "Traffic"); !strings.Contains(even, `<div class="vp-trend-x"><span>Jul 1</span><span></span><span class="vp-trend-x__end">Jul 28</span></div>`) {
+	if even := osTrendChart(sampleSeries(28), "Traffic", nil); !strings.Contains(even, `<div class="vp-trend-x"><span>Jul 1</span><span></span><span class="vp-trend-x__end">Jul 28</span></div>`) {
 		t.Error("28 days: a middle label is placed between two days")
 	}
 	// The highest count in sampleSeries(27) is day 27's page views, 282.
@@ -77,7 +77,7 @@ func TestTheTrendsWordsAreHTML(t *testing.T) {
 // The chart is two lines in the page's ink and nothing under them: no
 // gradient, no filled area, no colour of its own.
 func TestTrendChartIsTwoLinesAndNoFill(t *testing.T) {
-	out := osTrendChart(sampleSeries(30), "Traffic")
+	out := osTrendChart(sampleSeries(30), "Traffic", nil)
 	if n := strings.Count(out, "<polyline"); n != 2 {
 		t.Errorf("%d lines, want page views and visitors", n)
 	}
@@ -97,15 +97,15 @@ func TestATrendNeedsTwoDaysWithViews(t *testing.T) {
 	for i := range week {
 		week[i].Count, week[i].Visitors = 0, 0
 	}
-	if osTrendChart(nil, "x") != "" || osTrendChart(week, "x") != "" {
+	if osTrendChart(nil, "x", nil) != "" || osTrendChart(week, "x", nil) != "" {
 		t.Error("a range with no views draws a chart")
 	}
 	week[3].Count, week[3].Visitors = 5, 2
-	if osTrendChart(week, "x") != "" {
+	if osTrendChart(week, "x", nil) != "" {
 		t.Error("one day with views draws a chart")
 	}
 	week[5].Count, week[5].Visitors = 3, 1
-	if out := osTrendChart(week, "x"); !strings.Contains(out, "vp-trend-svg") {
+	if out := osTrendChart(week, "x", nil); !strings.Contains(out, "vp-trend-svg") {
 		t.Error("two days with views draw no chart")
 	}
 }

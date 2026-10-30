@@ -762,7 +762,7 @@ func (s *Store) RealtimeScoped(ctx context.Context, scope string) (*RealtimeStat
 		rows.Close()
 		for _, l := range channelLabels {
 			if buckets[l.label] > 0 {
-rs.ActiveChannels = append(rs.ActiveChannels, AudienceStat{Label: l.label, Count: buckets[l.label], Key: string(l.cat)})
+				rs.ActiveChannels = append(rs.ActiveChannels, AudienceStat{Label: l.label, Count: buckets[l.label], Key: string(l.cat)})
 			}
 		}
 		sort.SliceStable(rs.ActiveChannels, func(i, j int) bool { return rs.ActiveChannels[i].Count > rs.ActiveChannels[j].Count })

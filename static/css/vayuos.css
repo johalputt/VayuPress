@@ -2789,6 +2789,31 @@
 
 .vp-os .vp-bar--door .vp-bar__door:focus-visible::after { outline: 2px solid var(--brand); outline-offset: -2px; }
 
+/* A measured list: the switch that ranks it by another measure (shown once
+   its script runs), and a row's card, every measure of its visits beside
+   the page's own, on hover or focus where there is a pointer to hover. */
+.vp-os .sa-measure { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0 0 var(--space-3); }
+
+.vp-os .sa-measure[hidden] { display: none; }
+
+.vp-os .sa-measure__opt { font: inherit; font-size: 12.5px; line-height: 1; padding: 6px 8px; border: 0; border-radius: var(--radius-small); color: var(--text-3); background: transparent; cursor: pointer; }
+
+.vp-os .sa-measure__opt:hover { color: var(--text-1); }
+
+.vp-os .sa-measure__opt[aria-pressed="true"] { color: var(--text-1); background: var(--surface-hover); }
+
+.vp-os .vp-bar > .vp-bar__card { position: absolute; left: .65rem; top: calc(100% + 4px); z-index: 3; display: none; grid-template-columns: auto auto; gap: 4px 16px; min-width: 240px; padding: 10px 12px; font-size: 12.5px; color: var(--text-1); background: var(--surface-float); border: 1px solid var(--border-1); border-radius: 10px; box-shadow: var(--shadow-3); pointer-events: none; }
+
+@media (hover: hover) {
+  .vp-os .vp-bar:hover > .vp-bar__card, .vp-os .vp-bar:focus-within > .vp-bar__card { display: grid; }
+}
+
+.vp-os .vp-bar__card-k { color: var(--text-3); }
+
+.vp-os .vp-bar__card-v { text-align: right; font-variant-numeric: tabular-nums; }
+
+.vp-os .vp-bar__card-all { margin-left: var(--space-3); color: var(--text-3); }
+
 /* The readers a page is narrowed to, under its section bar. */
 .vp-os .sa-focus { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin-top: var(--space-4); }
 
@@ -2856,6 +2881,11 @@
 .vp-os .vp-trend-line--pv { stroke: var(--text-1, var(--text)); stroke-width: 1.5; }
 
 .vp-os .vp-trend-line--vis { stroke: var(--text-3); stroke-width: 1.5; stroke-dasharray: 4 3; }
+
+/* A day a post went out: a short mark on the baseline, under the lines. */
+.vp-os .vp-trend-post { stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+
+.vp-os .vp-trend-tip__posts { max-width: 260px; margin-top: var(--space-2); color: var(--text-2); white-space: normal; }
 
 /* ── Interactive hover layer: guide line, dots and a styled tooltip, revealed by
    pure CSS on band :hover (no JS, no inline styles). ─────────────────────────── */

@@ -340,6 +340,42 @@
 })();
 
 /*
+ * A measured list's switch (osMeasuredList): ranks and draws the list by the
+ * measure chosen, from the figures every row carries; the list without the
+ * script is its count, and the switch stays hidden.
+ */
+(function () {
+  'use strict';
+
+  document.querySelectorAll('.sa-measure').forEach(function (sw) {
+    var list = sw.nextElementSibling;
+    if (!list || !list.hasAttribute('data-measured')) return;
+    sw.hidden = false;
+    sw.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-measure]');
+      if (!b) return;
+      var m = b.getAttribute('data-measure');
+      sw.querySelectorAll('[data-measure]').forEach(function (o) { o.setAttribute('aria-pressed', String(o === b)); });
+      var rows = Array.prototype.slice.call(list.children);
+      rows.sort(function (x, y) { return parseFloat(y.getAttribute('data-v-' + m)) - parseFloat(x.getAttribute('data-v-' + m)); });
+      rows.forEach(function (row) {
+        var val = row.querySelector('[data-measure-val]');
+        val.textContent = row.getAttribute('data-t-' + m);
+        var share = row.getAttribute('data-s-' + m);
+        if (share) {
+          var s = document.createElement('span');
+          s.className = 'vp-bar__pct';
+          s.textContent = share;
+          val.appendChild(s);
+        }
+        row.querySelector('.vp-bar__fill').className = 'vp-bar__fill ' + row.getAttribute('data-w-' + m);
+        list.appendChild(row);
+      });
+    });
+  });
+})();
+
+/*
  * Period selector loading cue (Analytics page). The selector is plain GET
  * navigation; on click we mark the bar busy so the operator gets immediate
  * feedback while the next time-window renders. No-op without the bar. CSP-safe:
@@ -399,6 +435,14 @@
         tip.appendChild(date);
         tip.appendChild(row('vp-legend__line', 'Page views', pv));
         tip.appendChild(row('vp-legend__line vp-legend__line--vis', 'Visitors', vis));
+        // The posts that went out that day, under its figures.
+        var posts = pt.getAttribute('data-posts');
+        if (posts) {
+          var pub = document.createElement('div');
+          pub.className = 'vp-trend-tip__posts';
+          pub.textContent = 'Published: ' + posts;
+          tip.appendChild(pub);
+        }
         tip.hidden = false;
 
         var box = plot.getBoundingClientRect();

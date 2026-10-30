@@ -206,9 +206,6 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host
 	}
 
 	door := analyticsDoor(v, per)
-	listed := func(col string, items []analytics.AudienceStat, empty string) string {
-		return osBarList(doorBars(items, col, door), osShareOfListed(), empty)
-	}
 	audience := func(col string) []analytics.AudienceStat {
 		out, _ := st.AudienceScoped(ctx, site, col, days)
 		return out
@@ -222,18 +219,24 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host
 		}
 		return osBarList(bars, osShareOf(ov.TotalPageviews), "No page views recorded yet.")
 	}
-	channels := func() string {
-		ch, _ := st.ChannelsScoped(ctx, site, days)
-		return listed("visit_channel", ch, "Visits are grouped here once they arrive.")
-	}
-	landingPages := func(n int) string {
-		landing, _ := st.LandingPagesScoped(ctx, site, days, n)
-		bars := make([]osChartBar, 0, len(landing))
-		for _, l := range landing {
-			bars = append(bars, osChartBar{Label: prettyPathText(l.Path), Value: l.Visits, Hint: l.Path, Href: door("landing", l.Path)})
+	// A list of a visit's own dimension carries what its visits did, to be
+	// ranked by any of it (analytics_measures.go); first is its count.
+	measured := func(dim, first string, n int, empty string) string {
+		ms, err := st.VisitMeasuresScoped(ctx, site, dim, days, n)
+		if err != nil {
+			return string(ui.Callout("danger", ui.Text("Not counted: "+err.Error())))
 		}
-		return osBarList(bars, osShareOf(ov.TotalVisits), "No visits recorded yet.")
+		rows := make([]measuredRow, 0, len(ms))
+		for _, m := range ms {
+			label, hint := measuredLabel(dim, m.Key)
+			rows = append(rows, measuredRow{Label: label, Hint: hint, Href: door(dim, m.Key), M: m})
+		}
+		return osMeasuredList(rows, first, ov, empty)
 	}
+	channels := func() string {
+		return measured("visit_channel", "visits", 10, "Visits are grouped here once they arrive.")
+	}
+	landingPages := func(n int) string { return measured("landing", "visits", n, "No visits recorded yet.") }
 	more := func(label, to string) string {
 		return `<a class="sa-more" href="` + esc(analyticsHref(v.base, to, per)) + `">` + esc(label) + ` →</a>`
 	}
@@ -244,14 +247,14 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host
 	switch view {
 	case "overview":
 		// The period before is as long, and ends where this one begins.
-		from, _ := span.Days(ctx, time.Now(), days)
+		from, until := span.Days(ctx, time.Now(), days)
 		start, _ := time.Parse("2006-01-02", from)
 		prev, _ := st.OverviewBetweenScoped(ctx, site, start.AddDate(0, 0, -days).Format("2006-01-02"), from)
 		series, _ := st.PageviewSeriesScoped(ctx, site, days)
 		// The figures take the page's width, in one row; the days and who is
 		// reading now sit beneath, side by side.
 		band = ui.Band{Title: "Visitors", Figures: visitorFigures(ov, prev)}
-		trend := osTrendChart(series, "Page views and visitors a day, "+phrase)
+		trend := osTrendChart(series, "Page views and visitors a day, "+phrase, a.postsByDay(ctx, v, from, until))
 		if trend == "" {
 			trend = `<p class="table-empty">The days are drawn once two of them have views.</p>`
 		}
@@ -274,22 +277,15 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host
 	case "audience":
 		sections = append(sections,
 			part("devices", ui.Section("What they read on", "Devices, browsers and systems", ui.HTML(analyticsCols(
-				analyticsPanel("Devices", listed("device", audience("device"), "No device recorded yet.")),
-				analyticsPanel("Browsers", listed("browser", audience("browser"), "No browser recorded yet.")),
-				analyticsPanel("Systems", listed("os", audience("os"), "No system recorded yet.")))))),
+				analyticsPanel("Devices", measured("device", "visitors", 100, "No device recorded yet.")),
+				analyticsPanel("Browsers", measured("browser", "visitors", 100, "No browser recorded yet.")),
+				analyticsPanel("Systems", measured("os", "visitors", 100, "No system recorded yet.")))))),
 			part("location", ui.Section("Where they are", "Country, region and city, coarse only", ui.HTML(osGeoSection(audience("country"), audience("region"), audience("city"), door)))))
 	case "sources":
-		refs, _ := st.TopReferrersScoped(ctx, site, days, 25)
-		refBars := make([]osChartBar, 0, len(refs))
-		refTotal := 0
-		for _, r := range refs {
-			refBars = append(refBars, osChartBar{Label: r.Referrer, Value: r.Count, Href: door("visit_referrer", r.Referrer)})
-			refTotal += r.Count
-		}
 		utm, _ := st.UTMStatsScoped(ctx, site, days)
 		sections = append(sections,
 			ui.HTML(analyticsCols(
-				string(part("referrers", ui.Section("Referrers", "Visits from other sites", ui.HTML(osBarList(refBars, osShareOf(refTotal), "No links from other sites yet."))))),
+				string(part("referrers", ui.Section("Referrers", "Visits from other sites", ui.HTML(measured("visit_referrer", "visits", 25, "No links from other sites yet."))))),
 				string(part("channels", ui.Section("How they found you", "Visits, by the referrer each arrived by", ui.HTML(channels())))))),
 			part("campaigns", ui.Section("Campaigns", countOf(len(utm), "tagged source"), ui.HTML(osCampaigns(utm, door)))))
 	case "content":
@@ -404,6 +400,36 @@ func (a *App) pageTitles(ctx context.Context, v analyticsView, pages []analytics
 	}
 	// A read cut short leaves the rest named by their paths, as a page with
 	// no article is: nothing on the page is wrong, only plainer.
+	_ = rows.Err()
+	return out
+}
+
+// postsByDay is the titles of v's posts published in [from, until), by
+// day, oldest first, for the chart's marks: a hosted site's own, the
+// primary's, or every site's on Platform.
+func (a *App) postsByDay(ctx context.Context, v analyticsView, from, until string) map[string][]string {
+	out := map[string][]string{}
+	if dbpkg.DB == nil {
+		return out
+	}
+	q := `SELECT date(created_at), title FROM articles WHERE status='published' AND is_page=0 AND created_at>=? AND created_at<?`
+	args := []any{from, until}
+	if !v.all() {
+		q += ` AND domain_id=?`
+		args = append(args, v.scope)
+	}
+	rows, err := dbpkg.Reader().QueryContext(ctx, q+` ORDER BY created_at LIMIT 1000`, args...)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var day, title string
+		if rows.Scan(&day, &title) == nil && strings.TrimSpace(title) != "" {
+			out[day] = append(out[day], strings.TrimSpace(title))
+		}
+	}
+	// A read cut short marks fewer days; the lines are the same.
 	_ = rows.Err()
 	return out
 }

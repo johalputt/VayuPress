@@ -446,6 +446,37 @@ test("a row narrows Analytics to its readers, and the bar takes it off", async (
   await expect(page.locator(".sa-focus")).toHaveCount(0);
 });
 
+// A list of visits ranks by what they did: its switch shows once the script
+// runs, Bounce redraws the rows as rates, and hovering a row lays out every
+// measure of its visits beside the page's own.
+test("a list ranks by what its visits did, and a row's card says all of it", async ({ page }) => {
+  await openConsole(page);
+  const sent = await page.request.post("/api/v1/analytics/collect", {
+    headers: { "Content-Type": "application/json", "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36" },
+    data: { u: "/a-measured-row", r: "https://example.net/", t: "A row", h: "localhost", event_type: 1 },
+  });
+  expect(sent.status()).toBe(204);
+  await expect.poll(async () => (await (await page.request.get("/os/analytics/realtime")).json()).active_visitors, { timeout: 15000 }).toBeGreaterThan(0);
+  await page.goto("/os/analytics?view=audience&days=90");
+  const counting = page.getByText("This is counted in the background");
+  for (let i = 0; i < 20 && (await counting.count()) > 0; i++) {
+    await page.waitForTimeout(1000);
+    await page.reload();
+  }
+  // The first list of What they read on: devices.
+  const part = page.locator('[data-part="devices"]');
+  const sw = part.locator(".sa-measure").first();
+  const list = part.locator("[data-measured]").first();
+  await expect(sw).toBeVisible();
+  await sw.getByRole("button", { name: "Bounce" }).click();
+  await expect(sw.getByRole("button", { name: "Bounce" })).toHaveAttribute("aria-pressed", "true");
+  await expect(list.locator("[data-measure-val]").first()).toHaveText(/%$/);
+  const row = list.locator(".vp-bar").first();
+  await row.hover();
+  await expect(row.locator(".vp-bar__card")).toBeVisible();
+  await expect(row.locator(".vp-bar__card")).toContainText("Pages a visit");
+});
+
 // On a laptop screen the rail starts as icons, since with an app's section list
 // beside it the content column was too narrow for its tables. The toggle still
 // opens it, the choice survives a reload, and a collapsed link keeps its name.

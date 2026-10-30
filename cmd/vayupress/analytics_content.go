@@ -84,9 +84,9 @@ func (a *App) osContentSection(ctx context.Context, scope, explore string, days 
 			if i == contentShownOnPage {
 				break
 			}
-page := ui.Text(prettyPathText(p.Path))
+			page := ui.Text(prettyPathText(p.Path))
 			if href := door("path", p.Path); href != "" {
-				page = ui.HTML(`<a href="` + html.EscapeString(href) + `">`) + page + `</a>`
+				page = ui.HTML(`<a href="`+html.EscapeString(href)+`">`) + page + `</a>`
 			}
 			rows = append(rows, []ui.HTML{page, ui.Text(p.Reason)})
 		}
