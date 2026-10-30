@@ -108,6 +108,8 @@ func (a *App) handleOSScopedRetention(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dbpkg.AuditLog("analytics.site_retention", dbpkg.AuditActor(r), d.Host, "days="+v)
+	// The section bar of every cached view says how long the data is kept.
+	a.refreshSiteAnalytics(hostedView(d), d.Host)
 	writeJSON(w, r, http.StatusOK, map[string]any{"status": "ok"})
 }
 
@@ -136,9 +138,10 @@ func (a *App) siteRetentionSection(ctx context.Context, d domain.Domain, nonce s
 		`" placeholder="` + strconv.Itoa(install) + `" data-retain-site="` + esc(d.ID) + `">`
 	rows := ui.Rows(ui.Row{Label: "Days kept", ID: "site-retain-days", Control: ui.HTML(control),
 		Hint: state + " A site may keep its readers' data for less time than the install, never for more. " + last})
-	return string(ui.Section("How long this site's data is kept", "Views, visits, events and engagement",
+	// id: the section bar's "Data kept" links here.
+	return `<div id="retention">` + string(ui.Section("How long this site's data is kept", "Views, visits, events and engagement",
 		ui.HTML(string(rows)+`<div class="sa-list__sheet-actions"><button type="button" class="btn btn--primary btn--sm" data-retain-save>Save</button>`+
-			`<span class="text-xs muted" id="site-retain-status" role="status" aria-live="polite"></span></div>`))) +
+			`<span class="text-xs muted" id="site-retain-status" role="status" aria-live="polite"></span></div>`))) + `</div>` +
 		siteRetentionScript(nonce)
 }
 

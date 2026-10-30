@@ -18,6 +18,8 @@ import (
 	"context"
 	"sort"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/span"
 )
 
 // PathFlow is a single (from -> to) transition with its occurrence count.
@@ -53,15 +55,15 @@ func (s *Store) PathFlowsScoped(ctx context.Context, scope string, days, limit i
 	if limit <= 0 || limit > 1000 {
 		limit = 100
 	}
-	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	from, until := span.Days(ctx, time.Now(), days)
 
 	// Ordered by session then time so consecutive rows form each visitor's path.
 	clause, carg := domainClause(scope)
 	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT session_id, url_path FROM analytics_pageviews
-		 WHERE created_at>=? AND event_type=1`+clause+`
+		 WHERE created_at>=? AND created_at<? AND event_type=1`+clause+`
 		 ORDER BY session_id, created_at, id
-		 LIMIT ?`, append(append([]any{from}, carg...), maxJourneyRows)...)
+		 LIMIT ?`, append(append([]any{from, until}, carg...), maxJourneyRows)...)
 	if err != nil {
 		return nil, err
 	}

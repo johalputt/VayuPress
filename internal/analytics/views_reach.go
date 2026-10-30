@@ -5,6 +5,8 @@ package analytics
 import (
 	"context"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/span"
 )
 
 // PathCountryViews is how many page views one path had on one site from one
@@ -140,9 +142,9 @@ func (s *Store) BySite(ctx context.Context, days int) ([]SiteFigures, error) {
 	if days <= 0 {
 		days = 30
 	}
-	from := s.now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	from, until := span.Days(ctx, s.now(), days)
 	rows, err := s.readDB().QueryContext(ctx, `SELECT domain_id, SUM(event_type=1), COUNT(DISTINCT visitor_id)
-		FROM analytics_pageviews WHERE created_at>=? GROUP BY +domain_id ORDER BY 2 DESC, 1`, from)
+		FROM analytics_pageviews WHERE created_at>=? AND created_at<? GROUP BY +domain_id ORDER BY 2 DESC, 1`, from, until)
 	if err != nil {
 		return nil, err
 	}

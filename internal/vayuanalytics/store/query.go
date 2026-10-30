@@ -5,7 +5,22 @@ package store
 import (
 	"context"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/span"
 )
+
+// spanTimes is the period under ctx (span.Days) as the instants entry_time
+// is compared with: its first day's start, and the start of the day after
+// its last.
+func spanTimes(ctx context.Context, days int) (from, until time.Time) {
+	if days <= 0 {
+		days = 30
+	}
+	f, u := span.Days(ctx, time.Now(), days)
+	from, _ = time.Parse("2006-01-02", f)
+	until, _ = time.Parse("2006-01-02", u)
+	return from, until
+}
 
 // fromDay returns the inclusive lower-bound day string for a trailing window.
 func fromTime(days int) time.Time {
@@ -396,9 +411,9 @@ func (s *Store) WebVitalsP75Scoped(ctx context.Context, domainID string, days in
 }
 
 func (s *Store) webVitalsP75(ctx context.Context, days int, clause string, cargs []any) (*WebVitals, error) {
-	from := fromTime(days)
+	from, until := spanTimes(ctx, days)
 	out := &WebVitals{}
-	args := append([]any{from}, cargs...)
+	args := append([]any{from, until}, cargs...)
 	// measured is the condition for a reading to have the vital: LCP and
 	// INP are never 0 when measured, and a layout shift is flagged.
 	pick := func(col, measured string, dst *int, count *int64) error {
@@ -406,7 +421,7 @@ func (s *Store) webVitalsP75(ctx context.Context, days int, clause string, cargs
 		// A person's readings alone, as every other engagement figure: a
 		// bot's page loads say nothing about what readers wait for.
 		if err := s.readDB().QueryRowContext(ctx,
-			`SELECT COUNT(1) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+measured+` AND `+human+clause, args...).Scan(&n); err != nil {
+			`SELECT COUNT(1) FROM vayuanalytics_sessions WHERE entry_time>=? AND entry_time<? AND `+measured+` AND `+human+clause, args...).Scan(&n); err != nil {
 			return err
 		}
 		*count = n
@@ -418,7 +433,7 @@ func (s *Store) webVitalsP75(ctx context.Context, days int, clause string, cargs
 		// read the largest.
 		off := (n*3+3)/4 - 1
 		return s.readDB().QueryRowContext(ctx,
-			`SELECT `+col+` FROM vayuanalytics_sessions WHERE entry_time>=? AND `+measured+` AND `+human+clause+` ORDER BY `+col+` LIMIT 1 OFFSET ?`,
+			`SELECT `+col+` FROM vayuanalytics_sessions WHERE entry_time>=? AND entry_time<? AND `+measured+` AND `+human+clause+` ORDER BY `+col+` LIMIT 1 OFFSET ?`,
 			append(args, off)...).Scan(dst)
 	}
 	if err := pick("lcp_ms", "lcp_ms>0", &out.P75LCPMs, &out.SamplesLCP); err != nil {

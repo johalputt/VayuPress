@@ -21,7 +21,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/johalputt/vayupress/internal/span"
 	"github.com/johalputt/vayupress/internal/vayuanalytics/classifier"
 )
 
@@ -91,15 +93,16 @@ func (s *Store) ContentPagesScoped(ctx context.Context, scope string, days int) 
 	if days <= 0 {
 		days = 30
 	}
-	now := s.now().UTC()
-	from := now.AddDate(0, 0, -(days - 1)).Format("2006-01-02")
-	prevFrom := now.AddDate(0, 0, -(2*days - 1)).Format("2006-01-02")
+	// The period before is as long as the period, and ends where it begins.
+	from, until := span.Days(ctx, s.now(), days)
+	start, _ := time.Parse("2006-01-02", from)
+	prevFrom := start.AddDate(0, 0, -span.Length(ctx, days)).Format("2006-01-02")
 	search, sargs := s.channelSQL("p.referrer")
 	cclause, cargs := domainClauseOn("c", scope)
 	pclause, pargs := domainClauseOn("p", scope)
 	// In the order the query names them: the CTE's range and site, the
 	// search expression in the SELECT, then the outer range and site.
-	args := append(append(append(append([]any{from}, cargs...), sargs...), from), pargs...)
+	args := append(append(append(append([]any{from, until}, cargs...), sargs...), from, until), pargs...)
 	rows, err := s.readDB().QueryContext(ctx, contentPagesSQL(search, cclause, pclause), args...)
 	if err != nil {
 		return nil, err
@@ -159,11 +162,11 @@ func (s *Store) ContentPagesScoped(ctx context.Context, scope string, days int) 
 // "Visit with a custom event"; the visits with one are found once, then
 // looked up.
 func contentPagesSQL(search, cclause, pclause string) string {
-	return `WITH conv AS (SELECT DISTINCT c.session_id AS id FROM analytics_pageviews c WHERE c.event_type=2 AND c.created_at>=?` + cclause + `)
+	return `WITH conv AS (SELECT DISTINCT c.session_id AS id FROM analytics_pageviews c WHERE c.event_type=2 AND c.created_at>=? AND c.created_at<?` + cclause + `)
 		SELECT p.url_path, COUNT(1), COUNT(DISTINCT p.session_id),
 			COUNT(DISTINCT CASE WHEN p.session_id IN (SELECT id FROM conv) THEN p.session_id END),
 			SUM((` + search + `)='` + string(classifier.Organic) + `')
-		FROM analytics_pageviews p WHERE p.event_type=1 AND p.created_at>=?` + pclause + ` GROUP BY +p.url_path`
+		FROM analytics_pageviews p WHERE p.event_type=1 AND p.created_at>=? AND p.created_at<?` + pclause + ` GROUP BY +p.url_path`
 }
 
 func contentBeforeSQL(pclause string) string {

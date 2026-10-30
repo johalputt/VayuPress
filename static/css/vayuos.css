@@ -2752,7 +2752,7 @@
    0.1% row the ink of a 95% one, and twenty rows read as twenty lines. */
 .vp-os .vp-bars { display: flex; flex-direction: column; gap: 2px; }
 
-.vp-os .vp-bar { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .75rem; align-items: center; min-height: 34px; padding: 0 .65rem; border-radius: 7px; }
+.vp-os .vp-bar { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .75rem; align-items: center; min-height: 34px; padding: 0 .65rem; border-radius: 6px; }
 
 .vp-os .vp-bar > :not(.vp-bar__track) { position: relative; }
 
@@ -3976,6 +3976,14 @@
 @media (max-width: 899px) { .vp-os[data-ui="still-air"] .sa-cols--lead { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 899px) { .vp-os[data-ui="still-air"] .sa-cols--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .vp-os[data-ui="still-air"] .sa-cols--3, .vp-os .vm-live-head { grid-template-columns: minmax(0, 1fr); } }
+
+/* Analytics' section bar, with how long the data is kept at its end; the
+   bar's rule runs under both. */
+.vp-os[data-ui="still-air"] .sa-viewbar { display: flex; align-items: center; gap: var(--space-6); border-bottom: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .sa-viewbar .tabs { flex: 1; min-width: 0; border-bottom: 0; }
+.vp-os .sa-kept { flex: none; font-size: 12.5px; color: var(--text-3); text-decoration: none; white-space: nowrap; }
+.vp-os a.sa-kept:hover { color: var(--text-1, var(--text)); text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 640px) { .vp-os .sa-kept { display: none; } }
 
 /* The way from a short list to its section. */
 .vp-os .sa-more { display: inline-block; margin-top: .75rem; font-size: 13px; font-weight: 500; color: var(--brand, var(--accent)); text-decoration: none; }

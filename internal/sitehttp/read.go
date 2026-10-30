@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"math"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/span"
 )
 
 // Summary is what the server measured of a site over a range of days.
@@ -48,15 +50,6 @@ type Day struct {
 	Summary
 }
 
-// from is the first instant of a range of days ending today, as the rows
-// name their minutes and hours.
-func from(days int) string {
-	if days <= 0 {
-		days = 30
-	}
-	return time.Now().UTC().AddDate(0, 0, -(days-1)).Format("2006-01-02") + " 00:00:00"
-}
-
 func scopeClause(site string) (string, []any) {
 	if site == AllSites {
 		return "", nil
@@ -68,7 +61,12 @@ func scopeClause(site string) (string, []any) {
 // AllSites), and the same for each day that had any request.
 func Read(ctx context.Context, db *sql.DB, site string, days int) (Summary, []Day, error) {
 	clause, carg := scopeClause(site)
-	args := append([]any{from(days)}, carg...)
+	if days <= 0 {
+		days = 30
+	}
+	// The rows name their minutes and hours as "2006-01-02 15:04:05".
+	f, u := span.Days(ctx, time.Now(), days)
+	args := append([]any{f + " 00:00:00", u + " 00:00:00"}, carg...)
 	byDay := map[string]*Day{}
 	var order []string
 	rows, err := db.QueryContext(ctx, minutesSQL(clause), args...)
@@ -148,11 +146,11 @@ func Read(ctx context.Context, db *sql.DB, site string, days int) (Summary, []Da
 func minutesSQL(clause string) string {
 	return `SELECT substr(minute,1,10), SUM(requests), SUM(s2xx), SUM(s3xx), SUM(s4xx), SUM(s404), SUM(s5xx), SUM(pages), SUM(page_ms),
 		SUM(cached_pages), SUM(cached_ms), SUM(rendered_pages), SUM(rendered_ms)
-		FROM site_http_minutes WHERE minute>=?` + clause + ` GROUP BY 1 ORDER BY 1`
+		FROM site_http_minutes WHERE minute>=? AND minute<?` + clause + ` GROUP BY 1 ORDER BY 1`
 }
 
 func latencySQL(clause string) string {
-	return `SELECT substr(hour,1,10), bucket, SUM(n) FROM site_http_latency WHERE hour>=?` + clause + ` GROUP BY 1, 2`
+	return `SELECT substr(hour,1,10), bucket, SUM(n) FROM site_http_latency WHERE hour>=? AND hour<?` + clause + ` GROUP BY 1, 2`
 }
 
 // percentile is the q-th of the times in h, by nearest rank (the

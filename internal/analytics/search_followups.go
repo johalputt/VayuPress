@@ -19,6 +19,8 @@ import (
 	"context"
 	"sort"
 	"strconv"
+
+	"github.com/johalputt/vayupress/internal/span"
 )
 
 // SearchRefinement is one query searched again as another, and how often.
@@ -53,7 +55,7 @@ var searchFollowUpSQL = `SELECT s.event_name,
 		WHERE n.session_id=s.session_id AND (n.created_at>s.created_at OR (n.created_at=s.created_at AND n.id>s.id))
 		  AND (n.event_type=` + strconv.Itoa(eventSearch) + ` OR (n.event_type=1 AND n.url_path<>s.url_path))
 		ORDER BY n.created_at, n.id LIMIT 1),'')
-	FROM analytics_pageviews s WHERE s.event_type=` + strconv.Itoa(eventSearch) + ` AND s.created_at>=?`
+	FROM analytics_pageviews s WHERE s.event_type=` + strconv.Itoa(eventSearch) + ` AND s.created_at>=? AND s.created_at<?`
 
 // SearchFollowUpsScoped is what came of one site's searches over the window
 // (every site's, for ScopeAllDomains); the lists hold the limit largest.
@@ -64,9 +66,9 @@ func (s *Store) SearchFollowUpsScoped(ctx context.Context, scope string, days, l
 	if limit <= 0 || limit > 100 {
 		limit = 10
 	}
-	from := s.now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	from, until := span.Days(ctx, s.now(), days)
 	clause, carg := domainClauseOn("s", scope)
-	rows, err := s.readDB().QueryContext(ctx, searchFollowUpSQL+clause, append([]any{from}, carg...)...)
+	rows, err := s.readDB().QueryContext(ctx, searchFollowUpSQL+clause, append([]any{from, until}, carg...)...)
 	if err != nil {
 		return nil, err
 	}

@@ -90,10 +90,10 @@ func TestASitesAnalyticsIsAnOverview(t *testing.T) {
 			t.Errorf("the page carries %q", not)
 		}
 	}
-	// The forms are the sheets' (a new goal, each view's export): nothing on
-	// a view itself is a form.
-	if forms, sheets := strings.Count(page, "<form"), strings.Count(page, `<dialog class="sa-sheet"`); forms != sheets || forms != len(analyticsViews)+1 {
-		t.Errorf("the views carry %d forms and %d sheets; want the goal's and each view's export", forms, sheets)
+	// The forms are the sheets' (a new goal, and each view's export and
+	// chosen dates): nothing on a view itself is a form.
+	if forms, sheets := strings.Count(page, "<form"), strings.Count(page, `<dialog class="sa-sheet"`); forms != sheets || forms != 2*len(analyticsViews)+1 {
+		t.Errorf("the views carry %d forms and %d sheets; want the goal's and each view's export and dates", forms, sheets)
 	}
 	// Every stretch between one sheet and the next is form-free.
 	for rest := page; ; {

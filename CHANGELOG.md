@@ -20,6 +20,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   a minute over the last half hour, and the three pages most read), and the
   top pages and how readers arrived. The period is one menu that keeps the
   view. Lists name a post by its title, with the path on hover.
+- **Analytics counts dates you choose.** The period menu's Choose dates
+  takes a first and last day (whole days, up to three years), and every
+  view counts those days alone: the figures, their change against the
+  same number of days before, and every list, the engagement and server
+  measures included. The section bar keeps the dates from view to view.
+- **The section bar says how long the data is kept.** A hosted site's own
+  setting, linked to where it is changed; the install's otherwise.
 - **Bar lists read as one shape.** A row's proportion is a soft fill behind
   it rather than a stripe under it, so a small row is visibly small; a share
   below ten percent is written to one decimal.

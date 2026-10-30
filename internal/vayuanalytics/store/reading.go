@@ -70,7 +70,8 @@ type PageEngaged struct {
 // recorded: rows from before paths lost their trailing slash are their own,
 // and the caller merges them.
 func (s *Store) PageEngagement(ctx context.Context, domainID string, days int) ([]PageEngaged, error) {
-	clause, args := "", []any{fromTime(days)}
+	from, until := spanTimes(ctx, days)
+	clause, args := "", []any{from, until}
 	if domainID != AllDomains {
 		clause, args = " AND domain_id=?", append(args, domainID)
 	}
@@ -93,6 +94,6 @@ func (s *Store) PageEngagement(ctx context.Context, domainID string, days int) (
 // pageEngagementSQL is PageEngagement's query with its site clause, grouped
 // through a unary + as readingDepthSQL is.
 func pageEngagementSQL(clause string) string {
-	return `SELECT page_path, COUNT(1), SUM(engaged) FROM vayuanalytics_sessions WHERE entry_time>=?` + clause +
+	return `SELECT page_path, COUNT(1), SUM(engaged) FROM vayuanalytics_sessions WHERE entry_time>=? AND entry_time<?` + clause +
 		` AND exit_time IS NOT NULL AND ` + human + ` GROUP BY +page_path`
 }

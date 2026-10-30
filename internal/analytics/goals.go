@@ -16,6 +16,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/span"
 )
 
 // GoalKindEvent and GoalKindPath are the two supported goal types.
@@ -148,14 +150,14 @@ func (s *Store) GoalResultsOver(ctx context.Context, defs, scope string, days in
 	if err != nil {
 		return nil, err
 	}
-	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	from, until := span.Days(ctx, time.Now(), days)
 	clause, carg := domainClause(scope)
 	pclause, _ := domainClauseOn("p", scope)
 
 	// Denominator: distinct visitors active in the window.
 	totalVisitors := 0
 	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT +visitor_id) FROM analytics_pageviews WHERE created_at>=?`+clause, append([]any{from}, carg...)...).
+		`SELECT COUNT(DISTINCT +visitor_id) FROM analytics_pageviews WHERE created_at>=? AND created_at<?`+clause, append([]any{from, until}, carg...)...).
 		Scan(&totalVisitors)
 
 	results := make([]GoalResult, 0, len(goals))
@@ -184,7 +186,7 @@ func (s *Store) GoalResultsOver(ctx context.Context, defs, scope string, days in
 		_ = s.readDB().QueryRowContext(ctx,
 			`SELECT COUNT(1), COUNT(DISTINCT p.visitor_id)
 			 FROM analytics_pageviews p
-			 WHERE p.created_at>=? AND `+where+pclause, append([]any{from, arg}, carg...)...).
+			 WHERE p.created_at>=? AND p.created_at<? AND `+where+pclause, append([]any{from, until, arg}, carg...)...).
 			Scan(&gr.Completions, &gr.UniqueVisitors)
 
 		if totalVisitors > 0 {

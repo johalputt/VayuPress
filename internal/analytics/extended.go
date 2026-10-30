@@ -30,6 +30,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/johalputt/vayupress/internal/span"
 	"github.com/johalputt/vayupress/internal/vayuanalytics/classifier"
 )
 
@@ -261,10 +262,10 @@ func (s *Store) PageviewSeriesScoped(ctx context.Context, scope string, days int
 	if days <= 0 {
 		days = 14
 	}
-	from := s.now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	from, until := span.Days(ctx, s.now(), days)
 	clause, carg := domainClause(scope)
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT DATE(created_at) as d,SUM(event_type=1),COUNT(DISTINCT visitor_id) FROM analytics_pageviews WHERE created_at>=?`+clause+` GROUP BY d HAVING d IS NOT NULL ORDER BY d`, append([]any{from}, carg...)...)
+		`SELECT DATE(created_at) as d,SUM(event_type=1),COUNT(DISTINCT visitor_id) FROM analytics_pageviews WHERE created_at>=? AND created_at<?`+clause+` GROUP BY d HAVING d IS NOT NULL ORDER BY d`, append([]any{from, until}, carg...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -316,7 +317,7 @@ func (s *Store) TopReferrersScoped(ctx context.Context, scope string, days, limi
 	if limit <= 0 || limit > 200 {
 		limit = 20
 	}
-	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	from, until := span.Days(ctx, time.Now(), days)
 	// Two filters, both of which were missing and both of which inflated this
 	// table past the total pageview count it is a breakdown of.
 	//
@@ -336,9 +337,9 @@ func (s *Store) TopReferrersScoped(ctx context.Context, scope string, days, limi
 	clause, carg := domainClause(scope)
 	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT referrer,COUNT(1) as cnt FROM analytics_pageviews
-		 WHERE created_at>=? AND event_type=1 AND referrer!=''`+clause+notSelf+
+		 WHERE created_at>=? AND created_at<? AND event_type=1 AND referrer!=''`+clause+notSelf+
 			` GROUP BY referrer ORDER BY cnt DESC LIMIT ?`,
-		append(append(append([]any{from}, carg...), selfArgs...), limit)...)
+		append(append(append([]any{from, until}, carg...), selfArgs...), limit)...)
 	if err != nil {
 		return nil, err
 	}
@@ -408,10 +409,10 @@ func (s *Store) AudienceScoped(ctx context.Context, scope, column string, days i
 	default:
 		column = "browser"
 	}
-	from := s.now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	from, until := span.Days(ctx, s.now(), days)
 	clause, carg := domainClause(scope)
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT `+column+`,COUNT(DISTINCT visitor_id) FROM analytics_sessions WHERE created_at>=? AND `+column+`!=''`+clause+` GROUP BY +`+column+` ORDER BY 2 DESC LIMIT 100`, append([]any{from}, carg...)...)
+		`SELECT `+column+`,COUNT(DISTINCT visitor_id) FROM analytics_sessions WHERE created_at>=? AND created_at<? AND `+column+`!=''`+clause+` GROUP BY +`+column+` ORDER BY 2 DESC LIMIT 100`, append([]any{from, until}, carg...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -470,10 +471,10 @@ func (s *Store) ChannelsScoped(ctx context.Context, scope string, days int) ([]A
 	if days <= 0 {
 		days = 14
 	}
-	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	from, until := span.Days(ctx, time.Now(), days)
 	clause, carg := domainClause(scope)
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT referrer,COUNT(1) FROM analytics_pageviews WHERE created_at>=? AND event_type=1`+clause+` GROUP BY +referrer`, append([]any{from}, carg...)...)
+		`SELECT referrer,COUNT(1) FROM analytics_pageviews WHERE created_at>=? AND created_at<? AND event_type=1`+clause+` GROUP BY +referrer`, append([]any{from, until}, carg...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -520,10 +521,10 @@ func (s *Store) UTMStatsScoped(ctx context.Context, scope string, days int) ([]U
 	if days <= 0 {
 		days = 14
 	}
-	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	from, until := span.Days(ctx, time.Now(), days)
 	clause, carg := domainClause(scope)
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT utm_source,utm_medium,utm_campaign,COUNT(1) FROM analytics_pageviews WHERE created_at>=? AND (utm_source!='' OR utm_medium!='' OR utm_campaign!='')`+clause+` GROUP BY utm_source,utm_medium,utm_campaign ORDER BY 4 DESC LIMIT 50`, append([]any{from}, carg...)...)
+		`SELECT utm_source,utm_medium,utm_campaign,COUNT(1) FROM analytics_pageviews WHERE created_at>=? AND created_at<? AND (utm_source!='' OR utm_medium!='' OR utm_campaign!='')`+clause+` GROUP BY utm_source,utm_medium,utm_campaign ORDER BY 4 DESC LIMIT 50`, append([]any{from, until}, carg...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -557,10 +558,10 @@ func (s *Store) CustomEventsScoped(ctx context.Context, scope string, days int) 
 	if days <= 0 {
 		days = 14
 	}
-	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	from, until := span.Days(ctx, time.Now(), days)
 	clause, carg := domainClause(scope)
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT event_name,COUNT(1) FROM analytics_pageviews WHERE created_at>=? AND event_type=2 AND event_name!=''`+clause+` GROUP BY event_name ORDER BY 2 DESC LIMIT 50`, append([]any{from}, carg...)...)
+		`SELECT event_name,COUNT(1) FROM analytics_pageviews WHERE created_at>=? AND created_at<? AND event_type=2 AND event_name!=''`+clause+` GROUP BY event_name ORDER BY 2 DESC LIMIT 50`, append([]any{from, until}, carg...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -1171,7 +1172,8 @@ func (s *Store) OverviewSinceScoped(ctx context.Context, scope string, days int)
 	if days <= 0 {
 		days = 14
 	}
-	return s.overviewWindow(ctx, scope, s.now().UTC().AddDate(0, 0, -(days-1)).Format("2006-01-02"), "")
+	from, until := span.Days(ctx, s.now(), days)
+	return s.overviewWindow(ctx, scope, from, until)
 }
 
 // OverviewBetweenScoped is OverviewBetween for one site: its previous period,
@@ -1197,12 +1199,12 @@ func (s *Store) LandingPagesScoped(ctx context.Context, scope string, days, limi
 	if limit <= 0 || limit > 200 {
 		limit = 20
 	}
-	from := s.now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	from, until := span.Days(ctx, s.now(), days)
 	clause, carg := domainClause(scope)
 	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT landing,COUNT(1),COUNT(DISTINCT visitor_id) FROM analytics_sessions
-		 WHERE created_at>=? AND events>0 AND landing!=''`+clause+` GROUP BY +landing ORDER BY 2 DESC LIMIT ?`,
-		append(append([]any{from}, carg...), limit)...)
+		 WHERE created_at>=? AND created_at<? AND events>0 AND landing!=''`+clause+` GROUP BY +landing ORDER BY 2 DESC LIMIT ?`,
+		append(append([]any{from, until}, carg...), limit)...)
 	if err != nil {
 		return nil, err
 	}
@@ -1226,9 +1228,9 @@ func (s *Store) TopPagesScoped(ctx context.Context, scope string, days, limit in
 	if limit <= 0 || limit > 200 {
 		limit = 20
 	}
-	from := s.now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	from, until := span.Days(ctx, s.now(), days)
 	clause, arg := domainClause(scope)
-	args := append([]any{from}, arg...)
+	args := append([]any{from, until}, arg...)
 	args = append(args, limit)
 
 	// Group on the path with any trailing slash stripped. "/post" and "/post/"
@@ -1245,7 +1247,7 @@ func (s *Store) TopPagesScoped(ctx context.Context, scope string, days, limit in
 	// path at all.
 	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT '/' || RTRIM(SUBSTR(url_path,2),'/') AS p,COUNT(1) as pv,COUNT(DISTINCT visitor_id) as uv
-		 FROM analytics_pageviews WHERE created_at>=? AND event_type=1`+clause+`
+		 FROM analytics_pageviews WHERE created_at>=? AND created_at<? AND event_type=1`+clause+`
 		 GROUP BY '/' || RTRIM(SUBSTR(url_path,2),'/') ORDER BY pv DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, err

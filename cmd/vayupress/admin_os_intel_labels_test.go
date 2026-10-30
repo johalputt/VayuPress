@@ -72,7 +72,7 @@ func TestTodayIsSaidAsTheDaySoFarInUTC(t *testing.T) {
 	if days, words := analyticsPeriod(r); days != 1 || words != "today, since midnight UTC" {
 		t.Errorf("?days=1 = %d, %q", days, words)
 	}
-	if got := osPeriodSelector("/os/analytics", "overview", 1); !strings.Contains(string(got), `href="/os/analytics?days=1" aria-current="true">Today<`) {
+	if got, _ := osPeriodSelector("/os/analytics", "overview", analyticsSpan{days: 1}); !strings.Contains(string(got), `href="/os/analytics?days=1" aria-current="true">Today<`) {
 		t.Errorf("the chooser does not name today: %s", got)
 	}
 	for days, want := range map[int]string{1: "today, since midnight UTC", 30: "in the last 30 days"} {

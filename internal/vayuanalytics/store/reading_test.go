@@ -71,7 +71,7 @@ func TestReadingDepthReadsARange(t *testing.T) {
 		for _, q := range []struct {
 			sql  string
 			args []any
-		}{{readingDepthSQL(clause), append(args, 10)}, {pageEngagementSQL(clause), args}} {
+		}{{readingDepthSQL(clause), append(args, 10)}, {pageEngagementSQL(clause), engagementArgs(args)}} {
 			rows, err := s.db.Query(`EXPLAIN QUERY PLAN `+q.sql, q.args...)
 			if err != nil {
 				t.Fatal(err)
@@ -201,4 +201,10 @@ func TestPageEngagementCountsEngagedReadings(t *testing.T) {
 	if all, _ := s.PageEngagement(ctx, AllDomains, 7); len(all) != 1 || all[0].Readings != 4 || all[0].Engaged != 2 {
 		t.Errorf("every site's /a = %+v, want 4 readings, 2 engaged", all)
 	}
+}
+
+// engagementArgs is args with the period's end after its start, as
+// PageEngagement passes them.
+func engagementArgs(args []any) []any {
+	return append([]any{args[0], time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)}, args[1:]...)
 }

@@ -75,7 +75,7 @@ func TestEveryAnalyticsViewHoldsItsParts(t *testing.T) {
 				t.Errorf("%s %s: a section is folded", tc.v.base, view.id)
 			}
 			for _, v := range analyticsViews {
-				link := `<a class="tab" href="` + string(ui.Text(analyticsHref(tc.v.base, v.id, 30))) + `"`
+				link := `<a class="tab" href="` + string(ui.Text(analyticsHref(tc.v.base, v.id, analyticsSpan{days: 30}))) + `"`
 				if v.id == view.id {
 					link += ` aria-current="page"`
 				}

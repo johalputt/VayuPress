@@ -27,8 +27,10 @@ import (
 
 	"github.com/johalputt/vayupress/internal/alerts"
 	"github.com/johalputt/vayupress/internal/analytics"
+	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/span"
 	"github.com/johalputt/vayupress/internal/ui"
 )
 
@@ -58,18 +60,25 @@ func (a *App) writeSiteAnalytics(w http.ResponseWriter, r *http.Request, v analy
 			ui.Band{Title: "Visitors", Aside: ui.Empty("trend", "Analytics are off", "This install was started without the analytics store.", "")})))
 		return
 	}
-	days, _ := analyticsPeriod(r)
+	per := analyticsSpanOf(r)
+	days := per.days
 	view := analyticsViewOf(r)
 	// Counted off the request, in the cache the install's Analytics uses: an
 	// exact count of a busy site's visitors over a month reads every view in
 	// it (0.3 s at a million events, 1.1 s for the whole install), and no
 	// console page waits on that.
-	body, ready := adminDash.get(siteAnalyticsKey(v, view, days), analyticsFragmentTTL, func(ctx context.Context) string {
+	body, ready := adminDash.get(siteAnalyticsKey(v, view, per), analyticsFragmentTTL, func(ctx context.Context) string {
+		if per.ranged() {
+			ctx = span.With(ctx, span.Range{From: per.from, To: per.to})
+		}
 		return a.renderSiteAnalyticsBody(ctx, v, host, days, view)
 	})
 	if !ready {
-		body = string(ui.Overview(ui.OverviewPage{Title: v.title(), State: ui.Text("Counting " + analyticsPhrase(days) + " for " + host),
-			Actions: osPeriodSelector(v.base, view, days), Tabs: analyticsTabs(v.base, view, days)},
+		// The page still being counted offers the periods, not the range
+		// sheet: a sheet with no page under it.
+		menu, _ := osPeriodSelector(v.base, view, per)
+		body = string(ui.Overview(ui.OverviewPage{Title: v.title(), State: ui.Text("Counting " + per.phrase() + " for " + host),
+			Actions: menu, Tabs: analyticsTabs(v.base, view, per)},
 			ui.Band{Title: "Visitors", Chart: `<p class="table-empty">This is counted in the background; reload in a few seconds.</p>`}))
 	}
 	// Goals holds what is set rather than counted: the alerts, and a hosted
@@ -131,16 +140,15 @@ func analyticsViewOf(r *http.Request) string {
 	return "overview"
 }
 
-// analyticsHref is base's page for view over days: the overview and the
-// default period are left out, so the page's own address stays as it was.
-func analyticsHref(base, view string, days int) string {
+// analyticsHref is base's page for view over the period p: the overview
+// and the default period are left out, so the page's own address stays as
+// it was.
+func analyticsHref(base, view string, p analyticsSpan) string {
 	q := url.Values{}
 	if view != "overview" {
 		q.Set("view", view)
 	}
-	if days != 30 {
-		q.Set("days", strconv.Itoa(days))
-	}
+	p.set(q)
 	if len(q) == 0 {
 		return base
 	}
@@ -148,18 +156,18 @@ func analyticsHref(base, view string, days int) string {
 }
 
 // analyticsTabs is the section bar: each view a link, the period kept.
-func analyticsTabs(base, view string, days int) ui.HTML {
+func analyticsTabs(base, view string, p analyticsSpan) ui.HTML {
 	tabs := make([]ui.Tab, 0, len(analyticsViews))
 	for _, v := range analyticsViews {
-		tabs = append(tabs, ui.Tab{Label: v.label, Href: analyticsHref(base, v.id, days), Current: v.id == view})
+		tabs = append(tabs, ui.Tab{Label: v.label, Href: analyticsHref(base, v.id, p), Current: v.id == view})
 	}
 	return ui.Tabs("Analytics", tabs...)
 }
 
-// siteAnalyticsKey is the cache key of v's view for a window, under
+// siteAnalyticsKey is the cache key of v's view for a period, under
 // siteAnalyticsPrefix: its scope, "" for the primary.
-func siteAnalyticsKey(v analyticsView, view string, days int) string {
-	return siteAnalyticsPrefix(v) + view + ":" + strconv.Itoa(days)
+func siteAnalyticsKey(v analyticsView, view string, p analyticsSpan) string {
+	return siteAnalyticsPrefix(v) + view + ":" + p.key()
 }
 
 func siteAnalyticsPrefix(v analyticsView) string { return "site-analytics:" + v.scope + ":" }
@@ -170,7 +178,9 @@ func siteAnalyticsPrefix(v analyticsView) string { return "site-analytics:" + v.
 // count another site's traffic. A view counts only what it shows.
 func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host string, days int, view string) string {
 	st := a.analytics
-	site, explore, phrase := v.scope, v.base+"/explore", analyticsPhrase(days)
+	per := spanOfCtx(ctx, days)
+	days = per.days
+	site, explore, phrase := v.scope, v.base+"/explore", per.phrase()
 	title, whose := v.title(), host
 	var scopeNote ui.HTML
 	if v.all() {
@@ -181,16 +191,17 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host
 		scopeNote = note
 	}
 	exportBtn, exportSheet := osExportSheet(v.base+"/export", days)
-	page := ui.OverviewPage{Title: title, Actions: osPeriodSelector(v.base, view, days) + exploreButton(explore, days) + exportBtn,
-		Tabs: analyticsTabs(v.base, view, days)}
+	periodMenu, rangeSheet := osPeriodSelector(v.base, view, per)
+	page := ui.OverviewPage{Title: title, Actions: periodMenu + exploreButton(explore, days) + exportBtn,
+		Tabs: ui.HTML(`<div class="sa-viewbar">`) + analyticsTabs(v.base, view, per) + a.dataKept(ctx, v) + `</div>`}
 	ov, err := st.OverviewSinceScoped(ctx, site, days)
 	if err != nil {
 		page.State = ui.Text("The figures could not be read: " + err.Error())
 		return string(ui.Overview(page, ui.Band{}))
 	}
-	page.State = ui.Text("No visits to " + whose + " " + analyticsWhen(days))
+	page.State = ui.Text("No visits to " + whose + " " + per.when())
 	if ov.UniqueVisitors > 0 {
-		page.State = ui.Text(countOf(ov.UniqueVisitors, "visitor") + " to " + whose + " " + analyticsWhen(days))
+		page.State = ui.Text(countOf(ov.UniqueVisitors, "visitor") + " to " + whose + " " + per.when())
 	}
 
 	listed := func(items []analytics.AudienceStat, empty string) string {
@@ -214,7 +225,7 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host
 		return osBarList(osBarsFromAudience(ch), osShareOfListed(), "Visitors are grouped here once they arrive.")
 	}
 	more := func(label, to string) string {
-		return `<a class="sa-more" href="` + esc(analyticsHref(v.base, to, days)) + `">` + esc(label) + ` →</a>`
+		return `<a class="sa-more" href="` + esc(analyticsHref(v.base, to, per)) + `">` + esc(label) + ` →</a>`
 	}
 	part := func(id string, h ui.HTML) ui.HTML { return ui.HTML(`<div data-part="`+id+`">`) + h + `</div>` }
 
@@ -222,8 +233,10 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host
 	var sections []ui.HTML
 	switch view {
 	case "overview":
-		now := time.Now().UTC()
-		prev, _ := st.OverviewBetweenScoped(ctx, site, now.AddDate(0, 0, -(2*days-1)).Format("2006-01-02"), now.AddDate(0, 0, -(days-1)).Format("2006-01-02"))
+		// The period before is as long, and ends where this one begins.
+		from, _ := span.Days(ctx, time.Now(), days)
+		start, _ := time.Parse("2006-01-02", from)
+		prev, _ := st.OverviewBetweenScoped(ctx, site, start.AddDate(0, 0, -days).Format("2006-01-02"), from)
 		series, _ := st.PageviewSeriesScoped(ctx, site, days)
 		// The figures take the page's width, in one row; the days and who is
 		// reading now sit beneath, side by side.
@@ -234,7 +247,7 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host
 		}
 		sections = append(sections, ui.HTML(`<div class="sa-cols sa-cols--lead">`)+
 			part("trend", ui.Section("Every day", "Page views and visitors", ui.HTML(trend)))+
-			part("now", ui.Section("Right now", "", ui.HTML(osLiveCompact(v.base+"/realtime", analyticsHref(v.base, "live", days)))))+`</div>`)
+			part("now", ui.Section("Right now", "", ui.HTML(osLiveCompact(v.base+"/realtime", analyticsHref(v.base, "live", per)))))+`</div>`)
 		if v.all() {
 			sections = append(sections, scopeNote, part("each-site", ui.HTML(a.osEachSiteSection(ctx, days))))
 		}
@@ -295,7 +308,7 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host
 	case "live":
 		sections = append(sections, part("live", ui.Section("Right now", "Readers in the last 5 minutes, every 10 seconds", ui.HTML(osLiveCard(v.base+"/realtime")))))
 	}
-	sections = append(sections, exportSheet)
+	sections = append(sections, exportSheet, rangeSheet)
 	return string(ui.Overview(page, band, sections...))
 }
 
@@ -377,5 +390,19 @@ func (a *App) pageTitles(ctx context.Context, v analyticsView, pages []analytics
 			out[bySlug[slug]] = strings.TrimSpace(title)
 		}
 	}
+	// A read cut short leaves the rest named by their paths, as a page with
+	// no article is: nothing on the page is wrong, only plainer.
+	_ = rows.Err()
 	return out
+}
+
+// dataKept is how long v's figures are kept, at the end of the section bar:
+// a hosted site's own setting, a link to it on Goals; the install's, which
+// its environment sets (ANALYTICS_RETAIN_DAYS), as words.
+func (a *App) dataKept(ctx context.Context, v analyticsView) ui.HTML {
+	if v.hosted {
+		n, _ := a.siteRetainDays(ctx, v.d.ID)
+		return ui.HTML(`<a class="sa-kept" href="` + esc(v.base+"?view=goals#retention") + `">Data kept ` + esc(countOf(n, "day")) + `</a>`)
+	}
+	return ui.HTML(`<span class="sa-kept" title="Set for this install by ANALYTICS_RETAIN_DAYS">Data kept ` + esc(countOf(config.Cfg.AnalyticsRetainDays, "day")) + `</span>`)
 }

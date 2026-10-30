@@ -22,6 +22,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/johalputt/vayupress/internal/span"
 )
 
 // eventSearch is a search's event_type: 1 is a page view, 2 a custom event.
@@ -90,16 +92,16 @@ func (s *Store) SearchesScoped(ctx context.Context, scope string, days, limit in
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	from := s.now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	from, until := span.Days(ctx, s.now(), days)
 	clause, carg := domainClauseOn("p", scope)
 	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT p.event_name, COUNT(1), COUNT(DISTINCT p.visitor_id),
 		        SUM(CASE WHEN d.property_value='0' THEN 1 ELSE 0 END)
 		 FROM analytics_pageviews p
 		 LEFT JOIN analytics_event_data d ON d.event_id=p.id AND d.property_key='results'
-		 WHERE p.event_type=`+strconv.Itoa(eventSearch)+` AND p.created_at>=?`+clause+`
+		 WHERE p.event_type=`+strconv.Itoa(eventSearch)+` AND p.created_at>=? AND p.created_at<?`+clause+`
 		 GROUP BY p.event_name ORDER BY 2 DESC, 1 LIMIT ?`,
-		append(append([]any{from}, carg...), limit)...)
+		append(append([]any{from, until}, carg...), limit)...)
 	if err != nil {
 		return nil, err
 	}

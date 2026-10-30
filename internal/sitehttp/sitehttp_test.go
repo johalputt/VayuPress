@@ -169,7 +169,7 @@ func TestTheReadsAreRanges(t *testing.T) {
 	db := openDB(t)
 	for _, site := range []string{"s1", AllSites} {
 		clause, carg := scopeClause(site)
-		args := append([]any{from(30)}, carg...)
+		args := append([]any{"2026-10-01 00:00:00", "2026-11-01 00:00:00"}, carg...)
 		for _, q := range []string{minutesSQL(clause), latencySQL(clause)} {
 			rows, err := db.Query("EXPLAIN QUERY PLAN "+q, args...)
 			if err != nil {

@@ -164,6 +164,8 @@ func (c *adminFragmentCache) keys(prefix string) []string {
 func (a *App) refreshSiteAnalytics(v analyticsView, host string) {
 	prefix := siteAnalyticsPrefix(v)
 	for _, key := range adminDash.keys(prefix) {
+		// A chosen range's page (its key a range, not a day count) is left
+		// to expire with its TTL.
 		view, d, ok := strings.Cut(strings.TrimPrefix(key, prefix), ":")
 		days, err := strconv.Atoi(d)
 		if !ok || err != nil {
@@ -182,10 +184,10 @@ func (a *App) startDashboardWarmer(done <-chan struct{}) {
 	warm := func() {
 		if a.analytics != nil {
 			host := a.primaryHost(context.Background())
-			adminDash.warm(siteAnalyticsKey(primaryView, "overview", 30), func(ctx context.Context) string {
+			adminDash.warm(siteAnalyticsKey(primaryView, "overview", analyticsSpan{days: 30}), func(ctx context.Context) string {
 				return a.renderSiteAnalyticsBody(ctx, primaryView, host, 30, "overview")
 			})
-			adminDash.warm(siteAnalyticsKey(platformView, "overview", 30), func(ctx context.Context) string {
+			adminDash.warm(siteAnalyticsKey(platformView, "overview", analyticsSpan{days: 30}), func(ctx context.Context) string {
 				return a.renderSiteAnalyticsBody(ctx, platformView, "every site", 30, "overview")
 			})
 			adminDash.warm(homeVisitorsKey, a.renderHomeVisitors)

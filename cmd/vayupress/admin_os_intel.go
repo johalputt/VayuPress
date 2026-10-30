@@ -13,6 +13,7 @@ import (
 	"html"
 	htmpl "html/template"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -26,6 +27,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/span"
 	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/vayushield/verifiedbot"
 )
@@ -493,12 +495,107 @@ func analyticsWhen(days int) string {
 	return "in " + analyticsPhrase(days)
 }
 
+// analyticsSpan is the period an Analytics page counts: the last days
+// days, or the range of days chosen with ?from=&to= (from and to set, UTC,
+// both counted), which the request's context carries to every reader
+// (span.With).
+type analyticsSpan struct {
+	days     int
+	from, to time.Time
+}
+
+func (p analyticsSpan) ranged() bool { return !p.from.IsZero() }
+
+// rangeDay is a day as the range is said ("1 Sep 2026").
+func rangeDay(t time.Time) string { return t.Format("2 Jan 2006") }
+
+// label is the period as the chooser's button names it.
+func (p analyticsSpan) label() string {
+	if !p.ranged() {
+		if p.days == 1 {
+			return "Today"
+		}
+		return "Last " + analyticsLabelForDays(p.days)
+	}
+	if p.from.Equal(p.to) {
+		return rangeDay(p.from)
+	}
+	return rangeDay(p.from) + " – " + rangeDay(p.to)
+}
+
+// phrase is the period as a sentence goes on to say it ("the last 30
+// days", "1 Sep 2026 to 30 Sep 2026"), and when it after a count ("in the
+// last 30 days", "from 1 Sep 2026 to 30 Sep 2026").
+func (p analyticsSpan) phrase() string {
+	if !p.ranged() {
+		return analyticsPhrase(p.days)
+	}
+	if p.from.Equal(p.to) {
+		return rangeDay(p.from)
+	}
+	return rangeDay(p.from) + " to " + rangeDay(p.to)
+}
+
+func (p analyticsSpan) when() string {
+	if !p.ranged() {
+		return analyticsWhen(p.days)
+	}
+	if p.from.Equal(p.to) {
+		return "on " + rangeDay(p.from)
+	}
+	return "from " + rangeDay(p.from) + " to " + rangeDay(p.to)
+}
+
+// set writes the period into q: the range, or the days when they are not
+// the default 30.
+func (p analyticsSpan) set(q url.Values) {
+	if p.ranged() {
+		q.Set("from", p.from.Format("2006-01-02"))
+		q.Set("to", p.to.Format("2006-01-02"))
+		return
+	}
+	if p.days != 30 {
+		q.Set("days", strconv.Itoa(p.days))
+	}
+}
+
+// key is the period in a cache key.
+func (p analyticsSpan) key() string {
+	if p.ranged() {
+		return p.from.Format("2006-01-02") + "~" + p.to.Format("2006-01-02")
+	}
+	return strconv.Itoa(p.days)
+}
+
+// analyticsSpanOf is the period r asks for. A range is taken when it is two
+// days, the first not after the last, the last not after today, and no
+// longer than the longest period offered (three years); anything else is
+// the ?days= window, as before.
+func analyticsSpanOf(r *http.Request) analyticsSpan {
+	days, _ := analyticsPeriod(r)
+	q := r.URL.Query()
+	from, err1 := time.Parse("2006-01-02", q.Get("from"))
+	to, err2 := time.Parse("2006-01-02", q.Get("to"))
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	if err1 != nil || err2 != nil || to.Before(from) || to.After(today) || to.Sub(from) >= 1095*24*time.Hour {
+		return analyticsSpan{days: days}
+	}
+	return analyticsSpan{days: int(to.Sub(from).Hours()/24) + 1, from: from, to: to}
+}
+
+// spanOfCtx is the period a render counts: ctx's range, or days.
+func spanOfCtx(ctx context.Context, days int) analyticsSpan {
+	if r, ok := span.Of(ctx); ok {
+		return analyticsSpan{days: span.Length(ctx, days), from: r.From, to: r.To}
+	}
+	return analyticsSpan{days: days}
+}
+
 // osPeriodSelector is the period chooser: one button naming the period, its
-// menu the others, each a link (GET, no script) that keeps the view. Eight
-// buttons in a row, each the weight of Explore and Export, were the loudest
-// thing on the page.
-func osPeriodSelector(base, view string, days int) ui.HTML {
-	cur := "Last 30 days"
+// menu the others, each a link (GET, no script) that keeps the view, and a
+// range of the operator's own, chosen in a sheet. Eight buttons in a row,
+// each the weight of Explore and Export, were the loudest thing on the page.
+func osPeriodSelector(base, view string, p analyticsSpan) (menu, sheet ui.HTML) {
 	var items strings.Builder
 	for _, o := range analyticsPeriodOptions {
 		label := o.Label
@@ -506,15 +603,36 @@ func osPeriodSelector(base, view string, days int) ui.HTML {
 			label = "Last " + label
 		}
 		on := ""
-		if o.Days == days {
-			cur, on = label, ` aria-current="true"`
+		if !p.ranged() && o.Days == p.days {
+			on = ` aria-current="true"`
 		}
-		items.WriteString(`<a class="sa-menu__item" role="menuitem" href="` + esc(analyticsHref(base, view, o.Days)) + `"` + on + `>` + esc(label) + `</a>`)
+		items.WriteString(`<a class="sa-menu__item" role="menuitem" href="` + esc(analyticsHref(base, view, analyticsSpan{days: o.Days})) + `"` + on + `>` + esc(label) + `</a>`)
 	}
+	on := ""
+	if p.ranged() {
+		on = ` aria-current="true"`
+	}
+	items.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" data-sheet="analytics-range"` + on + `>Choose dates…</button>`)
 	// data-period: the analytics script marks the chooser as loading while the
 	// chosen range is fetched.
-	return ui.HTML(`<details class="sa-pop" data-period><summary class="btn btn--sm">` + esc(cur) + `</summary>` +
+	menu = ui.HTML(`<details class="sa-pop" data-period><summary class="btn btn--sm">` + esc(p.label()) + `</summary>` +
 		`<div class="sa-pop__panel sa-menu" role="menu">` + items.String() + `</div></details>`)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	from, to := time.Now().UTC().AddDate(0, 0, -29).Format("2006-01-02"), today
+	if p.ranged() {
+		from, to = p.from.Format("2006-01-02"), p.to.Format("2006-01-02")
+	}
+	hidden := ""
+	if view != "overview" {
+		hidden = `<input type="hidden" name="view" value="` + esc(view) + `">`
+	}
+	sheet = ui.Sheet("analytics-range", "Choose dates", ui.HTML(`<form method="get" action="`+esc(base)+`">`+hidden+
+		`<div class="field"><label class="field-label" for="range-from">From</label><input id="range-from" class="input" type="date" name="from" value="`+from+`" max="`+today+`" required></div>`+
+		`<div class="field"><label class="field-label" for="range-to">To</label><input id="range-to" class="input" type="date" name="to" value="`+to+`" max="`+today+`" required></div>`+
+		`<p class="settings-row-hint">Whole days in UTC, both counted, up to three years.</p>`+
+		`<div class="mt-3 sa-list__sheet-actions"><button class="btn btn--primary btn--sm" type="submit">Show these dates</button></div></form>`))
+	return menu, sheet
 }
 
 // osLiveCompact is Right now on the overview: the count, the readers over
@@ -707,6 +825,7 @@ func (a *App) osJourneySection(ctx context.Context, scope string, days int) stri
 // its own page. A site removed from the registry keeps its rows until the
 // purge, and is named as removed rather than dropped from the sum.
 func (a *App) osEachSiteSection(ctx context.Context, days int) string {
+	p := spanOfCtx(ctx, days)
 	figs, err := a.analytics.BySite(ctx, days)
 	if err != nil {
 		return string(ui.Section("Each site", "", ui.Callout("danger", ui.Text("Not counted: "+err.Error()))))
@@ -717,13 +836,12 @@ func (a *App) osEachSiteSection(ctx context.Context, days int) string {
 		total += f.Views
 	}
 	rows := make([][]ui.HTML, 0, len(figs))
-	d := "?days=" + strconv.Itoa(days)
 	for _, f := range figs {
 		name := ui.Text("A removed site")
 		if h, ok := hosts[f.Site]; ok {
-			href := "/os/d/" + f.Site + "/analytics" + d
+			href := analyticsHref("/os/d/"+f.Site+"/analytics", "overview", p)
 			if f.Site == "" {
-				href = primaryAnalyticsBase + d
+				href = analyticsHref(primaryAnalyticsBase, "overview", p)
 			}
 			name = ui.HTML(`<a href="` + html.EscapeString(href) + `">` + html.EscapeString(h) + `</a>`)
 		}

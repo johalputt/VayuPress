@@ -37,7 +37,15 @@ regions and cities), **Sources** (referrers, channels, campaigns),
 **Performance**, **Goals** (goals, segments, alerts, and a hosted site's
 retention) and **Live** (who is reading now, by page, channel, referrer,
 country, city, device and browser, with the readers a minute over the last
-half hour). A view counts only what it shows and is cached on its own
+half hour). The period is a menu: today, the last 7, 30 or 90 days, 6 months, 1, 2 or
+3 years, or dates of the operator's own (`?from=&to=`, whole UTC days, both
+counted, up to three years and ending no later than today). A chosen range
+is carried in the request's context (`internal/span`) to every reader the
+page calls, the event log's, the engagement store's and the server's, so
+every section counts the same days; a figure's change is against the range
+before, as long. The Explorer keeps its own period. The bar ends with how
+long the data is kept: a hosted site's own setting, linked to it on Goals,
+or the install's (`ANALYTICS_RETAIN_DAYS`). A view counts only what it shows and is cached on its own
 (`renderSiteAnalyticsBody` in `cmd/vayupress/admin_os_scoped_analytics.go`);
 `analytics_overview_test.go` holds every part of the page to its view.
 

@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/span"
 	"github.com/johalputt/vayupress/internal/vayuanalytics/classifier"
 )
 
@@ -340,15 +341,21 @@ func (s *Store) Explore(ctx context.Context, q ExploreQuery) (*ExploreResult, er
 		return nil, err
 	}
 	m, _ := findMetric(q.Metric)
-	now := s.now().UTC()
-	from := now.AddDate(0, 0, -(q.Days - 1)).Format("2006-01-02")
+	// A range chosen for the page (span.With) is counted in place of the
+	// last q.Days; the range before is as long, and ends where it begins.
+	from, until := span.Days(ctx, s.now(), q.Days)
+	if until == span.Open {
+		until = ""
+	}
+	n := span.Length(ctx, q.Days)
+	start, _ := time.Parse("2006-01-02", from)
+	prevFrom := start.AddDate(0, 0, -n).Format("2006-01-02")
 	res := &ExploreResult{}
 	var err error
-	if res.Total, res.HasTotal, err = s.exploreTotal(ctx, m, q, from, ""); err != nil {
+	if res.Total, res.HasTotal, err = s.exploreTotal(ctx, m, q, from, until); err != nil {
 		return nil, err
 	}
 	if q.Compare {
-		prevFrom := now.AddDate(0, 0, -(2*q.Days - 1)).Format("2006-01-02")
 		if res.PrevTotal, res.HasPrevTotal, err = s.exploreTotal(ctx, m, q, prevFrom, from); err != nil {
 			return nil, err
 		}
@@ -356,7 +363,7 @@ func (s *Store) Explore(ctx context.Context, q ExploreQuery) (*ExploreResult, er
 	if q.By == "" {
 		return res, nil
 	}
-	cur, err := s.exploreSplit(ctx, m, q, from, "")
+	cur, err := s.exploreSplit(ctx, m, q, from, until)
 	if err != nil {
 		return nil, err
 	}
@@ -373,11 +380,10 @@ func (s *Store) Explore(ctx context.Context, q ExploreQuery) (*ExploreResult, er
 	for _, r := range res.Rows {
 		k := r.Key
 		if q.By == "day" {
-			k = shiftDay(k, -q.Days)
+			k = shiftDay(k, -n)
 		}
 		keys = append(keys, k)
 	}
-	prevFrom := now.AddDate(0, 0, -(2*q.Days - 1)).Format("2006-01-02")
 	prev, err := s.exploreSplit(ctx, m, q, prevFrom, from, keys...)
 	if err != nil {
 		return nil, err
@@ -390,7 +396,7 @@ func (s *Store) Explore(ctx context.Context, q ExploreQuery) (*ExploreResult, er
 		k := res.Rows[i].Key
 		if q.By == "day" {
 			// A day is compared with the day as far into the range before.
-			k = shiftDay(k, -q.Days)
+			k = shiftDay(k, -n)
 		}
 		res.Rows[i].Prev, res.Rows[i].HasPrev = byKey[k]
 	}
