@@ -471,6 +471,7 @@ test("a page's clicks, once its site records them, are on its report", async ({ 
   test.setTimeout(150000);
   const set = async (value, said) => {
     await page.goto("/os/analytics?view=goals&days=7");
+    await page.click('[data-sheet="click-map-sheet"]');
     await page.selectOption("#click-map-sample", value);
     await page.click("[data-click-map-button]");
     await expect(page.locator("#click-map-status")).toHaveText(said);

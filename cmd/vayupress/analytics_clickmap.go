@@ -177,23 +177,33 @@ func (a *App) clickMapSection(ctx context.Context, v analyticsView, nonce string
 	if v.hosted {
 		save = "/os/d/" + v.d.ID + "/api/analytics/clickmap"
 	}
-	rows := ui.Rows(ui.Row{Label: "Record clicks", ID: "click-map-sample",
-		Control: ui.HTML(`<select id="click-map-sample" class="input" data-click-map-save="` + esc(save) + `">` + opts + `</select>`),
+	now := "Off"
+	if n == 1 {
+		now = "Every page load"
+	} else if n > 1 {
+		now = "One page load in " + strconv.Itoa(n)
+	}
+	// The setting is changed in a sheet, as every form on a console page is;
+	// the row says what it is now.
+	rows := ui.Rows(ui.Row{Label: "Record clicks",
+		Control: ui.HTML(`<span id="click-map-state">` + now + `</span> <button type="button" class="btn btn--sm" data-sheet="click-map-sheet">Change</button>`),
 		Hint:    "On, a share of page loads records where readers click: the element (its place among the page's tags, never its text), the tenth of it clicked and the screen's width class, added to a daily count kept as long as the site's other analytics. Nothing typed is recorded, and no reader's clicks are kept apart. Each page's report then shows its click map."})
-	return `<div id="click-map">` + string(ui.Section("Click map", "Off unless turned on, for this site alone",
-		ui.HTML(string(rows)+`<p class="settings-row-hint">For the site's privacy notice: “`+esc(clickMapNotice)+`”</p>`+
-			`<div class="sa-list__sheet-actions"><button type="button" class="btn btn--primary btn--sm" data-click-map-button>Save</button>`+
-			`<span class="text-xs muted" id="click-map-status" role="status" aria-live="polite"></span></div>`))) + `</div>` +
+	sheet := ui.Sheet("click-map-sheet", "Click map", ui.HTML(`<div class="field"><label class="field-label" for="click-map-sample">Record clicks</label>`+
+		`<select id="click-map-sample" class="select" data-click-map-save="`+esc(save)+`">`+opts+`</select></div>`+
+		`<p class="field-hint">For the site's privacy notice: “`+esc(clickMapNotice)+`”</p>`+
+		`<div class="mt-3 sa-list__sheet-actions"><button type="button" class="btn btn--primary btn--sm" data-click-map-button>Save</button>`+
+		`<span class="text-xs muted" id="click-map-status" role="status" aria-live="polite"></span></div>`))
+	return `<div id="click-map">` + string(ui.Section("Click map", "Off unless turned on, for this site alone", rows)) + `</div>` + string(sheet) +
 		`<script nonce="` + nonce + `">
 (function(){'use strict';
 function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):'';}
-var sel=document.getElementById('click-map-sample'),btn=document.querySelector('[data-click-map-button]'),st=document.getElementById('click-map-status');
+var sel=document.getElementById('click-map-sample'),btn=document.querySelector('[data-click-map-button]'),st=document.getElementById('click-map-status'),now=document.getElementById('click-map-state');
 if(!sel||!btn)return;
 btn.addEventListener('click',function(){
   btn.disabled=true; if(st)st.textContent='Saving…';
   fetch(sel.getAttribute('data-click-map-save'),{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({sample:parseInt(sel.value,10)})})
     .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
-    .then(function(res){btn.disabled=false; if(st)st.textContent=res.ok?'Saved':((res.j&&res.j.message)||'Could not save');})
+    .then(function(res){btn.disabled=false; if(st)st.textContent=res.ok?'Saved':((res.j&&res.j.message)||'Could not save'); if(res.ok&&now)now.textContent=sel.options[sel.selectedIndex].text;})
     .catch(function(e){btn.disabled=false; if(st)st.textContent='Error: '+e;});
 });
 })();
