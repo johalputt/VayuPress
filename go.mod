@@ -32,7 +32,7 @@ require (
 	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/goptlib v1.6.0
 	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/lyrebird v0.0.0-20261008205628-362a60bb4e3f
 	golang.org/x/crypto v0.58.0
-	golang.org/x/net v0.61.0
+	golang.org/x/net v0.62.0
 	golang.org/x/sys v0.49.0
 	golang.org/x/text v0.43.0
 	rsc.io/qr v0.2.0

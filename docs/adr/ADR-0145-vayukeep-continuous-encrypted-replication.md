@@ -11,7 +11,7 @@ Deciders: VayuPress core
 > an `internal/storage.Backend` interface; none of them exists, generations
 > are not signed with a host key, and there is no S3 or SFTP target. Those
 > parts of Layers 2 and 3 are the design, not the product.
-
+>
 > **Amended 2026-09-26.** A generation's database is no longer taken with
 > `VACUUM INTO`, one statement that could not pause. The console takes it with
 > SQLite's backup API in paced steps over one pinned read transaction
