@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.16] — 2026-10-30
+
+The docs checked against the code, the plugin sandbox described as it is enforced, and a hosted site's Analytics no longer linking the install's Settings.
+
 ### Changed
 
 - **The DB-IP credit is in Settings only.** Analytics no longer prints "IP
