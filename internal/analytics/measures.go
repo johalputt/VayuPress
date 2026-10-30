@@ -66,18 +66,32 @@ func (s *Store) VisitMeasuresScoped(ctx context.Context, scope, dim string, days
 		limit = 25
 	}
 	from, until := span.Days(ctx, time.Now(), days)
-	col, cargs := s.dimSQL(d, true)
 	clause, sargs := s.visitScope(ctx, scope, "s", from, until)
+	var with, join string
+	var args []any
+	col, cargs := s.dimSQL(d, true)
+	if dim == "visit_channel" {
+		// A channel is a long expression over the referrer. Worked out once
+		// for each referrer of the period, not once for each visit: 12 s
+		// against 2 s for the other lists, at a million events. MATERIALIZED
+		// is what makes it once: left to itself SQLite folds the table into
+		// the join and works the expression out for every visit again.
+		ch, chArgs := s.channelSQL("r")
+		with = `WITH ch(r, k) AS MATERIALIZED (SELECT r, ` + ch + ` FROM (SELECT DISTINCT s.referrer AS r FROM analytics_sessions s
+			WHERE s.created_at>=? AND s.created_at<? AND s.events>0` + clause + `)) `
+		args = append(append(append(args, chArgs...), from, until), sargs...)
+		join, col, cargs = " JOIN ch ON ch.r=s.referrer", "ch.k", nil
+	}
 	notSelf, selfArgs := "", []any(nil)
 	if dim == "visit_referrer" {
 		notSelf, selfArgs = s.selfHostExclusion("s.referrer")
 	}
-	args := append(append(append(append(append([]any(nil), cargs...), from, until), sargs...), selfArgs...), limit)
-	rows, err := s.readDB().QueryContext(ctx, `SELECT +(`+col+`) AS k, COUNT(1), COUNT(DISTINCT s.visitor_id), COALESCE(SUM(s.views),0),
+	args = append(append(append(append(append(args, cargs...), from, until), sargs...), selfArgs...), limit)
+	rows, err := s.readDB().QueryContext(ctx, with+`SELECT +(`+col+`) AS k, COUNT(1), COUNT(DISTINCT s.visitor_id), COALESCE(SUM(s.views),0),
 		COALESCE(SUM(s.events=1 AND s.views=1),0), COALESCE(SUM(s.events>1),0),
 		COALESCE(SUM(CASE WHEN s.events>1 THEN (julianday(s.last_at)-julianday(s.created_at))*86400.0 END),0),
-		COALESCE(SUM(EXISTS(SELECT 1 FROM analytics_pageviews c WHERE c.session_id=s.id AND c.event_type=2)),0)
-		FROM analytics_sessions s WHERE s.created_at>=? AND s.created_at<? AND s.events>0`+clause+notSelf+`
+		COALESCE(SUM(EXISTS(SELECT 1 FROM analytics_pageviews c `+byVisit+` WHERE c.session_id=s.id AND c.event_type=2)),0)
+		FROM analytics_sessions s`+join+` WHERE s.created_at>=? AND s.created_at<? AND s.events>0`+clause+notSelf+`
 		GROUP BY k HAVING k IS NOT NULL AND k<>'' ORDER BY 2 DESC, 1 LIMIT ?`, args...)
 	if err != nil {
 		return nil, err

@@ -79,6 +79,7 @@ var growing = map[string]bool{
 // a result already bounded, not a table. fromRe maps an alias to its table.
 var (
 	derivedRe = regexp.MustCompile(`^(?:CO-ROUTINE|MATERIALIZE) (\S+)`)
+	searchRe  = regexp.MustCompile(`^SEARCH (\w+) USING (?:COVERING )?INDEX (\w+)`)
 	scanRe    = regexp.MustCompile(`^SCAN (\S+)`)
 	fromRe    = regexp.MustCompile(`(?i)\b(?:FROM|JOIN)\s+(\w+)(?:\s+(?:AS\s+)?(\w+))?`)
 	sqlWords  = map[string]bool{"WHERE": true, "JOIN": true, "LEFT": true, "INNER": true, "ON": true, "GROUP": true, "ORDER": true, "LIMIT": true, "USING": true, "CROSS": true}
@@ -160,6 +161,17 @@ func TestNoConsoleReadWalksAWholeTable(t *testing.T) {
 		_, _ = s.BySite(ctx, days)
 		_, _ = s.RecentSessionsScoped(ctx, "d1", days, 10)
 		_, _ = s.GoalResultsOver(ctx, ScopeAllDomains, "d1", days)
+		for _, dim := range []string{"visit_referrer", "visit_channel", "landing", "device"} {
+			_, _ = s.VisitMeasuresScoped(ctx, "d1", dim, days, 10)
+			_, _ = s.VisitMeasuresScoped(ctx, ScopeAllDomains, dim, days, 10)
+		}
+		// Narrowed to some readers (of a page, of an event, of a link out):
+		// every visit read is asked whether it was one of theirs.
+		for _, narrowed := range []context.Context{narrowTo("path", FilterIs, "/x"), narrowTo("event", FilterIs, "x"), narrowTo("outbound", FilterIs, "x")} {
+			_, _ = s.OverviewSinceScoped(narrowed, ScopeAllDomains, days)
+			_, _ = s.VisitMeasuresScoped(narrowed, ScopeAllDomains, "visit_channel", days, 10)
+			_, _ = s.VisitTrailsScoped(narrowed, ScopeAllDomains, days, 50)
+		}
 	}
 	_, _ = s.OverviewBetween(ctx, weekAgo, today)
 	_, _ = s.OverviewBetweenScoped(ctx, "d1", weekAgo, today)
@@ -270,6 +282,23 @@ func TestNoConsoleReadWalksAWholeTable(t *testing.T) {
 			tables[m[1]] = m[1]
 			if m[2] != "" && !sqlWords[strings.ToUpper(m[2])] {
 				tables[m[2]] = m[1]
+			}
+		}
+		// The channels' table of referrers is worked out once, not folded
+		// back into the join to be worked out again for each visit.
+		if strings.Contains(q.sql, "WITH ch(r, k)") && !strings.Contains(strings.Join(plan, "|"), "MATERIALIZE ch") {
+			t.Errorf("the channels' referrers are worked out for each visit:\n  %s\n  plan: %s", oneLine(q.sql), strings.Join(plan, " | "))
+		}
+		// A subquery asking about one visit's events reads that visit's
+		// rows (byVisit): through any other index it reads every event of
+		// the install once for each visit.
+		for i, d := range plan {
+			if !strings.HasPrefix(d, "CORRELATED") || i+1 == len(plan) {
+				continue
+			}
+			if m := searchRe.FindStringSubmatch(plan[i+1]); m != nil && tables[m[1]] == "analytics_pageviews" &&
+				strings.Contains(q.sql, m[1]+".session_id=s.id") && m[2] != "idx_apv_session" {
+				t.Errorf("reads a visit's events through %s, not the visit:\n  %s\n  plan: %s", m[2], oneLine(q.sql), strings.Join(plan, " | "))
 			}
 		}
 		for _, d := range plan {

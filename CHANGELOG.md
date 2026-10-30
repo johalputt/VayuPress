@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **Behaviour on a busy install read "Not counted: context deadline
+  exceeded"** for where visits ended, links out, downloads and how far they
+  read. Asking a visit for its last page (and whether it converted) read
+  every page view of the install through the event-type index, once for
+  each visit in the period, until the view's time ran out. Those questions
+  now read only the visit's own rows (`byVisit`), and a test of every
+  console read's plan refuses a per-visit question answered any other way.
+  The lists ranked by what their visits did asked the same question and
+  were slow on a busy install for the same reason; How they found you also
+  sorted each visit into its channel one visit at a time, and now sorts
+  each referrer once. At a million events over every site: where visits
+  ended from over a minute to 1.4 s, How they found you from over a minute
+  to 2.3 s.
+
 ## [3.18.18] — 2026-10-30
 
 Analytics, connected: every row opens the readers it counts; lists ranked by what their visits did; a world map on Audience and Live; a report for each page; the latest visits as they went; an opt-in click map drawn over every site's pages. With a fix for links the console's scripts read from the page, and go-jose and goldmark updated.

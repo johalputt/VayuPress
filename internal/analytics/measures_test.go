@@ -35,6 +35,12 @@ func TestEachRowsVisitsAreMeasured(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(ch) != 2 || ch[0].Key != "organic" || ch[1].Key != "direct" {
+		t.Fatalf("channels = %+v, want organic's two visits, then direct's one", ch)
+	}
+	if us, _ := s.VisitMeasuresScoped(narrowTo("country", FilterIs, "US"), "s1", "visit_channel", 7, 10); len(us) != 1 || us[0].Key != "organic" || us[0].Visits != 1 {
+		t.Errorf("channels narrowed to US = %+v, want Bing's one organic visit", us)
+	}
 	for _, m := range ch {
 		switch m.Key {
 		case "organic":

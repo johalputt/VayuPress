@@ -86,6 +86,15 @@ const (
 	dimFlag                  // yes or no
 )
 
+// byVisit holds a subquery that reads one visit's events to that visit's
+// own rows. Left to choose, SQLite answered "this visit's last page view"
+// through idx_apv_event_created_session on the event type alone, reading
+// every page view of the install for each visit in the range: on a month
+// of a busy install the Behaviour view spent its whole compute budget on
+// the first list and every list after it read "context deadline exceeded".
+// A visit's rows are a handful; the session index is always the way in.
+const byVisit = "INDEXED BY idx_apv_session"
+
 // The visit's own facts, over its row s, so they split and filter every
 // figure: an event's visit is joined. A visit's referrer is its first page
 // view's, the one it arrived by, kept on its row (migration 122); "returning" is the same visitor's earlier
@@ -94,8 +103,8 @@ const (
 // "converted" is a custom event in the visit.
 const (
 	visitReturning  = `CASE WHEN EXISTS(SELECT 1 FROM analytics_sessions r WHERE r.visitor_id=s.visitor_id AND r.domain_id=s.domain_id AND (r.created_at<s.created_at OR (r.created_at=s.created_at AND r.id<s.id))) THEN 'yes' ELSE 'no' END`
-	visitExit       = `COALESCE((SELECT f.url_path FROM analytics_pageviews f WHERE f.session_id=s.id AND f.event_type=1 ORDER BY f.created_at DESC, f.id DESC LIMIT 1),'')`
-	visitConverted  = `CASE WHEN EXISTS(SELECT 1 FROM analytics_pageviews c WHERE c.session_id=s.id AND c.event_type=2) THEN 'yes' ELSE 'no' END`
+	visitExit       = `COALESCE((SELECT f.url_path FROM analytics_pageviews f ` + byVisit + ` WHERE f.session_id=s.id AND f.event_type=1 ORDER BY f.created_at DESC, f.id DESC LIMIT 1),'')`
+	visitConverted  = `CASE WHEN EXISTS(SELECT 1 FROM analytics_pageviews c ` + byVisit + ` WHERE c.session_id=s.id AND c.event_type=2) THEN 'yes' ELSE 'no' END`
 	visitLengthSecs = `CAST(COALESCE(round((julianday(s.last_at)-julianday(s.created_at))*86400.0),0) AS INTEGER)`
 )
 
