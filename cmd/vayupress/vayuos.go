@@ -1380,9 +1380,11 @@ func securityLibraryRows(comps []secwatch.Component) [][]ui.HTML {
 		}
 		cell := `<span class="mono">` + esc(latest) + `</span>`
 		// A later major is a separate module reached by changing code; no
-		// release applies it, so it is named here, not counted as an update.
+		// release applies it, so it is named here, not counted as an update,
+		// on a line of its own: inline, it ran into the version before it
+		// ("v1.8.7v2.1.11 is a new major version").
 		if c.NewerMajor != "" {
-			cell += `<span class="field-hint">` + esc(c.NewerMajor) + ` is a new major version: a code migration, not a patch</span>`
+			cell += `<div class="field-hint">` + esc(c.NewerMajor) + ` is a new major version: a code migration, not a patch</div>`
 		}
 		rows = append(rows, []ui.HTML{ui.Text(c.Name), ui.HTML(`<span class="mono">` + esc(c.Current) + `</span>`), ui.HTML(cell), state})
 	}

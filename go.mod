@@ -28,7 +28,7 @@ require (
 	github.com/phuslu/iploc v1.0.20261015
 	github.com/rs/cors v1.11.1
 	github.com/sigstore/sigstore-go v1.3.0
-	github.com/yuin/goldmark v1.8.6
+	github.com/yuin/goldmark v1.8.7
 	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/goptlib v1.6.0
 	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/lyrebird v0.0.0-20261008205628-362a60bb4e3f
 	golang.org/x/crypto v0.58.0

@@ -61,6 +61,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   operator's own were chosen; it counts the chosen dates.
 - **An export** counted the last 30 days whatever the page showed; it
   counts the page's dates.
+- **Mail administration's Security tab** ran a library's newer major
+  version into its latest version ("v1.8.7v2.1.11 is a new major
+  version"); the note is a line of its own under the version.
 
 ### Security
 
@@ -70,6 +73,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   naming another origin or a `javascript:` URL would have been followed or
   run. Only a same-origin `/os/` path, rebuilt from its parsed parts, is
   taken (`consoleLink` in `admin-os-intel.js`).
+- **goldmark v1.8.7**, the patch release the Security tab reported
+  waiting for the Markdown renderer.
 - **go-jose v4.1.6** (indirect, through the signature verifier of
   updates): a JWK with an oversized RSA modulus could stall the parser, and
   malformed JSON or a CBC-HMAC token could panic it.

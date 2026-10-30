@@ -24,4 +24,8 @@ func TestANewerMajorReadsAsAMigrationNotAnUpdate(t *testing.T) {
 	if !strings.Contains(out, "v2.1.5 is a new major version") {
 		t.Errorf("the new major is not named, so the migration is a surprise later:\n%s", out)
 	}
+	// The note is a line of its own under the version, never run into it.
+	if !strings.Contains(out, `<span class="mono">v1.8.6</span><div class="field-hint">v2.1.5 is a new major version`) {
+		t.Errorf("the new major's note is not a line of its own under the version:\n%s", out)
+	}
 }
