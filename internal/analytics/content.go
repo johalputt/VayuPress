@@ -98,8 +98,10 @@ func (s *Store) ContentPagesScoped(ctx context.Context, scope string, days int) 
 	start, _ := time.Parse("2006-01-02", from)
 	prevFrom := start.AddDate(0, 0, -span.Length(ctx, days)).Format("2006-01-02")
 	search, sargs := s.channelSQL("p.referrer")
-	cclause, cargs := domainClauseOn("c", scope)
-	pclause, pargs := domainClauseOn("p", scope)
+	cclause, cargs := s.eventScope(ctx, scope, "c", from, until)
+	pclause, pargs := s.eventScope(ctx, scope, "p", from, until)
+	// The period before is narrowed over its own visits.
+	bclause, bargs := s.eventScope(ctx, scope, "p", prevFrom, from)
 	// In the order the query names them: the CTE's range and site, the
 	// search expression in the SELECT, then the outer range and site.
 	args := append(append(append(append([]any{from, until}, cargs...), sargs...), from, until), pargs...)
@@ -124,7 +126,7 @@ func (s *Store) ContentPagesScoped(ctx context.Context, scope string, days int) 
 	}
 	_ = rows.Close()
 
-	rows, err = s.readDB().QueryContext(ctx, contentBeforeSQL(pclause), append(append([]any{prevFrom, from}, pargs...), contentMinViews)...)
+	rows, err = s.readDB().QueryContext(ctx, contentBeforeSQL(bclause), append(append([]any{prevFrom, from}, bargs...), contentMinViews)...)
 	if err != nil {
 		return nil, err
 	}

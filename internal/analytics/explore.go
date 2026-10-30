@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/focus"
 	"github.com/johalputt/vayupress/internal/span"
 	"github.com/johalputt/vayupress/internal/vayuanalytics/classifier"
 )
@@ -87,12 +88,11 @@ const (
 
 // The visit's own facts, over its row s, so they split and filter every
 // figure: an event's visit is joined. A visit's referrer is its first page
-// view's, the one it arrived by; "returning" is the same visitor's earlier
+// view's, the one it arrived by, kept on its row (migration 122); "returning" is the same visitor's earlier
 // visit to the same site, which can only be the same day, as a visitor is
 // recognised for a day (docs/ANALYTICS.md); its exit is its last page view;
 // "converted" is a custom event in the visit.
 const (
-	visitFirstView  = `FROM analytics_pageviews f WHERE f.session_id=s.id AND f.event_type=1 ORDER BY f.created_at, f.id LIMIT 1`
 	visitReturning  = `CASE WHEN EXISTS(SELECT 1 FROM analytics_sessions r WHERE r.visitor_id=s.visitor_id AND r.domain_id=s.domain_id AND (r.created_at<s.created_at OR (r.created_at=s.created_at AND r.id<s.id))) THEN 'yes' ELSE 'no' END`
 	visitExit       = `COALESCE((SELECT f.url_path FROM analytics_pageviews f WHERE f.session_id=s.id AND f.event_type=1 ORDER BY f.created_at DESC, f.id DESC LIMIT 1),'')`
 	visitConverted  = `CASE WHEN EXISTS(SELECT 1 FROM analytics_pageviews c WHERE c.session_id=s.id AND c.event_type=2) THEN 'yes' ELSE 'no' END`
@@ -120,7 +120,7 @@ var exploreDims = []exploreDim{
 	{"language", "Language", "s.language", "s.language", false, dimWords},
 	{"exit", "Exit page", visitExit, visitExit, true, dimWords},
 	{"visit_channel", "Visit's channel", "s.id", "s.id", false, dimWords}, // s.id marks it usable; Store.dimSQL writes it
-	{"visit_referrer", "Visit's referrer", "COALESCE((SELECT f.referrer " + visitFirstView + "),'')", "COALESCE((SELECT f.referrer " + visitFirstView + "),'')", true, dimWords},
+	{"visit_referrer", "Visit's referrer", "s.referrer", "s.referrer", true, dimWords},
 	{"returning", "Returning the same day", visitReturning, visitReturning, false, dimFlag},
 	{"converted", "Visit with a custom event", visitConverted, visitConverted, false, dimFlag},
 	{"visit_views", "Page views in the visit", "s.views", "s.views", false, dimNumber},
@@ -133,10 +133,7 @@ var exploreDims = []exploreDim{
 func (s *Store) dimSQL(d exploreDim, visit bool) (string, []any) {
 	switch {
 	case d.id == "visit_channel":
-		// Classified inside the lookup, so the visit's first view is found
-		// once, not once for each host the rule names.
-		ch, args := s.channelSQL("f.referrer")
-		return "COALESCE((SELECT " + ch + " " + visitFirstView + "),'')", args
+		return s.channelSQL("s.referrer")
 	case visit:
 		return d.visit, nil
 	case d.id == "channel":
@@ -197,12 +194,9 @@ func ExploreDims() []ExploreOption {
 func ChannelLabel(c string) string { return channelLabel(classifier.Category(c)) }
 
 // ExploreFilter keeps the events (or visits) whose dimension is, is not, or
-// starts with a value.
-type ExploreFilter struct {
-	Dim   string `json:"dim"`
-	Op    string `json:"op"`
-	Value string `json:"value"`
-}
+// starts with a value. It is focus.Filter, so an Analytics page narrowed to
+// some readers and the Explorer read one set of filters.
+type ExploreFilter = focus.Filter
 
 // The filter operators.
 const (
@@ -405,7 +399,7 @@ func (s *Store) Explore(ctx context.Context, q ExploreQuery) (*ExploreResult, er
 
 // exploreFrom is the query's FROM and WHERE for [from, to), with its
 // arguments.
-func (s *Store) exploreFrom(m exploreMetric, q ExploreQuery, from, to string) (string, []any) {
+func (s *Store) exploreFrom(ctx context.Context, m exploreMetric, q ExploreQuery, from, to string) (string, []any) {
 	var b strings.Builder
 	var args []any
 	alias := "p"
@@ -422,7 +416,19 @@ func (s *Store) exploreFrom(m exploreMetric, q ExploreQuery, from, to string) (s
 		b.WriteString(" AND " + alias + ".created_at<?")
 		args = append(args, to)
 	}
-	clause, carg := domainClauseOn(alias, q.Scope)
+	// A page narrowed to some readers (focus) narrows its questions too; the
+	// range before is narrowed over its own visits.
+	until := to
+	if until == "" {
+		until = span.Open
+	}
+	var clause string
+	var carg []any
+	if m.visit {
+		clause, carg = s.visitScope(ctx, q.Scope, alias, from, until)
+	} else {
+		clause, carg = s.eventScope(ctx, q.Scope, alias, from, until)
+	}
 	b.WriteString(clause)
 	args = append(args, carg...)
 	if m.where != "" {
@@ -431,34 +437,39 @@ func (s *Store) exploreFrom(m exploreMetric, q ExploreQuery, from, to string) (s
 	for _, f := range append(append([]ExploreFilter(nil), q.Segment...), q.Filters...) {
 		d, _ := findDim(f.Dim)
 		c, cargs := s.dimSQL(d, m.visit)
-		// A number's value is bound as written: every count is a column or a
-		// CAST, whose integer affinity compares '3' as 3.
-		value := f.Value
-		switch f.Op {
-		case FilterIs:
-			b.WriteString(" AND (" + c + ")=?")
-			args = append(append(args, cargs...), value)
-		case FilterIsNot:
-			b.WriteString(" AND (" + c + ")<>?")
-			args = append(append(args, cargs...), value)
-		case FilterAtLeast:
-			b.WriteString(" AND (" + c + ")>=?")
-			args = append(append(args, cargs...), value)
-		case FilterAtMost:
-			b.WriteString(" AND (" + c + ")<=?")
-			args = append(append(args, cargs...), value)
-		case FilterPrefix:
-			// substr, not LIKE: LIKE ignores case and reads % and _ in the
-			// value as wildcards.
-			b.WriteString(" AND substr(" + c + ",1,?)=?")
-			args = append(append(args, cargs...), len([]rune(f.Value)), f.Value)
-		}
+		cond, fargs := filterCond(c, cargs, f.Op, f.Value)
+		b.WriteString(" AND " + cond)
+		args = append(args, fargs...)
 	}
 	return b.String(), args
 }
 
+// filterCond is the condition that column c (with its arguments) meets
+// under op and value, with every argument in order.
+func filterCond(c string, cargs []any, op, value string) (string, []any) {
+	// A number's value is bound as written: every count is a column or a
+	// CAST, whose integer affinity compares '3' as 3.
+	switch op {
+	case FilterIs:
+		return "(" + c + ")=?", append(append([]any(nil), cargs...), value)
+	case FilterIsNot:
+		return "(" + c + ")<>?", append(append([]any(nil), cargs...), value)
+	case FilterAtLeast:
+		return "(" + c + ")>=?", append(append([]any(nil), cargs...), value)
+	case FilterAtMost:
+		return "(" + c + ")<=?", append(append([]any(nil), cargs...), value)
+	case FilterPrefix:
+		// substr, not LIKE: LIKE ignores case and reads % and _ in the
+		// value as wildcards.
+		return "substr(" + c + ",1,?)=?", append(append([]any(nil), cargs...), len([]rune(value)), value)
+	}
+	// Validate refuses any other operator; one that reached here keeps
+	// nothing rather than everything.
+	return "0", nil
+}
+
 func (s *Store) exploreTotal(ctx context.Context, m exploreMetric, q ExploreQuery, from, to string) (float64, bool, error) {
-	where, args := s.exploreFrom(m, q, from, to)
+	where, args := s.exploreFrom(ctx, m, q, from, to)
 	var v sql.NullFloat64
 	if err := s.readDB().QueryRowContext(ctx, `SELECT `+m.agg+where, args...).Scan(&v); err != nil {
 		return 0, false, err
@@ -471,7 +482,7 @@ func (s *Store) exploreTotal(ctx context.Context, m exploreMetric, q ExploreQuer
 func (s *Store) exploreSplit(ctx context.Context, m exploreMetric, q ExploreQuery, from, to string, only ...string) ([]ExploreRow, error) {
 	d, _ := findDim(q.By)
 	col, cargs := s.dimSQL(d, m.visit)
-	where, wargs := s.exploreFrom(m, q, from, to)
+	where, wargs := s.exploreFrom(ctx, m, q, from, to)
 	args := append(append([]any{}, cargs...), wargs...)
 	order := " ORDER BY 2 DESC, 1 LIMIT " + strconv.Itoa(ExploreMaxRows+1)
 	switch {

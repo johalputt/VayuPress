@@ -22,6 +22,11 @@ func TestAnalyticsCSVExportWritesNoFormula(t *testing.T) {
 		`=HYPERLINK("https://evil.example","Click")`); err != nil {
 		t.Fatal(err)
 	}
+	// Referrers counts visits, by the referrer each arrived by.
+	if _, err := dbpkg.DB.Exec(`INSERT INTO analytics_sessions(id,visitor_id,events,views,landing) VALUES('s1','v1',1,1,'/a-post')`); err != nil {
+		t.Fatal(err)
+	}
+	visitReferrers(t)
 	rec := httptest.NewRecorder()
 	a.handleAnalyticsExport(rec, httptest.NewRequest("GET", "/api/v1/analytics/export?report=referrers&format=csv&days=30", nil))
 	body := rec.Body.String()

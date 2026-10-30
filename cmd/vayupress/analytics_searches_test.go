@@ -28,7 +28,7 @@ func TestSearchesSayWhatFollowed(t *testing.T) {
 		}
 	}
 	a := &App{analytics: analytics.New(dbpkg.DB)}
-	got := a.osSearchesSection(context.Background(), "s1", 7)
+	got := a.osSearchesSection(context.Background(), "s1", 7, noDoor)
 	for _, want := range []string{"a page, 1 (33%)", "another search, 1 (33%)", "nothing, 1 (33%)",
 		"Opened after searching", "/post-b", "rust → rust lang"} {
 		if !strings.Contains(got, want) {
@@ -52,7 +52,7 @@ func TestPagesAfterSearchingAreSharesOfAll(t *testing.T) {
 		}
 	}
 	a := &App{analytics: analytics.New(dbpkg.DB)}
-	if got := a.osSearchesSection(context.Background(), "s1", 7); !strings.Contains(got, `/p0</span><span class="vp-bar__val">2<span class="vp-bar__pct">16%</span>`) {
+	if got := a.osSearchesSection(context.Background(), "s1", 7, noDoor); !strings.Contains(got, `/p0</span><span class="vp-bar__val">2<span class="vp-bar__pct">16%</span>`) {
 		t.Errorf("/p0 is not 2 of the 12 searches followed by a page")
 	}
 }

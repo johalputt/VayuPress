@@ -49,6 +49,36 @@ or the install's (`ANALYTICS_RETAIN_DAYS`). A view counts only what it shows and
 (`renderSiteAnalyticsBody` in `cmd/vayupress/admin_os_scoped_analytics.go`);
 `analytics_overview_test.go` holds every part of the page to its view.
 
+## Narrowing a page to some readers
+
+Every row of every list is a link to the readers it counts: a referrer, a
+channel, a page, a landing page, a country, region or city, a device,
+browser or system, a campaign, an event, a search. Following it opens the
+overview of those readers alone, and a bar under the views names what the
+page is narrowed to, each with its own way off, beside **Save as segment**
+and **Clear**. Rows add up: a referrer, then one of the pages its readers
+read, is the readers from that referrer who read that page. A second row on
+the same dimension replaces the first, and a page takes five filters.
+
+A filter picks visits, not events. "Came from www.google.com" keeps every
+event of every visit that arrived from Google, so the pages those readers
+went on to read are counted, not only the one they landed on. A filter on
+something a visit has (its referrer, channel, landing page, exit page,
+place, device, browser, system, language) reads the visit; a filter on
+something a visit does (a page read, an event, a campaign carried) keeps the
+visits that did it, and "is not" the visits that did not. The dimensions
+and their rules are the Explorer's (`internal/focus` carries them,
+`internal/analytics/focus.go` turns them into each reader's clause).
+
+The filters are in the address (`?f=dimension:operator:value`, once each),
+so a narrowed page can be bookmarked or sent, and every view, Live, the
+Explorer and an export keep them. The engagement store (time on page,
+reading depth, readers' speed) keeps the readings of the same day's
+visitors the event log names. The server's own measures on Performance
+count every request the site answered and cannot be narrowed, which the
+section says when a filter is on. A saved segment opens as the page
+narrowed to it, when its filters are ones a page takes.
+
 ## What is recorded
 
 One row per event in `analytics_pageviews`: a page view or a custom event,
@@ -114,11 +144,14 @@ The page of a visit's first event.
 ### Referrer
 
 The host of the page that sent a page view, recorded without its
-path. A site's own hosts are never referrers.
+path. A site's own hosts are never referrers. A visit's referrer is its
+first page view's, kept on the visit (migration 122); Referrers lists
+visits by it.
 
 ### Channel
 
-How a page view arrived, from its referrer's host: Direct when
+How a visit arrived, from its referrer's host, so a reader moving between
+a site's pages is not an arrival at all: Direct when
 there is none or it is one of the install's own hosts (a reader moving
 between a site's pages), else AI assistants, Email, Workplace apps, Social,
 Organic search or Referral, tried in that order. The hosts each is known by

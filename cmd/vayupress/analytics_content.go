@@ -56,7 +56,7 @@ func (a *App) contentReport(ctx context.Context, scope string, days int) (analyt
 }
 
 // osContentSection is the Analytics page's section on what each page did.
-func (a *App) osContentSection(ctx context.Context, scope, explore string, days int) string {
+func (a *App) osContentSection(ctx context.Context, scope, explore string, days int, door func(dim, value string) string) string {
 	const title = "What the content did"
 	rep, err := a.contentReport(ctx, scope, days)
 	if err != nil {
@@ -84,7 +84,11 @@ func (a *App) osContentSection(ctx context.Context, scope, explore string, days 
 			if i == contentShownOnPage {
 				break
 			}
-			rows = append(rows, []ui.HTML{ui.Text(prettyPathText(p.Path)), ui.Text(p.Reason)})
+page := ui.Text(prettyPathText(p.Path))
+			if href := door("path", p.Path); href != "" {
+				page = ui.HTML(`<a href="` + html.EscapeString(href) + `">`) + page + `</a>`
+			}
+			rows = append(rows, []ui.HTML{page, ui.Text(p.Reason)})
 		}
 		body := string(ui.Table([]string{"Page", "Why it is here"}, rows, "No page met this."))
 		if c.Total > contentShownOnPage {

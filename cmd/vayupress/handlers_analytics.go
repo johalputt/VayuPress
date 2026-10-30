@@ -424,7 +424,8 @@ func (a *App) writeRealtime(w http.ResponseWriter, r *http.Request, scope string
 		writeAPIError(w, r, http.StatusServiceUnavailable, "analytics-disabled", "Analytics not initialised", "")
 		return
 	}
-	data, err := a.analytics.RealtimeScoped(r.Context(), scope)
+	// The live panel of a narrowed page counts those readers alone.
+	data, err := a.analytics.RealtimeScoped(a.narrowed(r.Context(), focusOf(r.URL.Query())), scope)
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
 		return
@@ -446,7 +447,7 @@ func (a *App) writeRealtime(w http.ResponseWriter, r *http.Request, scope string
 			if cn := countryName(c.Country); cn != "" {
 				name += ", " + cn
 			}
-			resp.ActiveCities = append(resp.ActiveCities, realtimeCountry{Code: c.Country, Name: name, Flag: countryFlagURL(c.Country), Label: name, Count: c.Count})
+			resp.ActiveCities = append(resp.ActiveCities, realtimeCountry{Code: c.Country, Key: c.City, Name: name, Flag: countryFlagURL(c.Country), Label: name, Count: c.Count})
 		}
 		if data.WindowMinutes > 0 {
 			resp.WindowMinutes = data.WindowMinutes
@@ -458,6 +459,7 @@ func (a *App) writeRealtime(w http.ResponseWriter, r *http.Request, scope string
 			}
 			resp.ActiveCountries = append(resp.ActiveCountries, realtimeCountry{
 				Code:  c.Label,
+				Key:   c.Label,
 				Name:  name,
 				Flag:  countryFlagURL(c.Label),
 				Label: name, // back-compat for older cached clients reading "label"
@@ -470,7 +472,10 @@ func (a *App) writeRealtime(w http.ResponseWriter, r *http.Request, scope string
 
 // realtimeCountry is the display-enriched live country row sent to the browser.
 type realtimeCountry struct {
-	Code  string `json:"code"`
+	Code string `json:"code"`
+	// Key is what a filter on the row is given: the country's code, or the
+	// city's own name (Name is "City, Country").
+	Key   string `json:"key,omitempty"`
 	Name  string `json:"name"`
 	Flag  string `json:"flag"`  // served SVG URL, or "" when unavailable
 	Label string `json:"label"` // = Name; kept so older cached JS still shows text

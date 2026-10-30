@@ -38,16 +38,19 @@ func TestReferrerChannel(t *testing.T) {
 	}
 }
 
-// A view one of the install's own pages led to is internal navigation:
-// Direct, as the engagement classifier has it, never a referral from the
-// site to itself.
+// A channel counts visits by the referrer each arrived by, so a reader's
+// moves from one of the site's pages to another are not arrivals at all: the
+// contract's five visits are one from a search, one from a link and three
+// with no referrer. Counted as page views by their referrer, every move
+// inside the site was Direct (6 here), which made Direct most of every
+// site's traffic.
 func TestOwnPagesAreNotAReferral(t *testing.T) {
 	s, _ := contractStore(t)
 	got, err := s.ChannelsScoped(context.Background(), "s1", 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]int{"Direct": 6, "Organic search": 1, "Social": 1}
+	want := map[string]int{"Direct": 3, "Organic search": 1, "Social": 1}
 	if len(got) != len(want) {
 		t.Fatalf("channels = %+v, want %v", got, want)
 	}

@@ -58,7 +58,7 @@ func (s *Store) PathFlowsScoped(ctx context.Context, scope string, days, limit i
 	from, until := span.Days(ctx, time.Now(), days)
 
 	// Ordered by session then time so consecutive rows form each visitor's path.
-	clause, carg := domainClause(scope)
+	clause, carg := s.eventScope(ctx, scope, "", from, until)
 	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT session_id, url_path FROM analytics_pageviews
 		 WHERE created_at>=? AND created_at<? AND event_type=1`+clause+`

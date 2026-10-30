@@ -172,7 +172,8 @@ func TestTheAccuracyContract(t *testing.T) {
 
 // "How they found you" counted every event under its referrer, so a reader
 // who arrived from a search and then signed up was two search arrivals. It
-// counts page views, as the referrer list beside it does.
+// counts visits by the referrer each arrived by, as the referrer list beside
+// it does.
 func TestAChannelCountsArrivalsNotEvents(t *testing.T) {
 	s := newExtStore(t)
 	ctx := context.Background()

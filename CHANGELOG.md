@@ -8,6 +8,36 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Every row is the way into its readers.** A referrer, channel, page,
+  landing page, country, region, city, device, browser, system, campaign,
+  event or search in any Analytics list (Live's included) opens the overview
+  of those readers alone: their figures, every day, the pages they landed on
+  and went on to read, how they arrived. A bar under the views names what
+  the page is narrowed to, each with its way off, Save as segment and Clear;
+  rows add up, every view, Live, the Explorer and an export keep the
+  filters, and the address carries them. A saved segment opens as the page
+  narrowed to it.
+
+### Changed
+
+- **Referrers and How they found you count visits.** Both counted page
+  views by their referrer, so every move from one of a site's pages to
+  another was a Direct arrival, and Direct was most of a site's traffic.
+  They now count visits by the referrer each arrived by, kept on the visit
+  (migration 122, backfilled).
+- **More AI assistants are named as such**: NotebookLM, Yuanbao, DeepSeek,
+  Grok, Le Chat, Meta AI, Kimi and Doubao, which counted as referrals or as
+  Google search.
+
+### Fixed
+
+- **How far they read** counted the trailing days when dates of the
+  operator's own were chosen; it counts the chosen dates.
+- **An export** counted the last 30 days whatever the page showed; it
+  counts the page's dates.
+
 ## [3.18.17] — 2026-10-30
 
 Analytics as a bar of views, each its own page with its sections open; a period of dates you choose; and how long the figures are kept, at the end of the bar.

@@ -143,8 +143,9 @@ func (s *Store) BySite(ctx context.Context, days int) ([]SiteFigures, error) {
 		days = 30
 	}
 	from, until := span.Days(ctx, s.now(), days)
+	clause, carg := s.eventScope(ctx, ScopeAllDomains, "", from, until)
 	rows, err := s.readDB().QueryContext(ctx, `SELECT domain_id, SUM(event_type=1), COUNT(DISTINCT visitor_id)
-		FROM analytics_pageviews WHERE created_at>=? AND created_at<? GROUP BY +domain_id ORDER BY 2 DESC, 1`, from, until)
+		FROM analytics_pageviews WHERE created_at>=? AND created_at<?`+clause+` GROUP BY +domain_id ORDER BY 2 DESC, 1`, append([]any{from, until}, carg...)...)
 	if err != nil {
 		return nil, err
 	}

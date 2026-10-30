@@ -175,8 +175,11 @@ test("Every Analytics view keeps to the page grammar", async ({ page }) => {
   // Each page is a bar of views; every view is measured, each counted in
   // the background on its first visit, so the placeholder is waited out.
   for (const base of ["/os/analytics", "/os/platform/analytics"]) {
-    for (const view of ["overview", "audience", "sources", "content", "behaviour", "performance", "goals", "live"]) {
-      const href = base + (view === "overview" ? "" : "?view=" + view);
+    // A page narrowed to some readers too, with the bar that names them.
+    const hrefs = ["overview", "audience", "sources", "content", "behaviour", "performance", "goals", "live"]
+      .map((view) => base + (view === "overview" ? "" : "?view=" + view))
+      .concat([base + "?f=device%3Ais%3ADesktop"]);
+    for (const href of hrefs) {
       await page.goto(href);
       for (let i = 0; i < 20 && (await page.getByText("This is counted in the background").count()) > 0; i++) {
         await page.waitForTimeout(1000);

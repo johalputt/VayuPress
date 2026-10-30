@@ -13,6 +13,7 @@ import (
 	"errors"
 	"html"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -101,12 +102,21 @@ func segmentWords(fs []analytics.ExploreFilter) string {
 	return strings.Join(parts, " and ")
 }
 
+// segmentFocus is a segment's filters as the address writes them.
+func segmentFocus(fs []analytics.ExploreFilter) []string {
+	out := make([]string, 0, len(fs))
+	for _, f := range fs {
+		out = append(out, encodeFocus(f))
+	}
+	return out
+}
+
 // osSegmentsSection is the Analytics page's segments: each with the
 // visitors it held over the period and their share of all of them, and the
 // way into the Explorer with it applied: v's segments, counted over v's
 // visits. Counted in the page's background cache, which a segment saved or
 // deleted refreshes.
-func (a *App) osSegmentsSection(ctx context.Context, v analyticsView, days int) string {
+func (a *App) osSegmentsSection(ctx context.Context, v analyticsView, days int, p analyticsSpan) string {
 	scope, explore := v.scope, v.base+"/explore"
 	list, err := a.analytics.ListSegments(ctx, v.defs)
 	if err != nil || len(list) == 0 {
@@ -124,9 +134,17 @@ func (a *App) osSegmentsSection(ctx context.Context, v analyticsView, days int) 
 		if res, err := a.analytics.Explore(ctx, q); err == nil {
 			count, share = strconv.FormatFloat(res.Total, 'f', 0, 64), osShareLabel(int(res.Total), int(all.Total))
 		}
+		// A segment opens as the page narrowed to it, when its filters are
+		// ones a page takes; the Explorer has it either way.
 		link := explore + "?seg=" + g.ID + "&metric=visitors&by=day&days=" + strconv.Itoa(days)
+		name := `<a href="` + html.EscapeString(link) + `">` + html.EscapeString(g.Name) + `</a>`
+		if in := (url.Values{focusParam: segmentFocus(g.Filters)}); len(g.Filters) <= analytics.ExploreMaxFilters && len(focusOf(in)) == len(g.Filters) {
+			np := p
+			np.focus = focusOf(in)
+			name = `<a href="` + html.EscapeString(analyticsHref(v.base, "overview", np)) + `">` + html.EscapeString(g.Name) + `</a> <a class="muted text-xs" href="` + html.EscapeString(link) + `">Explorer</a>`
+		}
 		rows = append(rows, []ui.HTML{
-			ui.HTML(`<a href="` + html.EscapeString(link) + `">` + html.EscapeString(g.Name) + `</a><br><span class="muted text-xs">` + html.EscapeString(segmentWords(g.Filters)) + `</span>`),
+			ui.HTML(name + `<br><span class="muted text-xs">` + html.EscapeString(segmentWords(g.Filters)) + `</span>`),
 			ui.Text(count), ui.HTML(share),
 		})
 	}
@@ -157,17 +175,7 @@ func exploreSegments(base, api, site string, list []analytics.Segment, x explore
 	b.WriteString(`<p class="settings-row-hint">Start from: ` + strings.Join(presets, " · ") + `. Adjust the filters, count, then save them.</p>`)
 	if len(x.q.Filters) > 0 {
 		b.WriteString(`<div class="page-lead"><button type="button" class="btn btn--sm" data-sheet="segment-new">Save these filters as a segment</button></div>`)
-		// The filters ride in a double-quoted attribute. json.Marshal already
-		// writes <, > and & as \u escapes, so a double quote is the one
-		// character left that could end the attribute; it is replaced by its
-		// entity here, where the value is quoted, rather than trusted to a
-		// general escaper the reader has to check.
-		fs, _ := json.Marshal(x.q.Filters)
-		attr := strings.ReplaceAll(string(fs), `"`, "&#34;")
-		b.WriteString(string(ui.Sheet("segment-new", "Save as a segment", ui.Rows(
-			ui.Row{Label: "Name", ID: "segment-name", Hint: "It stands for " + segmentWords(x.q.Filters) + ".",
-				Control: ui.HTML(`<input class="input" id="segment-name" maxlength="80" placeholder="Returning readers">`)},
-		)+ui.HTML(`<div class="mt-3"><button type="button" class="btn btn--primary btn--sm" data-segment-save data-filters="`+attr+`">Save</button></div>`))))
+		b.WriteString(string(segmentSaveSheet(x.q.Filters, "")))
 	}
 	b.WriteString(`<span class="text-xs muted" id="segment-status" role="status" aria-live="polite"></span>`)
 	return string(ui.Section("Segments", "Saved filters, kept for this site", ui.HTML(`<div id="segments" data-segments-api="`+html.EscapeString(api)+

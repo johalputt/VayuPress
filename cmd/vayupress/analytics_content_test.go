@@ -40,7 +40,7 @@ func TestASitesContentIsItsOwnPages(t *testing.T) {
 		}
 	}
 	a := &App{analytics: analytics.New(dbpkg.DB), vaEngagement: vastore.New(dbpkg.DB)}
-	got := a.osContentSection(ctx, "s1", "/os/d/s1/analytics/explore", 7)
+	got := a.osContentSection(ctx, "s1", "/os/d/s1/analytics/explore", 7, noDoor)
 	for _, want := range []string{
 		"8 pages had views enough to compare, and 8 of them readings enough as well",
 		"<td>/p1</td><td>40 views, none in the days before</td>",

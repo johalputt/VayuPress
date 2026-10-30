@@ -151,8 +151,9 @@ func (s *Store) GoalResultsOver(ctx context.Context, defs, scope string, days in
 		return nil, err
 	}
 	from, until := span.Days(ctx, time.Now(), days)
-	clause, carg := domainClause(scope)
-	pclause, _ := domainClauseOn("p", scope)
+	// The two clauses bind the same arguments, in the same order.
+	clause, carg := s.eventScope(ctx, scope, "", from, until)
+	pclause, _ := s.eventScope(ctx, scope, "p", from, until)
 
 	// Denominator: distinct visitors active in the window.
 	totalVisitors := 0

@@ -114,19 +114,19 @@ func TestATrendNeedsTwoDaysWithViews(t *testing.T) {
 // the script fills (pages, referrers, channels, countries, cities, devices,
 // browsers), and nothing that restates it (a LIVE pill, pulsing rings).
 func TestLiveCardIsAFigureAndItsLists(t *testing.T) {
-	out := osLiveCard("/os/api/analytics/realtime")
+	out := osLiveCard("/os/api/analytics/realtime", "")
 	assertCSPSafe(t, "osLiveCard", out)
 	for _, want := range []string{
 		`data-live-src="/os/api/analytics/realtime"`,
 		`<div class="stat-card__label">Reading now</div><div class="stat-card__value" data-live-count>`,
 		`data-live-window`, `data-live-updated`,
-		`<div class="vp-bars" data-live-pages>`,
-		`<div class="vp-bars" data-live-referrers>`,
-		`<div class="vp-bars" data-live-channels>`,
-		`<div class="vp-bars" data-live-countries>`,
-		`<div class="vp-bars" data-live-cities>`,
-		`<div class="vp-bars" data-live-devices>`,
-		`<div class="vp-bars" data-live-browsers>`,
+		`<div class="vp-bars" data-live-pages data-live-dim="path">`,
+		`<div class="vp-bars" data-live-referrers data-live-dim="visit_referrer">`,
+		`<div class="vp-bars" data-live-channels data-live-dim="visit_channel">`,
+		`<div class="vp-bars" data-live-countries data-live-dim="country">`,
+		`<div class="vp-bars" data-live-cities data-live-dim="city">`,
+		`<div class="vp-bars" data-live-devices data-live-dim="device">`,
+		`<div class="vp-bars" data-live-browsers data-live-dim="browser">`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("live card missing %q", want)

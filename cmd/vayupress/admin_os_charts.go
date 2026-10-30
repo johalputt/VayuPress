@@ -50,6 +50,9 @@ type osChartBar struct {
 	// Hint is what the row's tooltip says when it is not the label: a page's
 	// path under its title.
 	Hint string
+	// Href, when set, makes the whole row a link: the Analytics page
+	// narrowed to the row's readers.
+	Href string
 }
 
 // barWidthClass snaps a 0..100 percentage to the nearest available w-N class
@@ -192,7 +195,14 @@ func osBarList(items []osChartBar, denom osBarDenom, emptyMsg string) string {
 		if it.Hint != "" {
 			hint = it.Hint
 		}
-		out += `<div class="vp-bar">` +
+		cls := "vp-bar"
+		if it.Href != "" {
+			// The link is the label; its ::after stretches over the row, so
+			// the row is one target and the label stays the link's name.
+			cls += " vp-bar--door"
+			lab = `<a class="vp-bar__door" href="` + html.EscapeString(it.Href) + `">` + lab + `</a>`
+		}
+		out += `<div class="` + cls + `">` +
 			`<span class="vp-bar__label" title="` + html.EscapeString(hint) + `">` + lab + `</span>` +
 			`<span class="vp-bar__val">` + humanCount(it.Value) + share + `</span>` +
 			`<span class="vp-bar__track"><span class="vp-bar__fill ` + barWidthClass(pct) + `"></span></span>` +

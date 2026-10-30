@@ -25,7 +25,7 @@ const behaviourShown = 10
 // osBehaviourSection is the Analytics page's section on what readers did,
 // for scope (a site, or analytics.ScopeAllDomains), linking into the
 // Explorer at explore.
-func (a *App) osBehaviourSection(ctx context.Context, scope, explore string, days int) string {
+func (a *App) osBehaviourSection(ctx context.Context, scope, explore string, days int, door func(dim, value string) string) string {
 	part := func(title string, m analytics.ExploreMetric, by, empty string) string {
 		res, err := a.analytics.Explore(ctx, analytics.ExploreQuery{Scope: scope, Metric: m, By: by, Days: days})
 		if err != nil {
@@ -36,7 +36,7 @@ func (a *App) osBehaviourSection(ctx context.Context, scope, explore string, day
 			if i == behaviourShown {
 				break
 			}
-			bars = append(bars, osChartBar{Label: prettyPathText(r.Key), Value: int(r.Value)})
+bars = append(bars, osChartBar{Label: prettyPathText(r.Key), Value: int(r.Value), Hint: r.Key, Href: door(by, r.Key)})
 		}
 		more := ""
 		if len(res.Rows) > behaviourShown {

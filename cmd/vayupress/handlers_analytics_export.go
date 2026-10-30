@@ -94,6 +94,13 @@ func (a *App) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	days := queryInt(r, "days", 30)
+	// The page's chosen dates and the readers it is narrowed to, as the
+	// page counted them.
+	per := analyticsSpanOf(r)
+	if per.ranged() {
+		days = per.days
+	}
+	r = r.WithContext(a.scoped(r.Context(), per))
 
 	header, rows, payload, err := a.buildAnalyticsExport(r, v, report, days)
 	if err != nil {
@@ -168,7 +175,7 @@ func (a *App) buildAnalyticsExport(r *http.Request, v analyticsView, report stri
 		if e != nil {
 			return nil, nil, nil, e
 		}
-		header = []string{"referrer", "count"}
+		header = []string{"referrer", "visits"}
 		for _, it := range items {
 			rows = append(rows, []string{it.Referrer, strconv.Itoa(it.Count)})
 		}

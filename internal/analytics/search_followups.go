@@ -67,7 +67,7 @@ func (s *Store) SearchFollowUpsScoped(ctx context.Context, scope string, days, l
 		limit = 10
 	}
 	from, until := span.Days(ctx, s.now(), days)
-	clause, carg := domainClauseOn("s", scope)
+	clause, carg := s.eventScope(ctx, scope, "s", from, until)
 	rows, err := s.readDB().QueryContext(ctx, searchFollowUpSQL+clause, append([]any{from, until}, carg...)...)
 	if err != nil {
 		return nil, err

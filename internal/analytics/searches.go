@@ -93,7 +93,7 @@ func (s *Store) SearchesScoped(ctx context.Context, scope string, days, limit in
 		limit = 50
 	}
 	from, until := span.Days(ctx, s.now(), days)
-	clause, carg := domainClauseOn("p", scope)
+	clause, carg := s.eventScope(ctx, scope, "p", from, until)
 	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT p.event_name, COUNT(1), COUNT(DISTINCT p.visitor_id),
 		        SUM(CASE WHEN d.property_value='0' THEN 1 ELSE 0 END)

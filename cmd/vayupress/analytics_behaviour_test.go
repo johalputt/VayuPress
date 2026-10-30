@@ -30,7 +30,7 @@ func TestWhatReadersDidIsTheSitesOwn(t *testing.T) {
 		}
 	}
 	a.vaEngagement = vastore.New(dbpkg.DB)
-	got := a.osBehaviourSection(context.Background(), "s1", "/os/d/s1/analytics/explore", 7)
+	got := a.osBehaviourSection(context.Background(), "s1", "/os/d/s1/analytics/explore", 7, noDoor)
 	for _, want := range []string{"Where visits ended", "example.com/x", "/guide.pdf",
 		"<td>/a</td><td>2</td><td>50%</td><td>50%</td>"} {
 		if !strings.Contains(got, want) {
@@ -51,7 +51,7 @@ func TestWhatReadersDidIsTheSitesOwn(t *testing.T) {
 	if _, err := dbpkg.DB.Exec(`INSERT INTO analytics_pageviews(id,session_id,url_path,event_type,event_name,domain_id,created_at,visitor_id) VALUES('o3','v2','/b',4,'example.com/x','s1',datetime('now'),'r2')`); err != nil {
 		t.Fatal(err)
 	}
-	if more := a.osBehaviourSection(context.Background(), "s1", "/os/d/s1/analytics/explore", 7); !strings.Contains(more, `example.com/x</span><span class="vp-bar__val">2<span class="vp-bar__pct">16%</span>`) ||
+	if more := a.osBehaviourSection(context.Background(), "s1", "/os/d/s1/analytics/explore", 7, noDoor); !strings.Contains(more, `example.com/x</span><span class="vp-bar__val">2<span class="vp-bar__pct">16%</span>`) ||
 		!strings.Contains(more, "All of them in the Explorer") {
 		t.Errorf("the first link out is not 2 of all 12, with the rest in the Explorer")
 	}

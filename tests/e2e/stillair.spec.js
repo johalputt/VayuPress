@@ -384,8 +384,12 @@ for (const width of [1280, 1024, 390]) {
     await openConsole(page);
     const findings = [];
     for (const base of ["/os/analytics", "/os/platform/analytics"]) {
-      for (const view of ["overview", "audience", "sources", "content", "behaviour", "performance", "goals", "live"]) {
-        const href = base + (view === "overview" ? "" : "?view=" + view);
+      // Every view, and the overview and Sources narrowed to some readers,
+      // with the bar that names them.
+      const hrefs = ["overview", "audience", "sources", "content", "behaviour", "performance", "goals", "live"]
+        .map((view) => base + (view === "overview" ? "" : "?view=" + view))
+        .concat([base + "?f=device%3Ais%3ADesktop", base + "?view=sources&f=device%3Ais%3ADesktop"]);
+      for (const href of hrefs) {
         await page.goto(href);
         const counting = page.getByText("This is counted in the background");
         for (let i = 0; i < 20 && (await counting.count()) > 0; i++) {
@@ -402,6 +406,45 @@ for (const width of [1280, 1024, 390]) {
     expect(findings).toEqual([]);
   });
 }
+
+// A row is the way into its readers: anywhere on it (here its count) opens
+// the overview of them, the bar names what the page is narrowed to, and its
+// way off brings the whole page back.
+test("a row narrows Analytics to its readers, and the bar takes it off", async ({ page }) => {
+  await openConsole(page);
+  const settle = async () => {
+    const counting = page.getByText("This is counted in the background");
+    for (let i = 0; i < 20 && (await counting.count()) > 0; i++) {
+      await page.waitForTimeout(1000);
+      await page.reload();
+    }
+  };
+  // One reader, so the lists have a row whatever ran before: a beacon as a
+  // browser sends it, waited for in the live count, which reads the visits
+  // themselves; the page is then asked for a period no earlier visit has
+  // cached.
+  const sent = await page.request.post("/api/v1/analytics/collect", {
+    headers: { "Content-Type": "application/json", "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36" },
+    data: { u: "/a-row-to-follow", r: "https://example.org/", t: "A row", h: "localhost", event_type: 1 },
+  });
+  expect(sent.status()).toBe(204);
+  await expect.poll(async () => (await (await page.request.get("/os/analytics/realtime")).json()).active_visitors, { timeout: 15000 }).toBeGreaterThan(0);
+  await page.goto("/os/analytics?view=audience&days=7");
+  await settle();
+  const row = page.locator(".vp-bar--door").first();
+  await expect(row).toBeVisible();
+  const name = (await row.locator(".vp-bar__door").textContent()).trim();
+  // A pointer at the row's count: the link's cover takes it.
+  const at = await row.locator(".vp-bar__val").boundingBox();
+  await page.mouse.click(at.x + at.width / 2, at.y + at.height / 2);
+  await expect(page).toHaveURL(/[?&]f=/);
+  await settle();
+  const chip = page.locator(".sa-focus__chip").first();
+  await expect(chip).toContainText(name);
+  await chip.locator(".sa-focus__off").click();
+  await expect(page).not.toHaveURL(/[?&]f=/);
+  await expect(page.locator(".sa-focus")).toHaveCount(0);
+});
 
 // On a laptop screen the rail starts as icons, since with an app's section list
 // beside it the content column was too narrow for its tables. The toggle still

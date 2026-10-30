@@ -78,6 +78,18 @@ var aiSystems = map[string]string{
 	"you.com":               "You.com",
 	"phind.com":             "Phind",
 	"poe.com":               "Poe",
+	// Seen on a live install as referrals before they were listed: Google's
+	// NotebookLM (both of its hosts) and Tencent's Yuanbao. The rest are the
+	// assistants with their own hosts that link to their sources.
+	"notebook.google.com":   "NotebookLM",
+	"notebooklm.google.com": "NotebookLM",
+	"yuanbao.tencent.com":   "Yuanbao",
+	"chat.deepseek.com":     "DeepSeek",
+	"grok.com":              "Grok",
+	"chat.mistral.ai":       "Le Chat",
+	"meta.ai":               "Meta AI",
+	"kimi.com":              "Kimi",
+	"doubao.com":            "Doubao",
 }
 
 // socialPlatforms maps a social referrer host substring to the platform name.

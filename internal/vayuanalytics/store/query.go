@@ -6,6 +6,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/focus"
 	"github.com/johalputt/vayupress/internal/span"
 )
 
@@ -20,6 +21,14 @@ func spanTimes(ctx context.Context, days int) (from, until time.Time) {
 	from, _ = time.Parse("2006-01-02", f)
 	until, _ = time.Parse("2006-01-02", u)
 	return from, until
+}
+
+// focusReaders is the clause keeping the readings of the readers an
+// Analytics page is narrowed to (package focus) over [from, until): a
+// reading's visitor hash is the event log's, of which the log keeps the
+// first 32 characters.
+func focusReaders(ctx context.Context, from, until time.Time) (string, []any) {
+	return focus.VisitorClause(ctx, "substr(visitor_hash,1,32)", from.Format("2006-01-02"), until.Format("2006-01-02"))
 }
 
 // fromDay returns the inclusive lower-bound day string for a trailing window.
@@ -413,7 +422,9 @@ func (s *Store) WebVitalsP75Scoped(ctx context.Context, domainID string, days in
 func (s *Store) webVitalsP75(ctx context.Context, days int, clause string, cargs []any) (*WebVitals, error) {
 	from, until := spanTimes(ctx, days)
 	out := &WebVitals{}
-	args := append([]any{from, until}, cargs...)
+	f, fargs := focusReaders(ctx, from, until)
+	clause += f
+	args := append(append([]any{from, until}, cargs...), fargs...)
 	// measured is the condition for a reading to have the vital: LCP and
 	// INP are never 0 when measured, and a layout shift is flagged.
 	pick := func(col, measured string, dst *int, count *int64) error {

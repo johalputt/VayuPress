@@ -4,6 +4,7 @@ package analytics
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -54,10 +55,12 @@ func TestAHostedDomainIsNotReportedAsReferringTrafficToItself(t *testing.T) {
 	// Three arrivals: one genuinely external, one from the primary's own
 	// subdomain (already excluded before this change), and one from a hosted
 	// client's own hostname (the finding).
-	for _, ref := range []string{"news.example.com", "mail.operator.example", "client.example"} {
+	// Three readers, so three visits: the list counts the visits each
+	// referrer began.
+	for i, ref := range []string{"news.example.com", "mail.operator.example", "client.example"} {
 		if err := s.Collect(context.Background(), CollectRequest{
 			URL: "/x", Referrer: "https://" + ref + "/page", Hostname: "client.example", EventType: 1,
-		}, "203.0.113.7", "Mozilla/5.0", "domA"); err != nil {
+		}, "203.0.113."+strconv.Itoa(7+i), "Mozilla/5.0", "domA"); err != nil {
 			t.Fatal(err)
 		}
 	}

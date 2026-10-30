@@ -188,13 +188,19 @@ type Overview struct {
 func (s *Store) overviewWindow(ctx context.Context, scope, from, to string) (*Overview, error) {
 	where := "created_at>=?"
 	args := []any{from}
+	until := span.Open
 	if to != "" {
 		where += " AND created_at<?"
 		args = append(args, to)
+		until = to
 	}
-	clause, carg := domainClause(scope)
+	vwhere, vargs := where, args
+	clause, carg := s.eventScope(ctx, scope, "", from, until)
 	where += clause
 	args = append(args, carg...)
+	vclause, vcarg := s.visitScope(ctx, scope, "", from, until)
+	vwhere += vclause
+	vargs = append(vargs, vcarg...)
 	o := &Overview{}
 	db := s.readDB()
 	if err := db.QueryRowContext(ctx,
@@ -215,7 +221,7 @@ func (s *Store) overviewWindow(ctx context.Context, scope, from, to string) (*Ov
 	var avg sql.NullFloat64
 	if err := db.QueryRowContext(ctx,
 		`SELECT COUNT(1),COALESCE(SUM(events=1 AND views=1),0),AVG(CASE WHEN events>1 THEN (julianday(last_at)-julianday(created_at))*86400.0 END)
-		 FROM analytics_sessions WHERE events>0 AND `+where, args...).
+		 FROM analytics_sessions WHERE events>0 AND `+vwhere, vargs...).
 		Scan(&o.TotalVisits, &bounces, &avg); err != nil {
 		return nil, err
 	}
@@ -263,7 +269,7 @@ func (s *Store) PageviewSeriesScoped(ctx context.Context, scope string, days int
 		days = 14
 	}
 	from, until := span.Days(ctx, s.now(), days)
-	clause, carg := domainClause(scope)
+	clause, carg := s.eventScope(ctx, scope, "", from, until)
 	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT DATE(created_at) as d,SUM(event_type=1),COUNT(DISTINCT visitor_id) FROM analytics_pageviews WHERE created_at>=? AND created_at<?`+clause+` GROUP BY d HAVING d IS NOT NULL ORDER BY d`, append([]any{from, until}, carg...)...)
 	if err != nil {
@@ -333,11 +339,16 @@ func (s *Store) TopReferrersScoped(ctx context.Context, scope string, days, limi
 	// as direct. One dataset, two panels, opposite answers: the referrer list was
 	// topped by the operator's own webmail and MCP hosts, each with a count larger
 	// than the site's entire pageview total.
+	//
+	// Counted as visits by the referrer each arrived by (migration 122), as
+	// How they found you is: a reader who arrived from a site and read three
+	// pages is one visit from it, and a row here is the number of visits an
+	// Analytics page narrowed to that referrer counts.
 	notSelf, selfArgs := s.selfHostExclusion("referrer")
-	clause, carg := domainClause(scope)
+	clause, carg := s.visitScope(ctx, scope, "", from, until)
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT referrer,COUNT(1) as cnt FROM analytics_pageviews
-		 WHERE created_at>=? AND created_at<? AND event_type=1 AND referrer!=''`+clause+notSelf+
+		`SELECT referrer,COUNT(1) as cnt FROM analytics_sessions
+		 WHERE created_at>=? AND created_at<? AND events>0 AND referrer!=''`+clause+notSelf+
 			` GROUP BY referrer ORDER BY cnt DESC LIMIT ?`,
 		append(append(append([]any{from, until}, carg...), selfArgs...), limit)...)
 	if err != nil {
@@ -362,6 +373,9 @@ func (s *Store) TopReferrersScoped(ctx context.Context, scope string, days, limi
 type AudienceStat struct {
 	Label string `json:"label"`
 	Count int    `json:"count"`
+	// Key is what a filter on the row is given when it is not the label: a
+	// channel's category ("organic"), named "Organic search".
+	Key string `json:"key,omitempty"`
 }
 
 // Browsers returns visitor counts by browser bucket.
@@ -410,7 +424,7 @@ func (s *Store) AudienceScoped(ctx context.Context, scope, column string, days i
 		column = "browser"
 	}
 	from, until := span.Days(ctx, s.now(), days)
-	clause, carg := domainClause(scope)
+	clause, carg := s.visitScope(ctx, scope, "", from, until)
 	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT `+column+`,COUNT(DISTINCT visitor_id) FROM analytics_sessions WHERE created_at>=? AND created_at<? AND `+column+`!=''`+clause+` GROUP BY +`+column+` ORDER BY 2 DESC LIMIT 100`, append([]any{from, until}, carg...)...)
 	if err != nil {
@@ -459,9 +473,10 @@ func channelLabel(c classifier.Category) string {
 	return "Referral"
 }
 
-// Channels groups pageviews into acquisition channels (Direct / Organic search /
-// Social / Referral) by classifying the stored referrer host. All aggregate and
-// no-PII. Empty buckets are omitted; the result is sorted by count descending.
+// Channels groups visits into acquisition channels (Direct / Organic search /
+// Social / Referral) by classifying the referrer host each arrived by. All
+// aggregate and no-PII. Empty buckets are omitted; the result is sorted by
+// count descending.
 func (s *Store) Channels(ctx context.Context, days int) ([]AudienceStat, error) {
 	return s.ChannelsScoped(ctx, ScopeAllDomains, days)
 }
@@ -472,9 +487,13 @@ func (s *Store) ChannelsScoped(ctx context.Context, scope string, days int) ([]A
 		days = 14
 	}
 	from, until := span.Days(ctx, time.Now(), days)
-	clause, carg := domainClause(scope)
+	// Visits by the referrer each arrived by (migration 122). Page views by
+	// their referrer counted a reader's every move from one of the site's
+	// pages to another as Direct, so Direct was most of every site's traffic
+	// (90% on one with mostly search readers).
+	clause, carg := s.visitScope(ctx, scope, "", from, until)
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT referrer,COUNT(1) FROM analytics_pageviews WHERE created_at>=? AND created_at<? AND event_type=1`+clause+` GROUP BY +referrer`, append([]any{from, until}, carg...)...)
+		`SELECT referrer,COUNT(1) FROM analytics_sessions WHERE created_at>=? AND created_at<? AND events>0`+clause+` GROUP BY +referrer`, append([]any{from, until}, carg...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -494,7 +513,7 @@ func (s *Store) ChannelsScoped(ctx context.Context, scope string, days int) ([]A
 	out := make([]AudienceStat, 0, len(channelLabels))
 	for _, l := range channelLabels {
 		if buckets[l.label] > 0 {
-			out = append(out, AudienceStat{Label: l.label, Count: buckets[l.label]})
+			out = append(out, AudienceStat{Label: l.label, Count: buckets[l.label], Key: string(l.cat)})
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Count > out[j].Count })
@@ -522,7 +541,7 @@ func (s *Store) UTMStatsScoped(ctx context.Context, scope string, days int) ([]U
 		days = 14
 	}
 	from, until := span.Days(ctx, time.Now(), days)
-	clause, carg := domainClause(scope)
+	clause, carg := s.eventScope(ctx, scope, "", from, until)
 	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT utm_source,utm_medium,utm_campaign,COUNT(1) FROM analytics_pageviews WHERE created_at>=? AND created_at<? AND (utm_source!='' OR utm_medium!='' OR utm_campaign!='')`+clause+` GROUP BY utm_source,utm_medium,utm_campaign ORDER BY 4 DESC LIMIT 50`, append([]any{from, until}, carg...)...)
 	if err != nil {
@@ -559,7 +578,7 @@ func (s *Store) CustomEventsScoped(ctx context.Context, scope string, days int) 
 		days = 14
 	}
 	from, until := span.Days(ctx, time.Now(), days)
-	clause, carg := domainClause(scope)
+	clause, carg := s.eventScope(ctx, scope, "", from, until)
 	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT event_name,COUNT(1) FROM analytics_pageviews WHERE created_at>=? AND created_at<? AND event_type=2 AND event_name!=''`+clause+` GROUP BY event_name ORDER BY 2 DESC LIMIT 50`, append([]any{from, until}, carg...)...)
 	if err != nil {
@@ -630,8 +649,12 @@ func (s *Store) RealtimeScoped(ctx context.Context, scope string) (*RealtimeStat
 		ActiveReferrers: []AudienceStat{},
 		WindowMinutes:   5,
 	}
-	clause, carg := domainClause(scope)
-	pclause, _ := domainClauseOn("p", scope)
+	// The narrowed visits are looked for over the half hour the minute line
+	// covers, which holds the five minutes the rest counts. The two clauses
+	// bind the same arguments, in the same order.
+	lineFrom := s.now().UTC().Truncate(time.Minute).Add(-29 * time.Minute).Format("2006-01-02 15:04:05")
+	clause, carg := s.eventScope(ctx, scope, "", lineFrom, span.Open)
+	pclause, _ := s.eventScope(ctx, scope, "p", lineFrom, span.Open)
 	args := append([]any{since}, carg...)
 
 	// Readers a minute over the last half hour, each counted once in each
@@ -640,7 +663,7 @@ func (s *Store) RealtimeScoped(ctx context.Context, scope string) (*RealtimeStat
 	rs.ActiveByMinute = make([]int, 30)
 	if rows, err := s.readDB().QueryContext(ctx,
 		`SELECT substr(created_at,1,16),COUNT(DISTINCT visitor_id) FROM analytics_pageviews WHERE created_at>=?`+clause+` GROUP BY 1`,
-		append([]any{now.Add(-29 * time.Minute).Format("2006-01-02 15:04:05")}, carg...)...); err == nil {
+		append([]any{lineFrom}, carg...)...); err == nil {
 		for rows.Next() {
 			var minute string
 			var n int
@@ -739,7 +762,7 @@ func (s *Store) RealtimeScoped(ctx context.Context, scope string) (*RealtimeStat
 		rows.Close()
 		for _, l := range channelLabels {
 			if buckets[l.label] > 0 {
-				rs.ActiveChannels = append(rs.ActiveChannels, AudienceStat{Label: l.label, Count: buckets[l.label]})
+rs.ActiveChannels = append(rs.ActiveChannels, AudienceStat{Label: l.label, Count: buckets[l.label], Key: string(l.cat)})
 			}
 		}
 		sort.SliceStable(rs.ActiveChannels, func(i, j int) bool { return rs.ActiveChannels[i].Count > rs.ActiveChannels[j].Count })
@@ -1200,7 +1223,7 @@ func (s *Store) LandingPagesScoped(ctx context.Context, scope string, days, limi
 		limit = 20
 	}
 	from, until := span.Days(ctx, s.now(), days)
-	clause, carg := domainClause(scope)
+	clause, carg := s.visitScope(ctx, scope, "", from, until)
 	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT landing,COUNT(1),COUNT(DISTINCT visitor_id) FROM analytics_sessions
 		 WHERE created_at>=? AND created_at<? AND events>0 AND landing!=''`+clause+` GROUP BY +landing ORDER BY 2 DESC LIMIT ?`,
@@ -1229,7 +1252,7 @@ func (s *Store) TopPagesScoped(ctx context.Context, scope string, days, limit in
 		limit = 20
 	}
 	from, until := span.Days(ctx, s.now(), days)
-	clause, arg := domainClause(scope)
+	clause, arg := s.eventScope(ctx, scope, "", from, until)
 	args := append([]any{from, until}, arg...)
 	args = append(args, limit)
 

@@ -39,7 +39,7 @@ func TestGeoSectionContinentsAndSetup(t *testing.T) {
 		{Label: "DE", Count: 40},
 		{Label: "BR", Count: 20},
 	}
-	out := osGeoSection(countries, nil, nil)
+	out := osGeoSection(countries, nil, nil, noDoor)
 	assertCSPSafe(t, "osGeoSection", out)
 	for _, want := range []string{
 		">Countries<", ">Continents<", "North America", "Asia", "Europe", "South America",
@@ -58,7 +58,7 @@ func TestGeoSectionContinentsAndSetup(t *testing.T) {
 // With no location at all, the section says so in one line, then how a
 // location is recorded; no empty country and continent lists.
 func TestGeoSectionEmpty(t *testing.T) {
-	out := osGeoSection(nil, nil, nil)
+	out := osGeoSection(nil, nil, nil, noDoor)
 	assertCSPSafe(t, "osGeoSection-empty", out)
 	if !strings.HasPrefix(out, `<p class="table-empty">No location recorded yet.</p>`) || !strings.Contains(out, "cf-region") {
 		t.Errorf("empty geo section = %s", out)
@@ -74,7 +74,7 @@ func TestGeoSectionWithRegions(t *testing.T) {
 	countries := []analytics.AudienceStat{{Label: "US", Count: 100}}
 	regions := []analytics.AudienceStat{{Label: "California", Count: 60}, {Label: "Texas", Count: 40}}
 	cities := []analytics.AudienceStat{{Label: "San Jose", Count: 30}}
-	out := osGeoSection(countries, regions, cities)
+	out := osGeoSection(countries, regions, cities, noDoor)
 	assertCSPSafe(t, "osGeoSection-regions", out)
 	for _, want := range []string{"California", "Texas", "San Jose"} {
 		if !strings.Contains(out, want) {

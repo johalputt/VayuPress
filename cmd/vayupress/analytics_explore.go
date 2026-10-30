@@ -44,6 +44,9 @@ type exploreAsk struct {
 	label   string // the range, as the period selector says it
 	seg     string // a saved segment's id, applied with the filters
 	segName string
+	// focus is the readers the Analytics page it was opened from was
+	// narrowed to (?f=): every figure counts them alone.
+	focus []analytics.ExploreFilter
 }
 
 func exploreAskOf(r *http.Request, scope string) exploreAsk {
@@ -73,7 +76,7 @@ func exploreAskOf(r *http.Request, scope string) exploreAsk {
 		}
 		q.Filters = append(q.Filters, f)
 	}
-	return exploreAsk{q: q, bars: v.Get("view") == "bars", label: label, seg: v.Get("seg")}
+	return exploreAsk{q: q, bars: v.Get("view") == "bars", label: label, seg: v.Get("seg"), focus: focusOf(v)}
 }
 
 // values is the question as an address's query, in one order, so one
@@ -96,6 +99,9 @@ func (x exploreAsk) values() url.Values {
 		v.Add("fd", f.Dim)
 		v.Add("fo", f.Op)
 		v.Add("fv", f.Value)
+	}
+	for _, f := range x.focus {
+		v.Add(focusParam, encodeFocus(f))
 	}
 	return v
 }
@@ -159,7 +165,7 @@ func (a *App) handleOSExplore(w http.ResponseWriter, r *http.Request) {
 	// it once built on the band, which the lines below write, and raced.
 	key := "explore:" + scope + ":" + ask.values().Encode()
 	body, ready := exploreDash.get(key, exploreTTL, func(ctx context.Context) string {
-		res, err := a.analytics.Explore(ctx, ask.q)
+		res, err := a.analytics.Explore(a.narrowed(ctx, ask.focus), ask.q)
 		if err != nil {
 			// Shown for the TTL rather than retried on every reload: a
 			// question that cannot be counted now will not be in a second.
@@ -187,6 +193,9 @@ func exploreForm(base string, x exploreAsk, segments []analytics.Segment) ui.HTM
 	}
 	var b strings.Builder
 	b.WriteString(`<form method="get" action="` + html.EscapeString(base) + `">`)
+	for _, f := range x.focus {
+		b.WriteString(`<input type="hidden" name="` + focusParam + `" value="` + html.EscapeString(encodeFocus(f)) + `">`)
+	}
 	var fields []ui.Row
 	field := func(id, label, control string) {
 		fields = append(fields, ui.Row{Label: label, ID: id, Control: ui.HTML(control)})
@@ -293,6 +302,13 @@ func exploreSentence(x exploreAsk) string {
 	}
 	for _, f := range x.q.Filters {
 		s += ", where " + filterWords(f)
+	}
+	if len(x.focus) > 0 {
+		words := make([]string, 0, len(x.focus))
+		for _, f := range x.focus {
+			words = append(words, focusWords(f))
+		}
+		s += ". Narrowed to: " + strings.Join(words, " · ")
 	}
 	return s
 }
@@ -417,7 +433,7 @@ func (a *App) exploreCSV(w http.ResponseWriter, r *http.Request, x exploreAsk) {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid-question", err.Error(), "")
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), adminFragmentComputeTimeout)
+	ctx, cancel := context.WithTimeout(a.narrowed(r.Context(), x.focus), adminFragmentComputeTimeout)
 	defer cancel()
 	res, err := a.analytics.Explore(ctx, x.q)
 	if err != nil {
@@ -465,6 +481,11 @@ func (a *App) exploreCSV(w http.ResponseWriter, r *http.Request, x exploreAsk) {
 }
 
 // exploreButton opens the Explorer on the period the page shows.
-func exploreButton(base string, days int) ui.HTML {
-	return ui.HTML(` <a class="btn btn--sm" href="` + html.EscapeString(base+"?days="+strconv.Itoa(days)) + `">Explore</a>`)
+func exploreButton(base string, p analyticsSpan) ui.HTML {
+	q := url.Values{}
+	q.Set("days", strconv.Itoa(p.days))
+	for _, f := range p.focus {
+		q.Add(focusParam, encodeFocus(f))
+	}
+	return ui.HTML(` <a class="btn btn--sm" href="` + html.EscapeString(base+"?"+q.Encode()) + `">Explore</a>`)
 }

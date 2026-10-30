@@ -2774,6 +2774,36 @@
 
 .vp-os .vp-bar:hover .vp-bar__fill { background: var(--surface-press); }
 
+/* A row that narrows the page to its readers: the label is the link, and its
+   ::after covers the row so the whole row is one target. The label is left
+   unpositioned for that, the row being the box the cover fills. */
+.vp-os .vp-bar--door > .vp-bar__label { position: static; }
+
+.vp-os .vp-bar--door .vp-bar__door { color: inherit; text-decoration: none; }
+
+.vp-os .vp-bar--door .vp-bar__door::after { content: ""; position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
+
+.vp-os .vp-bar--door:hover .vp-bar__door { color: var(--text); }
+
+.vp-os .vp-bar--door .vp-bar__door:focus-visible { outline: none; }
+
+.vp-os .vp-bar--door .vp-bar__door:focus-visible::after { outline: 2px solid var(--brand); outline-offset: -2px; }
+
+/* The readers a page is narrowed to, under its section bar. */
+.vp-os .sa-focus { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin-top: var(--space-4); }
+
+.vp-os .sa-focus__lead { font-size: 13px; color: var(--text-3); }
+
+.vp-os .sa-focus__chip { display: inline-flex; align-items: center; gap: var(--space-1); font-size: 13px; font-weight: 500; color: var(--text-1); max-width: 100%; overflow-wrap: anywhere; }
+
+.vp-os .sa-focus__off { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: var(--radius-small); color: var(--text-3); }
+
+.vp-os .sa-focus__off:hover { color: var(--text); background: var(--surface-hover); }
+
+.vp-os .sa-focus__off svg { width: 14px; height: 14px; }
+
+.vp-os .sa-focus__end { display: inline-flex; gap: var(--space-1); margin-left: auto; }
+
 /* Two-series trend chart. Its key is a short stroke of each line. */
 .vp-os .vp-legend__item { display: inline-flex; align-items: center; gap: .5rem; }
 

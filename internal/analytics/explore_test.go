@@ -91,25 +91,25 @@ func TestTheExplorerSplitsAndFilters(t *testing.T) {
 		f    ExploreFilter
 		want float64
 	}{
-		{ExploreFilter{"path", FilterIs, "/a"}, 3},
-		{ExploreFilter{"path", FilterIsNot, "/"}, 6},
-		{ExploreFilter{"path", FilterPrefix, "/"}, 8},
-		{ExploreFilter{"path", FilterPrefix, "/A"}, 0}, // a start is matched with its case
-		{ExploreFilter{"path", FilterPrefix, "%"}, 0},  // and literally
-		{ExploreFilter{"path", FilterPrefix, "_"}, 0},
-		{ExploreFilter{"channel", FilterIs, "organic"}, 1},
-		{ExploreFilter{"landing", FilterIs, "/b"}, 3},
+		{ExploreFilter{Dim: "path", Op: FilterIs, Value: "/a"}, 3},
+		{ExploreFilter{Dim: "path", Op: FilterIsNot, Value: "/"}, 6},
+		{ExploreFilter{Dim: "path", Op: FilterPrefix, Value: "/"}, 8},
+		{ExploreFilter{Dim: "path", Op: FilterPrefix, Value: "/A"}, 0}, // a start is matched with its case
+		{ExploreFilter{Dim: "path", Op: FilterPrefix, Value: "%"}, 0},  // and literally
+		{ExploreFilter{Dim: "path", Op: FilterPrefix, Value: "_"}, 0},
+		{ExploreFilter{Dim: "channel", Op: FilterIs, Value: "organic"}, 1},
+		{ExploreFilter{Dim: "landing", Op: FilterIs, Value: "/b"}, 3},
 	} {
 		if got := explore(t, s, ExploreQuery{Metric: ExploreViews, Filters: []ExploreFilter{c.f}}).Total; got != c.want {
 			t.Errorf("views where %+v = %v, want %v", c.f, got, c.want)
 		}
 	}
 	// Two filters must both hold.
-	if got := explore(t, s, ExploreQuery{Metric: ExploreViews, Filters: []ExploreFilter{{"path", FilterIs, "/a"}, {"channel", FilterIs, "social"}}}).Total; got != 1 {
+	if got := explore(t, s, ExploreQuery{Metric: ExploreViews, Filters: []ExploreFilter{{Dim: "path", Op: FilterIs, Value: "/a"}, {Dim: "channel", Op: FilterIs, Value: "social"}}}).Total; got != 1 {
 		t.Errorf("views of /a from social = %v, want 1", got)
 	}
 	// A visit filtered by its landing page.
-	if got := explore(t, s, ExploreQuery{Metric: ExploreVisits, Filters: []ExploreFilter{{"landing", FilterIsNot, "/"}}}).Total; got != 3 {
+	if got := explore(t, s, ExploreQuery{Metric: ExploreVisits, Filters: []ExploreFilter{{Dim: "landing", Op: FilterIsNot, Value: "/"}}}).Total; got != 3 {
 		t.Errorf("visits not landing on / = %v, want 3", got)
 	}
 	// One site's figures are its own; the install's are every site's.
@@ -199,18 +199,18 @@ func TestTheExplorerRefusesWhatItCannotCount(t *testing.T) {
 		{ExploreQuery{Metric: ExploreViews, Days: 1096}, "1 to 1095"},
 		{ExploreQuery{Metric: ExploreViews, Days: 7, By: "colour"}, "split by"},
 		{ExploreQuery{Metric: ExploreVisits, Days: 7, By: "path"}, "a visit has no one page"},
-		{ExploreQuery{Metric: ExploreBounceRate, Days: 7, Filters: []ExploreFilter{{"referrer", FilterIs, "x"}}}, "no one referrer to filter by"},
-		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{"day", FilterIs, "2026-01-01"}}}, "the range sets the days"},
-		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{"country", FilterPrefix, "I"}}}, "matched whole"},
-		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{"path", "contains", "a"}}}, "is, is not, starts with, at least or at most"},
-		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{"returning", FilterIs, "maybe"}}}, "yes or no"},
-		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{"visit_views", FilterAtLeast, "two"}}}, "whole number"},
-		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{"visit_views", FilterIs, "2.5"}}}, "whole number"},
-		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{"country", FilterAtLeast, "3"}}}, "not a number"},
-		{ExploreQuery{Metric: ExploreVisits, Days: 7, Segment: []ExploreFilter{{"path", FilterIs, "/a"}}}, "the segment: Visits is counted per visit"},
+		{ExploreQuery{Metric: ExploreBounceRate, Days: 7, Filters: []ExploreFilter{{Dim: "referrer", Op: FilterIs, Value: "x"}}}, "no one referrer to filter by"},
+		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{Dim: "day", Op: FilterIs, Value: "2026-01-01"}}}, "the range sets the days"},
+		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{Dim: "country", Op: FilterPrefix, Value: "I"}}}, "matched whole"},
+		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{Dim: "path", Op: "contains", Value: "a"}}}, "is, is not, starts with, at least or at most"},
+		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{Dim: "returning", Op: FilterIs, Value: "maybe"}}}, "yes or no"},
+		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{Dim: "visit_views", Op: FilterAtLeast, Value: "two"}}}, "whole number"},
+		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{Dim: "visit_views", Op: FilterIs, Value: "2.5"}}}, "whole number"},
+		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{Dim: "country", Op: FilterAtLeast, Value: "3"}}}, "not a number"},
+		{ExploreQuery{Metric: ExploreVisits, Days: 7, Segment: []ExploreFilter{{Dim: "path", Op: FilterIs, Value: "/a"}}}, "the segment: Visits is counted per visit"},
 		{ExploreQuery{Metric: ExploreViews, Days: 7, Segment: make([]ExploreFilter, ExploreMaxFilters+1)}, "at most"},
-		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{"path", FilterPrefix, ""}}}, "not empty"},
-		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{"path", FilterIs, strings.Repeat("a", 201)}}}, "200 characters"},
+		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{Dim: "path", Op: FilterPrefix, Value: ""}}}, "not empty"},
+		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: []ExploreFilter{{Dim: "path", Op: FilterIs, Value: strings.Repeat("a", 201)}}}, "200 characters"},
 		{ExploreQuery{Metric: ExploreViews, Days: 7, Filters: make([]ExploreFilter, ExploreMaxFilters+1)}, "at most"},
 	} {
 		if err := c.q.Validate(); err == nil || !strings.Contains(err.Error(), c.want) {
@@ -257,15 +257,15 @@ func TestTheExplorerSplitsByTheVisit(t *testing.T) {
 		q    ExploreQuery
 		want float64
 	}{
-		{ExploreQuery{Metric: ExploreVisits, Filters: []ExploreFilter{{"visit_views", FilterAtLeast, "2"}}}, 3},
-		{ExploreQuery{Metric: ExploreVisits, Filters: []ExploreFilter{{"visit_views", FilterAtMost, "1"}}}, 2},
-		{ExploreQuery{Metric: ExploreVisits, Filters: []ExploreFilter{{"visit_views", FilterIs, "1"}}}, 2},
-		{ExploreQuery{Metric: ExploreVisits, Filters: []ExploreFilter{{"visit_length", FilterAtLeast, "30"}}}, 2},
-		{ExploreQuery{Metric: ExploreViews, Filters: []ExploreFilter{{"returning", FilterIs, "yes"}}}, 3},
-		{ExploreQuery{Metric: ExploreViews, Filters: []ExploreFilter{{"visit_channel", FilterIs, "organic"}}}, 2},
-		{ExploreQuery{Metric: ExploreVisitors, Filters: []ExploreFilter{{"converted", FilterIs, "yes"}}}, 1},
+		{ExploreQuery{Metric: ExploreVisits, Filters: []ExploreFilter{{Dim: "visit_views", Op: FilterAtLeast, Value: "2"}}}, 3},
+		{ExploreQuery{Metric: ExploreVisits, Filters: []ExploreFilter{{Dim: "visit_views", Op: FilterAtMost, Value: "1"}}}, 2},
+		{ExploreQuery{Metric: ExploreVisits, Filters: []ExploreFilter{{Dim: "visit_views", Op: FilterIs, Value: "1"}}}, 2},
+		{ExploreQuery{Metric: ExploreVisits, Filters: []ExploreFilter{{Dim: "visit_length", Op: FilterAtLeast, Value: "30"}}}, 2},
+		{ExploreQuery{Metric: ExploreViews, Filters: []ExploreFilter{{Dim: "returning", Op: FilterIs, Value: "yes"}}}, 3},
+		{ExploreQuery{Metric: ExploreViews, Filters: []ExploreFilter{{Dim: "visit_channel", Op: FilterIs, Value: "organic"}}}, 2},
+		{ExploreQuery{Metric: ExploreVisitors, Filters: []ExploreFilter{{Dim: "converted", Op: FilterIs, Value: "yes"}}}, 1},
 		// A segment and a filter both hold.
-		{ExploreQuery{Metric: ExploreViews, Segment: []ExploreFilter{{"returning", FilterIs, "yes"}}, Filters: []ExploreFilter{{"path", FilterIs, "/"}}}, 1},
+		{ExploreQuery{Metric: ExploreViews, Segment: []ExploreFilter{{Dim: "returning", Op: FilterIs, Value: "yes"}}, Filters: []ExploreFilter{{Dim: "path", Op: FilterIs, Value: "/"}}}, 1},
 	} {
 		if got := explore(t, s, c.q).Total; got != c.want {
 			t.Errorf("%+v = %v, want %v", c.q, got, c.want)

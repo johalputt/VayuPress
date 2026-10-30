@@ -205,12 +205,21 @@
   // CSP-safe: DOM API only, no innerHTML.
   // flag, when given, is a country's flag from the console's own flags
   // folder, drawn before the label as the server's countryFlagImg does.
-  function makeBar(text, value, max, total, flag) {
+  function makeBar(text, value, max, total, flag, href) {
     var row = document.createElement('div');
-    row.className = 'vp-bar';
+    row.className = href ? 'vp-bar vp-bar--door' : 'vp-bar';
     var label = document.createElement('span');
     label.className = 'vp-bar__label';
     label.title = text;
+    // A row that narrows the page to its readers: the label is a link whose
+    // cover spans the row, as the server draws it (osBarList).
+    var into = label;
+    if (href) {
+      into = document.createElement('a');
+      into.className = 'vp-bar__door';
+      into.href = href;
+      label.appendChild(into);
+    }
     if (flag && /^\/os\/static\/flags\/[a-z]{2}\.svg$/.test(flag)) {
       var img = document.createElement('img');
       img.className = 'vp-flag-img';
@@ -218,10 +227,10 @@
       img.alt = '';
       img.width = 20;
       img.height = 15;
-      label.appendChild(img);
-      label.appendChild(document.createTextNode(' '));
+      into.appendChild(img);
+      into.appendChild(document.createTextNode(' '));
     }
-    label.appendChild(document.createTextNode(text));
+    into.appendChild(document.createTextNode(text));
     var val = document.createElement('span');
     val.className = 'vp-bar__val';
     val.appendChild(document.createTextNode(String(value)));
@@ -242,6 +251,18 @@
     return row;
   }
 
+  // door is the Live view's address a row's filter is added to
+  // (data-live-door), and a list's data-live-dim the dimension its rows
+  // narrow by; a row's value is its key, else its path or label. A later
+  // filter on the same dimension replaces an earlier one (focusOf).
+  function doorOf(el, it) {
+    var card = el.closest('[data-live-door]');
+    var dim = el.getAttribute('data-live-dim');
+    var value = it.key || it.path || it.label || '';
+    if (!card || !dim || !value) return '';
+    return card.getAttribute('data-live-door') + '&f=' + encodeURIComponent(dim + ':is:' + value);
+  }
+
   // Fill a bar list from {label,count}/{path,count}: bars relative to the
   // busiest row, each with its share of the total.
   function fill(el, items, labelKey, emptyMsg) {
@@ -256,7 +277,7 @@
     var limit = parseInt(el.getAttribute('data-live-max'), 10);
     if (limit > 0) items = items.slice(0, limit);
     items.forEach(function (it) {
-      el.appendChild(makeBar(String(it[labelKey] || it.label || '(unknown)'), it.count || 0, max, total, it.flag));
+      el.appendChild(makeBar(String(it[labelKey] || it.label || '(unknown)'), it.count || 0, max, total, it.flag, doorOf(el, it)));
     });
   }
 

@@ -71,7 +71,7 @@ func TestReadingDepthReadsARange(t *testing.T) {
 		for _, q := range []struct {
 			sql  string
 			args []any
-		}{{readingDepthSQL(clause), append(args, 10)}, {pageEngagementSQL(clause), engagementArgs(args)}} {
+		}{{readingDepthSQL(clause), append(engagementArgs(args), 10)}, {pageEngagementSQL(clause), engagementArgs(args)}} {
 			rows, err := s.db.Query(`EXPLAIN QUERY PLAN `+q.sql, q.args...)
 			if err != nil {
 				t.Fatal(err)

@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/analytics"
+	"github.com/johalputt/vayupress/internal/focus"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/sitehttp"
 	"github.com/johalputt/vayupress/internal/ui"
@@ -112,6 +113,11 @@ func (a *App) serverMeasured(ctx context.Context, scope string, days int) (panel
 		facts[5][1] = ui.HTML(string(ui.State("danger", share(sum.S5xx))))
 	}
 	panel = string(ui.Table([]string{"Answered with", "Requests"}, facts, ""))
+	if len(focus.Of(ctx)) > 0 {
+		// The server counts requests, not readers: it cannot be narrowed,
+		// and says so rather than pass its figures off as the readers'.
+		panel = `<p class="settings-row-hint" data-unfiltered>Every request the site answered: the server's measures are not narrowed to these readers.</p>` + panel
+	}
 	if sum.Pages > 0 {
 		panel += string(ui.Table([]string{"Server time", "Pages"}, [][]ui.HTML{
 			{ui.Text("Pages answered in full"), ui.Text(strconv.FormatInt(sum.Pages, 10))},

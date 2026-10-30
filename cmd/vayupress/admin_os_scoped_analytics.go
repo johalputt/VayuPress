@@ -68,17 +68,14 @@ func (a *App) writeSiteAnalytics(w http.ResponseWriter, r *http.Request, v analy
 	// it (0.3 s at a million events, 1.1 s for the whole install), and no
 	// console page waits on that.
 	body, ready := adminDash.get(siteAnalyticsKey(v, view, per), analyticsFragmentTTL, func(ctx context.Context) string {
-		if per.ranged() {
-			ctx = span.With(ctx, span.Range{From: per.from, To: per.to})
-		}
-		return a.renderSiteAnalyticsBody(ctx, v, host, days, view)
+		return a.renderSiteAnalyticsBody(a.scoped(ctx, per), v, host, days, view)
 	})
 	if !ready {
 		// The page still being counted offers the periods, not the range
 		// sheet: a sheet with no page under it.
 		menu, _ := osPeriodSelector(v.base, view, per)
 		body = string(ui.Overview(ui.OverviewPage{Title: v.title(), State: ui.Text("Counting " + per.phrase() + " for " + host),
-			Actions: menu, Tabs: analyticsTabs(v.base, view, per)},
+			Actions: menu, Tabs: analyticsTabs(v.base, view, per) + osFocusBar(v, view, per)},
 			ui.Band{Title: "Visitors", Chart: `<p class="table-empty">This is counted in the background; reload in a few seconds.</p>`}))
 	}
 	// Goals holds what is set rather than counted: the alerts, and a hosted
@@ -106,6 +103,10 @@ func (a *App) writeSiteAnalytics(w http.ResponseWriter, r *http.Request, v analy
 	}
 	// The live panel's poller; the body above is cached, the script is not.
 	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js?v=` + assetVer("js/admin-os-intel.js") + `"></script>`
+	if len(per.focus) > 0 {
+		// The filter bar's Save as segment.
+		body += segmentsScript(nonce)
+	}
 	writeOSHTML(w, r, adminOSLayout(nonce, title, app, cfg, htmpl.HTML(body)))
 }
 
@@ -190,10 +191,10 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host
 		}
 		scopeNote = note
 	}
-	exportBtn, exportSheet := osExportSheet(v.base+"/export", days)
+	exportBtn, exportSheet := osExportSheet(v.base+"/export", per)
 	periodMenu, rangeSheet := osPeriodSelector(v.base, view, per)
-	page := ui.OverviewPage{Title: title, Actions: periodMenu + exploreButton(explore, days) + exportBtn,
-		Tabs: ui.HTML(`<div class="sa-viewbar">`) + analyticsTabs(v.base, view, per) + a.dataKept(ctx, v) + `</div>`}
+	page := ui.OverviewPage{Title: title, Actions: periodMenu + exploreButton(explore, per) + exportBtn,
+		Tabs: ui.HTML(`<div class="sa-viewbar">`) + analyticsTabs(v.base, view, per) + a.dataKept(ctx, v) + `</div>` + osFocusBar(v, view, per)}
 	ov, err := st.OverviewSinceScoped(ctx, site, days)
 	if err != nil {
 		page.State = ui.Text("The figures could not be read: " + err.Error())
@@ -204,8 +205,9 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host
 		page.State = ui.Text(countOf(ov.UniqueVisitors, "visitor") + " to " + whose + " " + per.when())
 	}
 
-	listed := func(items []analytics.AudienceStat, empty string) string {
-		return osBarList(osBarsFromAudience(items), osShareOfListed(), empty)
+	door := analyticsDoor(v, per)
+	listed := func(col string, items []analytics.AudienceStat, empty string) string {
+		return osBarList(doorBars(items, col, door), osShareOfListed(), empty)
 	}
 	audience := func(col string) []analytics.AudienceStat {
 		out, _ := st.AudienceScoped(ctx, site, col, days)
@@ -216,13 +218,21 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host
 		titles := a.pageTitles(ctx, v, top)
 		bars := make([]osChartBar, 0, len(top))
 		for _, p := range top {
-			bars = append(bars, osChartBar{Label: titles[p.Path], Value: p.Pageviews, Hint: p.Path})
+			bars = append(bars, osChartBar{Label: titles[p.Path], Value: p.Pageviews, Hint: p.Path, Href: door("path", p.Path)})
 		}
 		return osBarList(bars, osShareOf(ov.TotalPageviews), "No page views recorded yet.")
 	}
 	channels := func() string {
 		ch, _ := st.ChannelsScoped(ctx, site, days)
-		return osBarList(osBarsFromAudience(ch), osShareOfListed(), "Visitors are grouped here once they arrive.")
+		return listed("visit_channel", ch, "Visits are grouped here once they arrive.")
+	}
+	landingPages := func(n int) string {
+		landing, _ := st.LandingPagesScoped(ctx, site, days, n)
+		bars := make([]osChartBar, 0, len(landing))
+		for _, l := range landing {
+			bars = append(bars, osChartBar{Label: prettyPathText(l.Path), Value: l.Visits, Hint: l.Path, Href: door("landing", l.Path)})
+		}
+		return osBarList(bars, osShareOf(ov.TotalVisits), "No visits recorded yet.")
 	}
 	more := func(label, to string) string {
 		return `<a class="sa-more" href="` + esc(analyticsHref(v.base, to, per)) + `">` + esc(label) + ` →</a>`
@@ -247,56 +257,58 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host
 		}
 		sections = append(sections, ui.HTML(`<div class="sa-cols sa-cols--lead">`)+
 			part("trend", ui.Section("Every day", "Page views and visitors", ui.HTML(trend)))+
-			part("now", ui.Section("Right now", "", ui.HTML(osLiveCompact(v.base+"/realtime", analyticsHref(v.base, "live", per)))))+`</div>`)
+			part("now", ui.Section("Right now", "", ui.HTML(osLiveCompact(v.base+"/realtime"+per.focusQuery(), analyticsHref(v.base, "live", per)))))+`</div>`)
 		if v.all() {
 			sections = append(sections, scopeNote, part("each-site", ui.HTML(a.osEachSiteSection(ctx, days))))
 		}
-		sections = append(sections, ui.HTML(analyticsCols(
+		cols := []string{
 			string(part("top-pages", ui.Section("Top pages", "Page views", ui.HTML(pages(5)+more("All pages", "content"))))),
-			string(part("channels", ui.Section("How they found you", "From the referrer alone", ui.HTML(channels()+more("All sources", "sources"))))))))
+		}
+		if len(per.focus) > 0 {
+			// Narrowed to some readers, the overview says where they began as
+			// well as what they read.
+			cols = append(cols, string(part("landing", ui.Section("Landing pages", "Where their visits began", ui.HTML(landingPages(5)+more("All landing pages", "content"))))))
+		}
+		cols = append(cols, string(part("channels", ui.Section("How they found you", "Visits, by the referrer each arrived by", ui.HTML(channels()+more("All sources", "sources"))))))
+		sections = append(sections, ui.HTML(analyticsCols(cols...)))
 	case "audience":
 		sections = append(sections,
 			part("devices", ui.Section("What they read on", "Devices, browsers and systems", ui.HTML(analyticsCols(
-				analyticsPanel("Devices", listed(audience("device"), "No device recorded yet.")),
-				analyticsPanel("Browsers", listed(audience("browser"), "No browser recorded yet.")),
-				analyticsPanel("Systems", listed(audience("os"), "No system recorded yet.")))))),
-			part("location", ui.Section("Where they are", "Country, region and city, coarse only", ui.HTML(osGeoSection(audience("country"), audience("region"), audience("city"))))))
+				analyticsPanel("Devices", listed("device", audience("device"), "No device recorded yet.")),
+				analyticsPanel("Browsers", listed("browser", audience("browser"), "No browser recorded yet.")),
+				analyticsPanel("Systems", listed("os", audience("os"), "No system recorded yet.")))))),
+			part("location", ui.Section("Where they are", "Country, region and city, coarse only", ui.HTML(osGeoSection(audience("country"), audience("region"), audience("city"), door)))))
 	case "sources":
 		refs, _ := st.TopReferrersScoped(ctx, site, days, 25)
 		refBars := make([]osChartBar, 0, len(refs))
 		refTotal := 0
 		for _, r := range refs {
-			refBars = append(refBars, osChartBar{Label: r.Referrer, Value: r.Count})
+			refBars = append(refBars, osChartBar{Label: r.Referrer, Value: r.Count, Href: door("visit_referrer", r.Referrer)})
 			refTotal += r.Count
 		}
 		utm, _ := st.UTMStatsScoped(ctx, site, days)
 		sections = append(sections,
 			ui.HTML(analyticsCols(
-				string(part("referrers", ui.Section("Referrers", "Other sites that sent readers", ui.HTML(osBarList(refBars, osShareOf(refTotal), "No links from other sites yet."))))),
-				string(part("channels", ui.Section("How they found you", "From the referrer alone", ui.HTML(channels())))))),
-			part("campaigns", ui.Section("Campaigns", countOf(len(utm), "tagged source"), ui.HTML(osCampaigns(utm)))))
+				string(part("referrers", ui.Section("Referrers", "Visits from other sites", ui.HTML(osBarList(refBars, osShareOf(refTotal), "No links from other sites yet."))))),
+				string(part("channels", ui.Section("How they found you", "Visits, by the referrer each arrived by", ui.HTML(channels())))))),
+			part("campaigns", ui.Section("Campaigns", countOf(len(utm), "tagged source"), ui.HTML(osCampaigns(utm, door)))))
 	case "content":
-		landing, _ := st.LandingPagesScoped(ctx, site, days, 25)
-		landBars := make([]osChartBar, 0, len(landing))
-		for _, l := range landing {
-			landBars = append(landBars, osChartBar{Label: prettyPathText(l.Path), Value: l.Visits, Hint: l.Path})
-		}
 		sections = append(sections,
 			ui.HTML(analyticsCols(
 				string(part("top-pages", ui.Section("Top pages", "Page views", ui.HTML(pages(25))))),
-				string(part("landing", ui.Section("Landing pages", "Where visits began", ui.HTML(osBarList(landBars, osShareOf(ov.TotalVisits), "No visits recorded yet."))))))),
-			part("content", ui.HTML(a.osContentSection(ctx, site, explore, days))),
-			part("searches", ui.HTML(a.osSearchesSection(ctx, site, days))))
+				string(part("landing", ui.Section("Landing pages", "Where visits began", ui.HTML(landingPages(25))))))),
+			part("content", ui.HTML(a.osContentSection(ctx, site, explore, days, door))),
+			part("searches", ui.HTML(a.osSearchesSection(ctx, site, days, door))))
 	case "behaviour":
 		events, _ := st.CustomEventsScoped(ctx, site, days)
 		eventBars := make([]osChartBar, 0, len(events))
 		eventTotal := 0
 		for _, e := range events {
-			eventBars = append(eventBars, osChartBar{Label: e.Name, Value: e.Count})
+			eventBars = append(eventBars, osChartBar{Label: e.Name, Value: e.Count, Href: door("event", e.Name)})
 			eventTotal += e.Count
 		}
 		sections = append(sections,
-			part("behaviour", ui.HTML(a.osBehaviourSection(ctx, site, explore, days))),
+			part("behaviour", ui.HTML(a.osBehaviourSection(ctx, site, explore, days, door))),
 			part("journeys", ui.HTML(a.osJourneySection(ctx, site, days))),
 			part("events", ui.Section("Events", countOf(eventTotal, "custom event"), ui.HTML(osBarList(eventBars, osShareHidden(), "No custom events yet.")))))
 	case "performance":
@@ -304,9 +316,9 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host
 	case "goals":
 		sections = append(sections,
 			part("goals", ui.HTML(a.osGoalsSectionOf(ctx, v, days))),
-			part("segments", ui.HTML(a.osSegmentsSection(ctx, v, days))))
+			part("segments", ui.HTML(a.osSegmentsSection(ctx, v, days, per))))
 	case "live":
-		sections = append(sections, part("live", ui.Section("Right now", "Readers in the last 5 minutes, every 10 seconds", ui.HTML(osLiveCard(v.base+"/realtime")))))
+		sections = append(sections, part("live", ui.Section("Right now", "Readers in the last 5 minutes, every 10 seconds", ui.HTML(osLiveCard(v.base+"/realtime"+per.focusQuery(), liveDoor(v, per))))))
 	}
 	sections = append(sections, exportSheet, rangeSheet)
 	return string(ui.Overview(page, band, sections...))

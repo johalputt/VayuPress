@@ -27,6 +27,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/focus"
 	"github.com/johalputt/vayupress/internal/span"
 	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/vayushield/verifiedbot"
@@ -502,6 +503,9 @@ func analyticsWhen(days int) string {
 type analyticsSpan struct {
 	days     int
 	from, to time.Time
+	// focus is the readers the page is narrowed to (analytics_focus.go),
+	// carried with the period because every link that keeps one keeps both.
+	focus []analytics.ExploreFilter
 }
 
 func (p analyticsSpan) ranged() bool { return !p.from.IsZero() }
@@ -549,6 +553,9 @@ func (p analyticsSpan) when() string {
 // set writes the period into q: the range, or the days when they are not
 // the default 30.
 func (p analyticsSpan) set(q url.Values) {
+	for _, f := range p.focus {
+		q.Add(focusParam, encodeFocus(f))
+	}
 	if p.ranged() {
 		q.Set("from", p.from.Format("2006-01-02"))
 		q.Set("to", p.to.Format("2006-01-02"))
@@ -559,12 +566,16 @@ func (p analyticsSpan) set(q url.Values) {
 	}
 }
 
-// key is the period in a cache key.
+// key is the period, and the filters, in a cache key.
 func (p analyticsSpan) key() string {
+	k := strconv.Itoa(p.days)
 	if p.ranged() {
-		return p.from.Format("2006-01-02") + "~" + p.to.Format("2006-01-02")
+		k = p.from.Format("2006-01-02") + "~" + p.to.Format("2006-01-02")
 	}
-	return strconv.Itoa(p.days)
+	for _, f := range p.focus {
+		k += "|" + encodeFocus(f)
+	}
+	return k
 }
 
 // analyticsSpanOf is the period r asks for. A range is taken when it is two
@@ -574,21 +585,32 @@ func (p analyticsSpan) key() string {
 func analyticsSpanOf(r *http.Request) analyticsSpan {
 	days, _ := analyticsPeriod(r)
 	q := r.URL.Query()
+	fs := focusOf(q)
 	from, err1 := time.Parse("2006-01-02", q.Get("from"))
 	to, err2 := time.Parse("2006-01-02", q.Get("to"))
 	today := time.Now().UTC().Truncate(24 * time.Hour)
 	if err1 != nil || err2 != nil || to.Before(from) || to.After(today) || to.Sub(from) >= 1095*24*time.Hour {
-		return analyticsSpan{days: days}
+		return analyticsSpan{days: days, focus: fs}
 	}
-	return analyticsSpan{days: int(to.Sub(from).Hours()/24) + 1, from: from, to: to}
+	return analyticsSpan{days: int(to.Sub(from).Hours()/24) + 1, from: from, to: to, focus: fs}
 }
 
-// spanOfCtx is the period a render counts: ctx's range, or days.
+// spanOfCtx is the period a render counts, ctx's range or days, and the
+// readers ctx is narrowed to.
 func spanOfCtx(ctx context.Context, days int) analyticsSpan {
+	fs := focus.Of(ctx)
 	if r, ok := span.Of(ctx); ok {
-		return analyticsSpan{days: span.Length(ctx, days), from: r.From, to: r.To}
+		return analyticsSpan{days: span.Length(ctx, days), from: r.From, to: r.To, focus: fs}
 	}
-	return analyticsSpan{days: days}
+	return analyticsSpan{days: days, focus: fs}
+}
+
+// scoped is ctx carrying p: its range, when it is one, and its readers.
+func (a *App) scoped(ctx context.Context, p analyticsSpan) context.Context {
+	if p.ranged() {
+		ctx = span.With(ctx, span.Range{From: p.from, To: p.to})
+	}
+	return a.narrowed(ctx, p.focus)
 }
 
 // osPeriodSelector is the period chooser: one button naming the period, its
@@ -606,7 +628,7 @@ func osPeriodSelector(base, view string, p analyticsSpan) (menu, sheet ui.HTML) 
 		if !p.ranged() && o.Days == p.days {
 			on = ` aria-current="true"`
 		}
-		items.WriteString(`<a class="sa-menu__item" role="menuitem" href="` + esc(analyticsHref(base, view, analyticsSpan{days: o.Days})) + `"` + on + `>` + esc(label) + `</a>`)
+		items.WriteString(`<a class="sa-menu__item" role="menuitem" href="` + esc(analyticsHref(base, view, analyticsSpan{days: o.Days, focus: p.focus})) + `"` + on + `>` + esc(label) + `</a>`)
 	}
 	on := ""
 	if p.ranged() {
@@ -626,6 +648,9 @@ func osPeriodSelector(base, view string, p analyticsSpan) (menu, sheet ui.HTML) 
 	hidden := ""
 	if view != "overview" {
 		hidden = `<input type="hidden" name="view" value="` + esc(view) + `">`
+	}
+	for _, f := range p.focus {
+		hidden += `<input type="hidden" name="` + focusParam + `" value="` + esc(encodeFocus(f)) + `">`
 	}
 	sheet = ui.Sheet("analytics-range", "Choose dates", ui.HTML(`<form method="get" action="`+esc(base)+`">`+hidden+
 		`<div class="field"><label class="field-label" for="range-from">From</label><input id="range-from" class="input" type="date" name="from" value="`+from+`" max="`+today+`" required></div>`+
@@ -653,18 +678,18 @@ func osLiveCompact(src, liveHref string) string {
 // and cities they are in and what they read on, filled every 10 s from src by
 // admin-os-intel.js. A count in ink, not an accent number beside a LIVE pill
 // and pulsing rings: it is the same kind of figure as the band's.
-func osLiveCard(src string) string {
-	panel := func(title, attr string) string {
-		return `<div><h3 class="sa-panel__title">` + title + `</h3><div class="vp-bars" ` + attr + `><p class="table-empty">Counting…</p></div></div>`
+func osLiveCard(src, door string) string {
+	panel := func(title, attr, dim string) string {
+		return `<div><h3 class="sa-panel__title">` + title + `</h3><div class="vp-bars" ` + attr + ` data-live-dim="` + dim + `"><p class="table-empty">Counting…</p></div></div>`
 	}
-	return `<div class="vm-liveview" data-live data-live-src="` + esc(src) + `">
+	return `<div class="vm-liveview" data-live data-live-src="` + esc(src) + `" data-live-door="` + esc(door) + `">
   <div class="vm-live-head"><div class="stat-card"><div class="stat-card__label">Reading now</div><div class="stat-card__value" data-live-count>—</div>
     <div class="stat-card__note"><span data-live-noun>visitors</span> in the last <span data-live-window>5</span> minutes<span data-live-updated></span></div></div>
   <svg class="vm-live-spark" viewBox="0 0 300 40" preserveAspectRatio="none" aria-hidden="true"><polyline data-live-spark points=""></polyline></svg></div>
   <div class="sa-cols sa-cols--3">` +
-		panel("Pages", "data-live-pages") + panel("How they arrived", "data-live-channels") + panel("Referrers", "data-live-referrers") +
-		panel("Countries", "data-live-countries") + panel("Cities", "data-live-cities") + panel("Devices", "data-live-devices") +
-		panel("Browsers", "data-live-browsers") + `</div>
+		panel("Pages", "data-live-pages", "path") + panel("How they arrived", "data-live-channels", "visit_channel") + panel("Referrers", "data-live-referrers", "visit_referrer") +
+		panel("Countries", "data-live-countries", "country") + panel("Cities", "data-live-cities", "city") + panel("Devices", "data-live-devices", "device") +
+		panel("Browsers", "data-live-browsers", "browser") + `</div>
 </div>`
 }
 
@@ -673,7 +698,7 @@ func osLiveCard(src string) string {
 // proxy's location headers or the downloaded city table. What is missing is
 // said once, and how to get regions and cities is in How this works, not a
 // box on the page.
-func osGeoSection(countries, regions, cities []analytics.AudienceStat) string {
+func osGeoSection(countries, regions, cities []analytics.AudienceStat, door func(dim, value string) string) string {
 	setup := string(ui.Explain(ui.HTML(`<p>A country comes from the proxy in front of the install when it names one, and otherwise from the table compiled into VayuPress, looked up on this server. A region or a city comes from the proxy's headers: with Cloudflare, turn on Rules › Settings › Add visitor location headers (it adds <code>cf-region</code> and <code>cf-ipcity</code>); CloudFront, Vercel and Fastly headers are read too, and <code>X-Geo-Region</code> and <code>X-Geo-City</code> from any proxy. With no proxy that names cities, an administrator can turn on Settings › Advanced › Visitor cities in the install's console: the install downloads DB-IP's city table and looks each address up on this server.</p>`)))
 	if len(countries) == 0 && len(regions) == 0 && len(cities) == 0 {
 		return `<p class="table-empty">No location recorded yet.</p>` + setup
@@ -685,7 +710,7 @@ func osGeoSection(countries, regions, cities []analytics.AudienceStat) string {
 		if name == "" {
 			name = c.Label
 		}
-		countryBars = append(countryBars, osChartBar{Label: name, Value: c.Count, Flag: c.Label})
+countryBars = append(countryBars, osChartBar{Label: name, Value: c.Count, Flag: c.Label, Href: door("country", c.Label)})
 		if cont := continentName(c.Label); cont != "" {
 			contAgg[cont] += c.Count
 		}
@@ -707,8 +732,8 @@ func osGeoSection(countries, regions, cities []analytics.AudienceStat) string {
 		return out + `<p class="table-empty">No region or city recorded yet.</p>` + setup
 	}
 	return out + analyticsCols(
-		analyticsPanel("Regions", osBarList(osBarsFromAudience(regions), osShareOfListed(), "No region recorded yet.")),
-		analyticsPanel("Cities", osBarList(osBarsFromAudience(cities), osShareOfListed(), "No city recorded yet.")))
+		analyticsPanel("Regions", osBarList(doorBars(regions, "region", door), osShareOfListed(), "No region recorded yet.")),
+		analyticsPanel("Cities", osBarList(doorBars(cities, "city", door), osShareOfListed(), "No city recorded yet.")))
 }
 
 // osGoalsSectionOf is the Goals section for v: its goals counted over its
@@ -750,7 +775,7 @@ func (a *App) osGoalsSectionOf(ctx context.Context, v analyticsView, days int) s
 // osSearchesSection is what readers searched scope's site for over the
 // window: the most searched queries, and those that found nothing, which is
 // where a site is missing what its readers come for.
-func (a *App) osSearchesSection(ctx context.Context, scope string, days int) string {
+func (a *App) osSearchesSection(ctx context.Context, scope string, days int, door func(dim, value string) string) string {
 	stats, _ := a.analytics.SearchesScoped(ctx, scope, days, 20)
 	if len(stats) == 0 {
 		return string(ui.Section("Searches", "What readers looked for with the site's search",
@@ -761,9 +786,11 @@ func (a *App) osSearchesSection(ctx context.Context, scope string, days int) str
 	// visitor counts are in the API's searches report.
 	var most, empty []osChartBar
 	for _, st := range stats {
-		most = append(most, osChartBar{Label: st.Query, Value: st.Searches})
+		// A search is an event named by its query: its row is the way into
+		// the visits that searched for it.
+		most = append(most, osChartBar{Label: st.Query, Value: st.Searches, Href: door("event", st.Query)})
 		if st.Empty > 0 {
-			empty = append(empty, osChartBar{Label: st.Query, Value: st.Empty})
+			empty = append(empty, osChartBar{Label: st.Query, Value: st.Empty, Href: door("event", st.Query)})
 		}
 	}
 	body := analyticsCols(
@@ -778,7 +805,7 @@ func (a *App) osSearchesSection(ctx context.Context, scope string, days int) str
 			`). A page opened next is usually, not always, a result.</p>`
 		pages := make([]osChartBar, 0, len(next.Pages))
 		for _, p := range next.Pages {
-			pages = append(pages, osChartBar{Label: prettyPathText(p.Label), Value: p.Count})
+			pages = append(pages, osChartBar{Label: prettyPathText(p.Label), Value: p.Count, Hint: p.Label, Href: door("path", p.Label)})
 		}
 		again := make([]osChartBar, 0, len(next.Refinements))
 		for _, rf := range next.Refinements {
@@ -853,7 +880,7 @@ func (a *App) osEachSiteSection(ctx context.Context, days int) string {
 
 // osCampaigns is the campaigns a period's tagged links brought: their
 // sources as bars, and each source, medium and campaign with its hits.
-func osCampaigns(utm []analytics.UTMStat) string {
+func osCampaigns(utm []analytics.UTMStat, door func(dim, value string) string) string {
 	utmSourceBars := make([]osChartBar, 0, len(utm))
 	utmRows := ""
 	for _, u := range utm {
@@ -861,8 +888,12 @@ func osCampaigns(utm []analytics.UTMStat) string {
 		if src == "" {
 			src = "(direct)"
 		}
-		utmSourceBars = append(utmSourceBars, osChartBar{Label: src, Value: u.Count})
-		utmRows += `<tr><td class="post-row__name">` + html.EscapeString(src) + `</td><td>` + html.EscapeString(u.Medium) + `</td><td>` + html.EscapeString(u.Campaign) + `</td><td>` + strconv.Itoa(u.Count) + `</td></tr>`
+		utmSourceBars = append(utmSourceBars, osChartBar{Label: src, Value: u.Count, Href: door("utm_source", u.Source)})
+		campaign := html.EscapeString(u.Campaign)
+		if href := door("utm_campaign", u.Campaign); href != "" {
+			campaign = `<a href="` + html.EscapeString(href) + `">` + campaign + `</a>`
+		}
+		utmRows += `<tr><td class="post-row__name">` + html.EscapeString(src) + `</td><td>` + html.EscapeString(u.Medium) + `</td><td>` + campaign + `</td><td>` + strconv.Itoa(u.Count) + `</td></tr>`
 	}
 	out := `<p class="table-empty">No campaign traffic yet. Tag the links you share with <code>utm_source</code>, <code>utm_medium</code> and <code>utm_campaign</code> to see which bring visitors.</p>`
 	if utmRows != "" {
@@ -877,7 +908,7 @@ func osCampaigns(utm []analytics.UTMStat) string {
 // report for the period, as CSV or JSON, from href (the view's own export).
 // Fourteen rows of buttons on the page became one choice in a sheet; the
 // form is a GET, and the answer downloads (Content-Disposition).
-func osExportSheet(href string, days int) (ui.HTML, ui.HTML) {
+func osExportSheet(href string, p analyticsSpan) (ui.HTML, ui.HTML) {
 	labels := map[string]string{
 		"overview": "Overview", "pages": "Top pages", "referrers": "Referrers",
 		"browsers": "Browsers", "devices": "Devices", "os": "Operating systems",
@@ -891,7 +922,7 @@ func osExportSheet(href string, days int) (ui.HTML, ui.HTML) {
 	}
 	btn := ui.HTML(` <button type="button" class="btn btn--sm" data-sheet="analytics-export">Export</button>`)
 	sheet := ui.Sheet("analytics-export", "Export a report", ui.HTML(`<form method="get" action="`+html.EscapeString(href)+`">
-  <input type="hidden" name="days" value="`+strconv.Itoa(days)+`">
+  `+exportHidden(p)+`
   <div class="field"><label class="field-label" for="export-report">Report</label>
     <select id="export-report" class="select" name="report">`+opts.String()+`</select></div>
   <div class="field"><label class="field-label" for="export-format">Format</label>
@@ -899,6 +930,21 @@ func osExportSheet(href string, days int) (ui.HTML, ui.HTML) {
   <div class="mt-3 sa-list__sheet-actions"><button class="btn btn--primary btn--sm" type="submit">Download</button></div>
 </form>`))
 	return btn, sheet
+}
+
+// exportHidden is the page's period and filters as an export form's hidden
+// fields: the download is the figures the page shows.
+func exportHidden(p analyticsSpan) string {
+	q := url.Values{}
+	q.Set("days", strconv.Itoa(p.days))
+	p.set(q)
+	var b strings.Builder
+	for _, k := range []string{"days", "from", "to", focusParam} {
+		for _, v := range q[k] {
+			b.WriteString(`<input type="hidden" name="` + k + `" value="` + esc(v) + `">`)
+		}
+	}
+	return b.String()
 }
 
 // osPrivacyNote renders the trust footer shown at the bottom of the analytics

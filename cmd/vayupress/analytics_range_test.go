@@ -6,6 +6,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -42,6 +44,7 @@ func TestAChosenRangeCountsItsDaysOnEveryView(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	visitReferrers(t)
 	a := &App{analytics: analytics.New(dbpkg.DB)}
 	ctx := span.With(context.Background(), span.Range{From: from, To: to})
 	words := "1 visitor to example.test from " + from.Format("2 Jan 2006") + " to " + to.Format("2 Jan 2006")
@@ -145,4 +148,28 @@ func TestTheConsoleCountsTheRangeItIsAskedFor(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+// noDoor is a page's way into a row's readers when the test is about
+// something else: no row is a link.
+func noDoor(string, string) string { return "" }
+
+// visitReferrers gives the visit rows a test wrote by hand the referrer of
+// their first page view, as the ingest does (migration 122), by the
+// migration's own statement.
+func visitReferrers(t *testing.T) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "internal", "db", "migrations", "122-analytics-visit-referrer.up.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if strings.HasPrefix(line, "UPDATE analytics_sessions SET referrer") {
+			if _, err := dbpkg.DB.Exec(line); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
+	}
+	t.Fatal("migration 122 has no backfill to run")
 }

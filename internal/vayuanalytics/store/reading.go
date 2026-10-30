@@ -27,11 +27,13 @@ func (s *Store) ReadingDepth(ctx context.Context, domainID string, days, limit i
 	if limit <= 0 || limit > 100 {
 		limit = 10
 	}
-	clause, args := "", []any{fromTime(days)}
+	from, until := spanTimes(ctx, days)
+	clause, args := "", []any{from, until}
 	if domainID != AllDomains {
 		clause, args = " AND domain_id=?", append(args, domainID)
 	}
-	rows, err := s.readDB().QueryContext(ctx, readingDepthSQL(clause), append(args, limit)...)
+	f, fargs := focusReaders(ctx, from, until)
+	rows, err := s.readDB().QueryContext(ctx, readingDepthSQL(clause+f), append(append(args, fargs...), limit)...)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +54,7 @@ func (s *Store) ReadingDepth(ctx context.Context, domainID string, days, limit i
 // never idx_va_sessions_page walked end to end (reading_test.go).
 func readingDepthSQL(clause string) string {
 	return `SELECT page_path, COUNT(1), SUM(scroll_depth_percent>=50), SUM(scroll_depth_percent>=90)
-		FROM vayuanalytics_sessions WHERE entry_time>=?` + clause + ` AND exit_time IS NOT NULL AND ` + human + `
+		FROM vayuanalytics_sessions WHERE entry_time>=? AND entry_time<?` + clause + ` AND exit_time IS NOT NULL AND ` + human + `
 		GROUP BY +page_path ORDER BY 2 DESC, 1 LIMIT ?`
 }
 
@@ -75,7 +77,8 @@ func (s *Store) PageEngagement(ctx context.Context, domainID string, days int) (
 	if domainID != AllDomains {
 		clause, args = " AND domain_id=?", append(args, domainID)
 	}
-	rows, err := s.readDB().QueryContext(ctx, pageEngagementSQL(clause), args...)
+	f, fargs := focusReaders(ctx, from, until)
+	rows, err := s.readDB().QueryContext(ctx, pageEngagementSQL(clause+f), append(args, fargs...)...)
 	if err != nil {
 		return nil, err
 	}

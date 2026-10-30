@@ -77,15 +77,17 @@ func TestASegmentIsSavedForItsSiteAndApplied(t *testing.T) {
 func TestTheAnalyticsPageListsSegments(t *testing.T) {
 	a := exploreApp(t)
 	ctx := context.Background()
-	if empty := a.osSegmentsSection(ctx, hostedView(domain.Domain{ID: "s1"}), 7); !strings.Contains(empty, "No segments yet") {
+	if empty := a.osSegmentsSection(ctx, hostedView(domain.Domain{ID: "s1"}), 7, analyticsSpan{days: 7}); !strings.Contains(empty, "No segments yet") {
 		t.Errorf("no segments is not said")
 	}
 	id, err := a.analytics.CreateSegment(ctx, "s1", "Mobile", []analytics.ExploreFilter{{Dim: "device", Op: analytics.FilterIs, Value: "mobile"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := a.osSegmentsSection(ctx, hostedView(domain.Domain{ID: "s1"}), 7)
-	for _, want := range []string{`href="/os/d/s1/analytics/explore?seg=` + id + `&amp;metric=visitors&amp;by=day&amp;days=7">Mobile</a>`,
+	got := a.osSegmentsSection(ctx, hostedView(domain.Domain{ID: "s1"}), 7, analyticsSpan{days: 7})
+	// The segment opens as the page narrowed to it; the Explorer has it too.
+	for _, want := range []string{`href="/os/d/s1/analytics?days=7&amp;f=device%3Ais%3Amobile">Mobile</a>`,
+		`href="/os/d/s1/analytics/explore?seg=` + id + `&amp;metric=visitors&amp;by=day&amp;days=7">Explorer</a>`,
 		`device is &#34;mobile&#34;`, "<td>1</td><td>50%</td>"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the segments section has no %q:\n%s", want, got)

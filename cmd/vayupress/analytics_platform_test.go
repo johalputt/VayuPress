@@ -346,7 +346,7 @@ func TestEverySitesPageShowsWhatTheAPIReturns(t *testing.T) {
 	_, top, _ := strings.Cut(page, ">Top pages<")
 	top, _, _ = strings.Cut(top, ">Landing pages<")
 	for _, p := range pages {
-		if want := `title="` + p.Path + `">` + p.Path + `</span><span class="vp-bar__val">` + strconv.Itoa(p.Pageviews) + `<`; !strings.Contains(top, want) {
+		if want := `">` + p.Path + `</a></span><span class="vp-bar__val">` + strconv.Itoa(p.Pageviews) + `<`; !strings.Contains(top, want) {
 			t.Errorf("the page's %s is not the API's %d views", p.Path, p.Pageviews)
 		}
 	}
