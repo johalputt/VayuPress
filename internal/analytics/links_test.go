@@ -27,9 +27,9 @@ func TestALinksTargetIsAHostAndAPath(t *testing.T) {
 		{"/relative/path", false, "", false},
 		{"", false, "", false},
 	} {
-		got, ok := linkTarget(c.raw, "site.test", c.download)
+		got, ok := LinkTarget(c.raw, "site.test", c.download)
 		if got != c.want || ok != c.ok {
-			t.Errorf("linkTarget(%q, download %v) = %q, %v; want %q, %v", c.raw, c.download, got, ok, c.want, c.ok)
+			t.Errorf("LinkTarget(%q, download %v) = %q, %v; want %q, %v", c.raw, c.download, got, ok, c.want, c.ok)
 		}
 	}
 }

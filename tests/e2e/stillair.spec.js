@@ -382,13 +382,15 @@ for (const width of [1280, 1024, 390]) {
     test.setTimeout(360000);
     await page.setViewportSize({ width, height: 900 });
     await openConsole(page);
+    // A reader of the home page, so its report has something to draw.
+    await oneReader(page, "/", "");
     const findings = [];
     for (const base of ["/os/analytics", "/os/platform/analytics"]) {
       // Every view, and the overview and Sources narrowed to some readers,
       // with the bar that names them.
       const hrefs = ["overview", "audience", "sources", "content", "behaviour", "performance", "goals", "live"]
         .map((view) => base + (view === "overview" ? "" : "?view=" + view))
-        .concat([base + "?f=device%3Ais%3ADesktop", base + "?view=sources&f=device%3Ais%3ADesktop"]);
+        .concat([base + "?f=device%3Ais%3ADesktop", base + "?view=sources&f=device%3Ais%3ADesktop", base + "?view=page&page=%2F"]);
       for (const href of hrefs) {
         await page.goto(href);
         const counting = page.getByText("This is counted in the background");

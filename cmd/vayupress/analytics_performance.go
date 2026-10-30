@@ -63,6 +63,12 @@ func (a *App) readerVitals(ctx context.Context, scope string, days int) string {
 	if err != nil || v == nil || v.Samples == 0 {
 		return `<p class="table-empty">No page has reported its speed yet.</p>`
 	}
+	return osVitalsTable(v)
+}
+
+// osVitalsTable is each vital's 75th percentile, whether it is good, and
+// its readings.
+func osVitalsTable(v *vastore.WebVitals) string {
 	rows := make([][]ui.HTML, 0, 3)
 	for _, x := range vitalsOf(v) {
 		name := ui.HTML(string(ui.Text(x.Name)) + `<br><span class="muted">Good is ` + string(ui.Text(x.Good)) + `</span>`)

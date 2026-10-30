@@ -208,3 +208,37 @@ func TestPageEngagementCountsEngagedReadings(t *testing.T) {
 func engagementArgs(args []any) []any {
 	return append([]any{args[0], time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)}, args[1:]...)
 }
+
+// A page's reading is its own and its site's: each tenth of the page is
+// reached by the readings that scrolled that far or further, the time on it
+// is the average of the readings that stayed any time, and both spellings
+// of the path are the one page.
+func TestAPagesReadingIsReachedTenthByTenth(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	now := time.Now().UTC()
+	read := func(sess, site, path string, secs, depth int) {
+		t.Helper()
+		in := enter(sess, path, "direct", "", "human", now)
+		in.DomainID = site
+		if err := s.RecordEnter(ctx, in); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.RecordBeacon(ctx, BeaconInput{SessionHash: sess, PagePath: path, TimeOnPage: secs, ScrollDepth: depth, Now: now}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	read("a", "s1", "/p", 60, 100)
+	read("b", "s1", "/p/", 20, 35)
+	read("c", "s1", "/p", 0, 5)
+	read("d", "s2", "/p", 90, 100) // another site
+	read("e", "s1", "/q", 90, 100) // another page
+	got, err := s.PageReading(ctx, "s1", "/p", 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [10]int64{2, 2, 2, 1, 1, 1, 1, 1, 1, 1}
+	if got.Readings != 3 || got.Reach != want || got.AvgSeconds != 40 {
+		t.Errorf("/p on site one = %+v, want 3 readings, reach %v, 40 s on it", got, want)
+	}
+}

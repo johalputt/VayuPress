@@ -24,6 +24,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   visit, bounce rate, average visit and conversion; a switch ranks the list
   by any of them, and hovering a row shows them all beside the page's own.
 - **The chart marks the days posts went out**, and its readout names them.
+- **A report for each page.** From any list of pages: its views, visitors,
+  the visits that read it and how many ended there, time on it, every day,
+  how its readers arrived, the page before it and what came next, each of
+  its links with how many followed it, how far down it was read a tenth at
+  a time, its speed and the goals its readers reached.
 - **A world map on Audience and Live.** Countries shaded by their readers,
   cities as dots where the city table places them (the city's centre to a
   tenth of a degree, kept on the visit: migration 123); hover for who is

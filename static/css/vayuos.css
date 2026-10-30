@@ -2853,6 +2853,18 @@
 
 .vp-os .vp-bar__card-all { margin-left: var(--space-3); color: var(--text-3); }
 
+/* A page row's way to its report, above the row's own link. */
+.vp-os .vp-bar__report { position: relative; z-index: 2; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-left: var(--space-2); border-radius: var(--radius-small); color: var(--text-3); vertical-align: middle; }
+
+.vp-os .vp-bar__report:hover { color: var(--text-1); background: var(--surface-hover); }
+
+.vp-os .vp-bar__report svg { width: 14px; height: 14px; }
+
+/* A page's links, in its order, as bars. */
+.vp-os .sa-links { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+
+.vp-os .sa-links__to { margin-left: var(--space-3); font-size: 12.5px; color: var(--text-3); }
+
 /* The readers a page is narrowed to, under its section bar. */
 .vp-os .sa-focus { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin-top: var(--space-4); }
 

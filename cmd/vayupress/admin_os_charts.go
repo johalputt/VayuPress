@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/analytics"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // prettyPathText returns a human-readable, un-escaped page path for chart labels
@@ -53,6 +54,9 @@ type osChartBar struct {
 	// Href, when set, makes the whole row a link: the Analytics page
 	// narrowed to the row's readers.
 	Href string
+	// Report, when set, is the row's page's own report (analytics_page.go),
+	// a small link at the row's end, above the row's own.
+	Report string
 }
 
 // barWidthClass snaps a 0..100 percentage to the nearest available w-N class
@@ -204,12 +208,20 @@ func osBarList(items []osChartBar, denom osBarDenom, emptyMsg string) string {
 		}
 		out += `<div class="` + cls + `">` +
 			`<span class="vp-bar__label" title="` + html.EscapeString(hint) + `">` + lab + `</span>` +
-			`<span class="vp-bar__val">` + humanCount(it.Value) + share + `</span>` +
+			`<span class="vp-bar__val">` + humanCount(it.Value) + share + osReportLink(it.Report) + `</span>` +
 			`<span class="vp-bar__track"><span class="vp-bar__fill ` + barWidthClass(pct) + `"></span></span>` +
 			`</div>`
 	}
 	out += `</div>`
 	return out
+}
+
+// osReportLink is a row's link to its page's report, or "" for none.
+func osReportLink(href string) string {
+	if href == "" {
+		return ""
+	}
+	return `<a class="vp-bar__report" href="` + html.EscapeString(href) + `" aria-label="Report on this page" title="Report on this page">` + string(ui.Icon("chart")) + `</a>`
 }
 
 // prettyChartDate turns an ISO date (2006-01-02) into a compact "Jan 2" for

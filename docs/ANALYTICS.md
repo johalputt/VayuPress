@@ -94,6 +94,27 @@ read on is then seen above one that sends many who leave.
 The overview's chart marks each day a post was published, and its readout
 names the posts.
 
+## A page's report
+
+Every page in a list of pages (top pages, landing pages, the pages before
+and after another) has a small link at its row's end to the page's own
+report (`?view=page&page=/path`), and a page narrowed to a page's readers
+offers it in its bar. The report is the page's story over the period: its
+views and visitors, the visits that read it and how many ended on it, the
+time on it; every day's views; how the visits that read it arrived; the
+page read just before it in the visit and what came next (another page, a
+link out, a download), each with its own report; its links in the page's
+order, each with how many readers followed it; how far down it was read, a
+tenth of the page at a time; how fast it was; and the goals its readers
+reached. Every part is read from what is already recorded.
+
+The link map reads the page as a reader is served it (through the router,
+as Settings' site preview does) and takes the links of its article, or its
+main region, or else its body, never those of its header, navigation or
+footer, which are on every page. A link to another of the site's pages is
+counted by the visits that went there next; a link out by its link-out
+events.
+
 ## The map
 
 Audience draws the world with each country shaded by its visitors over the

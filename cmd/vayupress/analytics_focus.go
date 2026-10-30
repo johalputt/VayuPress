@@ -161,7 +161,15 @@ func osFocusBar(v analyticsView, view string, p analyticsSpan) ui.HTML {
 	}
 	all := p
 	all.focus = nil
-	b.WriteString(`<span class="sa-focus__end"><button type="button" class="btn btn--ghost btn--sm" data-sheet="segment-new">Save as segment</button>` +
+	// Narrowed to a page's readers, the page's own report is a step away.
+	report := ""
+	for i, f := range p.focus {
+		if f.Dim == "path" && f.Op == analytics.FilterIs && p.page == "" {
+			report = `<a class="btn btn--ghost btn--sm" href="` + esc(pageReportHref(v.base, f.Value, p.without(i))) + `">Page report</a>`
+			break
+		}
+	}
+	b.WriteString(`<span class="sa-focus__end">` + report + `<button type="button" class="btn btn--ghost btn--sm" data-sheet="segment-new">Save as segment</button>` +
 		`<a class="btn btn--ghost btn--sm" href="` + esc(analyticsHref(v.base, view, all)) + `">Clear</a></span></div>`)
 	site := ""
 	if v.hosted {
@@ -210,6 +218,7 @@ func analyticsDoor(v analyticsView, p analyticsSpan) func(dim, value string) str
 		if !ok {
 			return ""
 		}
+		np.page = ""
 		return analyticsHref(v.base, "overview", np)
 	}
 }

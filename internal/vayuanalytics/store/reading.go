@@ -2,7 +2,11 @@
 
 package store
 
-import "context"
+import (
+	"context"
+	"strconv"
+	"strings"
+)
 
 // AllDomains asks a report for every site's rows together.
 const AllDomains = "\x00*all*"
@@ -99,4 +103,43 @@ func (s *Store) PageEngagement(ctx context.Context, domainID string, days int) (
 func pageEngagementSQL(clause string) string {
 	return `SELECT page_path, COUNT(1), SUM(engaged) FROM vayuanalytics_sessions WHERE entry_time>=? AND entry_time<?` + clause +
 		` AND exit_time IS NOT NULL AND ` + human + ` GROUP BY +page_path`
+}
+
+// PageRead is how one page was read over a range: its readings (page loads
+// measured as the reader left, as PageDepth's), how many were engaged, the
+// average time on the page of the readings that stayed any time, and how
+// many reached each tenth of the page, Reach[0] a tenth down and Reach[9]
+// the end.
+type PageRead struct {
+	Readings, Engaged int64
+	AvgSeconds        float64
+	Reach             [10]int64
+}
+
+// PageReading is how path was read on one site (AllDomains for every site)
+// over the period, the readers ctx is narrowed to alone. Both spellings of
+// the path, with and without a trailing slash, are the page.
+func (s *Store) PageReading(ctx context.Context, domainID, path string, days int) (PageRead, error) {
+	from, until := spanTimes(ctx, days)
+	trimmed := strings.TrimSuffix(path, "/")
+	if trimmed == "" {
+		trimmed = "/"
+	}
+	clause, args := " AND page_path IN (?,?)", []any{from, until, trimmed, trimmed + "/"}
+	if domainID != AllDomains {
+		clause, args = clause+" AND domain_id=?", append(args, domainID)
+	}
+	f, fargs := focusReaders(ctx, from, until)
+	var reach strings.Builder
+	for i := 1; i <= 10; i++ {
+		reach.WriteString(", COALESCE(SUM(scroll_depth_percent>=" + strconv.Itoa(i*10) + "),0)")
+	}
+	var r PageRead
+	dst := []any{&r.Readings, &r.Engaged, &r.AvgSeconds}
+	for i := range r.Reach {
+		dst = append(dst, &r.Reach[i])
+	}
+	err := s.readDB().QueryRowContext(ctx, `SELECT COUNT(1), COALESCE(SUM(engaged),0), COALESCE(AVG(CASE WHEN time_on_page_seconds>0 THEN time_on_page_seconds END),0)`+reach.String()+`
+		FROM vayuanalytics_sessions WHERE entry_time>=? AND entry_time<?`+clause+f+` AND exit_time IS NOT NULL AND `+human, append(args, fargs...)...).Scan(dst...)
+	return r, err
 }

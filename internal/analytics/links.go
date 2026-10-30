@@ -27,10 +27,10 @@ const (
 	eventDownload = 5
 )
 
-// linkTarget is where a reported link led, as kept: "host/path" for a link
+// LinkTarget is where a reported link led, as kept: "host/path" for a link
 // off the site, and for a file on another host; the path alone for a file on
 // the page's own host. ok is false for anything that is not an http(s) link.
-func linkTarget(raw, pageHost string, download bool) (string, bool) {
+func LinkTarget(raw, pageHost string, download bool) (string, bool) {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 		return "", false

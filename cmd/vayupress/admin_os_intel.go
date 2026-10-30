@@ -506,6 +506,9 @@ type analyticsSpan struct {
 	// focus is the readers the page is narrowed to (analytics_focus.go),
 	// carried with the period because every link that keeps one keeps both.
 	focus []analytics.ExploreFilter
+	// page is the page a report is about (analytics_page.go), "" for every
+	// other view.
+	page string
 }
 
 func (p analyticsSpan) ranged() bool { return !p.from.IsZero() }
@@ -556,6 +559,9 @@ func (p analyticsSpan) set(q url.Values) {
 	for _, f := range p.focus {
 		q.Add(focusParam, encodeFocus(f))
 	}
+	if p.page != "" {
+		q.Set("page", p.page)
+	}
 	if p.ranged() {
 		q.Set("from", p.from.Format("2006-01-02"))
 		q.Set("to", p.to.Format("2006-01-02"))
@@ -574,6 +580,9 @@ func (p analyticsSpan) key() string {
 	}
 	for _, f := range p.focus {
 		k += "|" + encodeFocus(f)
+	}
+	if p.page != "" {
+		k += "|page=" + p.page
 	}
 	return k
 }
@@ -628,7 +637,7 @@ func osPeriodSelector(base, view string, p analyticsSpan) (menu, sheet ui.HTML) 
 		if !p.ranged() && o.Days == p.days {
 			on = ` aria-current="true"`
 		}
-		items.WriteString(`<a class="sa-menu__item" role="menuitem" href="` + esc(analyticsHref(base, view, analyticsSpan{days: o.Days, focus: p.focus})) + `"` + on + `>` + esc(label) + `</a>`)
+		items.WriteString(`<a class="sa-menu__item" role="menuitem" href="` + esc(analyticsHref(base, view, analyticsSpan{days: o.Days, focus: p.focus, page: p.page})) + `"` + on + `>` + esc(label) + `</a>`)
 	}
 	on := ""
 	if p.ranged() {
@@ -651,6 +660,9 @@ func osPeriodSelector(base, view string, p analyticsSpan) (menu, sheet ui.HTML) 
 	}
 	for _, f := range p.focus {
 		hidden += `<input type="hidden" name="` + focusParam + `" value="` + esc(encodeFocus(f)) + `">`
+	}
+	if p.page != "" {
+		hidden += `<input type="hidden" name="page" value="` + esc(p.page) + `">`
 	}
 	sheet = ui.Sheet("analytics-range", "Choose dates", ui.HTML(`<form method="get" action="`+esc(base)+`">`+hidden+
 		`<div class="field"><label class="field-label" for="range-from">From</label><input id="range-from" class="input" type="date" name="from" value="`+from+`" max="`+today+`" required></div>`+

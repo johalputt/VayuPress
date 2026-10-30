@@ -63,11 +63,17 @@ func (a *App) writeSiteAnalytics(w http.ResponseWriter, r *http.Request, v analy
 	per := analyticsSpanOf(r)
 	days := per.days
 	view := analyticsViewOf(r)
+	if view == "page" {
+		per.page = pageOf(r)
+	}
 	// Counted off the request, in the cache the install's Analytics uses: an
 	// exact count of a busy site's visitors over a month reads every view in
 	// it (0.3 s at a million events, 1.1 s for the whole install), and no
 	// console page waits on that.
 	body, ready := adminDash.get(siteAnalyticsKey(v, view, per), analyticsFragmentTTL, func(ctx context.Context) string {
+		if view == "page" {
+			return a.renderPageReport(a.scoped(ctx, per), v, host, days, per.page)
+		}
 		return a.renderSiteAnalyticsBody(a.scoped(ctx, per), v, host, days, view)
 	})
 	if !ready {
@@ -133,6 +139,9 @@ var analyticsViews = []struct{ id, label string }{
 // analyticsViewOf is the view r asks for, or the overview.
 func analyticsViewOf(r *http.Request) string {
 	want := r.URL.Query().Get("view")
+	if want == "page" && pageOf(r) != "" {
+		return "page"
+	}
 	for _, v := range analyticsViews {
 		if v.id == want {
 			return want
@@ -158,6 +167,9 @@ func analyticsHref(base, view string, p analyticsSpan) string {
 
 // analyticsTabs is the section bar: each view a link, the period kept.
 func analyticsTabs(base, view string, p analyticsSpan) ui.HTML {
+	// A page's report is no view of the bar's: from it, each view is the
+	// site's again.
+	p.page = ""
 	tabs := make([]ui.Tab, 0, len(analyticsViews))
 	for _, v := range analyticsViews {
 		tabs = append(tabs, ui.Tab{Label: v.label, Href: analyticsHref(base, v.id, p), Current: v.id == view})
@@ -215,7 +227,7 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host
 		titles := a.pageTitles(ctx, v, top)
 		bars := make([]osChartBar, 0, len(top))
 		for _, p := range top {
-			bars = append(bars, osChartBar{Label: titles[p.Path], Value: p.Pageviews, Hint: p.Path, Href: door("path", p.Path)})
+			bars = append(bars, osChartBar{Label: titles[p.Path], Value: p.Pageviews, Hint: p.Path, Href: door("path", p.Path), Report: pageReportHref(v.base, p.Path, per)})
 		}
 		return osBarList(bars, osShareOf(ov.TotalPageviews), "No page views recorded yet.")
 	}
@@ -229,7 +241,11 @@ func (a *App) renderSiteAnalyticsBody(ctx context.Context, v analyticsView, host
 		rows := make([]measuredRow, 0, len(ms))
 		for _, m := range ms {
 			label, hint := measuredLabel(dim, m.Key)
-			rows = append(rows, measuredRow{Label: label, Hint: hint, Href: door(dim, m.Key), M: m})
+			row := measuredRow{Label: label, Hint: hint, Href: door(dim, m.Key), M: m}
+			if dim == "landing" {
+				row.Report = pageReportHref(v.base, m.Key, per)
+			}
+			rows = append(rows, row)
 		}
 		return osMeasuredList(rows, first, ov, empty)
 	}

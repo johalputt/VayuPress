@@ -70,8 +70,8 @@ var visitMeasures = []visitMeasure{
 
 // measuredRow is one row of a measured list: its words and its visits.
 type measuredRow struct {
-	Label, Hint, Flag, Href string
-	M                       analytics.VisitMeasure
+	Label, Hint, Flag, Href, Report string
+	M                               analytics.VisitMeasure
 }
 
 // osMeasuredList is rows as a bar list counted by first ("visits" or
@@ -134,7 +134,7 @@ func osMeasuredList(rows []measuredRow, first string, ov *analytics.Overview, em
 		}
 		first := measures[0]
 		val := `<span class="vp-bar__val" data-measure-val>` + html.EscapeString(first.text(r.M)) +
-			`<span class="vp-bar__pct">` + osShareLabel(int(first.value(r.M)), listed[first.id]) + `</span></span>`
+			`<span class="vp-bar__pct">` + osShareLabel(int(first.value(r.M)), listed[first.id]) + `</span>` + osReportLink(r.Report) + `</span>`
 		label := html.EscapeString(r.Label)
 		if img := countryFlagImg(r.Flag); img != "" {
 			label = img + " " + label

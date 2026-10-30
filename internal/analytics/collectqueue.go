@@ -127,7 +127,7 @@ func (s *Store) buildCollectEvent(req CollectRequest, ip, ua, domainID string) *
 	case req.search != nil:
 		et = eventSearch
 	case et == eventOutbound || et == eventDownload:
-		target, ok := linkTarget(req.EventName, host, et == eventDownload)
+		target, ok := LinkTarget(req.EventName, host, et == eventDownload)
 		if !ok {
 			return nil
 		}

@@ -4,6 +4,7 @@ package store
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/johalputt/vayupress/internal/focus"
@@ -417,6 +418,20 @@ func (s *Store) WebVitalsP75(ctx context.Context, days int) (*WebVitals, error) 
 // WebVitalsP75Scoped is WebVitalsP75 for one site's pages ("" the primary).
 func (s *Store) WebVitalsP75Scoped(ctx context.Context, domainID string, days int) (*WebVitals, error) {
 	return s.webVitalsP75(ctx, days, " AND domain_id=?", []any{domainID})
+}
+
+// WebVitalsP75ForPage is WebVitalsP75 for one page of one site (AllDomains
+// for that path on every site), either spelling of its trailing slash.
+func (s *Store) WebVitalsP75ForPage(ctx context.Context, domainID, path string, days int) (*WebVitals, error) {
+	trimmed := strings.TrimSuffix(path, "/")
+	if trimmed == "" {
+		trimmed = "/"
+	}
+	clause, args := " AND page_path IN (?,?)", []any{trimmed, trimmed + "/"}
+	if domainID != AllDomains {
+		clause, args = clause+" AND domain_id=?", append(args, domainID)
+	}
+	return s.webVitalsP75(ctx, days, clause, args)
 }
 
 func (s *Store) webVitalsP75(ctx context.Context, days int, clause string, cargs []any) (*WebVitals, error) {
