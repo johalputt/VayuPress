@@ -204,13 +204,14 @@ together. They are kept as long as the site's other analytics, and purged
 with them.
 
 A page's report shows its map at the width chosen: the elements most clicked,
-with their bursts and clicks on nothing, and, for the primary site's pages,
-the page itself, as a reader is served it, with each tenth's clicks drawn
-over it. The page is rendered on the server and shown in a frame that runs
-none of its scripts, so looking at the map records nothing. A hosted site's
-pages are listed but not drawn, since its pages and their files are served
-at its own address. A click is not kept with its visit, so the report's
-filters do not narrow the map, and it says so.
+with their bursts and clicks on nothing, and the page itself, as a reader is
+served it, with each tenth's clicks drawn over it. The page is rendered on
+the server and shown at the console's own address, in a frame that runs
+none of its scripts and under a policy that allows none, so looking at the
+map records nothing. A hosted site's page is given a base address of its own
+site, so its styles, images and fonts come from where its readers get them.
+A click is not kept with its visit, so the report's filters do not narrow
+the map, and it says so.
 
 For the site's privacy notice, which the install does not write:
 

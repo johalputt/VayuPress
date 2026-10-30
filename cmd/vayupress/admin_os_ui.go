@@ -312,6 +312,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			dr.With(auth.CSRFTokenMiddleware).Post("/analytics/goals", a.handleOSScopedCreateGoal)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/analytics/retention", a.handleOSScopedRetention)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/analytics/clickmap", a.handleOSClickMapSave)
+			dr.Get("/analytics/frame", a.handleOSClickMapFrame)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/analytics/alerts", a.handleOSAlertCreate)
 			dr.With(auth.CSRFTokenMiddleware).Delete("/api/analytics/alerts/{aid}", a.handleOSAlertDelete)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/analytics/alerts/seen", a.handleOSAlertsSeen)

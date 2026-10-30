@@ -126,9 +126,10 @@ func TestOnlyAnAdministratorTurnsTheClickMapOn(t *testing.T) {
 }
 
 // A page's click map lists its elements most clicked first, with the
-// bursts and the clicks on nothing, at the address's width; the primary's
-// pages are drawn in a frame of the console's with the clicks over them, a
-// hosted site's are not; a narrowed page says the map is every reader's;
+// bursts and the clicks on nothing, at the address's width; each site's
+// pages are drawn, with the clicks over them, in a frame of the console's
+// under that site's own Analytics; a narrowed page says the map is every
+// reader's;
 // with the map off and nothing kept, an administrator is told where to turn
 // it on and an editor is shown nothing.
 func TestAPagesClickMapIsItsElements(t *testing.T) {
@@ -163,6 +164,11 @@ func TestAPagesClickMapIsItsElements(t *testing.T) {
 			t.Errorf("the click map has no %q:\n%s", want, got)
 		}
 	}
+	// The frame's script draws each element's tenths from its own child: the
+	// link's two clicks are 2 across and 5 down, its 26th tenth.
+	if want := `<span hidden data-heat-e="main&gt;article&gt;p:3&gt;a" data-heat-c="` + strings.Repeat("0,", 25) + "2" + strings.Repeat(",0", 74) + `"></span>`; !strings.Contains(got, want) {
+		t.Errorf("the overlay has no %q:\n%s", want, got)
+	}
 	if strings.Index(got, "p 3 › a") > strings.Index(got, "article › img") {
 		t.Error("the elements are not most clicked first")
 	}
@@ -172,8 +178,8 @@ func TestAPagesClickMapIsItsElements(t *testing.T) {
 	if phone := report("/os/analytics?view=page&page=/post&cw=phone", primaryView, per, false); !strings.Contains(phone, `title="nav"`) || !strings.Contains(phone, `data-heat-width="390"`) {
 		t.Errorf("the phone's map:\n%s", phone)
 	}
-	if hosted := report("/os/d/h1/analytics?view=page&page=/post", hostedView(domain.Domain{ID: "h1", Host: "h1.test"}), per, false); !strings.Contains(hosted, `title="footer"`) || strings.Contains(hosted, "sa-heat\"") {
-		t.Errorf("a hosted site's map is its own, with no frame:\n%s", hosted)
+	if hosted := report("/os/d/h1/analytics?view=page&page=/post", hostedView(domain.Domain{ID: "h1", Host: "h1.test"}), per, false); !strings.Contains(hosted, `title="footer"`) || !strings.Contains(hosted, `src="/os/d/h1/analytics/frame?page=%2Fpost"`) {
+		t.Errorf("a hosted site's map is not its own, drawn in its own frame:\n%s", hosted)
 	}
 	narrowed := per
 	narrowed.focus = []analytics.ExploreFilter{{Dim: "country", Op: analytics.FilterIs, Value: "IN"}}
@@ -182,41 +188,62 @@ func TestAPagesClickMapIsItsElements(t *testing.T) {
 	}
 }
 
-// The frame is the page as the site serves it, framed by the console alone,
-// its own policy otherwise kept; a page that is not one, or no page, is
-// none.
+// The frame is the page as its site serves it, framed by the console
+// alone, under a policy of its own that runs no script; a hosted site's
+// page reaches its own site for its styles and images through a base
+// address, first in its head; a page that is not one, or no page, is none.
 func TestTheClickMapsFrameIsThePageFramedByTheConsoleAlone(t *testing.T) {
 	a := &App{}
 	a.setRootHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/post":
+		switch {
+		case r.URL.Path == "/post" && r.Host == "h1.test":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(`<html><HEAD lang="en"><base href="/elsewhere/"><link rel="stylesheet" href="/theme.css"></HEAD><body>the hosted post</body></html>`))
+		case r.URL.Path == "/post":
 			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'nonce-abc'; frame-ancestors 'none'")
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			_, _ = w.Write([]byte("<html><body><p>the post</p></body></html>"))
-		case "/feed.xml":
+		case r.URL.Path == "/feed.xml":
 			w.Header().Set("Content-Type", "application/xml")
 			_, _ = w.Write([]byte("<rss/>"))
 		default:
 			http.NotFound(w, r)
 		}
 	}))
-	frame := func(page string) *httptest.ResponseRecorder {
+	frame := func(page string, d *domain.Domain) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodGet, "/os/analytics/frame?page="+page, nil)
+		if d != nil {
+			r = r.WithContext(context.WithValue(r.Context(), ctxScopedDomainKey, *d))
+		}
 		w := httptest.NewRecorder()
-		a.handleOSClickMapFrame(w, httptest.NewRequest(http.MethodGet, "/os/analytics/frame?page="+page, nil))
+		a.handleOSClickMapFrame(w, r)
 		return w
 	}
-	w := frame("/post")
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "the post") {
-		t.Fatalf("the frame: %d %q", w.Code, w.Body.String())
+	w := frame("/post", nil)
+	if w.Code != http.StatusOK || w.Body.String() != "<html><body><p>the post</p></body></html>" {
+		t.Fatalf("the primary's frame: %d %q", w.Code, w.Body.String())
 	}
-	if csp := w.Header().Get("Content-Security-Policy"); csp != "default-src 'self'; script-src 'nonce-abc'; frame-ancestors 'self'" {
-		t.Errorf("the frame's policy = %q, want the page's, framed by this origin alone", csp)
+	csp := w.Header().Get("Content-Security-Policy")
+	for _, want := range []string{"default-src 'none'", "script-src 'none'", "frame-ancestors 'self'", "base-uri 'none'", "style-src 'self' 'unsafe-inline'"} {
+		if !strings.Contains(csp, want) {
+			t.Errorf("the frame's policy %q has no %q", csp, want)
+		}
+	}
+	if strings.Contains(csp, "nonce-") || strings.Contains(csp, "frame-ancestors 'none'") {
+		t.Errorf("the frame's policy is the page's: %q", csp)
 	}
 	if xfo := w.Header().Get("X-Frame-Options"); xfo != "SAMEORIGIN" {
 		t.Errorf("X-Frame-Options = %q, want SAMEORIGIN", xfo)
 	}
+	hosted := frame("/post", &domain.Domain{ID: "h1", Host: "h1.test"})
+	if body := hosted.Body.String(); body != `<html><HEAD lang="en"><base href="http://h1.test/"><base href="/elsewhere/"><link rel="stylesheet" href="/theme.css"></HEAD><body>the hosted post</body></html>` {
+		t.Errorf("the hosted site's frame = %q, want its page with its own site's base first in its head", body)
+	}
+	if csp := hosted.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "style-src 'self' http://h1.test 'unsafe-inline'") || !strings.Contains(csp, "base-uri http://h1.test;") || !strings.Contains(csp, "script-src 'none'") {
+		t.Errorf("the hosted site's frame policy = %q, want its site named and no script", csp)
+	}
 	for _, page := range []string{"/feed.xml", "/missing", "", "javascript:x"} {
-		if code := frame(page).Code; code != http.StatusNotFound {
+		if code := frame(page, nil).Code; code != http.StatusNotFound {
 			t.Errorf("the frame of %q: %d, want 404", page, code)
 		}
 	}

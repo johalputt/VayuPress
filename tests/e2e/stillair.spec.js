@@ -462,7 +462,7 @@ test("a row narrows Analytics to its readers, and the bar takes it off", async (
 // measure of its visits beside the page's own.
 // The click map, end to end: turned on in Goals, the page's own recorder
 // takes a reader's click on the article's heading, the report lists the
-// element (a heading is no link: a click on nothing), and the page drawn in
+// element, and the page drawn in
 // the console's frame carries the click over it. The reader is a browser of
 // its own with an ordinary Chrome's name, since only a reader is counted;
 // the visit is tried again while the collector's minute has no room. The
@@ -484,12 +484,32 @@ test("a page's clicks, once its site records them, are on its report", async ({ 
   });
   try {
     const p = await reader.newPage();
-    await expect.poll(async () => {
-      await p.goto(slug);
-      await p.locator("h1").first().click();
-      await p.goto("about:blank");
-      return (await (await page.request.get(report)).text()).match(/<span title="[^"]*h1">[^<]*<\/span><\/td><td>\d+<\/td><td>\d+<\/td><td>[1-9]/) !== null;
-    }, { timeout: 90000, intervals: [3000] }).toBe(true);
+    // What the last try saw, said if the map never shows the click.
+    const seen = {};
+    p.on("response", (r) => { if (r.url().includes("/analytics/")) seen["answer " + new URL(r.url()).pathname] = r.status(); });
+    try {
+      await expect.poll(async () => {
+        await p.goto(slug);
+        seen.recorder = await p.evaluate(async () => (await (await fetch("/static/vp-analytics.js")).text()).includes("/api/v1/analytics/clicks"));
+        await p.locator("h1").first().click();
+        // The recorder sends as the page is left (pagehide); raised here on
+        // the page itself, so its answer is waited for, not lost to a
+        // navigation's timing on a busy machine.
+        const sent = p.waitForResponse((r) => r.url().includes("/api/v1/analytics/clicks"), { timeout: 5000 }).then((r) => r.status(), () => "not sent");
+        await p.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide")));
+        seen.clicks = await sent;
+        const body = await (await page.request.get(report)).text();
+        const part = body.indexOf('data-part="clicks"');
+        seen.report = part < 0 ? body.slice(0, 300) : body.slice(part, part + 600);
+        // The heading's row, whatever its counts: whether a click on it is
+        // on nothing is the theme's (other specs apply themes meanwhile),
+        // and is the store's tests' to say.
+        return /<span title="[^"]*h1">/.test(body);
+      }, { timeout: 90000, intervals: [3000] }).toBe(true);
+    } catch (e) {
+      console.log("the click map's last try:", JSON.stringify(seen, null, 1));
+      throw e;
+    }
     await page.goto(report);
     await expect(page.locator(".sa-heat__dot").first()).toBeAttached({ timeout: 15000 });
   } finally {

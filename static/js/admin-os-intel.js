@@ -622,8 +622,10 @@ function consoleLink(h) {
     var frame = box.querySelector('.sa-heat__frame');
     var layer = box.querySelector('.sa-heat__layer');
     var width = Number(box.getAttribute('data-heat-width')) || 1280;
-    var data;
-    try { data = JSON.parse(box.getAttribute('data-heat') || '[]'); } catch (e) { return; }
+    var data = [];
+    box.querySelectorAll('[data-heat-e]').forEach(function (s) {
+      data.push({ e: s.getAttribute('data-heat-e'), c: (s.getAttribute('data-heat-c') || '').split(',').map(Number) });
+    });
     var max = 1;
     data.forEach(function (e) { e.c.forEach(function (n) { if (n > max) max = n; }); });
     function draw() {

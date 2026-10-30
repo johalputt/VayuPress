@@ -40,8 +40,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   an administrator turns it on in the site's Goals, for every page load or
   one in 4 or 10. Each page's report then lists its most clicked elements
   at a phone's, tablet's or desktop's width, with bursts of clicks and
-  clicks on nothing, and draws the primary's pages with their clicks over
-  them. A click is never kept: it is added to a daily count of its page,
+  clicks on nothing, and draws the page with its clicks over it, for
+  every site, in a frame that runs no script. A click is never kept: it is added to a daily count of its page,
   width, element (its place among the page's tags, never its text) and
   tenth of that element (migration 124). Nothing typed is recorded, the
   server alone decides which site's clicks are taken, and the counts are

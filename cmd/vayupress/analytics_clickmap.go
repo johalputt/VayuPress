@@ -273,8 +273,8 @@ func (a *App) osClickMap(r *http.Request, v analyticsView, per analyticsSpan, ad
 		empty = "The clicks could not be read: " + err.Error()
 	}
 	body := widths.String()
-	if !v.hosted && len(els) > 0 {
-		body += clickOverlay(els, per.page, width)
+	if len(els) > 0 {
+		body += clickOverlay(els, v.base+"/frame", per.page, width)
 	}
 	body += string(ui.Table([]string{"Element", "Clicks", "In a burst", "On nothing"}, rows, empty))
 	return `<div data-part="clicks">` + string(ui.Section("Where readers clicked", hint, ui.HTML(body))) + `</div>`
@@ -297,45 +297,82 @@ func elementLabel(e string) string {
 // clickFrameWidths is the width a page is drawn at for each width class.
 var clickFrameWidths = map[string]int{"phone": 390, "tablet": 820, "desktop": 1280}
 
-// clickOverlay is the page as the primary serves it, in a frame that runs
-// none of its scripts (so drawing it records nothing), with each element's
-// clicks for the console's script to draw over it.
-func clickOverlay(els []analytics.HeatElement, path, width string) string {
-	type drawn struct {
-		E string  `json:"e"`
-		C []int64 `json:"c"`
-	}
-	data := make([]drawn, 0, len(els))
+// clickOverlay is the page as its site serves it, from frame (the site's
+// page under the console, handleOSClickMapFrame), in a frame that runs none
+// of its scripts, so drawing it records nothing, with each element's clicks
+// for the console's script to draw over it.
+func clickOverlay(els []analytics.HeatElement, frame, path, width string) string {
+	// Each element is an empty child with its path and its tenths' counts:
+	// the path is tags, digits, ":" and ">" (ValidElement) and the counts are
+	// numbers, each in an attribute of its own, so nothing is quoted twice.
+	var b strings.Builder
+	b.WriteString(`<div class="sa-heat" data-heat-width="` + strconv.Itoa(clickFrameWidths[width]) + `" aria-hidden="true">`)
 	for _, e := range els {
-		data = append(data, drawn{E: e.Element, C: e.Cells[:]})
+		cells := make([]string, len(e.Cells))
+		for i, n := range e.Cells {
+			cells[i] = strconv.FormatInt(n, 10)
+		}
+		b.WriteString(`<span hidden data-heat-e="` + esc(e.Element) + `" data-heat-c="` + strings.Join(cells, ",") + `"></span>`)
 	}
-	j, _ := json.Marshal(data)
-	return `<div class="sa-heat" data-heat="` + esc(string(j)) + `" data-heat-width="` + strconv.Itoa(clickFrameWidths[width]) + `" aria-hidden="true">` +
-		`<div class="sa-heat__stage"><iframe class="sa-heat__frame" sandbox="allow-same-origin" loading="lazy" tabindex="-1" title="The page with its clicks" src="` +
-		esc(primaryAnalyticsBase+"/frame?page="+url.QueryEscape(path)) + `"></iframe><div class="sa-heat__layer"></div></div></div>`
+	b.WriteString(`<div class="sa-heat__stage"><iframe class="sa-heat__frame" sandbox="allow-same-origin" loading="lazy" tabindex="-1" title="The page with its clicks" src="` +
+		esc(frame+"?page="+url.QueryEscape(path)) + `"></iframe><div class="sa-heat__layer"></div></div></div>`)
+	return b.String()
 }
 
-// handleOSClickMapFrame is one of the primary's pages as a reader is served
+// handleOSClickMapFrame is one of the site's pages as a reader is served
 // it, for the click map's frame: rendered in-process, as the site preview
-// does, and allowed to be framed by this console alone. Every public page
-// refuses any frame; this answer is the console's, at its own address.
+// does, at the console's own address, so the console's script can read the
+// page it draws over. Every public page refuses any frame; this answer is
+// the console's, framed by the console alone.
+//
+// The policy is the frame's own, not the page's: no script at all (the
+// frame's sandbox already runs none; this holds if the sandbox is ever
+// lost), and the page's styles, images and fonts. A hosted site's page is
+// served here from the console's origin, so a base address points its
+// relative links, styles and images at its own site, which the policy
+// names.
 func (a *App) handleOSClickMapFrame(w http.ResponseWriter, r *http.Request) {
 	page := pageOf(r)
 	if page == "" {
 		http.NotFound(w, r)
 		return
 	}
-	body, rec := previewFetch(r.Context(), a.rootHandler(), a.primaryHost(r.Context()), page)
+	host, origin := a.primaryHost(r.Context()), ""
+	if d, ok := osScopedDomain(r); ok && !d.IsPrimary {
+		// The hosted site is served by this install, so the browser reaches
+		// it as it reached the console: same scheme, its own host.
+		scheme, _, _ := strings.Cut(publicOrigin(r), "://")
+		host, origin = d.Host, scheme+"://"+d.Host
+	}
+	body, rec := previewFetch(r.Context(), a.rootHandler(), host, page)
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/html") {
 		http.NotFound(w, r)
 		return
 	}
-	// The page's own policy, which its nonces were written for, framed by
-	// this origin alone.
-	csp := strings.Replace(rec.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'", "frame-ancestors 'self'", 1)
-	w.Header().Set("Content-Security-Policy", csp)
+	base := "'none'"
+	if origin != "" {
+		body, base = withBase(body, origin+"/"), origin
+	}
+	from := strings.TrimSpace("'self' " + origin)
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'none'; style-src "+from+" 'unsafe-inline' https:; img-src "+from+
+		" data: https:; font-src "+from+" data: https:; media-src "+from+" https:; base-uri "+base+"; form-action 'none'; frame-ancestors 'self'")
 	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(body))
+}
+
+// withBase is page with a base address first in its head, before any of its
+// own, so its relative addresses resolve against href.
+func withBase(page, href string) string {
+	tag := `<base href="` + esc(href) + `">`
+	i := strings.Index(strings.ToLower(page), "<head")
+	if i < 0 {
+		return tag + page
+	}
+	j := strings.IndexByte(page[i:], '>')
+	if j < 0 {
+		return tag + page
+	}
+	return page[:i+j+1] + tag + page[i+j+1:]
 }
