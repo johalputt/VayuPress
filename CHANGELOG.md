@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.17] — 2026-10-30
+
+Analytics as a bar of views, each its own page with its sections open; a period of dates you choose; and how long the figures are kept, at the end of the bar.
+
 ### Changed
 
 - **Analytics is a bar of views.** The page was the figures and five lists,
