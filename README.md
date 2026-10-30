@@ -33,7 +33,7 @@
 
 ## About
 
-> **Live install:** **[johal.in](https://johal.in)** — **234,997 posts**, **14 sites** and a full mail server, all on **one Contabo VPS 10**, on VayuPress 3.18.11. [See the numbers →](#running-in-production--johalin)
+> **Live install:** **[johal.in](https://johal.in)** — **235,008 posts**, **14 sites** and a full mail server, all on **one Contabo VPS 10**, on VayuPress 3.18.15 (read 30 October 2026). [See the numbers →](#running-in-production--johalin)
 
 **Vayu** is Sanskrit for *wind* — the invisible force that moves everything and is owned by no one. VayuPress moves your online presence the same way: entirely under your control, seen by no third party.
 
@@ -282,7 +282,7 @@ VayuPress is a single Go binary and a single SQLite database. There is no second
                     └─────────────────────────────────────────────────────────────┘
 ```
 
-Under the hood: a platform kernel — checksum-verified migrations, a transactional event outbox, a write-once audit log and six system modes — an asynchronous SQLite write queue with dead-letter replay, and a page cache built to stay fast on a large archive: pages and listing cards are kept on disk, a stale page is served at once and redrawn off the request path, a paced warmer rebuilds what an edit or a release made stale at the speed the host can spare, browsers revalidate each page (an unchanged one costs a `304`), and the whole cache is **one switch** in Settings. Plugins run out of process under seccomp, namespaces and a capability allowlist. Every decision is recorded in the [ADR registry](docs/adr/) and the [architecture notes](docs/ARCHITECTURE.md).
+Under the hood: a platform kernel — checksum-verified migrations, a transactional event outbox, a write-once audit log and six system modes — an asynchronous SQLite write queue with dead-letter replay, and a page cache built to stay fast on a large archive: pages and listing cards are kept on disk, a stale page is served at once and redrawn off the request path, a paced warmer rebuilds what an edit or a release made stale at the speed the host can spare, browsers revalidate each page (an unchanged one costs a `304`), and the whole cache is **one switch** in Settings. Plugins run out of process, in their own namespaces under cgroup limits, with a path and network allowlist. Every decision is recorded in the [ADR registry](docs/adr/) and the [architecture notes](docs/ARCHITECTURE.md).
 
 ---
 
@@ -293,11 +293,11 @@ Benchmarks are easy to stage. This is a live install you can open right now and 
 | | |
 |---|---|
 | **Site** | **[johal.in](https://johal.in)** — a working blog, publicly reachable |
-| **Published posts** | **234,997**, in one SQLite database |
+| **Published posts** | **235,008**, in one SQLite database |
 | **Hardware** | A single **Contabo VPS&nbsp;10** — one box, nothing else |
 | **Running on it** | **14 sites** across `johal.in` and `vayupress.com` (3 blogs, 10 hand-built sites, 1 business template), every certificate live, **+** the mail server (SMTP, IMAP, POP3, DKIM, WKD) |
 | **VayuShield** | Protecting, with 41 inspection rules and three datacenter range feeds |
-| **Version** | VayuPress 3.18.11 |
+| **Version** | VayuPress 3.18.15, read through its connector on 30 October 2026 |
 
 ### Google PageSpeed Insights
 
@@ -408,7 +408,7 @@ The install's own state is inspectable from inside VayuOS — its system modes, 
 - **No telemetry, no third-party requests for your readers.** Every asset — scripts, stylesheets, fonts, images — is served from your origin. The only exception is one you choose: switch on Google AdSense and its script comes with it.
 - **A strict Content Security Policy.** Scripts run only with a per-request nonce or a known hash; there is no `unsafe-eval` and no inline script. Stylesheets come only from your origin; inline style *attributes* are allowed, and style cannot run code.
 - **Encrypted at rest.** PGP private keys and stored third-party secrets (payment, AI and DNS keys) are AES-256-GCM encrypted. An operator backup is a single AES-256-GCM archive of everything — database, settings, media, mailboxes, keys — keyed with Argon2id.
-- **Sandboxed extensibility.** Out-of-process plugins run under seccomp (seven Linux architectures), namespaces and a deny-by-default capability set.
+- **Sandboxed extensibility.** Out-of-process plugins run in their own PID, IPC and network namespaces under cgroup limits, with deny-by-default path and network grants and a verified binary hash. A seccomp filter for seven Linux architectures is written and not yet applied ([SPEC](docs/plugins/SPEC.md)).
 - **Recorded and signed.** A write-once audit log; releases signed with cosign and an RFC 3161 timestamp; a [Constitution](GOVERNANCE-CONSTITUTION.md) checked by CI and an [Ethical AI Charter](ETHICS.md): no training on your data, no telemetry, and AI only ever as a suggestion you accept.
 
 [Security policy](SECURITY.md) · [Threat model](docs/THREAT-MODEL.md) · [Attack surfaces](docs/security/attack-surfaces.md)

@@ -23,7 +23,7 @@ All AI features must comply with:
 4. **Local-First** — Local models (Ollama, Llama.cpp) preferred over cloud APIs.
 5. **Bias Mitigation** — AI features are designed to minimize bias and discrimination.
 6. **Accountability** — AI decisions are explainable and auditable.
-7. **No Autonomous Actions** — AI never takes actions without explicit user approval.
+7. **No Autonomous Actions** — AI never takes actions without explicit user approval. A VayuFlow automation that uses a model is approved in advance when an operator arms it, and its model step can only write a draft, never publish (`internal/vayuflow/capability.go`).
 
 ## Ethical Review Process
 
@@ -34,7 +34,7 @@ Major changes must undergo ethical review if they:
 - Could enable surveillance or tracking
 - Have significant environmental impact
 
-**Review Board**: A rotating panel of 3 maintainers (including the Ethics Lead).
+**Review Board**: A rotating panel of 3 maintainers (including the Ethics Lead). Today the one maintainer reviews alone ([docs/ETHICAL-REVIEW-PROCESS.md](docs/ETHICAL-REVIEW-PROCESS.md)).
 
 **Process**:
 1. Submit an ethical impact assessment with the RFC or PR.
@@ -50,7 +50,7 @@ Email: **ethics@vayupress.com** (PGP optional)
 
 ## Annual Ethical Metrics
 
-Published annually:
+To be published annually (none has been published yet):
 - Privacy compliance (GDPR, CCPA)
 - Accessibility compliance (WCAG 2.2 AA)
 - AI usage transparency

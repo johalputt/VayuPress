@@ -37,7 +37,7 @@ import (
 const CityFile = "dbip-city-lite.mmdb"
 
 // CityAttribution is the credit CC BY 4.0 asks of DB-IP's data.
-const CityAttribution = `<a class="vp-credit" href="https://db-ip.com" rel="noopener noreferrer" target="_blank">IP Geolocation by DB-IP</a>`
+const CityAttribution = `<a href="https://db-ip.com" rel="noopener noreferrer" target="_blank">IP Geolocation by DB-IP</a>`
 
 // cityMaxBytes bounds a download, unpacked. The table was 130 MB in 2026; a
 // response several times that is not the table. A variable for the test.

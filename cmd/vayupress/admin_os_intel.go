@@ -24,7 +24,6 @@ import (
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
-	"github.com/johalputt/vayupress/internal/geoip"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/ui"
@@ -510,7 +509,7 @@ func osPeriodSelector(base string, days int) ui.HTML {
 // and cities they are in and what they read on, filled every 10 s from src by
 // admin-os-intel.js. A count in ink, not an accent number beside a LIVE pill
 // and pulsing rings: it is the same kind of figure as the band's.
-func osLiveCard(src, credit string) string {
+func osLiveCard(src string) string {
 	return `<div class="vm-liveview" data-live data-live-src="` + esc(src) + `">
   <div class="stat-card"><div class="stat-card__label">Reading now</div><div class="stat-card__value" data-live-count>—</div>
     <div class="stat-card__note"><span data-live-noun>visitors</span> in the last <span data-live-window>5</span> minutes<span data-live-updated></span></div></div>
@@ -523,7 +522,7 @@ func osLiveCard(src, credit string) string {
   <h3 class="sa-panel__title">Countries</h3>
   <div class="vp-bars" data-live-countries><p class="table-empty">Counting…</p></div>
   <h3 class="sa-panel__title">Cities</h3>
-  <div class="vp-bars" data-live-cities><p class="table-empty">Counting…</p></div>` + credit + `
+  <div class="vp-bars" data-live-cities><p class="table-empty">Counting…</p></div>
   <h3 class="sa-panel__title">Devices</h3>
   <div class="vp-bars" data-live-devices><p class="table-empty">Counting…</p></div>
   <h3 class="sa-panel__title">Browsers</h3>
@@ -535,10 +534,9 @@ func osLiveCard(src, credit string) string {
 // up, which resolve with no proxy, then regions and cities, which need the
 // proxy's location headers or the downloaded city table. What is missing is
 // said once, and how to get regions and cities is in How this works, not a
-// box on the page. credit is the city table's attribution, or "" when it is
-// not in use.
-func osGeoSection(countries, regions, cities []analytics.AudienceStat, credit string) string {
-	setup := string(ui.Explain(ui.HTML(`<p>A country comes from the proxy in front of the install when it names one, and otherwise from the table compiled into VayuPress, looked up on this server. A region or a city comes from the proxy's headers: with Cloudflare, turn on Rules › Settings › Add visitor location headers (it adds <code>cf-region</code> and <code>cf-ipcity</code>); CloudFront, Vercel and Fastly headers are read too, and <code>X-Geo-Region</code> and <code>X-Geo-City</code> from any proxy. With no proxy that names cities, turn on <a href="/os/settings/advanced#s-cities">Settings › Advanced › Visitor cities</a>: the install downloads DB-IP's city table and looks each address up on this server.</p>`)))
+// box on the page.
+func osGeoSection(countries, regions, cities []analytics.AudienceStat) string {
+	setup := string(ui.Explain(ui.HTML(`<p>A country comes from the proxy in front of the install when it names one, and otherwise from the table compiled into VayuPress, looked up on this server. A region or a city comes from the proxy's headers: with Cloudflare, turn on Rules › Settings › Add visitor location headers (it adds <code>cf-region</code> and <code>cf-ipcity</code>); CloudFront, Vercel and Fastly headers are read too, and <code>X-Geo-Region</code> and <code>X-Geo-City</code> from any proxy. With no proxy that names cities, an administrator can turn on Settings › Advanced › Visitor cities in the install's console: the install downloads DB-IP's city table and looks each address up on this server.</p>`)))
 	if len(countries) == 0 && len(regions) == 0 && len(cities) == 0 {
 		return `<p class="table-empty">No location recorded yet.</p>` + setup
 	}
@@ -572,16 +570,7 @@ func osGeoSection(countries, regions, cities []analytics.AudienceStat, credit st
 	}
 	return out + analyticsCols(
 		analyticsPanel("Regions", osBarList(osBarsFromAudience(regions), osShareOfListed(), "No region recorded yet.")),
-		analyticsPanel("Cities", osBarList(osBarsFromAudience(cities), osShareOfListed(), "No city recorded yet.")+credit))
-}
-
-// cityCredit is the attribution DB-IP's licence asks for under a list of
-// cities, while its table is in use.
-func cityCredit() string {
-	if loaded, _ := geoip.CityLoaded(); !loaded {
-		return ""
-	}
-	return `<p class="settings-row-hint">` + geoip.CityAttribution + `</p>`
+		analyticsPanel("Cities", osBarList(osBarsFromAudience(cities), osShareOfListed(), "No city recorded yet.")))
 }
 
 // osGoalsSectionOf is the Goals section for v: its goals counted over its

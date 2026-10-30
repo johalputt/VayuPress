@@ -114,7 +114,7 @@ func TestATrendNeedsTwoDaysWithViews(t *testing.T) {
 // the script fills (pages, referrers, channels, countries, cities, devices,
 // browsers), and nothing that restates it (a LIVE pill, pulsing rings).
 func TestLiveCardIsAFigureAndItsLists(t *testing.T) {
-	out := osLiveCard("/os/api/analytics/realtime", "")
+	out := osLiveCard("/os/api/analytics/realtime")
 	assertCSPSafe(t, "osLiveCard", out)
 	for _, want := range []string{
 		`data-live-src="/os/api/analytics/realtime"`,

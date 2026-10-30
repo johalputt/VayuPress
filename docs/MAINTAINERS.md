@@ -17,6 +17,9 @@
 
 ## Maintainer Roles
 
+> Today every role below is held by the one maintainer above. The roles are
+> written down so that the work they name has an owner when others join.
+
 The Constitution defines 7 maintainer roles. One person may hold multiple roles; no role may be vacant for more than 90 days.
 
 ### BDFL (Benevolent Dictator For Life)
@@ -55,7 +58,7 @@ The Constitution defines 7 maintainer roles. One person may hold multiple roles;
 - Owns the binary-size budget (45 MB gzipped, `make check-size`) and the Halcyon and console byte budgets
 - Runs benchmarks on every release candidate
 - Proposes and reviews Prompt 2 compliance
-- Maintains `docs/PERFORMANCE.md` (when created)
+- Maintains [`docs/BENCHMARKS.md`](BENCHMARKS.md)
 
 **Contact**: performance@vayupress.com
 

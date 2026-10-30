@@ -8,6 +8,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+
+- **The DB-IP credit is in Settings only.** Analytics no longer prints "IP
+  Geolocation by DB-IP" under its lists of cities; the credit stays beside
+  the Visitor cities switch in Settings › Advanced, where the table is turned
+  on.
+
+### Fixed
+
+- **A hosted site's Analytics linked the install's Settings.** The Location
+  section's explanation linked Settings › Advanced, an install-wide page, on
+  every site's Analytics; a hosted site's operator following it would have
+  been sent to the primary site's settings. It now names the switch without
+  linking it.
+- **Docs say what the plugin sandbox enforces.** The plugin guide, its
+  specification, the sandbox notes, the README and the Tools page said plugins
+  run under a seccomp filter with Linux capabilities dropped. Both are written
+  but not applied to the plugin process; the pages now say so and name what is
+  enforced (namespaces, cgroup limits, the run-as identity, the binary hash
+  and the path and network allowlists).
+
 ## [3.18.15] — 2026-10-25
 
 The DB-IP credit, quieter.

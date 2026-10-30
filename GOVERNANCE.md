@@ -3,15 +3,19 @@
 This document is the entry-point summary of VayuPress governance.
 The authoritative source is [GOVERNANCE-CONSTITUTION.md](GOVERNANCE-CONSTITUTION.md).
 
+> **Today (2026-10-25)** one maintainer, Ankush Choudhary Johal (@johalputt),
+> holds every role below; the review board and the votes they describe begin
+> when there are maintainers to fill them ([docs/MAINTAINERS.md](docs/MAINTAINERS.md)).
+
 ## Governance Architecture
 
 | Layer                  | Document(s)                                                         | Mutability              |
 |------------------------|---------------------------------------------------------------------|-------------------------|
 | Constitution           | `GOVERNANCE-CONSTITUTION.md`                                        | Highest (amendment-protected) |
-| Institutional Policies | `SUSTAINABILITY.md`, `LEGAL.md`, `ECOSYSTEM.md`                    | High (RFC + 75%)        |
-| Governance Policies    | `CONTRIBUTING.md`, `SECURITY.md`, `RELEASES.md`                    | Medium (RFC + majority) |
-| Engineering Standards  | `ARCHITECTURE.md`, `CI-GOVERNANCE.md`, `TESTING.md`                | Lower (RFC + baselines) |
-| Operational Runbooks   | `OPERATIONS.md`, `DISASTER-RECOVERY.md`                            | Live documents          |
+| Institutional Policies | `docs/SUSTAINABILITY.md`, `docs/LICENSING.md`, `ETHICS.md`         | High (RFC + 75%)        |
+| Governance Policies    | `CONTRIBUTING.md`, `SECURITY.md`, `docs/RELEASES.md`               | Medium (RFC + majority) |
+| Engineering Standards  | `docs/ARCHITECTURE.md`, `docs/CI-GOVERNANCE.md`, `docs/QUALITY-GATES.md` | Lower (RFC + baselines) |
+| Operational Runbooks   | `docs/OPERATIONS.md`, `docs/operations/disaster-recovery.md`       | Live documents          |
 | ADRs                   | `/docs/adr/`                                                        | Immutable once accepted |
 
 ## Priority Order
@@ -42,7 +46,7 @@ Security = Data Integrity > Ethical Compliance > Reliability > Simplicity > Perf
 
 Required for: new dependencies, core architecture changes, major new features, governance modifications, ethical concerns.
 
-Submit RFCs to the `vayupress/rfcs` repository. Minimum 7-day discussion. Simple majority vote to accept.
+Open an issue with the RFC proposal template, written from [docs/rfc-template.md](docs/rfc-template.md). Minimum 7-day discussion. An accepted design is recorded as an ADR in [docs/adr/](docs/adr/INDEX.md).
 
 ## Contact
 

@@ -58,7 +58,7 @@ func TestLiveCitiesAndCountriesCarryTheirFlags(t *testing.T) {
 // Location's country list draws each country's flag before its name, and a
 // label that is not a country draws none.
 func TestLocationCountriesCarryTheirFlags(t *testing.T) {
-	out := osGeoSection([]analytics.AudienceStat{{Label: "IN", Count: 3}, {Label: "<b>", Count: 1}}, nil, nil, "")
+	out := osGeoSection([]analytics.AudienceStat{{Label: "IN", Count: 3}, {Label: "<b>", Count: 1}}, nil, nil)
 	if !strings.Contains(out, `<img class="vp-flag-img" src="/os/static/flags/in.svg" alt="" width="20" height="15" loading="lazy" decoding="async"> India`) {
 		t.Errorf("India has no flag before its name:\n%s", out)
 	}

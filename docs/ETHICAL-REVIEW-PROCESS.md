@@ -8,6 +8,10 @@
 
 ## Overview
 
+> **Today (2026-10-25)** the project has one maintainer, who reviews alone;
+> no ERB decision has been recorded yet, so `docs/ethics-decisions/` and
+> `docs/ethics-reports/` are created with the first one.
+
 The VayuPress Ethical Review Board (ERB) reviews features, changes, and incidents for alignment with the 8 ethical principles in `ETHICS.md`. Ethical review is not a blocker for routine bug fixes — it applies to new features and architectural changes that affect user privacy, autonomy, or data handling.
 
 ---
