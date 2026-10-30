@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.18] — 2026-10-30
+
+Analytics, connected: every row opens the readers it counts; lists ranked by what their visits did; a world map on Audience and Live; a report for each page; the latest visits as they went; an opt-in click map drawn over every site's pages. With a fix for links the console's scripts read from the page, and go-jose and goldmark updated.
+
 ### Added
 
 - **Every row is the way into its readers.** A referrer, channel, page,
