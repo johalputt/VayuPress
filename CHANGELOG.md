@@ -88,6 +88,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
+- **Mail's Settings is one page of sections.** General, Addresses, Rules
+  and replies, Privacy and security, and for a mailbox's holder Signing in
+  (password, two-factor, passkeys, phones and mail apps) and Import and
+  export, listed on the left under a field that finds any setting by name.
+  The name on mail you send and the forwarding address save as they change,
+  with "Saved. Undo" for ten seconds; Undo puts back the value the page was
+  drawn with. The accounts list, which shares those controls, keeps their
+  Save buttons.
 - **The reader says what is known about where a message came from.** One
   quiet line under the sender: "shop.example confirmed it sent this" when
   the sending domain authenticated the message on its way in, and "2

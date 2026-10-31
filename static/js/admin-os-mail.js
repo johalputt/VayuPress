@@ -2255,4 +2255,59 @@
       }
     });
   })();
+
+  // ── Settings: find a setting, and save as it changes ──────────────────────
+  // The field over the sections hides every setting whose name and words do
+  // not hold what is typed, and a section left with none. A one-value
+  // setting (data-mx-autosave) saves when it changes, with "Saved. Undo" for
+  // ten seconds; Undo sends the value the page was drawn with.
+  (function () {
+    document.addEventListener('input', function (e) {
+      var find = e.target && e.target.closest ? e.target.closest('[data-mx-set-find]') : null;
+      if (!find) return;
+      var q = find.value.trim().toLowerCase(), shown = 0;
+      document.querySelectorAll('.mx-set').forEach(function (sec) {
+        var any = false;
+        sec.querySelectorAll('.mx-set__item').forEach(function (it) {
+          var hit = !q || (it.getAttribute('data-mx-set') || '').indexOf(q) >= 0;
+          it.hidden = !hit;
+          if (hit) any = true;
+        });
+        sec.hidden = !any;
+        if (any) shown++;
+      });
+      var none = document.querySelector('[data-mx-set-none]');
+      if (none) none.hidden = shown > 0;
+    });
+    var undo = null, timer = 0;
+    document.addEventListener('change', function (e) {
+      var form = e.target && e.target.closest ? e.target.closest('.mx-settings form[data-mx-autosave]') : null;
+      if (!form || !window.htmx) return;
+      var before = {};
+      form.querySelectorAll('input[name], select[name], textarea[name]').forEach(function (i) {
+        if (i.type === 'checkbox' || i.type === 'radio') { if (i.defaultChecked) before[i.name] = i.value; }
+        else if (i.tagName === 'SELECT') {
+          var d = Array.prototype.filter.call(i.options, function (o) { return o.defaultSelected; })[0];
+          before[i.name] = d ? d.value : '';
+        } else before[i.name] = i.defaultValue;
+      });
+      undo = { url: form.getAttribute('hx-post'), target: form.getAttribute('hx-target'), values: before };
+      window.htmx.trigger(form, 'submit');
+    });
+    document.body.addEventListener('htmx:afterRequest', function (e) {
+      var elt = e.detail && e.detail.elt;
+      var saved = document.querySelector('[data-mx-saved]');
+      if (!saved || !elt || !elt.matches || !elt.matches('form[data-mx-autosave]') || !e.detail.successful) return;
+      saved.hidden = false;
+      clearTimeout(timer);
+      timer = setTimeout(function () { saved.hidden = true; }, 10000);
+    });
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest || !e.target.closest('[data-mx-undo]') || !undo || !window.htmx) return;
+      window.htmx.ajax('POST', undo.url, { target: undo.target, swap: 'innerHTML', values: undo.values });
+      undo = null;
+      var saved = document.querySelector('[data-mx-saved]');
+      if (saved) saved.hidden = true;
+    });
+  })();
 })();

@@ -223,3 +223,48 @@ func TestMailboxSettingsAlwaysOpensSettings(t *testing.T) {
 		t.Error("an editor whose sign-in address is a mailbox got its settings without an assignment")
 	}
 }
+
+// Settings is one page: its sections listed beside a field that finds a
+// setting by name, every setting in a named item, and the one-value ones
+// saving as they change. The accounts list shares the builders and keeps
+// their Save buttons.
+func TestSettingsIsOnePageOfSections(t *testing.T) {
+	a := appWithMailAccounts(t)
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	a.userStore = users.New(db)
+	dana := &users.User{ID: "vmail:dana@example.com", Email: "dana@example.com", Role: users.RoleAuthor, MailAddress: "dana@example.com"}
+	rec := httptest.NewRecorder()
+	a.handleVayuOSMySettings(rec, withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/settings", nil), dana))
+	page := rec.Body.String()
+	if !strings.Contains(page, `<nav class="mx-settings__nav"`) {
+		t.Fatalf("the holder's Settings is not the sectioned page: %d\n%s", rec.Code, page)
+	}
+	nav := page[strings.Index(page, `<nav class="mx-settings__nav"`):strings.Index(page, `</nav><div class="mx-settings__body">`)]
+	for _, sec := range []string{"general", "addresses", "rules", "privacy", "signin", "export"} {
+		if !strings.Contains(nav, `href="#set-`+sec+`"`) || !strings.Contains(page, `<section class="mx-set" id="set-`+sec+`"`) {
+			t.Errorf("the section %s is not listed, or not on the page", sec)
+		}
+	}
+	if !strings.Contains(nav, `data-mx-set-find`) {
+		t.Error("the page has no field to find a setting")
+	}
+	for _, item := range []string{`data-mx-set="vacation reply autoresponder`, `data-mx-set="password change password"`, `data-mx-set="download all mail`} {
+		if !strings.Contains(page, item) {
+			t.Errorf("no setting is found by %s", item)
+		}
+	}
+	for _, op := range []string{"name-set", "forward-set"} {
+		form := page[:strings.Index(page, `value="`+op+`"`)]
+		form = form[strings.LastIndex(form, "<form "):]
+		if !strings.HasPrefix(form, "<form data-mx-autosave ") {
+			t.Errorf("the %s setting does not save as it changes: %s", op, form)
+		}
+	}
+	if list := a.vayuAccountsList(context.Background()); strings.Contains(list, "data-mx-autosave") {
+		t.Error("the accounts list's forms save as they change, with their Save buttons hidden nowhere")
+	}
+}

@@ -57,7 +57,7 @@ func TestEveryPerMailboxSettingLivesOnItsOwnPage(t *testing.T) {
 	page := rec.Body.String()
 	for _, want := range []string{
 		`id="vm-mbox-settings"`,
-		"Auto-forward a copy to",                     // forwarding sub-section
+		"Forward a copy to",                          // forwarding sub-section
 		"Vacation autoresponder",                     // vacation sub-section
 		"<span class=\"field-label\">Aliases</span>", // aliases sub-section
 		"Filter rules",                               // filters sub-section

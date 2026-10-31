@@ -49,20 +49,32 @@ func (a *App) mailboxSettingsSections(ctx context.Context, email string, forHold
 	if !ok {
 		return "", false
 	}
+	// The settings in the sections a person looks for them under, each item
+	// named for the page's search (mailSettingsLayout). An item whose control
+	// carries its own heading is not given a second one.
 	var b strings.Builder
-	b.WriteString(`<div class="vm-acct__sub"><span class="field-label">Name on mail you send</span>` + vayuCardName(ac) + `</div>`)
-	b.WriteString(`<div class="vm-acct__sub"><span class="field-label">Auto-forward a copy to</span>` + vayuCardForwarding(ac) + `</div>`)
-	b.WriteString(a.vayuCardVacation(ctx, ac))
+	b.WriteString(mailSettingGroup("general", "General",
+		mailSetting{Name: "Name on mail you send", HTML: autosaveForm(vayuCardName(ac))},
+		mailSetting{Name: "Picture", Find: "avatar photo", HTML: a.mailboxAvatarSettings(ac), Bare: true}))
+	addresses := []mailSetting{{Name: "Forward a copy to", Find: "forwarding auto-forward", HTML: autosaveForm(vayuCardForwarding(ac))}}
 	if !forHolder {
-		b.WriteString(a.vayuCardAliases(ctx, ac))
-		b.WriteString(a.vayuCardRecovery(ctx, ac.Email))
-		b.WriteString(a.vayuCardHandover(ctx, ac))
+		addresses = append(addresses, mailSetting{Name: "Aliases", Find: "other addresses", HTML: a.vayuCardAliases(ctx, ac), Bare: true})
 	}
-	b.WriteString(a.vayuCardPGP(ac))
-	b.WriteString(a.vayuCardSMIME(ctx, ac))
-	b.WriteString(a.vayuCardSignins(ctx, ac))
-	b.WriteString(a.vayuCardFilters(ctx, ac))
-	b.WriteString(a.mailboxAvatarSettings(ac))
+	b.WriteString(mailSettingGroup("addresses", "Addresses", addresses...))
+	b.WriteString(mailSettingGroup("rules", "Rules and replies",
+		mailSetting{Name: "Vacation reply", Find: "autoresponder out of office away", HTML: a.vayuCardVacation(ctx, ac), Bare: true},
+		mailSetting{Name: "Filters", Find: "rules sort move", HTML: a.vayuCardFilters(ctx, ac), Bare: true}))
+	privacy := []mailSetting{
+		{Name: "Sign-in attempts", Find: "sign-in name login security", HTML: a.vayuCardSignins(ctx, ac), Bare: true},
+		{Name: "Encryption keys", Find: "pgp openpgp key", HTML: a.vayuCardPGP(ac), Bare: true},
+		{Name: "S/MIME certificate", Find: "smime certificate signing", HTML: a.vayuCardSMIME(ctx, ac), Bare: true},
+	}
+	if !forHolder {
+		privacy = append(privacy,
+			mailSetting{Name: "Recovery", Find: "recovery codes", HTML: a.vayuCardRecovery(ctx, ac.Email), Bare: true},
+			mailSetting{Name: "Handover", Find: "ownership transfer", HTML: a.vayuCardHandover(ctx, ac), Bare: true})
+	}
+	b.WriteString(mailSettingGroup("privacy", "Privacy and security", privacy...))
 
 	// One adaptation point: the shared builders mark their controls with the list
 	// surface. On this page every control must come back to #vm-mbox-settings, so
@@ -206,28 +218,31 @@ func (a *App) handleVayuOSMySettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sec, _ := a.mailboxSettingsSections(r.Context(), ac.Email, true)
-	// Two-factor stays on the site's account page (handlers_portal_totp.go),
-	// where turning it off asks for a current code; a second way to change the
-	// factor from here would be the weaker of the two.
-	twoFA := "off"
-	if ac.TOTPEnabled {
-		twoFA = "on"
+	head := `<div class="page-header"><h1>Settings</h1></div>` +
+		`<div class="card vm-mbox-head">` + mailAvatarImg(ac.Email, a.mailboxAvatarSet()) +
+		`<div class="vm-mbox-head__meta"><div class="vm-mbox-head__email">` + esc(ac.Email) + `</div></div></div>`
+	signinItems := []mailSetting{
+		{Name: "Password", Find: "change password", HTML: holderPasswordForm(), Bare: true},
+		// Two-factor stays on the site's account page (handlers_portal_totp.go),
+		// where turning it off asks for a current code; a second way to change
+		// the factor from here would be the weaker of the two.
+		{Name: "Two-factor", Find: "2fa code authenticator totp", HTML: `<p class="text-sm">` + map[bool]string{true: "On.", false: "Off."}[ac.TOTPEnabled] +
+			` It is set on <a href="/members/account">your account on the site</a>, where turning it off asks for a current code.</p>`},
+		{Name: "Phones and mail apps", Find: "app passwords recovery connect device imap", HTML: `<p class="text-sm">App passwords, recovery and setting up a phone are on <a href="/os/vayumail/connect">Connect a device</a>.</p>`},
 	}
-	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Mailbox settings</h1></div>`)
-	body.WriteString(`<p class="page-sub">Forwarding, your vacation reply, filters, keys and your picture, for ` + esc(ac.Email) + `.</p>`)
-	body.WriteString(`<div class="card vm-mbox-head">` + mailAvatarImg(ac.Email, a.mailboxAvatarSet()) +
-		`<div class="vm-mbox-head__meta"><div class="vm-mbox-head__email mono">` + esc(ac.Email) + `</div>` +
-		`<div class="muted text-sm">Recovery and app passwords are on <a href="/os/vayumail/connect">Connect</a>. ` +
-		`Two-factor is ` + twoFA + `, and is set on <a href="/members/account">your account on the site</a>.</div></div></div>`)
-	body.WriteString(`<span id="vm-mbox-spin" class="htmx-indicator vm-spin" aria-hidden="true">saving…</span>`)
-	body.WriteString(`<div id="vm-mbox-settings">` + sec + `</div>`)
-	body.WriteString(holderPasswordForm())
+	script := ""
 	if pk := a.passkeysBlock(r); pk != "" {
-		body.WriteString(`<div class="card">` + pk + `</div><script nonce="` + nonce + `" src="/os/static/js/passkey.js?v=` + assetVer("js/passkey.js") + `"></script>`)
+		signinItems = append(signinItems, mailSetting{Name: "Passkeys", Find: "passkey only security key fingerprint face", HTML: pk, Bare: true})
+		script = `<script nonce="` + nonce + `" src="/os/static/js/passkey.js?v=` + assetVer("js/passkey.js") + `"></script>`
 	}
-	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
-	writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox settings", "vayumail", cfg, htmpl.HTML(body.String())))
+	after := mailSettingGroup("signin", "Signing in", signinItems...) +
+		mailSettingGroup("export", "Import and export",
+			mailSetting{Name: "Bring mail in", Find: "import imap mbox", HTML: `<p class="text-sm"><a href="/os/vayumail/import?user=` + qparam(ac.Email) + `">Bring mail in</a> from another mail account or a file.</p>`},
+			mailSetting{Name: "Download all mail", Find: "export backup mbox zip", HTML: `<p class="text-sm"><a href="/os/vayumail/download?user=` + qparam(ac.Email) + `" download>Download all mail</a>, every folder as an mbox file in one zip.</p>`})
+	nav := append(append([][2]string{}, mailSettingsNav...), [2]string{"signin", "Signing in"}, [2]string{"export", "Import and export"})
+	body := mailSettingsLayout(head, sec, after, nav) + script +
+		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`
+	writeOSHTML(w, r, adminOSLayout(nonce, "Settings", "vayumail", cfg, htmpl.HTML(body)))
 }
 
 // mailboxSettingsPicker is Mailbox settings for an administrator with no
@@ -359,8 +374,9 @@ func (a *App) handleVayuOSMailboxSettings(w http.ResponseWriter, r *http.Request
 		`</div>`)
 
 	sec, _ := a.mailboxSettingsSections(r.Context(), ac.Email, false)
-	body.WriteString(`<span id="vm-mbox-spin" class="htmx-indicator vm-spin" aria-hidden="true">saving…</span>`)
-	body.WriteString(`<div id="vm-mbox-settings">` + sec + `</div>`)
+	head := body.String()
+	body.Reset()
+	body.WriteString(mailSettingsLayout(head, sec, "", mailSettingsNav))
 
 	// This page hosts the recovery card too, whose controls are driven by
 	// admin-os-mail-recovery.js. Loading only admin-os-mail.js would leave them as
@@ -369,3 +385,60 @@ func (a *App) handleVayuOSMailboxSettings(w http.ResponseWriter, r *http.Request
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox settings", "vayuos", cfg, htmpl.HTML(body.String())))
 }
+
+// mailSetting is one setting on the Settings page: the name it is shown and
+// found under, more words it is found by, and its control. Bare: the control
+// carries its own heading.
+type mailSetting struct {
+	Name, Find, HTML string
+	Bare             bool
+}
+
+// mailSettingGroup is one section of the Settings page.
+func mailSettingGroup(id, title string, items ...mailSetting) string {
+	var b strings.Builder
+	b.WriteString(`<section class="mx-set" id="set-` + id + `" aria-labelledby="set-` + id + `-t"><h2 class="mx-set__title" id="set-` + id + `-t">` + esc(title) + `</h2>`)
+	for _, it := range items {
+		if it.HTML == "" {
+			continue
+		}
+		b.WriteString(`<div class="mx-set__item" data-mx-set="` + esc(strings.ToLower(it.Name+" "+it.Find)) + `">`)
+		if !it.Bare {
+			b.WriteString(`<h3 class="mx-set__name">` + esc(it.Name) + `</h3>`)
+		}
+		b.WriteString(it.HTML + `</div>`)
+	}
+	b.WriteString(`</section>`)
+	return b.String()
+}
+
+// autosaveForm marks a one-value setting's form to save as it changes on
+// the Settings page (admin-os-mail.js), where its Save button is not shown;
+// the accounts list, which shares the builder, keeps the button.
+func autosaveForm(form string) string {
+	return strings.Replace(form, "<form ", "<form data-mx-autosave ", 1)
+}
+
+// mailSettingsLayout is the Settings page: the sections listed on the left
+// under a field that finds any setting by name, and the settings beside
+// them. head comes first in the column; swapped is the mailbox's own
+// sections, which every save redraws (#vm-mbox-settings); after holds the
+// sections the page adds; nav names every section, in order.
+func mailSettingsLayout(head, swapped, after string, nav [][2]string) string {
+	var b strings.Builder
+	b.WriteString(`<div class="mx-settings"><nav class="mx-settings__nav" aria-label="Settings sections">` +
+		`<label class="mx-settings__find">` + saIcon("search") + `<input type="search" placeholder="Find a setting" aria-label="Find a setting" autocomplete="off" data-mx-set-find></label>`)
+	for _, n := range nav {
+		b.WriteString(`<a class="sa-appside__item" href="#set-` + n[0] + `"><span class="sa-appside__label">` + esc(n[1]) + `</span></a>`)
+	}
+	b.WriteString(`</nav><div class="mx-settings__body">` + head +
+		`<p class="mx-settings__none" data-mx-set-none hidden>No setting is called that.</p>` +
+		`<span id="vm-mbox-spin" class="htmx-indicator vm-spin" aria-hidden="true">saving…</span>` +
+		`<div id="vm-mbox-settings">` + swapped + `</div>` + after +
+		`<p class="mx-saved" role="status" data-mx-saved hidden><span>Saved.</span> <button type="button" class="mx-head__link" data-mx-undo>Undo</button></p>` +
+		`</div></div>`)
+	return b.String()
+}
+
+// mailSettingsNav is the sections every mailbox's Settings has.
+var mailSettingsNav = [][2]string{{"general", "General"}, {"addresses", "Addresses"}, {"rules", "Rules and replies"}, {"privacy", "Privacy and security"}}

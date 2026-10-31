@@ -1246,3 +1246,35 @@ test("Mailboxes puts new mail first and follows it live", async ({ page }) => {
   }).toPass({ timeout: 15000, intervals: [500, 1000] });
   await expect(domain, "the open domain was folded by the redraw").toHaveAttribute("open", "");
 });
+
+// Settings is one page: the field over the sections finds a setting by name,
+// and a one-value setting saves as it changes, with Undo putting back the
+// value the page was drawn with.
+test("Settings finds a setting, and saves as it changes with Undo", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/os/vayumail/accounts/settings?user=ankush%40mail.test");
+  const find = page.locator("[data-mx-set-find]");
+  await expect(find).toBeVisible();
+  await find.fill("vacation");
+  await expect(page.locator(".mx-set__item:visible")).toHaveCount(1);
+  await expect(page.locator("#set-general")).toBeHidden();
+  await find.fill("no such setting at all");
+  await expect(page.locator("[data-mx-set-none]")).toBeVisible();
+  await find.fill("");
+  await expect(page.locator("#set-general")).toBeVisible();
+
+  const name = page.locator('form[data-mx-autosave] input[name="name"]');
+  const was = await name.inputValue();
+  await expect(page.locator('form[data-mx-autosave] button[type="submit"]').first()).toBeHidden();
+  const saved = page.waitForResponse((r) => r.url().includes("/os/vayumail/aliases/action") && r.request().method() === "POST");
+  await name.fill(was + " Test");
+  await name.press("Tab");
+  await saved;
+  await expect(page.locator("[data-mx-saved]")).toBeVisible();
+  await expect(page.locator('form[data-mx-autosave] input[name="name"]')).toHaveValue(was + " Test");
+  const undone = page.waitForResponse((r) => r.url().includes("/os/vayumail/aliases/action") && r.request().method() === "POST");
+  await page.locator("[data-mx-undo]").click();
+  await undone;
+  await expect(page.locator('form[data-mx-autosave] input[name="name"]')).toHaveValue(was);
+  await expect(page.locator("[data-mx-saved]")).toBeHidden();
+});
