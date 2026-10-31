@@ -187,3 +187,39 @@ func TestModelHelpSwitchesAreEachTheirOwn(t *testing.T) {
 		t.Errorf("after both: %+v", mh)
 	}
 }
+
+// The rest of the conversation is held to the same rule as the message
+// open: an earlier encrypted or confidential message of the thread is not
+// sent to a model outside, though the owner's reader would decrypt it.
+func TestAModelOutsideGetsNoEarlierSecret(t *testing.T) {
+	a, _, _ := reviewerApp(t, vmail.RoleMailbox)
+	srv, prompts := mailFakeModel(t, "ok")
+	rd := vmail.ReadAsOwner("dana")
+	for _, raw := range []string{
+		"From: Priya <priya@halcyon.dev>\r\nTo: dana@example.com\r\nSubject: Plan\r\nMessage-ID: <p1@halcyon.dev>\r\nDate: Mon, 26 Oct 2026 09:00:00 +0000\r\n\r\n-----BEGIN PGP MESSAGE-----\r\nSEALEDBYTES\r\n-----END PGP MESSAGE-----\r\n",
+		"From: Priya <priya@halcyon.dev>\r\nTo: dana@example.com\r\nSubject: Re: Plan\r\nMessage-ID: <p2@halcyon.dev>\r\nIn-Reply-To: <p1@halcyon.dev>\r\nReferences: <p1@halcyon.dev>\r\nSensitivity: Company-Confidential\r\nDate: Tue, 27 Oct 2026 09:00:00 +0000\r\n\r\nThe board figures are 41 and 17.\r\n",
+		"From: Priya <priya@halcyon.dev>\r\nTo: dana@example.com\r\nSubject: Re: Plan\r\nMessage-ID: <p3@halcyon.dev>\r\nIn-Reply-To: <p2@halcyon.dev>\r\nReferences: <p1@halcyon.dev> <p2@halcyon.dev>\r\nDate: Wed, 28 Oct 2026 09:00:00 +0000\r\n\r\nShall we meet on Friday?\r\n",
+	} {
+		if _, err := a.vayuMail.DeliverInbound("priya@halcyon.dev", "dana@example.com", []byte(raw)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	msgs, _ := a.vayuMail.ListFolder(rd, "Inbox")
+	last := ""
+	for _, m := range msgs {
+		if strings.Contains(m.MessageID, "p3") {
+			last = m.ID
+		}
+	}
+	outside := mailModel{b: aiassist.Backend{Kind: aiassist.KindOllama, Endpoint: srv.URL, Model: "m"}, where: "sent to Example"}
+	if _, err := a.runModelHelp(t.Context(), rd, outside, "summary", "Inbox", last, ""); err != nil {
+		t.Fatal(err)
+	}
+	p := prompts()
+	if len(p) != 1 || !strings.Contains(p[0], "Shall we meet on Friday?") {
+		t.Fatalf("the prompt: %q", p)
+	}
+	if strings.Contains(p[0], "SEALEDBYTES") || strings.Contains(p[0], "board figures") {
+		t.Errorf("an earlier secret went outside: %q", p[0])
+	}
+}

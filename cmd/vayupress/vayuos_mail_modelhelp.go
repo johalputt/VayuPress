@@ -237,10 +237,21 @@ func (a *App) runModelHelp(ctx context.Context, rd vmail.Reader, mm mailModel, o
 		items = items[len(items)-4:]
 	}
 	for _, it := range items {
-		if b, err := a.vayuMail.ReadFolderMessage(rd, it.folder, it.msg.ID); err == nil {
-			p := vmail.ParseMessage(b)
-			conv.WriteString("From: " + p.From + "\n" + clipRunes(mailPlainText(p), 2000) + "\n\n")
+		// The rest of the conversation is held to the same rule as the
+		// message open: the owner's reader decrypts an earlier encrypted
+		// message, and that text must not leave for a model outside either.
+		if !mm.local && it.msg.Encrypted {
+			continue
 		}
+		b, err := a.vayuMail.ReadFolderMessage(rd, it.folder, it.msg.ID)
+		if err != nil {
+			continue
+		}
+		p := vmail.ParseMessage(b)
+		if !mm.local && mailConfidential(b, p.Subject) {
+			continue
+		}
+		conv.WriteString("From: " + p.From + "\n" + clipRunes(mailPlainText(p), 2000) + "\n\n")
 	}
 	conv.WriteString("From: " + pm.From + "\nSubject: " + pm.Subject + "\n" + clipRunes(mailPlainText(pm), 6000))
 	aop := aiassist.OpMailSummary
