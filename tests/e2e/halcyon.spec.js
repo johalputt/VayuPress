@@ -310,145 +310,199 @@ test.describe("Halcyon", () => {
     }
   });
 
-  // Sign out from the site signs out (3ci). It was a background fetch and a
-  // reload that swallowed whatever answered, and for the owner, whose name in
-  // the bar linked straight to the console, there was no Sign out at all. Two
-  // stages: the owner with a real session against the real logout, then a
-  // reader (stubbed: no member session in this run), whose Sign out must leave
-  // as a top-level POST to /members/logout rather than a background request.
-  test("Sign out from the site signs out, for the owner and for a reader", async ({ page, browser }) => {
-    await page.goto("/os");
-    await page.waitForFunction(() => /(?:^|;\s*)vp_csrf=/.test(document.cookie));
-    const setMembership = (on) => page.evaluate(async (v) => {
-      const csrf = decodeURIComponent(document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/)[1]);
-      const r = await fetch("/os/api/settings", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify({ key: "site.membership_buttons", value: v }) });
-      return r.status;
-    }, on ? "true" : "false");
-    expect(await setMembership(true)).toBe(200);
-    const email = `owner-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@example.com`;
-    const password = "Signout-Test-Passw0rd!";
-    const made = await page.request.post("/api/v1/admin/users", { data: { email, name: "Owner", password, role: "admin" } });
-    expect(made.status(), await made.text()).toBeLessThan(300);
-    try {
-      // The owner: signed in to the console, then on the site.
-      const ctx = await browser.newContext();
-      const owner = await ctx.newPage();
-      await owner.goto("/os/login");
-      await owner.fill("input[name=email]", email);
-      await owner.fill("input[name=password]", password);
-      await Promise.all([owner.waitForURL(/\/os/), owner.click("form.login-form button[type=submit]")]);
-      const me = () => owner.evaluate(() => fetch("/api/v1/members/me", { cache: "no-store" }).then((r) => r.json()));
-      await expect(async () => {
-        await owner.goto("/halcyon-long");
-        await expect(owner.locator(".h-bar [data-vp-signin].vayu-nav-member"), "the owner is named in the bar").toHaveCount(1, { timeout: 1000 });
-      }).toPass({ timeout: 15000, intervals: [1000, 2000] });
-      expect((await me()).authenticated).toBe(true);
-      await owner.locator(".h-bar [data-vp-signin]").click();
-      const out = owner.locator(".vp-portal-overlay.is-open [data-vp-logout]");
-      await expect(out, "the owner's account panel offers Sign out").toHaveCount(1);
-      await Promise.all([owner.waitForURL((u) => u.pathname === "/"), out.click()]);
-      expect((await me()).authenticated, "signed out after Sign out").toBe(false);
-      await ctx.close();
+  // These three turn the site's membership buttons on, an install-wide
+  // setting, and two of them off again when they end. Run side by side,
+  // one's ending took the buttons away while another waited for them,
+  // and the owner was never named in the bar (5 of 18 failed at four
+  // workers). They run one after another, in one worker; the rest of the
+  // file stays parallel.
+  test.describe("with the membership buttons on", () => {
+    test.describe.configure({ mode: "default" });
 
-      // A reader: the click must navigate with a POST to the logout.
-      const reader = { enabled: true, authenticated: true, member: { name: "Asha Rao", email: "asha@example.com", paid: false } };
-      await page.route("**/api/v1/members/me", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(reader) }));
-      let logout = null;
-      await page.route("**/members/logout", (route) => {
-        logout = { method: route.request().method(), navigation: route.request().isNavigationRequest() };
-        return route.fulfill({ status: 303, headers: { Location: "/" } });
-      });
-      await page.goto("/halcyon-long");
-      await page.locator(".h-bar [data-vp-signin]").click();
-      await page.locator(".vp-portal-overlay.is-open [data-vp-logout]").click();
-      await expect.poll(() => logout, { message: "a Sign out request was sent" }).not.toBeNull();
-      expect(logout).toEqual({ method: "POST", navigation: true });
-    } finally {
-      await page.unroute("**/api/v1/members/me");
-      await page.unroute("**/members/logout");
-      expect(await setMembership(false)).toBe(200);
-    }
-  });
+    // Sign out from the site signs out (3ci). It was a background fetch and a
+    // reload that swallowed whatever answered, and for the owner, whose name in
+    // the bar linked straight to the console, there was no Sign out at all. Two
+    // stages: the owner with a real session against the real logout, then a
+    // reader (stubbed: no member session in this run), whose Sign out must leave
+    // as a top-level POST to /members/logout rather than a background request.
+    test("Sign out from the site signs out, for the owner and for a reader", async ({ page, browser }) => {
+      await page.goto("/os");
+      await page.waitForFunction(() => /(?:^|;\s*)vp_csrf=/.test(document.cookie));
+      const setMembership = (on) => page.evaluate(async (v) => {
+        const csrf = decodeURIComponent(document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/)[1]);
+        const r = await fetch("/os/api/settings", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify({ key: "site.membership_buttons", value: v }) });
+        return r.status;
+      }, on ? "true" : "false");
+      expect(await setMembership(true)).toBe(200);
+      const email = `owner-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@example.com`;
+      const password = "Signout-Test-Passw0rd!";
+      const made = await page.request.post("/api/v1/admin/users", { data: { email, name: "Owner", password, role: "admin" } });
+      expect(made.status(), await made.text()).toBeLessThan(300);
+      try {
+        // The owner: signed in to the console, then on the site.
+        const ctx = await browser.newContext();
+        const owner = await ctx.newPage();
+        await owner.goto("/os/login");
+        await owner.fill("input[name=email]", email);
+        await owner.fill("input[name=password]", password);
+        await Promise.all([owner.waitForURL(/\/os/), owner.click("form.login-form button[type=submit]")]);
+        const me = () => owner.evaluate(() => fetch("/api/v1/members/me", { cache: "no-store" }).then((r) => r.json()));
+        await expect(async () => {
+          await owner.goto("/halcyon-long");
+          await expect(owner.locator(".h-bar [data-vp-signin].vayu-nav-member"), "the owner is named in the bar").toHaveCount(1, { timeout: 1000 });
+        }).toPass({ timeout: 15000, intervals: [1000, 2000] });
+        expect((await me()).authenticated).toBe(true);
+        await owner.locator(".h-bar [data-vp-signin]").click();
+        const out = owner.locator(".vp-portal-overlay.is-open [data-vp-logout]");
+        await expect(out, "the owner's account panel offers Sign out").toHaveCount(1);
+        await Promise.all([owner.waitForURL((u) => u.pathname === "/"), out.click()]);
+        expect((await me()).authenticated, "signed out after Sign out").toBe(false);
+        await ctx.close();
 
-  // A signed-in reader is named where Sign in and Subscribe were: in the bar,
-  // in the phone menu, and no newsletter form asks them to join. The page is
-  // cached for everyone, so it is drawn signed out and turned by the portal
-  // once /members/me answers (stubbed: this run has no member session). The
-  // account panel is a summary: one line per fact, each a way to its control,
-  // filled in from /members/me?detail=1 once it opens; and every button's
-  // label sits in the middle of its button. One stage per rule.
-  test("a signed-in reader is named in the bar, and the account panel is a summary", async ({ page }) => {
-    await page.goto("/os");
-    await page.waitForFunction(() => /(?:^|;\s*)vp_csrf=/.test(document.cookie));
-    const setMembership = (on) => page.evaluate(async (v) => {
-      const csrf = decodeURIComponent(document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/)[1]);
-      const r = await fetch("/os/api/settings", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify({ key: "site.membership_buttons", value: v }) });
-      return r.status;
-    }, on ? "true" : "false");
-    expect(await setMembership(true)).toBe(200);
-    try {
-      const me = { enabled: true, authenticated: false, member: null };
-      const facts = {
-        plan: { name: "Free", paid: false }, mailbox: "asha@example.com", twofa: false, talk: true,
-        emails: { replies: true, newsletter: false }, comments: { live: 3, review: 1 },
-      };
-      await page.route(/\/api\/v1\/members\/me(\?.*)?$/, (route) => {
-        const detail = new URL(route.request().url()).searchParams.get("detail") === "1";
-        return route.fulfill({ contentType: "application/json", body: JSON.stringify(detail && me.authenticated ? { ...me, account: facts } : me) });
-      });
-      const bar = page.locator(".h-bar");
-
-      // A settings change marks the cached pages stale, and the first request
-      // after it is still answered from the old page while it re-renders
-      // (stale-while-revalidate, cache_swr.go): read until the new one comes,
-      // a second apart, since the Shield refuses a page asked for over and
-      // over in the same instant.
-      await expect(async () => {
+        // A reader: the click must navigate with a POST to the logout.
+        const reader = { enabled: true, authenticated: true, member: { name: "Asha Rao", email: "asha@example.com", paid: false } };
+        await page.route("**/api/v1/members/me", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(reader) }));
+        let logout = null;
+        await page.route("**/members/logout", (route) => {
+          logout = { method: route.request().method(), navigation: route.request().isNavigationRequest() };
+          return route.fulfill({ status: 303, headers: { Location: "/" } });
+        });
         await page.goto("/halcyon-long");
-        await expect(bar.locator("[data-vp-signin]")).toHaveText("Sign in", { timeout: 1000 });
-      }).toPass({ timeout: 15000, intervals: [1000, 2000] });
-      await expect(bar.locator("[data-vp-signup]")).toHaveText("Subscribe");
-      await expect(page.locator(".vp-portal-trigger"), "a second way in, floating over the page").toHaveCount(0);
-      await expect(async () => {
+        await page.locator(".h-bar [data-vp-signin]").click();
+        await page.locator(".vp-portal-overlay.is-open [data-vp-logout]").click();
+        await expect.poll(() => logout, { message: "a Sign out request was sent" }).not.toBeNull();
+        expect(logout).toEqual({ method: "POST", navigation: true });
+      } finally {
+        await page.unroute("**/api/v1/members/me");
+        await page.unroute("**/members/logout");
+        expect(await setMembership(false)).toBe(200);
+      }
+    });
+
+    // A signed-in reader is named where Sign in and Subscribe were: in the bar,
+    // in the phone menu, and no newsletter form asks them to join. The page is
+    // cached for everyone, so it is drawn signed out and turned by the portal
+    // once /members/me answers (stubbed: this run has no member session). The
+    // account panel is a summary: one line per fact, each a way to its control,
+    // filled in from /members/me?detail=1 once it opens; and every button's
+    // label sits in the middle of its button. One stage per rule.
+    test("a signed-in reader is named in the bar, and the account panel is a summary", async ({ page }) => {
+      await page.goto("/os");
+      await page.waitForFunction(() => /(?:^|;\s*)vp_csrf=/.test(document.cookie));
+      const setMembership = (on) => page.evaluate(async (v) => {
+        const csrf = decodeURIComponent(document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/)[1]);
+        const r = await fetch("/os/api/settings", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify({ key: "site.membership_buttons", value: v }) });
+        return r.status;
+      }, on ? "true" : "false");
+      expect(await setMembership(true)).toBe(200);
+      try {
+        const me = { enabled: true, authenticated: false, member: null };
+        const facts = {
+          plan: { name: "Free", paid: false }, mailbox: "asha@example.com", twofa: false, talk: true,
+          emails: { replies: true, newsletter: false }, comments: { live: 3, review: 1 },
+        };
+        await page.route(/\/api\/v1\/members\/me(\?.*)?$/, (route) => {
+          const detail = new URL(route.request().url()).searchParams.get("detail") === "1";
+          return route.fulfill({ contentType: "application/json", body: JSON.stringify(detail && me.authenticated ? { ...me, account: facts } : me) });
+        });
+        const bar = page.locator(".h-bar");
+
+        // A settings change marks the cached pages stale, and the first request
+        // after it is still answered from the old page while it re-renders
+        // (stale-while-revalidate, cache_swr.go): read until the new one comes,
+        // a second apart, since the Shield refuses a page asked for over and
+        // over in the same instant.
+        await expect(async () => {
+          await page.goto("/halcyon-long");
+          await expect(bar.locator("[data-vp-signin]")).toHaveText("Sign in", { timeout: 1000 });
+        }).toPass({ timeout: 15000, intervals: [1000, 2000] });
+        await expect(bar.locator("[data-vp-signup]")).toHaveText("Subscribe");
+        await expect(page.locator(".vp-portal-trigger"), "a second way in, floating over the page").toHaveCount(0);
+        await expect(async () => {
+          await page.goto("/");
+          await expect(page.locator(".h-letter"), "Home's newsletter form, signed out").toHaveCount(1, { timeout: 1000 });
+        }).toPass({ timeout: 15000, intervals: [1000, 2000] });
+
+        me.authenticated = true;
+        me.member = { name: "Asha Rao", email: "asha@example.com", paid: false };
+        await page.goto("/halcyon-long");
+        await expect(bar.locator("[data-vp-signin] .vayu-nav-name"), "the bar names the reader").toHaveText("Asha Rao");
+        await expect(bar.locator("[data-vp-signin] .vayu-nav-initial"), "with their initial for a picture").toHaveText("A");
+        await expect(page.locator("[data-vp-signup]"), "a signed-in reader is asked to subscribe").toHaveCount(0);
+        await expect(page.locator("#h-menu [data-vp-signin]"), "the phone menu names the reader").toContainText("Asha Rao");
+        await page.setViewportSize({ width: 320, height: 700 });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), "a signed-in reader's bar runs off a phone").toBeLessThanOrEqual(0);
+        await page.setViewportSize({ width: 1280, height: 720 });
         await page.goto("/");
-        await expect(page.locator(".h-letter"), "Home's newsletter form, signed out").toHaveCount(1, { timeout: 1000 });
-      }).toPass({ timeout: 15000, intervals: [1000, 2000] });
+        await expect(page.locator(".h-bar .vayu-nav-name")).toHaveText("Asha Rao");
+        await expect(page.locator(".h-letter"), "Home asks a member to subscribe").toHaveCount(0);
+        await page.goto("/halcyon-long");
 
-      me.authenticated = true;
-      me.member = { name: "Asha Rao", email: "asha@example.com", paid: false };
-      await page.goto("/halcyon-long");
-      await expect(bar.locator("[data-vp-signin] .vayu-nav-name"), "the bar names the reader").toHaveText("Asha Rao");
-      await expect(bar.locator("[data-vp-signin] .vayu-nav-initial"), "with their initial for a picture").toHaveText("A");
-      await expect(page.locator("[data-vp-signup]"), "a signed-in reader is asked to subscribe").toHaveCount(0);
-      await expect(page.locator("#h-menu [data-vp-signin]"), "the phone menu names the reader").toContainText("Asha Rao");
-      await page.setViewportSize({ width: 320, height: 700 });
-      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), "a signed-in reader's bar runs off a phone").toBeLessThanOrEqual(0);
-      await page.setViewportSize({ width: 1280, height: 720 });
-      await page.goto("/");
-      await expect(page.locator(".h-bar .vayu-nav-name")).toHaveText("Asha Rao");
-      await expect(page.locator(".h-letter"), "Home asks a member to subscribe").toHaveCount(0);
-      await page.goto("/halcyon-long");
+        await bar.locator("[data-vp-signin]").click();
+        const panel = page.locator(".vp-portal-panel");
+        await expect(panel.locator(".vp-me__name")).toHaveText("Asha Rao");
+        await expect(panel.locator(".vp-portal-brand"), "the panel is headed by the site").toHaveText("VayuPress");
+        await expect(panel.locator(".vp-me__main .vp-portal-btn")).toHaveText(["See plans", "Account settings"]);
+        await expect(panel.locator(".vp-me__v"), "each line says how it stands now").toHaveText(
+          ["Free", "asha@example.com", "", "Off", "Replies", "3 live · 1 in review", ""]);
+        await expect(panel.locator(".vp-me__row[href='/os/talk']"), "a mailbox holder is offered VayuTalk").toHaveCount(1);
+        await expect(panel.locator(".vp-me__row[href='/members/account#security'] .vp-me__warn"), "two-factor off reads as a warning").toHaveText("Off");
+        await expect(panel.locator("details"), "the account folded into boxes").toHaveCount(0);
+        const off = await panel.locator(".vp-portal-btn").evaluateAll((bs) => bs.map((b) => {
+          const r = document.createRange(); r.selectNodeContents(b);
+          const t = r.getBoundingClientRect(), o = b.getBoundingClientRect();
+          return { label: b.textContent, off: Math.abs((t.top + t.bottom) / 2 - (o.top + o.bottom) / 2) };
+        }).filter((x) => x.off > 1.5));
+        expect(off, "a button's label is not in its middle").toEqual([]);
+      } finally {
+        await page.unroute(/\/api\/v1\/members\/me(\?.*)?$/);
+        expect(await setMembership(false)).toBe(200);
+      }
+    });
 
-      await bar.locator("[data-vp-signin]").click();
-      const panel = page.locator(".vp-portal-panel");
-      await expect(panel.locator(".vp-me__name")).toHaveText("Asha Rao");
-      await expect(panel.locator(".vp-portal-brand"), "the panel is headed by the site").toHaveText("VayuPress");
-      await expect(panel.locator(".vp-me__main .vp-portal-btn")).toHaveText(["See plans", "Account settings"]);
-      await expect(panel.locator(".vp-me__v"), "each line says how it stands now").toHaveText(
-        ["Free", "asha@example.com", "", "Off", "Replies", "3 live · 1 in review", ""]);
-      await expect(panel.locator(".vp-me__row[href='/os/talk']"), "a mailbox holder is offered VayuTalk").toHaveCount(1);
-      await expect(panel.locator(".vp-me__row[href='/members/account#security'] .vp-me__warn"), "two-factor off reads as a warning").toHaveText("Off");
-      await expect(panel.locator("details"), "the account folded into boxes").toHaveCount(0);
-      const off = await panel.locator(".vp-portal-btn").evaluateAll((bs) => bs.map((b) => {
-        const r = document.createRange(); r.selectNodeContents(b);
-        const t = r.getBoundingClientRect(), o = b.getBoundingClientRect();
-        return { label: b.textContent, off: Math.abs((t.top + t.bottom) / 2 - (o.top + o.bottom) / 2) };
-      }).filter((x) => x.off > 1.5));
-      expect(off, "a button's label is not in its middle").toEqual([]);
-    } finally {
-      await page.unroute(/\/api\/v1\/members\/me(\?.*)?$/);
-      expect(await setMembership(false)).toBe(200);
-    }
+    // The sign-in panel's messages are read in the site's colours. They were
+    // pale mint and rose, written for the dark default, so on Halcyon the
+    // two-factor prompt could not be read (3ck). Both states, both schemes;
+    // the sign-in link's answer is stubbed to bring each one up. One test, not
+    // one per scheme, because it turns the site's membership buttons on and off.
+    test("the sign-in panel's messages reach their contrast", async ({ page }) => {
+      await page.goto("/os");
+      await page.waitForFunction(() => /(?:^|;\s*)vp_csrf=/.test(document.cookie));
+      const setMembership = (on) => page.evaluate(async (v) => {
+        const csrf = decodeURIComponent(document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/)[1]);
+        const r = await fetch("/os/api/settings", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify({ key: "site.membership_buttons", value: v }) });
+        return r.status;
+      }, on ? "true" : "false");
+      expect(await setMembership(true)).toBe(200);
+      try {
+        await page.route("**/api/v1/members/me", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ enabled: true, authenticated: false }) }));
+        let answer = 200;
+        await page.route("**/api/v1/members/login", (route) => route.fulfill({ status: answer, contentType: "application/json", body: "{}" }));
+        for (const scheme of ["light", "dark"]) {
+          await page.evaluate((s) => localStorage.setItem("vayu-theme", s), scheme);
+          await expect(async () => {
+            await page.goto("/halcyon-long");
+            await expect(page.locator(".h-bar [data-vp-signin]")).toHaveCount(1, { timeout: 1000 });
+          }).toPass({ timeout: 15000, intervals: [1000, 2000] });
+          await expect(page.locator("html")).toHaveAttribute("data-theme", scheme);
+          await page.locator(".h-bar [data-vp-signin]").click();
+          const panel = page.locator(".vp-portal-overlay.is-open");
+          for (const [status, kind] of [[200, "ok"], [429, "err"]]) {
+            answer = status;
+            await panel.locator("form[data-vp-form=magic] [name=email]").fill("reader@example.com");
+            await panel.locator("form[data-vp-form=magic] button[type=submit]").click();
+            await expect(panel.locator(`.vp-portal-notice--${kind}`)).toBeVisible();
+            // The panel slides and its message fades in; read it settled.
+            await page.waitForTimeout(700);
+            expect((await lowContrast(page)).filter((s) => s.includes("vp-portal")), `${kind} (${scheme})`).toEqual([]);
+          }
+        }
+      } finally {
+        await page.unroute("**/api/v1/members/me");
+        await page.unroute("**/api/v1/members/login");
+        expect(await setMembership(false)).toBe(200);
+      }
+    });
   });
 
   // An imported post's own stylesheet is not the page's: nothing of it is
@@ -698,50 +752,6 @@ test.describe("Halcyon", () => {
       }
     });
   }
-
-  // The sign-in panel's messages are read in the site's colours. They were
-  // pale mint and rose, written for the dark default, so on Halcyon the
-  // two-factor prompt could not be read (3ck). Both states, both schemes;
-  // the sign-in link's answer is stubbed to bring each one up. One test, not
-  // one per scheme, because it turns the site's membership buttons on and off.
-  test("the sign-in panel's messages reach their contrast", async ({ page }) => {
-    await page.goto("/os");
-    await page.waitForFunction(() => /(?:^|;\s*)vp_csrf=/.test(document.cookie));
-    const setMembership = (on) => page.evaluate(async (v) => {
-      const csrf = decodeURIComponent(document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/)[1]);
-      const r = await fetch("/os/api/settings", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify({ key: "site.membership_buttons", value: v }) });
-      return r.status;
-    }, on ? "true" : "false");
-    expect(await setMembership(true)).toBe(200);
-    try {
-      await page.route("**/api/v1/members/me", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ enabled: true, authenticated: false }) }));
-      let answer = 200;
-      await page.route("**/api/v1/members/login", (route) => route.fulfill({ status: answer, contentType: "application/json", body: "{}" }));
-      for (const scheme of ["light", "dark"]) {
-        await page.evaluate((s) => localStorage.setItem("vayu-theme", s), scheme);
-        await expect(async () => {
-          await page.goto("/halcyon-long");
-          await expect(page.locator(".h-bar [data-vp-signin]")).toHaveCount(1, { timeout: 1000 });
-        }).toPass({ timeout: 15000, intervals: [1000, 2000] });
-        await expect(page.locator("html")).toHaveAttribute("data-theme", scheme);
-        await page.locator(".h-bar [data-vp-signin]").click();
-        const panel = page.locator(".vp-portal-overlay.is-open");
-        for (const [status, kind] of [[200, "ok"], [429, "err"]]) {
-          answer = status;
-          await panel.locator("form[data-vp-form=magic] [name=email]").fill("reader@example.com");
-          await panel.locator("form[data-vp-form=magic] button[type=submit]").click();
-          await expect(panel.locator(`.vp-portal-notice--${kind}`)).toBeVisible();
-          // The panel slides and its message fades in; read it settled.
-          await page.waitForTimeout(700);
-          expect((await lowContrast(page)).filter((s) => s.includes("vp-portal")), `${kind} (${scheme})`).toEqual([]);
-        }
-      }
-    } finally {
-      await page.unroute("**/api/v1/members/me");
-      await page.unroute("**/api/v1/members/login");
-      expect(await setMembership(false)).toBe(200);
-    }
-  });
 
   test("every control a keyboard reaches has a name", async ({ page }) => {
     for (const p of A11Y_PAGES) {
