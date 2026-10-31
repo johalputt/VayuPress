@@ -525,6 +525,9 @@ func TestAWholeSiteBlockRefusesEveryRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The restarted store reads the test's clock too: on the wall clock the
+	// hour-long block had ended once the day passed the test's 13:00.
+	again.Now = c.now
 	if !again.RefuseRequest("198.51.100.77") {
 		t.Error("a whole-site block did not survive a restart as one")
 	}
