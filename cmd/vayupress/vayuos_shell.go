@@ -637,6 +637,25 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 		sideCls = " sa-main--solo"
 	}
 
+	// ── Mail as its own app ──
+	// An open mailbox is a mail app, not a console page: the console's rail
+	// is folded away (the menu brings it back for this page, admin-os.js),
+	// the mode and world pair gives its place to Mail's search, and "Mail"
+	// beside the mark goes to the Inbox while the mark goes to the console.
+	// The mode strip stays: a read-only install refuses mail's writes too.
+	brand := saBrand(s, home, siteName)
+	search := `<button type="button" class="topbar-cmd sa-search" aria-keyshortcuts="Control+K Meta+K">` + saIcon("search") + ` <span class="sa-search__text">Search or run a command</span><kbd aria-hidden="true">⌘K</kbd></button>`
+	status := `<div class="sa-status" role="status" aria-label="System status">` + modeHTML + `<span class="sa-sep" aria-hidden="true"></span>` + worldHTML + `</div>`
+	bodyCls := "vp-os"
+	if mailOpen {
+		bodyCls += " sa-mailapp"
+		brand += `<a class="sa-appname" href="/os/vayumail/inbox?user=` + qparam(s.MailSide.User) + `">Mail</a>`
+		status = ""
+		if s.MailSide.Search != "" {
+			search = `<div class="sa-topsearch">` + s.MailSide.Search + `</div>`
+		}
+	}
+
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -659,15 +678,15 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 <link rel="apple-touch-icon" href="/os/static/icons/vayuos-apple-180.png">
 <script src="/os/static/js/vayuos.js?v=` + assetVer("js/vayuos.js") + `" defer></script>
 </head>
-<body class="vp-os" data-ui="still-air" data-theme="` + html.EscapeString(theme) + `" data-admin-theme="` + html.EscapeString(theme) + `" data-mode="` + html.EscapeString(string(m)) + `"` + spaceAttr + `>
+<body class="` + bodyCls + `" data-ui="still-air" data-theme="` + html.EscapeString(theme) + `" data-admin-theme="` + html.EscapeString(theme) + `" data-mode="` + html.EscapeString(string(m)) + `"` + spaceAttr + `>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="sidebar-overlay" aria-hidden="true"></div>
 <div class="shell sa-shell">
 <header class="sa-sysbar" role="banner">
   <button type="button" class="menu-toggle sa-iconbtn" data-action="toggle-sidebar" aria-label="Show or hide the app list" aria-controls="vp-sidebar" aria-expanded="true">` + saIcon("list") + `</button>
-  ` + saBrand(s, home, siteName) + `
-  <button type="button" class="topbar-cmd sa-search" aria-keyshortcuts="Control+K Meta+K">` + saIcon("search") + ` <span class="sa-search__text">Search or run a command</span><kbd aria-hidden="true">⌘K</kbd></button>
-  <div class="sa-status" role="status" aria-label="System status">` + modeHTML + `<span class="sa-sep" aria-hidden="true"></span>` + worldHTML + `</div>
+  ` + brand + `
+  ` + search + `
+  ` + status + `
   ` + osNotifBell(s) + `
   ` + account + `
 </header>

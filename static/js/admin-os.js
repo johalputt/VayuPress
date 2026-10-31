@@ -144,6 +144,9 @@ window.vpToast = toast;
   // Below this the stylesheet collapses the rail unless the toggle expanded it.
   var roomy = window.matchMedia('(min-width: 1280px)');
   var KEY = 'vp_nav_collapsed';
+  // Mail is its own app: its pages fold the rail away, and the toggle shows
+  // it for the page alone, leaving the console's kept choice as it was.
+  var mailApp = body.classList.contains('sa-mailapp');
 
   function setExpanded(v) {
     toggles.forEach(function (b) { b.setAttribute('aria-expanded', v ? 'true' : 'false'); });
@@ -152,6 +155,7 @@ window.vpToast = toast;
   // The operator's choice, or null when they have not made one.
   function chosen() { try { var v = localStorage.getItem(KEY); return v === '1' ? true : v === '0' ? false : null; } catch (e) { return null; } }
   function collapsed() {
+    if (mailApp) return !body.classList.contains('sa-rail-shown');
     if (body.classList.contains('nav-collapsed')) return true;
     return !body.classList.contains('nav-expanded') && !roomy.matches;
   }
@@ -178,7 +182,10 @@ window.vpToast = toast;
 
   // ── Desktop: collapse the sidebar (persisted; never locks scroll) ──────────
   function toggle() {
-    if (desktop.matches) {
+    if (desktop.matches && mailApp) {
+      body.classList.toggle('sa-rail-shown');
+      setExpanded(!collapsed());
+    } else if (desktop.matches) {
       store(!collapsed());
       applyChoice();
     } else {

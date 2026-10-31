@@ -194,3 +194,63 @@ func TestTheSwitcherGroupsByDomainPrimaryFirst(t *testing.T) {
 		t.Errorf("a mailbox with nothing unread shows a count:\n%s", out)
 	}
 }
+
+// Mail is its own app: while a mailbox is open the page is marked so the
+// stylesheet folds the console's rail away, "Mail" beside the mark goes to
+// the Inbox, the mode and world pair is gone, and the top bar's search is
+// Mail's own. Any other page keeps the console's command button and status.
+func TestAnOpenMailboxIsItsOwnApp(t *testing.T) {
+	s := saSession(accessAdmin)
+	s.Route = "/os/vayumail/inbox"
+	s.MailSide = &osMailSide{User: "dana", Address: "dana@example.com", Admin: true, Search: mailSearchForm("dana", "Sent", "", false)}
+	out := stillAirShellHead("n", "Mailbox", "vayuos", s)
+	bar := out[strings.Index(out, `<header class="sa-sysbar"`):strings.Index(out, `</header>`)]
+	if !strings.Contains(out, `<body class="vp-os sa-mailapp"`) {
+		t.Error("an open mailbox's page is not marked as the mail app, so the rail stays")
+	}
+	if !strings.Contains(bar, `<a class="sa-appname" href="/os/vayumail/inbox?user=dana">Mail</a>`) {
+		t.Errorf("the top bar does not name Mail, leading to the Inbox:\n%s", bar)
+	}
+	if strings.Contains(bar, `class="sa-status"`) || strings.Contains(bar, "topbar-cmd") {
+		t.Errorf("the top bar still carries the console's status or command button:\n%s", bar)
+	}
+	if !strings.Contains(bar, `<div class="sa-topsearch"><form id="mx-search" class="mx-search" role="search"`) ||
+		!strings.Contains(bar, `<input type="hidden" name="folder" value="Sent">`) {
+		t.Errorf("the top bar's search is not Mail's, in the open folder:\n%s", bar)
+	}
+
+	// A mailbox page with no list for the results keeps the command button.
+	s.MailSide.Search = ""
+	if bar := stillAirShellHead("n", "Mailbox", "vayuos", s); !strings.Contains(bar, "topbar-cmd") || strings.Contains(bar, "mx-search") {
+		t.Error("a mailbox page without the list offers a search with nowhere to put its results")
+	}
+
+	s.MailSide = nil
+	out = stillAirShellHead("n", "Mailbox", "vayuos", s)
+	if !strings.Contains(out, `<body class="vp-os" data-ui`) || strings.Contains(out, "sa-appname") ||
+		!strings.Contains(out, "topbar-cmd") || !strings.Contains(out, `class="sa-status"`) {
+		t.Error("with no mailbox open, the page is not the console's")
+	}
+}
+
+// Every list refresh sends the top bar's search again, out of band, so its
+// "This folder" is the folder in view; the Scheduled list is not a folder,
+// so there the search is across all mail.
+func TestAListRefreshBringsTheSearchWithIt(t *testing.T) {
+	a, _, _ := reviewerApp(t, vmail.RoleMailbox)
+	rd := vmail.ReadAsOwner("dana")
+	if body, _ := a.vayuInboxBody(rd, "Inbox", "", 0, ""); strings.Contains(body, "data-mx-search") || !strings.Contains(body, `id="vm-search-results"`) {
+		t.Error("the list carries the search itself, or has no place for its results")
+	}
+	swap := a.vayuInboxSwap(rd, "Sent", "", 0)
+	if !strings.Contains(swap, `<form id="mx-search" class="mx-search" role="search" method="get" action="/os/vayumail/search" data-mx-search hx-swap-oob="true"`) ||
+		!strings.Contains(swap, `<input type="hidden" name="folder" value="Sent">`) || !strings.Contains(swap, `value="folder" checked`) {
+		t.Errorf("a refresh does not bring the search, in the folder in view:\n%s", swap)
+	}
+	swap = a.vayuInboxSwap(rd, "Scheduled", "", 0)
+	form := swap[strings.Index(swap, `<form id="mx-search"`):]
+	if !strings.Contains(form, `hx-swap-oob="true"`) || strings.Contains(form, `name="folder"`) || strings.Contains(form, `value="folder"`) ||
+		!strings.Contains(form, `value="all" checked`) || !strings.Contains(swap, `id="vm-search-results"`) {
+		t.Errorf("the Scheduled list's search is not across all mail, or has no place for results:\n%s", swap)
+	}
+}

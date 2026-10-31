@@ -4801,6 +4801,18 @@
   .vp-os[data-ui="still-air"]:not(.nav-expanded) .sa-count,
   .vp-os[data-ui="still-air"]:not(.nav-expanded) .sa-rail__version { display: none; }
 }
+/* Mail as its own app: the console's rail is folded away, and the menu
+   brings it back for the page (sa-rail-shown, admin-os.js) without changing
+   how the console keeps it. */
+@media (min-width: 769px) {
+  .vp-os[data-ui="still-air"].sa-mailapp:not(.sa-rail-shown) .sa-shell { grid-template-columns: 0 minmax(0, 1fr); }
+  .vp-os[data-ui="still-air"].sa-mailapp:not(.sa-rail-shown) .sa-rail { visibility: hidden; padding-inline: 0; border-right: 0; }
+}
+.vp-os[data-ui="still-air"] .sa-appname {
+  flex: none; padding: 4px 6px; border-radius: var(--radius-control);
+  font: var(--type-strong); color: var(--text-1); text-decoration: none;
+}
+.vp-os[data-ui="still-air"] .sa-appname:hover { background: var(--surface-hover); text-decoration: none; }
 
 /* Workspace: the app sidebar and the content column. */
 .vp-os[data-ui="still-air"] .sa-main {
@@ -5909,21 +5921,22 @@
 .vp-os[data-ui="still-air"] .mx-head__note { font: var(--type-small); color: var(--text-3); }
 .vp-os[data-ui="still-air"] .mx-head__fill { flex: 1; }
 .vp-os[data-ui="still-air"] .mx-head .btn { align-self: center; }
+/* Mail's search, in the top bar where the console's command button sits
+   elsewhere: a wide field, and under it, while it has focus, where to look. */
+.vp-os[data-ui="still-air"] .sa-topsearch { position: relative; flex: 0 1 560px; min-width: 0; margin: 0 auto; }
 .vp-os[data-ui="still-air"] .mx-search {
-  position: sticky; top: 56px; z-index: 2; display: flex; align-items: center; gap: var(--space-3);
-  height: 36px; margin: 0 0 var(--space-3); padding: 0 var(--space-4); color: var(--text-3);
+  display: flex; align-items: center; gap: var(--space-3);
+  height: 32px; padding: 0 var(--space-4); color: var(--text-3);
   background: var(--surface-input); border: 1px solid var(--border-1); border-radius: var(--radius-control);
-  box-shadow: 0 var(--space-3) 0 var(--surface-1);
 }
 .vp-os[data-ui="still-air"] .mx-search:focus-within { border-color: var(--focus); }
-/* Search in place (Mail plan §8, item 8). The form is the field and, below
-   it, the scope bar; searching lifts the field into the header's place as
-   the header folds away, and brings the scope bar down into the field's. */
-.vp-os[data-ui="still-air"] .mx-search { flex-wrap: wrap; transition: transform var(--duration-standard) var(--ease-move); }
 .vp-os[data-ui="still-air"] .mx-search__field { display: flex; flex: 1; align-items: center; gap: var(--space-3); min-width: 0; height: 100%; }
 .vp-os[data-ui="still-air"] .mx-scope {
-  display: none; flex-wrap: wrap; gap: var(--space-2); width: 100%; padding: var(--space-3) 0 0;
+  position: absolute; top: calc(100% + var(--space-2)); left: 0; right: 0; z-index: 2;
+  display: none; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-3);
+  background: var(--surface-2); border: 1px solid var(--border-1); border-radius: var(--radius-surface); box-shadow: var(--shadow-3);
 }
+.vp-os[data-ui="still-air"] .mx-search:focus-within .mx-scope { display: flex; animation: mx-scope-in var(--duration-standard) var(--ease-enter); }
 .vp-os[data-ui="still-air"] .mx-scope__opt { display: inline-flex; cursor: pointer; }
 .vp-os[data-ui="still-air"] .mx-scope__opt input { position: absolute; opacity: 0; pointer-events: none; }
 .vp-os[data-ui="still-air"] .mx-scope__opt span {
@@ -5932,13 +5945,9 @@
 }
 .vp-os[data-ui="still-air"] .mx-scope__opt input:checked + span { background: var(--accent-soft); color: var(--accent); }
 .vp-os[data-ui="still-air"] .mx-scope__opt input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
-.vp-os[data-ui="still-air"] .is-searching .mx-head__main { opacity: 0; transform: translateY(-4px); pointer-events: none; }
-.vp-os[data-ui="still-air"] .is-searching .mx-search {
-  height: auto; padding-top: var(--space-2); padding-bottom: var(--space-3); transform: translateY(-48px); margin-bottom: -40px;
-  box-shadow: 0 0 0 var(--space-3) var(--surface-1);
-}
-.vp-os[data-ui="still-air"] .is-searching .mx-search__field { height: 30px; }
-.vp-os[data-ui="still-air"] .is-searching .mx-scope { display: flex; animation: mx-scope-in var(--duration-standard) var(--ease-enter); }
+/* While searching, the results are the list, and the folder's head gives
+   them its place; picking some brings it back as the selection's bar. */
+.vp-os[data-ui="still-air"] .is-searching:not(.is-selecting) > .mx-head { display: none; }
 @keyframes mx-scope-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 /* Results take the list's place, fading in each time they change. */
 .vp-os[data-ui="still-air"] .mx-results:empty { display: none; }
@@ -5947,10 +5956,9 @@
 .vp-os[data-ui="still-air"] .mx-results__count { margin: 0; padding: var(--space-2) var(--space-3) var(--space-3); font: var(--type-small); color: var(--text-3); }
 .vp-os[data-ui="still-air"] .mx-results__save { margin-left: var(--space-2); padding: 0; border: 0; background: none; font: inherit; color: var(--accent); cursor: pointer; }
 .vp-os[data-ui="still-air"] .mx-results__save:hover { text-decoration: underline; }
-/* A result's heading sticks under the raised search: the header's 56px, the
-   field and scope bar (84px), less the 48px it rises. Any lower and it sits
-   over the first result before the list has scrolled at all. */
-.vp-os[data-ui="still-air"] .mx-results .mx-group { top: 92px; }
+/* A result's heading sticks to the top of the list, whose head is put away
+   while searching. */
+.vp-os[data-ui="still-air"] .mx-results .mx-group { top: 0; }
 .vp-os[data-ui="still-air"] .mx-search__input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; color: var(--text-1); font: var(--type-body); outline: none; }
 .vp-os[data-ui="still-air"] .mx-search__key { font: var(--type-meta); color: var(--text-3); padding: 0 6px; border: 1px solid var(--border-1); border-radius: 4px; }
 .vp-os[data-ui="still-air"] .mx-search:focus-within .mx-search__key { visibility: hidden; }
@@ -5960,7 +5968,7 @@
 }
 .vp-os[data-ui="still-air"] .mx-list { list-style: none; margin: 0; padding: 0; }
 .vp-os[data-ui="still-air"] .mx-group {
-  position: sticky; top: 104px; z-index: 1; padding: var(--space-5) var(--space-3) var(--space-2);
+  position: sticky; top: 56px; z-index: 1; padding: var(--space-5) var(--space-3) var(--space-2);
   font: var(--type-strong); font-size: 13px; color: var(--text-2); background: var(--surface-1);
 }
 /* A row: gutter, avatar, then sender and time, subject and marks, two lines
@@ -6418,6 +6426,10 @@
   .vp-os[data-ui="still-air"] .sa-shell { grid-template-columns: minmax(0, 1fr); }
   .vp-os[data-ui="still-air"] .sa-sysbar { gap: var(--space-3); padding: 0 var(--space-3); }
   .vp-os[data-ui="still-air"] .sa-sysbar .menu-toggle { display: none; }
+  /* In Mail the mark and "Mail" name the place, and the search needs the
+     width the site's name would take; there is no key to press for it. */
+  .vp-os[data-ui="still-air"].sa-mailapp :is(.sa-mark__site, .sa-sites),
+  .vp-os[data-ui="still-air"] .mx-search__key { display: none; }
   .vp-os[data-ui="still-air"] .sa-search { flex: 0 0 30px; width: 30px; padding: 0; justify-content: center; margin-left: auto; margin-right: 0; border: 0; background: none; }
   /* The words stay for a screen reader: they are the button's name. */
   .vp-os[data-ui="still-air"] .sa-search__text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

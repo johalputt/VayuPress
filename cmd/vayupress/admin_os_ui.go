@@ -1637,6 +1637,9 @@ type osMailSide struct {
 	// Writable: not a read-only mailbox, so Bring mail in is offered;
 	// Importing: that page is the one open.
 	Writable, Importing bool
+	// Search: mailSearchForm's markup, for the top bar, on a page that has
+	// the list for its results; "" elsewhere.
+	Search string
 }
 
 // osSite is one hosted site in the switcher.

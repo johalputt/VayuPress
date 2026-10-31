@@ -651,16 +651,36 @@ test("the command bar runs the open message's actions", async ({ page }) => {
   await expect(page.locator("#vm-inbox-list .mx-row", { hasText: subject })).toHaveCount(0);
 });
 
-// Search in place (Mail plan §8, item 8): the field rises into the header as
-// the title folds away, the scope bar comes down, results take the list's
-// place as the list's own rows, and Escape gives the list back where it was.
-test("search rises into the header and gives the list back", async ({ page }) => {
+// Mail is its own app: the console's rail is folded away, the menu brings
+// it back for the page, and "Mail" beside the mark goes to the Inbox.
+test("Mail folds the console's rail away, and the menu brings it back", async ({ page }) => {
+  await openInbox(page);
+  const rail = page.locator(".sa-rail");
+  await expect(rail).toBeHidden();
+  const list = await page.locator("#vm-inbox-list").boundingBox();
+  const side = await page.locator(".sa-appside").boundingBox();
+  expect(side.x, "the mail sidebar does not start at the left edge").toBe(0);
+  expect(list.x).toBeGreaterThan(side.x);
+  await expect(page.locator(".sa-sysbar .sa-status")).toHaveCount(0);
+  await expect(page.locator(".sa-sysbar .sa-appname")).toHaveText("Mail");
+  await page.locator(".sa-sysbar .menu-toggle").click();
+  await expect(rail).toBeVisible();
+  await expect(page.locator(".sa-sysbar .menu-toggle")).toHaveAttribute("aria-expanded", "true");
+  // For the page alone: the console keeps its own choice.
+  expect(await page.evaluate(() => localStorage.getItem("vp_nav_collapsed"))).toBeNull();
+  await page.locator(".sa-sysbar .menu-toggle").click();
+  await expect(rail).toBeHidden();
+});
+
+// Search in place: the field is in the top bar, the
+// scope comes down beneath it, results take the list's place as the list's
+// own rows, and Escape gives the list back where it was.
+test("search from the top bar gives the list back", async ({ page }) => {
   await openInbox(page);
   const list = page.locator("#vm-inbox-list");
   await list.evaluate((e) => { e.scrollTop = 600; });
-  await page.locator(".mx-search__input").focus();
+  await page.locator(".sa-sysbar .mx-search__input").focus();
   await expect(list).toHaveClass(/is-searching/);
-  await expect.poll(() => list.locator(".mx-head__main").evaluate((e) => getComputedStyle(e).opacity)).toBe("0");
   await expect(page.locator(".mx-scope")).toBeVisible();
   await page.keyboard.type("bucket");
   const results = page.locator("#vm-search-results");

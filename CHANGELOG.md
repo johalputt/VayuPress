@@ -96,6 +96,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   starts with Reply, Reply all and Forward, and its main tools say what
   they do in words, folding to icons as the reader narrows, Reply last.
   Compose is a full-width button at the head of the folders.
+- **Mail is its own app.** With a mailbox open, the console's rail is
+  folded away (the menu brings it back for the page), "Mail" beside the
+  site's mark goes to the Inbox, and the top bar's search is Mail's: a
+  wide field, `/` to reach it, with where to look (this folder, all mail,
+  from, has attachments) under it while it has focus. The mode and world
+  pair is not shown in Mail; a mode other than normal still shows its
+  strip. The list no longer carries its own search field.
 - A write the console refuses now says why in its notice, after the
   status, when the server gave a reason.
 

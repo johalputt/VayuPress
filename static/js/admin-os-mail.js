@@ -116,10 +116,10 @@
     });
   }
 
-  // Search in place (Mail plan §8, item 8). Focus lifts the field into the
-  // header as the title folds away and brings the scope bar down; results
-  // take the list's place as they arrive; Escape plays it back and puts the
-  // list where it was. Delegated, because every list swap brings a new form.
+  // Search in place. The field is in the top bar;
+  // focus brings its scope down beneath it, results take the list's place as
+  // they arrive, and Escape puts the list back where it was. Delegated,
+  // because every list swap sends the form again.
   var searchScroll = 0;
   function searchList() { return document.getElementById('vm-inbox-list'); }
   document.addEventListener('focusin', function (e) {
@@ -132,7 +132,7 @@
   function endSearch() {
     var l = searchList();
     if (!l || !l.classList.contains('is-searching')) return;
-    var form = l.querySelector('[data-mx-search]');
+    var form = document.querySelector('[data-mx-search]');
     var input = form && form.querySelector('input[name="q"]');
     if (input) { input.value = ''; input.blur(); }
     var res = document.getElementById('vm-search-results');
@@ -162,6 +162,11 @@
     if (e.key !== 'Escape' || !e.target || !e.target.closest || !e.target.closest('[data-mx-search]')) return;
     e.preventDefault();
     endSearch();
+  });
+  // The scope hangs under the field while it has focus; pressing a choice
+  // must not take the focus away, or the scope folds before the click lands.
+  document.addEventListener('mousedown', function (e) {
+    if (e.target && e.target.closest && e.target.closest('[data-mx-search] .mx-scope')) e.preventDefault();
   });
   document.addEventListener('focusout', function (e) {
     var form = e.target && e.target.closest ? e.target.closest('[data-mx-search]') : null;

@@ -1925,7 +1925,41 @@ func (a *App) ownFolders(rd vmail.Reader) []string {
 // the sidebar's folders and views out of band.
 func (a *App) vayuInboxSwap(rd vmail.Reader, folder, view string, limit int) string {
 	body, facts := a.vayuInboxBody(rd, folder, view, limit, "")
-	return body + a.mailNavFor(rd, folder, view, facts.Counts, true)
+	return body + a.mailNavFor(rd, folder, view, facts.Counts, true) + mailSearchForm(rd.Key(), folder, "", true)
+}
+
+// mailSearchForm is Mail's search, in the top bar. Its results replace the
+// list in place, in #vm-search-results; the search page is the path without
+// JavaScript, so the form still submits there. Each list swap sends it again
+// out of band (oob), so "This folder" is always the folder in view; the
+// Scheduled list is not a folder, so there it searches all mail.
+func mailSearchForm(user, folder, search string, oob bool) string {
+	var b strings.Builder
+	b.WriteString(`<form id="mx-search" class="mx-search" role="search" method="get" action="/os/vayumail/search" data-mx-search`)
+	if oob {
+		b.WriteString(` hx-swap-oob="true"`)
+	}
+	b.WriteString(` hx-get="/os/vayumail/search/fragment" hx-trigger="input changed delay:250ms from:find input[name=q], search from:find input[name=q], change from:find .mx-scope, submit" hx-target="#vm-search-results" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin">` +
+		`<input type="hidden" name="user" value="` + esc(user) + `"><input type="hidden" name="in" value="list">`)
+	inFolder := !isScheduledFolder(folder)
+	if inFolder {
+		b.WriteString(`<input type="hidden" name="folder" value="` + esc(folder) + `">`)
+	}
+	b.WriteString(`<span class="mx-search__field">` + saIcon("search") +
+		`<input class="mx-search__input" type="search" name="q" value="` + esc(search) + `" placeholder="Search mail" aria-label="Search mail" title="Search words, or terms: from:, to:, subject:, in:, after:, before:, has:attachment, is:unread" autocomplete="off"><kbd class="mx-search__key" aria-hidden="true">/</kbd></span>` +
+		`<div class="mx-scope" role="radiogroup" aria-label="Search in">`)
+	for _, sc := range [][2]string{{"folder", "This folder"}, {"all", "All mail"}, {"from", "From"}, {"attach", "Has attachments"}} {
+		if sc[0] == "folder" && !inFolder {
+			continue
+		}
+		checked := ""
+		if sc[0] == map[bool]string{true: "folder", false: "all"}[search == "" && inFolder] {
+			checked = " checked"
+		}
+		b.WriteString(`<label class="mx-scope__opt"><input type="radio" name="scope" value="` + sc[0] + `"` + checked + `><span>` + sc[1] + `</span></label>`)
+	}
+	b.WriteString(`</div></form>`)
+	return b.String()
 }
 
 // mailSide is the open mailbox's sidebar (Mail plan §3.1), with folder and
@@ -2041,6 +2075,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	search := strings.TrimSpace(r.URL.Query().Get("search"))
 	list, facts := a.vayuInboxBody(rd, folder, view, pageLimit, search)
 	side := a.mailSide(r, rd, folder, view, facts.Counts)
+	side.Search = mailSearchForm(user, folder, search, false)
 	cfg.MailSide = side
 	body.WriteString(`<span id="vm-inbox-spin" class="htmx-indicator vm-spin" aria-hidden="true">loading…</span>`)
 	// The Mail plan's panes are their own kind, "app": the fidelity plan
@@ -2196,7 +2231,8 @@ type mailListFacts struct {
 // in place.
 func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, search string) (string, mailListFacts) {
 	if isScheduledFolder(folder) {
-		return a.vayuScheduledBody(context.Background(), rd, ""), mailListFacts{}
+		// The top bar's search is offered here too, across all mail.
+		return a.vayuScheduledBody(context.Background(), rd, "") + `<div id="vm-search-results" class="mx-results" aria-live="polite"></div>`, mailListFacts{}
 	}
 	user := rd.Key()
 	// A read-only mailbox is offered no control the engine would refuse.
@@ -2276,29 +2312,13 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 	b.WriteString(`</div><div class="mx-head__sel" aria-live="polite"><h2 class="mx-head__title" data-vm-bulkcount>0 selected</h2><span class="mx-head__fill"></span>` +
 		`<button type="button" class="mx-head__link" data-vm-select-all` + mailCmd("Select every message in the list", "Mail", "") + `>Select all</button>` +
 		`<button type="button" class="btn btn--sm" data-vm-select-done` + mailCmd("Leave selection", "Mail", "Escape") + `>Done</button></div></header>`)
-	// Search sits in the list and its results replace the list in place; the
-	// search page stays the path without JavaScript.
-	// Search, in place (Mail plan §8, item 8): it rises into the header as the
-	// title folds away, a scope bar comes down beneath it, and its results
-	// crossfade over the list in #vm-search-results. The search page is the
-	// path without JavaScript, so the form still submits there.
-	b.WriteString(`<form class="mx-search" role="search" method="get" action="/os/vayumail/search" data-mx-search hx-get="/os/vayumail/search/fragment" hx-trigger="input changed delay:250ms from:find input[name=q], search from:find input[name=q], change from:find .mx-scope, submit" hx-target="#vm-search-results" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin">` +
-		`<input type="hidden" name="user" value="` + esc(user) + `"><input type="hidden" name="folder" value="` + esc(folder) + `"><input type="hidden" name="in" value="list">` +
-		`<span class="mx-search__field">` + saIcon("search") +
-		`<input class="mx-search__input" type="search" name="q" value="` + esc(search) + `" placeholder="Search" aria-label="Search mail" title="Search words, or terms: from:, to:, subject:, in:, after:, before:, has:attachment, is:unread" autocomplete="off"><kbd class="mx-search__key" aria-hidden="true">/</kbd></span>` +
-		`<div class="mx-scope" role="radiogroup" aria-label="Search in">`)
-	for i, sc := range [][2]string{{"folder", "This folder"}, {"all", "All mail"}, {"from", "From"}, {"attach", "Has attachments"}} {
-		checked := ""
-		if (search == "" && i == 0) || (search != "" && sc[0] == "all") {
-			checked = " checked"
-		}
-		b.WriteString(`<label class="mx-scope__opt"><input type="radio" name="scope" value="` + sc[0] + `"` + checked + `><span>` + sc[1] + `</span></label>`)
-	}
+	// The search itself is in the top bar (mailSearchForm); its results take
+	// the list's place here.
 	results := ""
 	if search != "" {
 		results = a.vayuSearchResults(rd, searchFilters{q: search, scope: "all", inList: true})
 	}
-	b.WriteString(`</div></form><div id="vm-search-results" class="mx-results" aria-live="polite">` + results + `</div>`)
+	b.WriteString(`<div id="vm-search-results" class="mx-results" aria-live="polite">` + results + `</div>`)
 
 	// A full mailbox refuses mail, so it is said above the list where it is
 	// seen. Below full, the storage meter in the sidebar foot says enough.
