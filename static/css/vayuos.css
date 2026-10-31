@@ -5572,6 +5572,12 @@
 .vp-os[data-ui="still-air"] .csp-mode .muted { font: var(--type-small); }
 .vp-os[data-ui="still-air"] .csp-note { font: var(--type-small); margin: var(--space-3) 0 0; max-width: 680px; }
 .vp-os[data-ui="still-air"] .csp-add { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-3) 0; }
+/* Content › YouTube: the follow form, the channel to confirm, and each
+   channel's buttons in one wrapping row. */
+.vp-os[data-ui="still-air"] .yt-follow { display: grid; gap: var(--space-3); }
+.vp-os[data-ui="still-air"] .yt-confirm { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .yt-newest { margin: var(--space-2) 0 var(--space-3); padding-left: var(--space-5); color: var(--text-2); font: var(--type-small); }
+.vp-os[data-ui="still-air"] .yt-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-4); }
 .vp-os[data-ui="still-air"] .csp-add select { flex: 0 0 190px; }
 .vp-os[data-ui="still-air"] .csp-add .input[type="text"] { flex: 1 1 320px; }
 .vp-os[data-ui="still-air"] .csp-sample { font: var(--type-mono); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }

@@ -71,6 +71,13 @@ var knownProviders = []providerMeta{
 		EndpointHint: "Base URL — leave blank to use OpenAI's default.",
 	},
 	{
+		Provider:    secrets.ProviderYouTube,
+		Title:       "YouTube Data API",
+		Desc:        "Lets a channel followed on Content › YouTube bring its whole back catalogue, not only its newest videos, and post premieres and streams before they start. Without a key, channels are followed from their public feeds. Create a key in Google Cloud with the YouTube Data API v3 enabled; it is kept sealed and only ever sent to YouTube.",
+		SecretLabel: "API key",
+		SecretPH:    "AIza...",
+	},
+	{
 		Provider:     secrets.ProviderOllama,
 		Title:        "Local AI (Ollama)",
 		Desc:         "Connect a self-hosted model runtime so AI features run on infrastructure you control. No data leaves your server.",

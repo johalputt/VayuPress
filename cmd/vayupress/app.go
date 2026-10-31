@@ -81,6 +81,7 @@ import (
 	"github.com/johalputt/vayupress/internal/webhooks"
 	"github.com/johalputt/vayupress/internal/webmention"
 	"github.com/johalputt/vayupress/internal/ws"
+	"github.com/johalputt/vayupress/internal/youtube"
 )
 
 // App holds all mutable runtime state. Handlers are methods on *App so that
@@ -160,6 +161,10 @@ type App struct {
 	signin *signin.Store
 	// Passkeys and the ceremonies under way (passkey.go).
 	passkeys *passkey.Store
+	// YouTube channels followed as blogs (youtube.go), and the poke that
+	// wakes their loop when one is added or asked to check now.
+	youtube     *youtube.Store
+	youtubePoke chan struct{}
 
 	// Resolved IndexNow key, cached. Resolving it means a SQL row read plus an
 	// AES-GCM open, and three hot paths need it on unauthenticated requests (the

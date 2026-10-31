@@ -133,6 +133,7 @@ var bellWatchSQL = []string{
 	`SELECT COALESCE(MAX(rowid),0) FROM articles`,
 	`SELECT COUNT(1) FROM update_history WHERE completed_at IS NOT NULL`,
 	`SELECT COUNT(1) FROM vayumail_app_passwords WHERE status='pending'`,
+	`SELECT COUNT(1) FROM youtube_channels WHERE paused=0 AND failures>=3`,
 }
 
 // bellDigest is the watcher's reading: it changes when anything the bell

@@ -68,6 +68,7 @@ var saClearnetApps = []saApp{
 		{Label: "Comments", Href: "/os/comments", Icon: "talk"},
 		{Label: "Messages", Href: "/os/messages", Icon: "inbox"},
 		{Label: "Media", Href: "/os/media", Icon: "image"},
+		{Label: "YouTube", Href: "/os/youtube", Icon: "video"},
 	}},
 	{Key: "audience", Label: "Audience", Icon: "audience", Href: "/os/members", Sections: []saSection{
 		{Label: "Members", Href: "/os/members", Icon: "audience"},

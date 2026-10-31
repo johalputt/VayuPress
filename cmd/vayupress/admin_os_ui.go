@@ -364,6 +364,15 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/messages/delete-read", a.handleOSMessagesDeleteRead)
 		pr.Get("/os/api/messages/export.csv", a.handleOSMessagesExportCSV)
 		pr.Get("/os/media", a.handleOSMedia)
+		// Content › YouTube: channels followed as blogs (admin_os_youtube.go).
+		pr.Get("/os/youtube", a.handleOSYouTube)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/youtube/resolve", a.handleOSYouTubeResolve)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/youtube/follow", a.handleOSYouTubeFollow)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/youtube/{id}/set", a.handleOSYouTubeSet)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/youtube/{id}/check", a.handleOSYouTubeCheck)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/youtube/{id}/unfollow", a.handleOSYouTubeUnfollow)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/youtube/{id}/post", refuseContentWrites(a.handleOSYouTubePost))
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/youtube/{id}/post-all", refuseContentWrites(a.handleOSYouTubePostAll))
 		pr.Get("/os/api/media", a.handleOSMediaList)
 		// Session-friendly media upload + import. The /api/v1/admin/media originals
 		// require an API key; VayuOS operators hold a session cookie, so the browser
@@ -1790,6 +1799,13 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 	// in add() is not enough on its own.
 	if next, bad := a.mailDNSNeedsAttention(); bad && s.AccessLevel >= accessAdmin {
 		state("/os/vayumail/dns", "Mail domain needs attention", next, "mail", "warn")
+	}
+	// A followed YouTube channel that has failed three checks in a row: one
+	// notice for all of them, gone when they read again (the store counts).
+	if a.youtube != nil {
+		if n := a.youtube.Failing(ctx); n > 0 {
+			state(youtubePage, "YouTube channel cannot be read", countOf(n, "channel")+" failing; the page says why", "alert", "warn")
+		}
 	}
 	// Someone locked out of their mailbox asked for help. The public page tells
 	// them their administrator has been told; this is where that is made true.

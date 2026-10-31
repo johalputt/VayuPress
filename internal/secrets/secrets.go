@@ -93,7 +93,12 @@ const (
 	// signing secret used to HMAC-verify BTCPay settlement callbacks.
 	ProviderBTCPay        = "btcpay"
 	ProviderBTCPayWebhook = "btcpay_webhook"
-	ProviderCustom        = "custom"
+	// ProviderYouTube stores the operator's YouTube Data API key, with which
+	// a followed channel's back catalogue and upcoming premieres are read
+	// (internal/youtube). Without one, channels are followed from their
+	// public feeds.
+	ProviderYouTube = "youtube"
+	ProviderCustom  = "custom"
 )
 
 // KnownProviders is the allowlist of provider slugs accepted on write.
@@ -112,6 +117,7 @@ var KnownProviders = map[string]bool{
 	ProviderPayPalWebhook:  true,
 	ProviderBTCPay:         true,
 	ProviderBTCPayWebhook:  true,
+	ProviderYouTube:        true,
 	ProviderCustom:         true,
 }
 

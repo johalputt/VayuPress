@@ -8,6 +8,36 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **A YouTube channel as a blog, posting by itself.** Content › YouTube
+  takes a channel's address (its page, its @handle, or any of its videos or
+  Shorts) and a site, shows the channel to confirm, and from then on every
+  video becomes a post with nothing done by hand: its title; its
+  description as text, with its links and its timestamps as links that open
+  the video at that moment; its hashtags as tags; its picture copied into
+  the media library; its date; a link back; and the player, which loads
+  from YouTube only when a reader presses play. A Short is drawn upright.
+  Each channel is checked every 15 minutes, and Fetch now checks it at
+  once. Each has its own switches: Auto-post (off, new videos wait for a
+  Post button, or Post all), Publish at once (off, posts are kept as
+  drafts), Shorts, and Pause. A video is posted once: a post deleted is not
+  made again, and two checks at once never make two posts. A channel that
+  keeps failing is said on its page and once in the bell.
+- **With a YouTube API key** (Settings › API keys, kept sealed), a followed
+  channel brings its whole back catalogue, read a few pages at a time over
+  successive checks, and its premieres and streams are posted before they
+  start, then rewritten as the video once they have aired.
+
+### Security
+
+- **The YouTube feature fetches from three hosts only**, and only addresses
+  it builds itself from a checked channel or video id: www.youtube.com,
+  youtube.googleapis.com and i.ytimg.com, over HTTPS, refused if a redirect
+  ends anywhere else. Nothing a pasted address or a feed names is fetched,
+  a description is never read as markup, an API error never carries the
+  key, and the page is an administrator's.
+
 ### Fixed
 
 - **A message read with pictures off no longer opens as a few lines in

@@ -75,3 +75,21 @@ test("a change refreshes the page in place, and the new controls work", async ({
   expect(navigations).toBe(0);
   expect(errors).toEqual([]);
 });
+
+// Content › YouTube asks for the channel and answers in place. An address on
+// another host is refused before anything is fetched, so this needs no
+// network, and the page keeps its form for the next try.
+test("YouTube finds a channel in place, and refuses another host's address", async ({ page }) => {
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/os/youtube");
+  await expect(page.locator("h1")).toContainText("YouTube");
+  await page.getByRole("button", { name: "Follow a channel" }).first().click();
+  await page.locator("#yt-address").fill("https://example.com/@somebody");
+  const answered = page.waitForResponse((r) => r.url().includes("/os/api/youtube/resolve"));
+  await page.getByRole("button", { name: "Find the channel" }).click();
+  expect((await answered).status()).toBe(200);
+  await expect(page.locator("#yt-preview")).toContainText("That address is not on YouTube.");
+  await expect(page.locator("#yt-address")).toHaveValue("https://example.com/@somebody");
+  expect(errors).toEqual([]);
+});

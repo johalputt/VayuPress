@@ -142,6 +142,9 @@ func osPathMinLevel(path string) int {
 		// every site it serves, hosted customers' readers among them, which
 		// only an administrator reads. Each site's own figures are its page.
 		"platform",
+		// Following a YouTube channel makes posts by itself on any site, and
+		// reads the install's sealed YouTube key: an administrator's choice.
+		"youtube",
 	}
 	// "optimize" is the hub that fronts SEO / Analytics / VayuShield / Theme Studio
 	// / Theme Store; it opens at editor level (its editor-safe cards) and hides the

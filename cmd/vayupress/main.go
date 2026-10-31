@@ -83,6 +83,7 @@ import (
 	"github.com/johalputt/vayupress/internal/webhooks"
 	"github.com/johalputt/vayupress/internal/webmention"
 	"github.com/johalputt/vayupress/internal/ws"
+	"github.com/johalputt/vayupress/internal/youtube"
 )
 
 // Version is the fallback build version. CI stamps the real version via
@@ -1128,6 +1129,12 @@ func main() {
 	go func() { <-queue.DoneCh; stopFlow() }()
 	go a.flowTicker.Run(flowCtx, nil)
 	go a.flowDrainer.Run(flowCtx, 5*time.Second, nil)
+	// Followed YouTube channels are checked on the same shutdown signal. A
+	// Tor world follows none: its egress is Tor's, and the feature fetches
+	// from YouTube by name (youtubeAvailable).
+	a.youtube = youtube.NewStore(dbpkg.DB, dbpkg.Reader(), nil)
+	a.youtubePoke = make(chan struct{}, 1)
+	go a.runYouTube(flowCtx)
 
 	// Wire search service — VayuFind, the built-in dependency-free engine
 	// (ADR-0050/0101). Load the index in the BACKGROUND: on a large article store
