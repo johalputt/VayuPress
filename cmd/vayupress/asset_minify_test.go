@@ -107,9 +107,13 @@ func TestConsoleStylesheetIsServedMinified(t *testing.T) {
 // Raised to 395,000 on 2026-10-30 for Analytics' every row a way into its
 // readers: the filter bar, a list's measure switch and card, the world map,
 // a page's report and its link map, which took the sheet to 385,244.
+// Raised to 410,000 on 2026-10-31 for Mail as its own app: the search in the
+// top bar, the category tabs, the trust line, Settings as one page, the
+// phone's swipe and Compose button, sessions and the checklist, throwaway
+// and sealed messages, which took the sheet to 395,344.
 // A budget is discipline, not a limit: raise it on purpose, in this line, when
 // a requirement needs it — never cut a feature to stay under it.
-const consoleCSSBudget = 395_000
+const consoleCSSBudget = 410_000
 
 func TestConsoleStylesheetFitsItsBudget(t *testing.T) {
 	src, err := os.ReadFile("../../static/css/vayuos.css") // #nosec G304 -- repository file

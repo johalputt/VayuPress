@@ -6248,6 +6248,10 @@
 .vp-os[data-ui="still-air"] .mx-throwaways__addr { font: var(--type-body); color: var(--text-1); overflow-wrap: anywhere; }
 .vp-os[data-ui="still-air"] .mx-throwaways__meta { font: var(--type-small); color: var(--text-3); }
 .vp-os[data-ui="still-air"] .mx-throwaways .is-off .mx-throwaways__addr { color: var(--text-3); text-decoration: line-through; }
+/* Sealing a message, and a sealed message opened on its public page. */
+.vp-os[data-ui="still-air"] .mx-sealform { display: flex; flex-direction: column; gap: var(--space-4); max-width: 640px; margin-bottom: var(--space-8); }
+.vp-os[data-ui="still-air"] .mx-sealform .btn { align-self: flex-start; }
+.vp-os[data-ui="still-air"] .mx-sealed__body { margin: var(--space-5) 0; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--type-body); color: var(--text-1); }
 /* The trust line: quiet facts under the sender, each only when it applies;
    and the one amber line when a link or a name pretends. */
 .vp-os[data-ui="still-air"] .mx-trust { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); margin: var(--space-3) 0 0; font: var(--type-small); color: var(--text-3); }

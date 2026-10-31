@@ -10,6 +10,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **Mail to anyone, sealed.** For someone with no key, Mail › Send a
+  sealed message does not send the message at all: it stays on this
+  server, sealed with a passphrase the sender tells them another way, and
+  they are mailed a link. On that page the passphrase opens it, for a day,
+  a week or thirty days as the sender chose, and they can answer it there;
+  the answer lands in the sender's Inbox from the address it was sealed
+  for. The server keeps only a salt, a nonce and the sealed box (Argon2id
+  and AES-GCM, bound to the message's id); ten wrong passphrases close it
+  for good, wrong passphrases count against the address as wrong passwords
+  do, and the sender can close it at any time.
 - **Throwaway addresses.** A mailbox's holder makes an address for one
   website in a click from Settings (shop-x7k2qa@your domain), sees which
   take mail and how much, turns one off when the website passes it on, and

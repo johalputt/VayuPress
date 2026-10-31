@@ -391,6 +391,11 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Post("/api/v1/members/login", a.handleMemberLogin)
 	r.Post("/members/login", a.handleMemberLogin) // HTML form variant from the paywall
 	r.Get("/members/verify", a.handleMemberVerify)
+	// A sealed message's page: public, for the person outside it was sealed
+	// for (vayuos_mail_sealed.go). No session and nothing ambient to forge,
+	// so the form carries no CSRF token; the passphrase is the credential.
+	r.Get("/sealed/{id}", a.handleSealedPage)
+	r.Post("/sealed/{id}", a.handleSealedPage)
 	r.With(refuseCrossOrigin).Post("/members/logout", a.handleMemberLogout)
 	// Premium membership: sign-in page, member portal/account, and the public
 	// pricing page + tier catalogue.
