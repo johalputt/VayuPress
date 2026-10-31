@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **A message read with pictures off no longer opens as a few lines in
+  blank space.** A newsletter sizes its pictures and the table cells that
+  hold them; with the pictures off the reader kept those sizes, so each
+  picture drew as an empty box and each spacer cell as a gap. With
+  pictures off, a picture now shows its alt text and a cell is as high as
+  its words; a message whose pictures are loaded keeps every size.
+- **Mail's mailbox switcher opens whole inside the window.** Kept to the
+  sidebar's edge, it opened more than a hundred pixels off the window's
+  left, cutting off its search field and the start of every address.
+
 ## [3.18.20] — 2026-10-31
 
 VayuMail grows into its own app and is safer at every door: failed sign-ins seen and stopped, passkeys, a line that says who confirmed a message, sealed mail for anyone, throwaway addresses, an Inbox that sorts itself, Settings as one page, a phone worked by the thumb, and help from a model with its cautions enforced on the server.
