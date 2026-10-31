@@ -93,22 +93,39 @@ func stripImageSources(sanitized string) string {
 }
 
 // stripImgAttrs walks a parsed subtree removing the attributes that make a browser
-// fetch a URL from an image element.
+// fetch a URL from an image element, and the sizes that only made sense with the
+// picture in place. A newsletter sizes its pictures and the table cells that hold
+// them; with the pictures gone, an image kept at 600×280 is an empty box and a
+// cell kept at 40px high is a gap, so the message read as a few lines lost in
+// blank space. Without its size an image is its alt text, and a cell is as high
+// as its words. Widths of tables and cells stay: they are the columns.
 func stripImgAttrs(n *xhtml.Node) {
-	if n.Type == xhtml.ElementNode && n.Data == "img" {
-		keep := n.Attr[:0]
-		for _, a := range n.Attr {
-			switch strings.ToLower(a.Key) {
-			case "src", "srcset", "background", "lowsrc", "dynsrc":
-				continue
-			}
-			keep = append(keep, a)
+	if n.Type == xhtml.ElementNode {
+		switch n.Data {
+		case "img":
+			n.Attr = dropAttrs(n.Attr, "src", "srcset", "background", "lowsrc", "dynsrc", "width", "height")
+		case "table", "td", "th":
+			n.Attr = dropAttrs(n.Attr, "height")
 		}
-		n.Attr = keep
 	}
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
 		stripImgAttrs(c)
 	}
+}
+
+// dropAttrs returns attrs without the named keys, compared without case.
+func dropAttrs(attrs []xhtml.Attribute, names ...string) []xhtml.Attribute {
+	keep := attrs[:0]
+next:
+	for _, a := range attrs {
+		for _, name := range names {
+			if strings.EqualFold(a.Key, name) {
+				continue next
+			}
+		}
+		keep = append(keep, a)
+	}
+	return keep
 }
 
 // ── Compose ──────────────────────────────────────────────────────────────────

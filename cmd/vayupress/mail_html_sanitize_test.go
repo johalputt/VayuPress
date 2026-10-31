@@ -86,6 +86,34 @@ func TestImageStrippingKeepsTheRestOfTheMessageIntact(t *testing.T) {
 	}
 }
 
+// TestPicturesOffLeaveNoBlankSpace: a newsletter sizes its pictures and the
+// cells holding them, and with the pictures off those sizes drew empty boxes
+// and gaps around a few lines of text. One seed per size, so each is seen to
+// go on its own; a table's and a cell's width are its columns and stay.
+func TestPicturesOffLeaveNoBlankSpace(t *testing.T) {
+	cases := map[string]struct{ in, gone string }{
+		"an image's width":  {`<img src="https://x.example/h.png" width="600" alt="Sale">`, `width="600"`},
+		"an image's height": {`<img src="https://x.example/h.png" height="280" alt="Sale">`, `height="280"`},
+		"a cell's height":   {`<table><tr><td height="40">x</td></tr></table>`, `height="40"`},
+		"a table's height":  {`<table height="900"><tr><td>x</td></tr></table>`, `height="900"`},
+	}
+	for name, c := range cases {
+		if out := mailHTMLNoImages(c.in); strings.Contains(out, c.gone) {
+			t.Errorf("%s is kept with the picture off, so it draws as blank space:\n%s", name, out)
+		}
+	}
+	out := mailHTMLNoImages(`<table width="600"><tr><td width="300">a</td></tr></table><img src="https://x.example/h.png" width="600" alt="Sale">`)
+	for _, want := range []string{`<table width="600">`, `<td width="300">`, `alt="Sale"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the message lost %q, which is layout or words, not a picture's size:\n%s", want, out)
+		}
+	}
+	// With pictures asked for, they are drawn at the size the sender gave.
+	if on := mailHTMLPolicyImages.Sanitize(`<img src="https://x.example/h.png" width="600" height="280">`); !strings.Contains(on, `width="600"`) || !strings.Contains(on, `height="280"`) {
+		t.Errorf("a picture that is loaded must keep its size:\n%s", on)
+	}
+}
+
 // TestMailReaderOffersTheViewToggle — the feature is discoverable, and the
 // default stays plain text.
 func TestMailReaderOffersTheViewToggle(t *testing.T) {
