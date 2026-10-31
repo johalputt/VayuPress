@@ -88,6 +88,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
+- **Links in mail lose their tracking parameters.** The utm_ family and the
+  click identifiers advertisers add (fbclid, gclid, msclkid and the like)
+  are taken out of every link a message shows, with pictures on or off;
+  every other parameter stays as written, and a link with none is not
+  touched.
 - **The Inbox sorts itself, with nothing leaving the server.** Each
   message is placed in Primary, Updates, Newsletters, Receipts or Social
   from its headers and subject alone, as the listing reads them. When the

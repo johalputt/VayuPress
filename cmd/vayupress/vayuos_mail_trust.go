@@ -199,3 +199,49 @@ func mailTrustLine(t mailTrust) string {
 	}
 	return out
 }
+
+// trackingParams are the query parameters that exist only to tell a sender,
+// or the advertisers behind them, who followed a link from which message.
+// They are taken out of every link a message shows; the page the link goes
+// to is the same without them.
+var trackingParams = map[string]bool{
+	"utm_source": true, "utm_medium": true, "utm_campaign": true, "utm_term": true, "utm_content": true, "utm_id": true,
+	"fbclid": true, "gclid": true, "dclid": true, "gbraid": true, "wbraid": true, "msclkid": true, "yclid": true, "igshid": true,
+	"mc_cid": true, "mc_eid": true, "_hsenc": true, "_hsmi": true, "mkt_tok": true, "oly_enc_id": true, "oly_anon_id": true, "vero_id": true,
+}
+
+// cleanLinks takes the tracking parameters out of every link under n.
+func cleanLinks(n *html.Node) {
+	if n.Type == html.ElementNode && n.Data == "a" {
+		for i, a := range n.Attr {
+			if strings.EqualFold(a.Key, "href") {
+				n.Attr[i].Val = cleanLink(a.Val)
+			}
+		}
+	}
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		cleanLinks(c)
+	}
+}
+
+// cleanLink is href without its tracking parameters; anything that is not
+// a web address with a query is returned as it was.
+func cleanLink(href string) string {
+	u, err := url.Parse(href)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.RawQuery == "" {
+		return href
+	}
+	q := u.Query()
+	changed := false
+	for k := range q {
+		if trackingParams[strings.ToLower(k)] {
+			q.Del(k)
+			changed = true
+		}
+	}
+	if !changed {
+		return href
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
+}

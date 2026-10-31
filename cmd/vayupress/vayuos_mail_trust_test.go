@@ -99,3 +99,24 @@ func TestTheReadersTrustLine(t *testing.T) {
 		t.Error("a message in Sent warns, or its trackers are not counted")
 	}
 }
+
+// A link loses its tracking parameters whichever way the message is shown,
+// keeps every other parameter, and a link with none is left exactly as it
+// was written.
+func TestLinksLoseTheirTrackingParameters(t *testing.T) {
+	in := `<a href="https://shop.example/p?id=7&amp;utm_source=news&amp;fbclid=x">Shop</a> <a href="https://a.example/?b=1&amp;a=2">A</a> <a href="mailto:x@y.example?utm_source=a&amp;subject=Hi">M</a>`
+	for name, out := range map[string]string{
+		"pictures off": mailHTMLNoImages(in),
+		"pictures on":  proxyImageSources(mailHTMLPolicyImages.Sanitize(in)),
+	} {
+		if !strings.Contains(out, `href="https://shop.example/p?id=7"`) || strings.Contains(out, "utm_source=news") || strings.Contains(out, "fbclid") {
+			t.Errorf("%s: the tracking parameters stay:\n%s", name, out)
+		}
+		if !strings.Contains(out, `href="https://a.example/?b=1&amp;a=2"`) {
+			t.Errorf("%s: a link with no tracking was rewritten:\n%s", name, out)
+		}
+		if !strings.Contains(out, `href="mailto:x@y.example?utm_source=a&amp;subject=Hi"`) {
+			t.Errorf("%s: a mail link was rewritten:\n%s", name, out)
+		}
+	}
+}

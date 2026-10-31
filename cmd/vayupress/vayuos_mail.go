@@ -84,6 +84,7 @@ func stripImageSources(sanitized string) string {
 	var out bytes.Buffer
 	for _, n := range nodes {
 		stripImgAttrs(n)
+		cleanLinks(n)
 		if err := xhtml.Render(&out, n); err != nil {
 			return ""
 		}
