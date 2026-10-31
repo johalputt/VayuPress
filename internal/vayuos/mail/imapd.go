@@ -219,6 +219,7 @@ func (s *IMAPServer) acceptLoop() {
 }
 
 type imapSession struct {
+	remote       string // the client's address, for the record of sign-ins
 	authedUser   string // local username
 	authedMail   string // full email
 	authedDomain string // owning mail domain (VayuDomains Stage 3b): the Maildir key
@@ -252,7 +253,7 @@ func (s *IMAPServer) handle(conn net.Conn) {
 	onTLS := s.implicitTLS
 	line("* OK [CAPABILITY " + s.capabilities(onTLS) + "] VayuMail IMAP ready")
 
-	sess := &imapSession{}
+	sess := &imapSession{remote: conn.RemoteAddr().String()}
 	for {
 		raw, err := readCommandLine(br)
 		if err != nil {
@@ -280,7 +281,7 @@ func (s *IMAPServer) handle(conn net.Conn) {
 			_ = conn.SetDeadline(time.Now().Add(30 * time.Minute))
 			setup(conn)
 			onTLS = true
-			sess = &imapSession{} // RFC 2595: discard prior session state
+			sess = &imapSession{remote: sess.remote} // RFC 2595: discard prior session state
 		case "NOOP", "CHECK":
 			line(tag + " OK " + cmd + " completed")
 		case "ID":
@@ -392,7 +393,7 @@ func (s *IMAPServer) doLogin(line func(string), sess *imapSession, tag, arg stri
 		line(tag + " BAD LOGIN requires username and password")
 		return
 	}
-	if ok, locked := s.verify(user, pass); !ok {
+	if ok, locked := s.verify(user, pass, sess.remote); !ok {
 		line(tag + imapAuthRefusal(locked))
 		return
 	}
@@ -428,7 +429,7 @@ func (s *IMAPServer) doAuthenticate(br *bufio.Reader, w *bufio.Writer, line func
 		line(tag + imapAuthRefusal(false))
 		return
 	}
-	if ok, locked := s.verify(f[1], f[2]); !ok {
+	if ok, locked := s.verify(f[1], f[2], sess.remote); !ok {
 		line(tag + imapAuthRefusal(locked))
 		return
 	}
@@ -438,11 +439,11 @@ func (s *IMAPServer) doAuthenticate(br *bufio.Reader, w *bufio.Writer, line func
 
 // verify reports whether the credentials are good, and whether a refusal
 // was the account's lockout rather than the credentials.
-func (s *IMAPServer) verify(user, pass string) (ok, locked bool) {
+func (s *IMAPServer) verify(user, pass, remote string) (ok, locked bool) {
 	if s.bridge == nil || user == "" {
 		return false, false
 	}
-	ok, err := s.bridge.AuthUser(user, pass)
+	ok, err := s.bridge.AuthUser(user, pass, Origin{Addr: remote, Door: "imap"})
 	return err == nil && ok, errors.Is(err, ErrAccountLocked)
 }
 

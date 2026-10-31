@@ -56,6 +56,7 @@ import (
 	"github.com/johalputt/vayupress/internal/secrets"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/siemsink"
+	"github.com/johalputt/vayupress/internal/signin"
 	"github.com/johalputt/vayupress/internal/social"
 	"github.com/johalputt/vayupress/internal/update"
 	"github.com/johalputt/vayupress/internal/users"
@@ -152,6 +153,10 @@ type App struct {
 	// tokens, plus encrypted-at-rest third-party service credentials.
 	apiKeys *apikeys.Store
 	secrets *secrets.Store
+
+	// The record of sign-in attempts and the blocks on their sources
+	// (signin.go); nil when its key could not be had.
+	signin *signin.Store
 
 	// Resolved IndexNow key, cached. Resolving it means a SQL row read plus an
 	// AES-GCM open, and three hot paths need it on unauthenticated requests (the

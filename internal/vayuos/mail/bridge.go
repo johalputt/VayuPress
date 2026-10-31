@@ -55,13 +55,19 @@ type QueueStatus struct {
 	CheckedAt time.Time `json:"checked_at"`
 }
 
+// Origin is where a sign-in came from: the client's address and the door,
+// "imap", "pop3" or "smtp".
+type Origin struct{ Addr, Door string }
+
 // Bridge is the only contract between VayuPress core and VayuMail.
 type Bridge interface {
 	// Auth — delegated to VayuPress core (never stores plaintext passwords).
 	// AuthUser returns ErrAccountLocked, and false, while the account is
 	// locked after too many failures, so each server answers "try again
 	// later" in its protocol's words rather than "invalid credentials".
-	AuthUser(username, password string) (bool, error)
+	// from is where the sign-in came from, for the record of attempts and
+	// the blocks on sources.
+	AuthUser(username, password string, from Origin) (bool, error)
 	GetUserByEmail(email string) (*MailUser, error)
 
 	// IsLocalRecipient reports whether email belongs to a mailbox served by this

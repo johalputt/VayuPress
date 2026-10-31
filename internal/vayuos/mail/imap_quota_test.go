@@ -44,7 +44,7 @@ import (
 // quotaBridge authenticates the one mailbox these tests use.
 type quotaBridge struct{}
 
-func (quotaBridge) AuthUser(username, password string) (bool, error) {
+func (quotaBridge) AuthUser(username, password string, _ Origin) (bool, error) {
 	return username == "bob" && password == "pw", nil
 }
 func (quotaBridge) GetUserByEmail(string) (*MailUser, error)          { return nil, nil }

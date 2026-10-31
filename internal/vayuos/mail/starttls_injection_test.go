@@ -99,7 +99,7 @@ func readLineWithin(t *testing.T, br *bufio.Reader, conn net.Conn, d time.Durati
 func TestSMTPDiscardsPlaintextPipelinedAcrossSTARTTLS(t *testing.T) {
 	t.Parallel()
 	srv := NewSubmissionServer(testEngineConfig(), testTLSConfig(t),
-		func(string, string) (bool, error) { return true, nil },
+		func(string, string, Origin) (bool, error) { return true, nil },
 		func(string, []string, []byte) error { return nil })
 	if err := srv.Start(context.Background()); err != nil {
 		t.Fatalf("start: %v", err)

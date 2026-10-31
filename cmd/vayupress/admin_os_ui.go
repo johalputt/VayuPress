@@ -60,6 +60,7 @@ import (
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/signin"
 	"github.com/johalputt/vayupress/internal/textfix"
 	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/users"
@@ -2056,6 +2057,11 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	// Brute-force guard — shared lockout state with the v2 surface and the
 	// API-key path so attempts cannot be split across surfaces.
 	ip := loginClientIP(r)
+	if a.signinRefused(email, ip) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(osLoginPage(email, signinRefusedMessage, next)))
+		return
+	}
 	if locked, until := auth.CheckAuthLockout(ip); locked {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(osLoginPage(email, loginLockoutMessage(until), next)))
@@ -2064,6 +2070,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	// The account's own lockout, shared by every door: many addresses
 	// guessing one account are stopped here, as one address is above.
 	if locked, until := auth.CheckAccountLockout(email); locked {
+		a.signinRecord(email, signin.DoorConsole, signin.StagePaused, ip)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(osLoginPage(email, loginLockoutMessage(until), next)))
 		return
@@ -2082,6 +2089,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 				if ok, required := a.verifyTOTPForLogin(r.Context(), addr, r.FormValue("totp")); required && !ok {
 					auth.RecordAuthFailure(ip)
 					auth.RecordAccountFailure(email, ip)
+					a.signinRecord(email, signin.DoorConsole, signin.StageCode, ip)
 					w.Header().Set("Content-Type", "text/html; charset=utf-8")
 					_, _ = w.Write([]byte(osLoginPage(email, "Enter the 6-digit code from your authenticator app, then re-enter your password.", next)))
 					return
@@ -2094,6 +2102,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 			}
 			auth.RecordAuthSuccess(ip)
 			auth.RecordAccountSuccess(email)
+			a.signinRecord(email, signin.DoorConsole, signin.StageOK, ip)
 			a.enrolOnSignIn(r, addr)
 			auth.SetSessionCookieRemember(w, token, remember)
 			http.Redirect(w, r, loginDest, http.StatusSeeOther)
@@ -2101,12 +2110,14 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		} else if totpMissing {
 			auth.RecordAuthFailure(ip)
 			auth.RecordAccountFailure(email, ip)
+			a.signinRecord(email, signin.DoorConsole, signin.StageCode, ip)
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			_, _ = w.Write([]byte(osLoginPage(email, "Enter the 6-digit code from your authenticator app, then re-enter your password.", next)))
 			return
 		}
 		auth.RecordAuthFailure(ip)
 		auth.RecordAccountFailure(email, ip)
+		a.signinRecord(email, signin.DoorConsole, signin.StagePassword, ip)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(osLoginPage(email, "Invalid email or password.", next)))
 		return
@@ -2116,6 +2127,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	if ok, required := a.verifyTOTPForLogin(r.Context(), email, r.FormValue("totp")); required && !ok {
 		auth.RecordAuthFailure(ip)
 		auth.RecordAccountFailure(email, ip)
+		a.signinRecord(email, signin.DoorConsole, signin.StageCode, ip)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(osLoginPage(email, "Enter the 6-digit code from your authenticator app, then re-enter your password.", next)))
 		return
@@ -2127,6 +2139,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	auth.RecordAuthSuccess(ip)
 	auth.RecordAccountSuccess(email)
+	a.signinRecord(email, signin.DoorConsole, signin.StageOK, ip)
 	a.userStore.TouchLastLogin(r.Context(), u.ID)
 	auth.SetSessionCookieRemember(w, token, remember)
 	http.Redirect(w, r, loginDest, http.StatusSeeOther)

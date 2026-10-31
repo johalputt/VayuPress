@@ -43,14 +43,15 @@ func signInDoors() []signInDoor {
 			return rec.Code == http.StatusSeeOther
 		}},
 		{"a mail app (IMAP, POP3, SMTP)", func(t *testing.T, a *App, i int, pw string) bool {
-			ok, err := (&vayuMailBridge{app: a}).AuthUser(lockedMailbox, pw)
-			if !ok && pw == lockedRight && !errors.Is(err, vmail.ErrAccountLocked) {
+			locked, _ := auth.CheckAccountLockout(lockedMailbox)
+			ok, err := (&vayuMailBridge{app: a}).AuthUser(lockedMailbox, pw, vmail.Origin{Addr: "203.0.113." + strconv.Itoa(10+i) + ":1", Door: "imap"})
+			if !ok && pw == lockedRight && locked && !errors.Is(err, vmail.ErrAccountLocked) {
 				t.Errorf("a mail app's refused sign-in did not say the account is locked (err %v)", err)
 			}
 			return ok
 		}},
 		{"VayuTalk", func(t *testing.T, a *App, i int, pw string) bool {
-			return a.talkVerify(context.Background(), lockedMailbox, pw)
+			return a.talkVerify(context.WithValue(context.Background(), signinIPKey{}, "203.0.113."+strconv.Itoa(60+i)), lockedMailbox, pw)
 		}},
 	}
 }

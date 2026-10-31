@@ -118,7 +118,7 @@ func TestSubmissionAuthAndRelay(t *testing.T) {
 		rcpts []string
 	}
 	got := make(chan captured, 1)
-	auth := func(u, p string) (bool, error) { return u == "bob" && p == "pw", nil }
+	auth := func(u, p string, _ Origin) (bool, error) { return u == "bob" && p == "pw", nil }
 	relay := func(from string, rcpts []string, _ []byte) error {
 		got <- captured{from, rcpts}
 		return nil
@@ -181,7 +181,7 @@ func TestSubmissionRequiresAuth(t *testing.T) {
 	t.Parallel()
 	cfg := testEngineConfig()
 	srv := NewSubmissionServer(cfg, testTLSConfig(t),
-		func(string, string) (bool, error) { return false, nil },
+		func(string, string, Origin) (bool, error) { return false, nil },
 		func(string, []string, []byte) error { return nil })
 	if err := srv.Start(context.Background()); err != nil {
 		t.Fatalf("start: %v", err)

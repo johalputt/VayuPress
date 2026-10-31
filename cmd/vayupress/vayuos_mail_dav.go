@@ -11,6 +11,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/signin"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
@@ -29,7 +31,8 @@ func (a *App) handleMailDAV(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	a.vayuMail.DAVHandler(a.davSignIn).ServeHTTP(w, r)
+	ip := auth.ClientIP(r)
+	a.vayuMail.DAVHandler(func(user, password string) (string, bool) { return a.davSignIn(user, password, ip) }).ServeHTTP(w, r)
 }
 
 // davSignIn is the mail protocols' sign-in: AuthUser, the throttle and then
@@ -37,9 +40,9 @@ func (a *App) handleMailDAV(w http.ResponseWriter, r *http.Request) {
 // device's password wherever the mailbox asks for one, as it does by
 // default and always for an address with no mailbox here. A contact or an
 // event can so only be kept by a credential minted for a mailbox.
-func (a *App) davSignIn(user, password string) (string, bool) {
+func (a *App) davSignIn(user, password, ip string) (string, bool) {
 	addr := strings.ToLower(mailAddrOf(strings.TrimSpace(user), a.vayuMail.Config().Domain))
-	if ok, _ := (&vayuMailBridge{app: a}).AuthUser(addr, password); !ok {
+	if ok, _ := (&vayuMailBridge{app: a}).AuthUser(addr, password, vmail.Origin{Addr: ip, Door: signin.DoorDAV}); !ok {
 		return "", false
 	}
 	return addr, true

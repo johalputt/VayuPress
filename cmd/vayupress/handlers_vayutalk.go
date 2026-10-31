@@ -82,7 +82,7 @@ func (a *App) handleTalkConnect(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "Email and password are required", "")
 		return
 	}
-	token, ok := a.vayuTalk.Connect(r.Context(), emailAddr, body.Password)
+	token, ok := a.vayuTalk.Connect(withSigninIP(r), emailAddr, body.Password)
 	if !ok {
 		writeAPIError(w, r, http.StatusUnauthorized, "invalid-credentials", "That email and password don't match", "")
 		return

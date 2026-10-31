@@ -53,7 +53,7 @@ func submissionHarness(t *testing.T, relay func(from string, rcpts []string, raw
 	t.Helper()
 	cfg := testEngineConfig()
 
-	auth := func(u, p string) (bool, error) { return u == "alice@example.com" && p == "pw", nil }
+	auth := func(u, p string, _ Origin) (bool, error) { return u == "alice@example.com" && p == "pw", nil }
 	// Mirrors submissionSenderAllowed, INCLUDING its fail-open on an empty
 	// address — and that detail is the whole reason this comment is long.
 	//
@@ -306,7 +306,7 @@ func TestSplitFromHeadersAreRefusedOnSubmission(t *testing.T) {
 func TestTheShippedSubmissionServerCarriesTheHeaderBinding(t *testing.T) {
 	t.Parallel()
 	srv := NewSubmissionServer(testEngineConfig(), nil,
-		func(string, string) (bool, error) { return true, nil },
+		func(string, string, Origin) (bool, error) { return true, nil },
 		func(string, []string, []byte) error { return nil },
 	).WithSenderCheck(func(authUser, from string) bool {
 		return strings.EqualFold(authUser, from)

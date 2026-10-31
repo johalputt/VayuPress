@@ -32,6 +32,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/safefetch"
 	"github.com/johalputt/vayupress/internal/seo"
+	"github.com/johalputt/vayupress/internal/signin"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
@@ -207,11 +208,16 @@ func (a *App) handleMailRecoverCode(w http.ResponseWriter, r *http.Request) {
 	pass := r.FormValue("password")
 	confirm := r.FormValue("confirm")
 	ip := clientIPForContact(r)
+	if a.signinRefused(addr, ip) {
+		a.renderRecoveryPage(w, r, recoveryCodeFormPage(addr, signinRefusedMessage))
+		return
+	}
 
 	// A recovery code is a password by another name: its guesses count toward
 	// the account's lockout with every other door's. Checked before the recovery budget, so
 	// a locked account is told when to try again rather than a generic no.
 	if locked, until := auth.CheckAccountLockout(addr); locked {
+		a.signinRecord(addr, signin.DoorRecovery, signin.StagePaused, ip)
 		a.renderRecoveryPage(w, r, recoveryCodeFormPage(addr, loginLockoutMessage(until)))
 		return
 	}
@@ -234,6 +240,7 @@ func (a *App) handleMailRecoverCode(w http.ResponseWriter, r *http.Request) {
 	dbpkg.AuditLog("vayumail.recovery.code_attempt", "public:"+ip, addr, "")
 	if !a.vayuMail.Accounts().ConsumeRecoveryCode(r.Context(), addr, code) {
 		auth.RecordAccountFailure(addr, ip)
+		a.signinRecord(addr, signin.DoorRecovery, signin.StagePassword, ip)
 		// One message for "no such mailbox" and for "wrong code". ConsumeRecoveryCode
 		// runs Argon2id over the stored codes for a real account and returns fast for
 		// an unknown one, so the two are distinguishable by timing; that is acceptable

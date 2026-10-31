@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package signins
+package signin
 
 import (
 	"context"
@@ -87,6 +87,9 @@ func (s *Store) Report(ctx context.Context, since time.Time, account string, lim
 			*q.to = append(*q.to, c)
 		}
 		rows.Close()
+		if err := rows.Err(); err != nil {
+			return r, err
+		}
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT (minute / 60) % 24, SUM(n) FROM signin_attempts WHERE `+where+` GROUP BY 1`, args...)
 	if err != nil {
@@ -101,6 +104,9 @@ func (s *Store) Report(ctx context.Context, since time.Time, account string, lim
 		r.Hours[h] = n
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return r, err
+	}
 	rows, err = s.db.QueryContext(ctx, `SELECT country, SUM(n) FROM signin_attempts WHERE `+where+` AND country != '' GROUP BY country`, args...)
 	if err != nil {
 		return r, err

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package signins
+package signin
 
 import (
 	"bytes"
@@ -36,7 +36,7 @@ func (c *clock) add(d time.Duration) {
 func openStore(t *testing.T) (*Store, *clock) {
 	t.Helper()
 	prev := config.Cfg.DBPath
-	config.Cfg.DBPath = filepath.Join(t.TempDir(), "signins.db")
+	config.Cfg.DBPath = filepath.Join(t.TempDir(), "signin.db")
 	if err := dbpkg.Init(); err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ func TestItWasMeLiftsTheBlockAndThePlaceStopsCounting(t *testing.T) {
 	for _, a := range []string{"a@x.test", "b@x.test", "c@x.test"} {
 		fail(s, a, ip)
 	}
-	src, _ := s.source(ip, nil)
+	src, _ := s.source(ip, false)
 	if err := s.ItWasMe(ctx, "a@x.test", src.fp); err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +256,7 @@ func TestARightPasswordWithAWrongCodeRaisesTheAlarm(t *testing.T) {
 		t.Fatal("no alarm an hour later")
 	}
 	c.add(alarmEvery)
-	src, _ := s.source("198.51.100.40", nil)
+	src, _ := s.source("198.51.100.40", false)
 	if err := s.ItWasMe(context.Background(), "ann@x.test", src.fp); err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +280,7 @@ func TestEachBlockRefusesWhatItNames(t *testing.T) {
 	if err := s.Flush(ctx); err != nil {
 		t.Fatal(err)
 	}
-	src, _ := s.source("198.51.100.50", nil)
+	src, _ := s.source("198.51.100.50", false)
 	addr, err := s.BlockSource(ctx, src.fp, false, "", time.Hour, "admin", "192.0.2.9")
 	if err != nil {
 		t.Fatal(err)
@@ -335,7 +335,7 @@ func TestABlockThatWouldStopItsMakerIsRefused(t *testing.T) {
 	withCountries(t, map[string]string{"198.51.100.60": "IN", "198.51.100.61": "IN"})
 	fail(s, "a@x.test", "198.51.100.60")
 	_ = s.Flush(ctx)
-	src, _ := s.source("198.51.100.60", nil)
+	src, _ := s.source("198.51.100.60", false)
 	if _, err := s.BlockSource(ctx, src.fp, false, "", 0, "admin", "198.51.100.60"); !errors.Is(err, ErrSelf) {
 		t.Errorf("blocking your own address: %v, want ErrSelf", err)
 	}

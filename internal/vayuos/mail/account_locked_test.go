@@ -14,7 +14,7 @@ import (
 // account.
 type lockedBridge struct{ stubBridge }
 
-func (lockedBridge) AuthUser(string, string) (bool, error) { return false, ErrAccountLocked }
+func (lockedBridge) AuthUser(string, string, Origin) (bool, error) { return false, ErrAccountLocked }
 
 // A locked account is told to try again later in each protocol's words, not
 // that its password is wrong: a mail app that hears "invalid credentials"
@@ -47,7 +47,7 @@ func TestALockedAccountIsToldToTryLater(t *testing.T) {
 
 	smtp := NewSubmissionServer(cfg, nil, lockedBridge{}.AuthUser, func(string, []string, []byte) error { return nil })
 	ok, _, locked := smtp.runAuth(bufio.NewReader(strings.NewReader("")), func(string) {},
-		"PLAIN "+base64.StdEncoding.EncodeToString([]byte("\x00bob\x00pw")))
+		"PLAIN "+base64.StdEncoding.EncodeToString([]byte("\x00bob\x00pw")), Origin{})
 	if ok || !locked {
 		t.Errorf("SMTP AUTH of a locked account: ok=%v locked=%v, want a refusal read as the lockout", ok, locked)
 	}

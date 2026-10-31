@@ -234,7 +234,7 @@ func (s *POP3Server) handle(conn net.Conn) {
 				errResp("authentication unavailable")
 				continue
 			}
-			okAuth, aerr := s.bridge.AuthUser(user, strings.TrimSpace(arg))
+			okAuth, aerr := s.bridge.AuthUser(user, strings.TrimSpace(arg), Origin{Addr: conn.RemoteAddr().String(), Door: "pop3"})
 			if errors.Is(aerr, ErrAccountLocked) {
 				// RFC 3206: a temporary refusal, not a wrong password.
 				recordSource(false)

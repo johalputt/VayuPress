@@ -19,7 +19,7 @@ import (
 // inert so the engine can run its send path.
 type loopbackBridge struct{ localSet map[string]bool }
 
-func (b loopbackBridge) AuthUser(string, string) (bool, error)         { return false, nil }
+func (b loopbackBridge) AuthUser(string, string, Origin) (bool, error) { return false, nil }
 func (b loopbackBridge) GetUserByEmail(string) (*MailUser, error)      { return nil, nil }
 func (b loopbackBridge) IsLocalRecipient(email string) bool            { return b.localSet[email] }
 func (b loopbackBridge) SendTransactional(*TransactionalMessage) error { return nil }

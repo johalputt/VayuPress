@@ -37,6 +37,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/signin"
 	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/users"
 	vkernel "github.com/johalputt/vayupress/internal/vayuos/kernel"
@@ -51,10 +52,15 @@ import (
 // talkVerify checks a VayuTalk connect's mailbox password, as the mail
 // servers do (vayuMailBridge.AuthUser).
 func (a *App) talkVerify(ctx context.Context, email, password string) bool {
+	ip := signinIPFrom(ctx)
+	if a.signinRefused(email, ip) {
+		return false
+	}
 	// Same decaying per-mailbox throttle as the mail listeners, so a
 	// VayuTalk connect cannot be used to bypass brute-force defences,
 	// and the same account lockout as every other door.
 	if locked, _ := auth.CheckAccountLockout(email); locked {
+		a.signinRecord(email, signin.DoorTalk, signin.StagePaused, ip)
 		return false
 	}
 	if d := mailAuthThrottle.Delay(email); d > 0 {
@@ -67,6 +73,7 @@ func (a *App) talkVerify(ctx context.Context, email, password string) bool {
 	} else {
 		mailAuthThrottle.Fail(email)
 		auth.RecordAccountFailure(email, "VayuTalk")
+		a.signinRecord(email, signin.DoorTalk, signin.StagePassword, ip)
 	}
 	return ok
 }
@@ -82,18 +89,24 @@ type vayuMailBridge struct{ app *App }
 // vmail.AuthThrottle. Shared across all three protocol servers.
 var mailAuthThrottle = vmail.NewAuthThrottle()
 
-func (b *vayuMailBridge) AuthUser(username, password string) (bool, error) {
+func (b *vayuMailBridge) AuthUser(username, password string, from vmail.Origin) (bool, error) {
 	ctx := context.Background()
 	domain := b.app.vayuMail.Config().Domain
 	addr := username
 	if !strings.Contains(addr, "@") {
 		addr = username + "@" + domain
 	}
+	// A blocked source, or one outside the account's fence, is refused before
+	// its password is checked, as a wrong password: it is told nothing more.
+	if b.app.signinRefused(addr, from.Addr) {
+		return false, nil
+	}
 	// The account's lockout, shared with every other door (auth.
 	// CheckAccountLockout): a locked mailbox is refused here without its
 	// password being checked, so guesses over IMAP, POP3 and SMTP count
 	// toward the same five as the web's, and the client is told to try later.
 	if locked, _ := auth.CheckAccountLockout(addr); locked {
+		b.app.signinRecord(addr, from.Door, signin.StagePaused, from.Addr)
 		return false, vmail.ErrAccountLocked
 	}
 	// Brute-force throttle: an account under attack accrues a short, decaying
@@ -110,6 +123,7 @@ func (b *vayuMailBridge) AuthUser(username, password string) (bool, error) {
 	} else {
 		mailAuthThrottle.Fail(addr)
 		auth.RecordAccountFailure(addr, "a mail app (IMAP, POP3 or SMTP)")
+		b.app.signinRecord(addr, from.Door, signin.StagePassword, from.Addr)
 	}
 	return ok, nil
 }

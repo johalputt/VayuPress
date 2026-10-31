@@ -30,6 +30,7 @@ import (
 	"github.com/johalputt/vayupress/internal/members"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/signin"
 	"github.com/johalputt/vayupress/internal/totp"
 	"github.com/johalputt/vayupress/internal/users"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
@@ -241,6 +242,10 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 	// the work here.
 	clientIP := auth.ClientIP(r)
 	lockKey := "portal:" + clientIP
+	if a.signinRefused(emailAddr, clientIP) {
+		writeAPIError(w, r, http.StatusForbidden, "signin-refused", signinRefusedMessage, "")
+		return
+	}
 	if locked, until := auth.CheckAuthLockout(lockKey); locked {
 		w.Header().Set("Retry-After", strconv.Itoa(int(time.Until(until).Seconds())+1))
 		writeAPIError(w, r, http.StatusTooManyRequests, "too-many-attempts",
@@ -250,6 +255,7 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 	// The account's own lockout, shared by every door (auth.
 	// CheckAccountLockout), which the address counter above cannot see.
 	if locked, until := auth.CheckAccountLockout(emailAddr); locked {
+		a.signinRecord(emailAddr, signin.DoorWeb, signin.StagePaused, clientIP)
 		w.Header().Set("Retry-After", strconv.Itoa(int(time.Until(until).Seconds())+1))
 		writeAPIError(w, r, http.StatusTooManyRequests, "account-locked", loginLockoutMessage(until), "")
 		return
@@ -283,6 +289,7 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 		mailAuthThrottle.Fail(emailAddr)
 		auth.RecordAuthFailure(lockKey)
 		auth.RecordAccountFailure(emailAddr, clientIP)
+		a.signinRecord(emailAddr, signin.DoorWeb, signin.StagePassword, clientIP)
 		writeAPIError(w, r, http.StatusUnauthorized, "invalid-credentials", "That email and password don't match", "")
 		return
 	}
@@ -320,6 +327,7 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 			mailAuthThrottle.Fail(emailAddr)
 			auth.RecordAuthFailure(lockKey)
 			auth.RecordAccountFailure(emailAddr, clientIP)
+			a.signinRecord(emailAddr, signin.DoorWeb, signin.StageCode, clientIP)
 			writeAPIError(w, r, http.StatusUnauthorized, "totp-invalid", "That code is not valid, or it has been used. Try the current one.", "")
 			return
 		}
@@ -331,6 +339,7 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 	mailAuthThrottle.Success(emailAddr)
 	auth.RecordAuthSuccess(lockKey)
 	auth.RecordAccountSuccess(emailAddr)
+	a.signinRecord(emailAddr, signin.DoorWeb, signin.StageOK, clientIP)
 
 	// Credentials good: ensure a member record exists for this address and start
 	// a session. The member's tier is whatever it already is (free by default);
@@ -411,6 +420,10 @@ func (a *App) handleMemberVayuMailDeviceRegister(w http.ResponseWriter, r *http.
 	// counter would hand a sprayer a fresh budget simply for alternating routes.
 	clientIP := auth.ClientIP(r)
 	lockKey := "portal:" + clientIP
+	if a.signinRefused(emailAddr, clientIP) {
+		writeAPIError(w, r, http.StatusForbidden, "signin-refused", signinRefusedMessage, "")
+		return
+	}
 	if locked, until := auth.CheckAuthLockout(lockKey); locked {
 		w.Header().Set("Retry-After", strconv.Itoa(int(time.Until(until).Seconds())+1))
 		writeAPIError(w, r, http.StatusTooManyRequests, "too-many-attempts",
@@ -420,6 +433,7 @@ func (a *App) handleMemberVayuMailDeviceRegister(w http.ResponseWriter, r *http.
 	// The account's own lockout, shared by every door (auth.
 	// CheckAccountLockout), which the address counter above cannot see.
 	if locked, until := auth.CheckAccountLockout(emailAddr); locked {
+		a.signinRecord(emailAddr, signin.DoorWeb, signin.StagePaused, clientIP)
 		w.Header().Set("Retry-After", strconv.Itoa(int(time.Until(until).Seconds())+1))
 		writeAPIError(w, r, http.StatusTooManyRequests, "account-locked", loginLockoutMessage(until), "")
 		return
@@ -432,6 +446,7 @@ func (a *App) handleMemberVayuMailDeviceRegister(w http.ResponseWriter, r *http.
 		mailAuthThrottle.Fail(emailAddr)
 		auth.RecordAuthFailure(lockKey)
 		auth.RecordAccountFailure(emailAddr, clientIP)
+		a.signinRecord(emailAddr, signin.DoorWeb, signin.StagePassword, clientIP)
 		writeAPIError(w, r, http.StatusUnauthorized, "invalid-credentials", "That email and password don't match", "")
 		return
 	}
@@ -605,7 +620,13 @@ func (a *App) handleMemberVayuMailPrivKey(w http.ResponseWriter, r *http.Request
 	// it and we return a uniform 401 — identical for an unknown mailbox and a
 	// wrong password, so the endpoint cannot enumerate which addresses exist.
 	bridge := &vayuMailBridge{app: a}
+	clientIP := auth.ClientIP(r)
+	if a.signinRefused(emailAddr, clientIP) {
+		writeAPIError(w, r, http.StatusForbidden, "signin-refused", signinRefusedMessage, "")
+		return
+	}
 	if locked, until := auth.CheckAccountLockout(emailAddr); locked {
+		a.signinRecord(emailAddr, signin.DoorWeb, signin.StagePaused, clientIP)
 		w.Header().Set("Retry-After", strconv.Itoa(int(time.Until(until).Seconds())+1))
 		writeAPIError(w, r, http.StatusTooManyRequests, "account-locked", loginLockoutMessage(until), "")
 		return
@@ -615,7 +636,8 @@ func (a *App) handleMemberVayuMailPrivKey(w http.ResponseWriter, r *http.Request
 	}
 	if !bridge.verifyCredential(r.Context(), emailAddr, body.Password) {
 		mailAuthThrottle.Fail(emailAddr)
-		auth.RecordAccountFailure(emailAddr, auth.ClientIP(r))
+		auth.RecordAccountFailure(emailAddr, clientIP)
+		a.signinRecord(emailAddr, signin.DoorWeb, signin.StagePassword, clientIP)
 		writeAPIError(w, r, http.StatusUnauthorized, "invalid-credentials", "That email and password don't match", "")
 		return
 	}

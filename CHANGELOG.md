@@ -8,6 +8,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+
+- **Every failed sign-in is recorded, with where it came from, and its
+  source can be blocked.** The site's mail sign-in, the console's, the
+  app's, IMAP, POP3, SMTP, contacts and calendar sync, VayuTalk and the
+  recovery code each record a wrong password, a right password with a
+  wrong code, and a try at a paused account, by account, door and source.
+  An address is never written down whole: it is kept with its last part
+  hidden (203.0.x.x) and as a fingerprint made with a key that is not in
+  the database, so a block on it holds exactly while nobody can read the
+  address back. Attempts are kept 30 days.
+- **Password spraying is blocked by itself.** A source that fails on three
+  or more accounts within an hour is refused sign-in for six hours; caught
+  again within a day of that block ending, for twelve, then a day at most.
+  An address on the install's own network is never blocked automatically.
+  Signed-in sessions are untouched.
+- **A right password with a wrong second factor raises an alarm**: the
+  holder is told at once, at their address and their recovery address,
+  where the attempt came from and through which door.
+- A blocked source, or one outside an account's countries, is refused
+  before its password is checked. A block or a fence that would stop the
+  person setting it is refused.
+
 ## [3.18.19] — 2026-10-30
 
 Behaviour and the ranked lists of a busy install's Analytics counted again: a visit's own events are read through the visit.

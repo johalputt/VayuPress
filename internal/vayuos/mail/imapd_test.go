@@ -15,7 +15,7 @@ import (
 // stubBridge implements Bridge for IMAP auth tests.
 type stubBridge struct{}
 
-func (stubBridge) AuthUser(username, password string) (bool, error) {
+func (stubBridge) AuthUser(username, password string, _ Origin) (bool, error) {
 	return username == "bob" && password == "pw", nil
 }
 func (stubBridge) GetUserByEmail(string) (*MailUser, error)          { return nil, nil }

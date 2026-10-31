@@ -21,7 +21,7 @@ import (
 type InboundHandler func(from string, rcpts []string, raw []byte) error
 
 // AuthFunc verifies submission credentials (delegated to VayuPress accounts).
-type AuthFunc func(username, password string) (bool, error)
+type AuthFunc func(username, password string, from Origin) (bool, error)
 
 // SMTPServer is a minimal RFC 5321 server. In its default (receive) mode it
 // accepts mail for the configured domain's local accounts and hands each
@@ -334,7 +334,7 @@ func (s *SMTPServer) handle(conn net.Conn) {
 			// accrues no per-mailbox delay at all, because each address has its
 			// own counter.
 			recordSource := throttleSource(conn.RemoteAddr())
-			if ok, user, locked := s.runAuth(br, write, arg); ok {
+			if ok, user, locked := s.runAuth(br, write, arg, Origin{Addr: conn.RemoteAddr().String(), Door: "smtp"}); ok {
 				recordSource(true)
 				authed, authUser = true, user
 				write("235 2.7.0 Authentication successful")
@@ -496,7 +496,7 @@ func (s *SMTPServer) handle(conn net.Conn) {
 // binding (audit M5).
 // runAuth runs one AUTH exchange: whether it succeeded, as whom, and whether
 // a refusal was the account's lockout.
-func (s *SMTPServer) runAuth(br *bufio.Reader, write func(string), arg string) (ok bool, user string, locked bool) {
+func (s *SMTPServer) runAuth(br *bufio.Reader, write func(string), arg string, from Origin) (ok bool, user string, locked bool) {
 	if s.auth == nil {
 		return false, "", false
 	}
@@ -528,14 +528,14 @@ func (s *SMTPServer) runAuth(br *bufio.Reader, write func(string), arg string) (
 		if len(f) != 3 {
 			return false, "", false
 		}
-		ok, locked := s.verify(f[1], f[2])
+		ok, locked := s.verify(f[1], f[2], from)
 		return ok, f[1], locked
 	case "LOGIN":
 		write("334 " + base64.StdEncoding.EncodeToString([]byte("Username:")))
 		user := readB64()
 		write("334 " + base64.StdEncoding.EncodeToString([]byte("Password:")))
 		pass := readB64()
-		ok, locked := s.verify(user, pass)
+		ok, locked := s.verify(user, pass, from)
 		return ok, user, locked
 	default:
 		return false, "", false
@@ -544,11 +544,11 @@ func (s *SMTPServer) runAuth(br *bufio.Reader, write func(string), arg string) (
 
 // verify reports whether the credentials are good, and whether a refusal
 // was the account's lockout rather than the credentials.
-func (s *SMTPServer) verify(user, pass string) (ok, locked bool) {
+func (s *SMTPServer) verify(user, pass string, from Origin) (ok, locked bool) {
 	if user == "" || s.auth == nil {
 		return false, false
 	}
-	ok, err := s.auth(user, pass)
+	ok, err := s.auth(user, pass, from)
 	return err == nil && ok, errors.Is(err, ErrAccountLocked)
 }
 

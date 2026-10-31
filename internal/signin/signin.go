@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Package signins keeps the record of failed sign-ins at every door, and the
+// Package signin keeps the record of failed sign-ins at every door, and the
 // blocks that stop the sources behind them.
 //
 // An address is never kept whole. Each attempt is stored with the address's
@@ -13,7 +13,7 @@
 // Attempts are counted, not logged one by one: a minute's failures by one
 // source, on one account, at one door and stage, are one row with a count. A
 // flood adds to counts, and the counts waiting for the next flush are capped.
-package signins
+package signin
 
 import (
 	"context"
@@ -86,7 +86,7 @@ const (
 )
 
 // ErrSelf refuses a block that would stop the operator making it.
-var ErrSelf = errors.New("signins: this block would stop your own sign-in")
+var ErrSelf = errors.New("signin: this block would stop your own sign-in")
 
 // Attempt is one sign-in, as a door saw it.
 type Attempt struct {
@@ -186,7 +186,7 @@ type Store struct {
 // key; it must not be stored in db.
 func Open(ctx context.Context, db *sql.DB, key []byte) (*Store, error) {
 	if len(key) < 16 {
-		return nil, errors.New("signins: fingerprint key too short")
+		return nil, errors.New("signin: fingerprint key too short")
 	}
 	s := &Store{
 		db: db, key: append([]byte(nil), key...), Now: time.Now,
@@ -239,6 +239,9 @@ func (s *Store) reload(ctx context.Context) error {
 		}
 	}
 	frows.Close()
+	if err := frows.Err(); err != nil {
+		return err
+	}
 	known := map[string]map[string]bool{}
 	krows, err := s.db.QueryContext(ctx, `SELECT account, ip_fp FROM signin_known`)
 	if err != nil {
@@ -256,6 +259,9 @@ func (s *Store) reload(ctx context.Context) error {
 		known[acct][fp] = true
 	}
 	krows.Close()
+	if err := krows.Err(); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	s.blocks, s.fences, s.known = blocks, fences, known
 	s.mu.Unlock()
@@ -316,7 +322,7 @@ type source struct {
 	private                  bool
 }
 
-func (s *Store) source(addr string, country func(string) string) (source, bool) {
+func (s *Store) source(addr string, withCountry bool) (source, bool) {
 	ip := parseIP(addr)
 	if ip == nil {
 		return source{}, false
@@ -330,8 +336,8 @@ func (s *Store) source(addr string, country func(string) string) (source, bool) 
 		masked:  Mask(ip),
 		private: ip.IsPrivate() || ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast(),
 	}
-	if country != nil {
-		src.country = strings.ToUpper(country(ip.String()))
+	if withCountry && Country != nil {
+		src.country = strings.ToUpper(Country(ip.String()))
 	}
 	return src, true
 }
@@ -350,7 +356,7 @@ func (s *Store) Refuse(account, addr string) (Refusal, bool) {
 	if s == nil {
 		return Refusal{}, false
 	}
-	src, ok := s.source(addr, Country)
+	src, ok := s.source(addr, true)
 	if !ok {
 		return Refusal{}, false
 	}
@@ -386,7 +392,12 @@ func (s *Store) Record(a Attempt) {
 	if s == nil || a.Account == "" {
 		return
 	}
-	src, ok := s.source(a.IP, Country)
+	// The account is what the guesser typed; it is kept at an address's
+	// longest, so a flood of long names costs the table nothing more.
+	if len(a.Account) > 254 {
+		a.Account = a.Account[:254]
+	}
+	src, ok := s.source(a.IP, true)
 	if !ok {
 		return
 	}
@@ -621,7 +632,7 @@ func (s *Store) BlockSource(ctx context.Context, fp string, network bool, accoun
 	if d > 0 {
 		b.Until = b.Created.Add(d)
 	}
-	if me, ok := s.source(self, nil); ok && (b.Key == me.fp || b.Key == me.net) {
+	if me, ok := s.source(self, false); ok && (b.Key == me.fp || b.Key == me.net) {
 		return nil, ErrSelf
 	}
 	return s.add(ctx, b)
@@ -632,9 +643,9 @@ func (s *Store) BlockSource(ctx context.Context, fp string, network bool, accoun
 func (s *Store) BlockCountry(ctx context.Context, country, account string, d time.Duration, by, self string) (*Block, error) {
 	country = strings.ToUpper(strings.TrimSpace(country))
 	if len(country) != 2 {
-		return nil, errors.New("signins: a country is two letters")
+		return nil, errors.New("signin: a country is two letters")
 	}
-	if me, ok := s.source(self, Country); ok && me.country == country {
+	if me, ok := s.source(self, true); ok && me.country == country {
 		return nil, ErrSelf
 	}
 	b := &Block{Kind: "country", Key: country, Label: country, Account: account, Reason: by, Created: s.Now()}
@@ -736,7 +747,7 @@ func (s *Store) Fence(account string) []string {
 func (s *Store) SetFence(ctx context.Context, account string, countries []string, self string) error {
 	set := countrySet(strings.Join(countries, ","))
 	if len(set) > 0 {
-		if me, ok := s.source(self, Country); ok && me.country != "" && !set[me.country] {
+		if me, ok := s.source(self, true); ok && me.country != "" && !set[me.country] {
 			return ErrSelf
 		}
 	}

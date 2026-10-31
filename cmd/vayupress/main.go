@@ -868,6 +868,9 @@ func main() {
 
 	// An account locked after too many failed sign-ins tells its owner.
 	auth.OnAccountLocked = a.notifyAccountLocked
+	// Failed sign-ins at every door are recorded, and their sources can be
+	// blocked.
+	a.openSignins()
 
 	// Scheduled publishing (Tier 1).
 	a.scheduler = scheduler.New(dbpkg.DB)
@@ -1420,6 +1423,7 @@ func main() {
 		// seconds of views, beacons, engagement and shield events, which were
 		// still in memory when the database closed.
 		a.flushTelemetry(10 * time.Second)
+		a.flushSignins(5 * time.Second)
 
 		// Phase 3: stop plugin pool + subprocess pools + resource watchdog
 		if os.Getenv("VAYU_PLUGINS_ENABLED") == "true" {
