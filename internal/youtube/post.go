@@ -62,6 +62,12 @@ func Blocks(v Video, cover string) []blockrender.Block {
 		player.Style = "tall"
 	}
 	out := []blockrender.Block{player}
+	switch {
+	case v.Kind == KindUpcoming && !v.Start.IsZero():
+		out = append(out, blockrender.Block{Type: "paragraph", Text: escapeMD("Starts " + v.Start.UTC().Format("Monday 2 January 2006 at 15:04") + " UTC.")})
+	case v.Kind == KindLive:
+		out = append(out, blockrender.Block{Type: "paragraph", Text: "Live now\\."})
+	}
 	for _, p := range Paragraphs(v.Description, v.ID) {
 		out = append(out, blockrender.Block{Type: "paragraph", Text: p})
 	}
