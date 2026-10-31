@@ -109,7 +109,10 @@ func mailListTime(t, now time.Time) string {
 // mailListRow is one message as the list draws it. link opens it: in the
 // reader beside the list, or for a draft in compose. count is the number of
 // messages in its conversation, 0 when it stands alone.
-func mailListRow(m vmail.StoredMessage, who, link string, draft bool, count int, now time.Time, avSet map[string]bool, labels []string) string {
+//
+// acts is the row's own actions (mailRowActs), shown on hover in place of its
+// time, or "" for a row that has none.
+func mailListRow(m vmail.StoredMessage, who, link string, draft bool, count int, now time.Time, avSet map[string]bool, labels []string, acts string) string {
 	subj := m.Subject
 	if subj == "" {
 		subj = "(no subject)"
@@ -166,6 +169,35 @@ func mailListRow(m vmail.StoredMessage, who, link string, draft bool, count int,
 	if m.Preview != "" {
 		b.WriteString(`<span class="mx-row__pv">` + esc(m.Preview) + `</span>`)
 	}
-	b.WriteString(`</span></a></li>`)
+	b.WriteString(`</span></a>` + acts + `</li>`)
+	return b.String()
+}
+
+// mailRowActs is what a received message's row offers on hover: Archive,
+// Delete (to Trash, as the reader's Delete is), Mark read or unread, and
+// Snooze until tomorrow. Each posts the one message through the list's own
+// action, with the folder its row was drawn in (the list's scope inputs).
+func mailRowActs(m vmail.StoredMessage, folder string) string {
+	act := func(icon, label string, vals ...string) string {
+		return `<button type="button" class="mx-row__quick-btn" hx-post="/os/vayumail/inbox/action"` + hxVals(append(vals, "id", m.ID)...) +
+			` hx-include="[data-vm-scope]" hx-target="#vm-inbox-list" hx-swap="innerHTML" title="` + label + `" aria-label="` + label + `">` + saIcon(icon) + `</button>`
+	}
+	var b strings.Builder
+	b.WriteString(`<span class="mx-row__quick">`)
+	if !strings.EqualFold(folder, "Archive") {
+		b.WriteString(act("archive", "Archive", "action", "move", "to", "Archive"))
+	}
+	if !strings.EqualFold(folder, "Trash") {
+		b.WriteString(act("trash", "Delete", "action", "move", "to", "Trash"))
+	}
+	if m.Seen {
+		b.WriteString(act("mail", "Mark unread", "action", "mark", "mark", "unread"))
+	} else {
+		b.WriteString(act("check", "Mark read", "action", "mark", "mark", "read"))
+	}
+	if !strings.EqualFold(folder, "Snoozed") {
+		b.WriteString(act("timer", "Snooze until tomorrow", "action", "snooze", "snooze", "tomorrow"))
+	}
+	b.WriteString(`</span>`)
 	return b.String()
 }

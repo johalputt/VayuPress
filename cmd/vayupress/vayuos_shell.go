@@ -395,6 +395,12 @@ func saMailSide(m *osMailSide, more string) string {
 	} else {
 		b.WriteString(`<div class="mx-account">` + m.Avatar + who + `</div>`)
 	}
+	if m.Writable {
+		// The one filled button in Mail: what is done here most after
+		// reading. The list's pencil stays for the phone, whose folders are a
+		// screen of their own.
+		b.WriteString(`<a class="btn btn--primary mx-compose-btn" href="/os/vayumail/compose?user=` + qparam(m.User) + `"` + mailCmd("Compose", "Mail", "c") + `>` + saIcon("pencil") + `Compose</a>`)
+	}
 	b.WriteString(m.Folders)
 	if more != "" {
 		b.WriteString(`<details class="mx-more"><summary class="sa-appside__item">` + saIcon("more") + `<span class="sa-appside__label">More in Mail</span></summary>` + more + `</details>`)

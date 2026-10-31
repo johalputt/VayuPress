@@ -106,7 +106,16 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		return hxVals(args...)
 	}
 	hxPost := ` hx-post="/os/vayumail/message/pane-action" hx-target="#vm-readpane" hx-swap="innerHTML" `
-	tool := func(icon, label, key, paneArgs, pageAttr string, danger bool) {
+	// word is the tool's visible word ("" for an icon alone); the most used
+	// tools say what they do, and fold to their icons when the reader is
+	// narrow (the reader is a container, vayuos.css).
+	words := func(word string) string {
+		if word == "" {
+			return ""
+		}
+		return `<span class="mx-tool__word">` + esc(word) + `</span>`
+	}
+	tool := func(icon, label, key, paneArgs, pageAttr string, danger bool, word string) {
 		title := label
 		if key != "" {
 			title += " (" + key + ")"
@@ -115,11 +124,14 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		if danger {
 			cls += " mx-tool--danger"
 		}
+		if word != "" {
+			cls += " mx-tool--word"
+		}
 		attrs := pageAttr
 		if pane {
 			attrs = hxPost + paneArgs
 		}
-		c.WriteString(`<button type="button" class="` + cls + `" title="` + esc(title) + `" aria-label="` + esc(label) + `"` + mailCmd(label, "This message", key) + ` ` + attrs + `>` + saIcon(icon) + `</button>`)
+		c.WriteString(`<button type="button" class="` + cls + `" title="` + esc(title) + `" aria-label="` + esc(label) + `"` + mailCmd(label, "This message", key) + ` ` + attrs + `>` + saIcon(icon) + words(word) + `</button>`)
 	}
 	c.WriteString(`<div class="mx-rtools" role="toolbar" aria-label="Message"`)
 	if !pane {
@@ -135,26 +147,37 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		// and this goes back to it (admin-os-mail.js).
 		c.WriteString(`<button type="button" class="mx-back" data-mx-go="list">` + saIcon("chev-l") + esc(folder) + `</button>`)
 	}
+	link := func(icon, label, key, href, cls string) {
+		c.WriteString(`<a class="mx-tool mx-tool--word ` + cls + `" href="` + esc(href) + `" title="` + esc(label+" ("+key+")") + `" aria-label="` + esc(label) + `"` + mailCmd(label, "This message", key) + `>` + saIcon(icon) + words(label) + `</a>`)
+	}
+	if !readOnly {
+		// What is done to a message most: answer it. First, with its words;
+		// Reply keeps its word the longest (vayuos.css).
+		link("reply", "Reply", "r", "/os/vayumail/compose?reply=1&"+q, "mx-tool--answer mx-tool--reply")
+		link("reply-all", "Reply all", "a", "/os/vayumail/compose?replyall=1&"+q, "mx-tool--answer")
+		link("forward", "Forward", "f", "/os/vayumail/compose?forward=1&"+q, "mx-tool--answer")
+		c.WriteString(`<span class="mx-rtools__sep" aria-hidden="true"></span>`)
+	}
 	if !readOnly {
 		// In Junk the first thing offered is to say it is not (pipeline 3ab),
 		// on the key that files a message there everywhere else.
 		if strings.EqualFold(folder, "Junk") {
-			tool("inbox", "Not junk", "!", paneVals("notjunk", "1"), `data-mail-notjunk`, false)
+			tool("inbox", "Not junk", "!", paneVals("notjunk", "1"), `data-mail-notjunk`, false, "Not junk")
 		}
 		if !strings.EqualFold(folder, "Archive") {
-			tool("archive", "Archive", "e", paneVals("to", "Archive"), `data-mail-move="Archive"`, false)
+			tool("archive", "Archive", "e", paneVals("to", "Archive"), `data-mail-move="Archive"`, false, "Archive")
 		}
 		if strings.EqualFold(folder, "Trash") {
-			tool("inbox", "Restore to Inbox", "", paneVals("to", "Inbox"), `data-mail-move="Inbox"`, false)
-			tool("trash", "Delete for good", "#", paneVals("delete", "1")+` hx-confirm="Delete this message for good?"`, `data-mail-delete`, true)
+			tool("inbox", "Restore to Inbox", "", paneVals("to", "Inbox"), `data-mail-move="Inbox"`, false, "Restore")
+			tool("trash", "Delete for good", "#", paneVals("delete", "1")+` hx-confirm="Delete this message for good?"`, `data-mail-delete`, true, "Delete for good")
 		} else {
-			tool("trash", "Move to Trash", "#", paneVals("to", "Trash"), `data-mail-move="Trash"`, false)
+			tool("trash", "Move to Trash", "#", paneVals("to", "Trash"), `data-mail-move="Trash"`, false, "Delete")
 		}
 		if !strings.EqualFold(folder, "Junk") {
-			tool("spam", "Junk", "!", paneVals("to", "Junk"), `data-mail-move="Junk"`, false)
+			tool("spam", "Junk", "!", paneVals("to", "Junk"), `data-mail-move="Junk"`, false, "")
 		}
 		// Move: a menu of the folders this message can go to.
-		c.WriteString(`<details class="sa-pop"><summary class="mx-tool" title="Move to… (v)" aria-label="Move to">` + saIcon("move") + `</summary><div class="sa-pop__panel sa-menu" role="menu">`)
+		c.WriteString(`<details class="sa-pop"><summary class="mx-tool mx-tool--word" title="Move to… (v)" aria-label="Move to">` + saIcon("move") + words("Move") + `</summary><div class="sa-pop__panel sa-menu" role="menu">`)
 		for _, f := range a.moveTargets(rd, folder) {
 			attrs := `data-mail-move="` + esc(f) + `"`
 			if pane {
@@ -172,7 +195,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 	if pane && received && !readOnly && !strings.EqualFold(folder, "Snoozed") {
 		// "Later" (+4h) existed in the engine but had no button, so the
 		// fastest snooze the product could offer was "tomorrow".
-		c.WriteString(`<details class="sa-pop"><summary class="mx-tool" title="Snooze (s)" aria-label="Snooze">` + saIcon("timer") + `</summary><div class="sa-pop__panel sa-menu" role="menu">`)
+		c.WriteString(`<details class="sa-pop"><summary class="mx-tool mx-tool--word" title="Snooze (s)" aria-label="Snooze">` + saIcon("timer") + words("Snooze") + `</summary><div class="sa-pop__panel sa-menu" role="menu">`)
 		for _, s := range [][2]string{{"later", "Later today"}, {"tomorrow", "Tomorrow, 8:00"}, {"nextweek", "Next week, Monday 8:00"}} {
 			c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem"` + hxPost + paneVals("snooze", s[0]) + `><span class="sa-menu__text">` + s[1] + `</span></button>`)
 		}
@@ -182,17 +205,8 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 	if cur.Flagged {
 		pinArgs, pinPage, pinLabel = paneVals("pin", "0"), `data-mail-pin="0"`, "Unpin"
 	}
-	tool("pin", pinLabel, "p", pinArgs, pinPage, false)
+	tool("pin", pinLabel, "p", pinArgs, pinPage, false, "")
 	c.WriteString(`</div><span class="mx-rtools__fill"></span><div class="mx-rtools__group">`)
-	link := func(icon, label, key, href string) {
-		c.WriteString(`<a class="mx-tool" href="` + esc(href) + `" title="` + esc(label+" ("+key+")") + `" aria-label="` + esc(label) + `"` + mailCmd(label, "This message", key) + `>` + saIcon(icon) + `</a>`)
-	}
-	if !readOnly {
-		link("reply", "Reply", "r", "/os/vayumail/compose?reply=1&"+q)
-		link("reply-all", "Reply all", "a", "/os/vayumail/compose?replyall=1&"+q)
-		link("forward", "Forward", "f", "/os/vayumail/compose?forward=1&"+q)
-		c.WriteString(`<span class="mx-rtools__sep" aria-hidden="true"></span>`)
-	}
 	if pos >= 0 {
 		c.WriteString(`<span class="mx-rtools__pos">` + strconv.Itoa(pos+1) + ` of ` + strconv.Itoa(len(msgs)) + `</span>`)
 	}

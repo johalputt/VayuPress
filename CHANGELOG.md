@@ -88,6 +88,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
+- **Mail's list and reader, calmer and quicker to act on.** The message
+  open in the reader is marked with a soft accent fill and an edge, not a
+  solid blue block with white words; picked messages wear the same fill.
+  Hovering a message (or reaching it by keyboard) offers Archive, Delete,
+  Mark read or unread and Snooze in place of its time. The reader's bar
+  starts with Reply, Reply all and Forward, and its main tools say what
+  they do in words, folding to icons as the reader narrows, Reply last.
+  Compose is a full-width button at the head of the folders.
 - A write the console refuses now says why in its notice, after the
   status, when the server gave a reason.
 

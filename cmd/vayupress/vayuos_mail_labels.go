@@ -78,7 +78,7 @@ func labelMenu(user, folder, id string, all, mine []string) string {
 	}
 	post := ` hx-post="/os/vayumail/labels/action" hx-target="#vm-readpane" hx-swap="innerHTML"`
 	var b strings.Builder
-	b.WriteString(`<details class="sa-pop"><summary class="mx-tool" title="Label" aria-label="Label">` + saIcon("tag") + `</summary><div class="sa-pop__panel sa-menu mx-labelmenu" role="menu">`)
+	b.WriteString(`<details class="sa-pop"><summary class="mx-tool mx-tool--word" title="Label" aria-label="Label">` + saIcon("tag") + `<span class="mx-tool__word">Label</span></summary><div class="sa-pop__panel sa-menu mx-labelmenu" role="menu">`)
 	for _, l := range all {
 		on := slices.ContainsFunc(mine, func(m string) bool { return strings.EqualFold(m, l) })
 		next, checked := "1", "false"

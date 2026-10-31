@@ -2271,7 +2271,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 			` hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-confirm="Delete the ` + n + ` in ` + esc(folder) + ` for good?">Empty ` + esc(folder) + `</button>`)
 	}
 	if !readOnly {
-		b.WriteString(`<a class="btn btn--ghost btn--sm btn--icon" href="/os/vayumail/compose?user=` + qparam(user) + `" title="Write a message (c)" aria-label="Write a message"` + mailCmd("Write a message", "Mail", "c") + `>` + saIcon("pencil") + `</a>`)
+		b.WriteString(`<a class="btn btn--ghost btn--sm btn--icon" href="/os/vayumail/compose?user=` + qparam(user) + `" title="Write a message (c)" aria-label="Write a message">` + saIcon("pencil") + `</a>`)
 	}
 	b.WriteString(`</div><div class="mx-head__sel" aria-live="polite"><h2 class="mx-head__title" data-vm-bulkcount>0 selected</h2><span class="mx-head__fill"></span>` +
 		`<button type="button" class="mx-head__link" data-vm-select-all` + mailCmd("Select every message in the list", "Mail", "") + `>Select all</button>` +
@@ -2447,7 +2447,11 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 		if !received {
 			m.Seen = true // what you sent and drafted is not waiting for you
 		}
-		b.WriteString(mailListRow(m, who, link, isDrafts, n, now, avSet, labels[m.MessageID]))
+		acts := ""
+		if received && !readOnly {
+			acts = mailRowActs(m, folder)
+		}
+		b.WriteString(mailListRow(m, who, link, isDrafts, n, now, avSet, labels[m.MessageID], acts))
 	}
 	for _, m := range pinned {
 		row(m, "Pinned")
@@ -2909,7 +2913,9 @@ func (a *App) mailSearchRows(rd vmail.Reader, sf searchFilters, matched []vmail.
 			b.WriteString(`<li class="mx-group" aria-hidden="true">` + esc(group) + `</li>`)
 		}
 		link := "/os/vayumail/message?user=" + qparam(user) + "&folder=" + qparam(m.Folder) + "&id=" + qparam(m.ID)
-		b.WriteString(mailListRow(m.StoredMessage, m.From, link, false, 0, now, avSet, labels[m.MessageID]))
+		// Search results come from many folders and have no list scope to
+		// post with, so their rows carry no actions of their own.
+		b.WriteString(mailListRow(m.StoredMessage, m.From, link, false, 0, now, avSet, labels[m.MessageID], ""))
 	}
 	b.WriteString(`</ol>`)
 	return b.String()

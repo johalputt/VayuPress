@@ -42,9 +42,6 @@
   --on-accent:      #0c1428;
   /* Mail's selected row (Mail plan §3.2): filled, with its own text colours.
      White, and white at 85% for the preview, hold 4.5:1 on every fill. */
-  --mx-sel:         #2f55c8;
-  --mx-on-sel:      #ffffff;
-  --mx-on-sel-2:    rgba(255, 255, 255, 0.85);
   --ok:             #5cbf8e;
   --warn:           #e2a64d;
   --danger:         #f27d72;
@@ -165,7 +162,6 @@
   --accent-hover:   #244cb8;
   --accent-soft:    rgba(45, 91, 215, 0.10);
   --on-accent:      #ffffff;
-  --mx-sel:         #2d5bd7;
   --ok:             #27704f;
   --warn:           #8a5308;
   --danger:         #b0322a;
@@ -209,7 +205,6 @@
     --accent-hover:   #244cb8;
     --accent-soft:    rgba(45, 91, 215, 0.10);
     --on-accent:      #ffffff;
-    --mx-sel:         #2d5bd7;
     --ok:             #27704f;
     --warn:           #8a5308;
     --danger:         #b0322a;
@@ -235,18 +230,15 @@
 
 /* The Tor world swaps the accent family and nothing else (ADR-0141). */
 .vp-os[data-ui="still-air"][data-space="tor"] {
-  --mx-sel: #6a4bd6;
   --accent: #a58bff; --accent-hover: #b9a3ff; --accent-soft: rgba(165, 139, 255, 0.14);
   --surface-select: rgba(165, 139, 255, 0.14); --focus: #a58bff; --on-accent: #180f33;
 }
 .vp-os[data-ui="still-air"][data-space="tor"][data-theme="light"] {
-  --mx-sel: #6a4bd6;
   --accent: #6a4bd6; --accent-hover: #5a3cc4; --accent-soft: rgba(106, 75, 214, 0.10);
   --surface-select: rgba(106, 75, 214, 0.09); --focus: #6a4bd6; --on-accent: #ffffff;
 }
 @media (prefers-color-scheme: light) {
   .vp-os[data-ui="still-air"][data-space="tor"][data-theme="auto"] {
-  --mx-sel: #6a4bd6;
     --accent: #6a4bd6; --accent-hover: #5a3cc4; --accent-soft: rgba(106, 75, 214, 0.10);
     --surface-select: rgba(106, 75, 214, 0.09); --focus: #6a4bd6; --on-accent: #ffffff;
   }
@@ -5991,14 +5983,14 @@
    focus, and on every row while selecting, so selecting never shifts a column
    (Mail plan §8, item 2). */
 /* The console's own check (its masked tick), made round; a picked one is
-   white with the selection colour's tick, as on the fill behind it. */
+   the accent with a white tick. */
 .vp-os[data-ui="still-air"] input.mx-check[type="checkbox"] {
   position: absolute; top: 15px; left: 1px; width: 18px; height: 18px; opacity: 0; z-index: 1;
   border-radius: 50%; background: var(--surface-1);
   transition: opacity var(--duration-micro) var(--ease-move), background-color var(--duration-micro) var(--ease-move), border-color var(--duration-micro) var(--ease-move);
 }
-.vp-os[data-ui="still-air"] input.mx-check[type="checkbox"]:checked { border-color: var(--mx-on-sel); background: var(--mx-on-sel); }
-.vp-os[data-ui="still-air"] input.mx-check[type="checkbox"]:checked::before { background: var(--mx-sel); }
+.vp-os[data-ui="still-air"] input.mx-check[type="checkbox"]:checked { border-color: var(--accent); background: var(--accent); }
+.vp-os[data-ui="still-air"] input.mx-check[type="checkbox"]:checked::before { background: var(--on-accent); }
 .vp-os[data-ui="still-air"] .mx-row:is(:hover, :focus-within) input.mx-check[type="checkbox"],
 .vp-os[data-ui="still-air"] .is-selecting input.mx-check[type="checkbox"] { opacity: 1; }
 .vp-os[data-ui="still-air"] .mx-row:is(:hover, :focus-within) .mx-check ~ *,
@@ -6010,7 +6002,27 @@
 }
 .vp-os[data-ui="still-air"] .mx-row__open:hover { text-decoration: none; }
 .vp-os[data-ui="still-air"] .mx-row:hover { background: var(--surface-hover); }
+/* Compose, at the head of Mail's folders: the full width of the column. */
+.vp-os[data-ui="still-air"] .mx-compose-btn { display: flex; justify-content: center; gap: var(--space-2); margin: var(--space-3) var(--space-2) var(--space-4); }
 .vp-os[data-ui="still-air"] .mx-row__open > .vm-av { width: 32px; height: 32px; }
+/* A row's own actions, on hover or keyboard focus, in place of its time:
+   what is done to one message most, without opening it. Not on a screen
+   without hover, which swipes instead, nor while selecting, where the
+   selection's own actions stand beside the list. */
+.vp-os[data-ui="still-air"] .mx-row__quick {
+  position: absolute; top: var(--space-3); right: var(--space-3); z-index: 2; display: none; gap: var(--space-1); padding: 2px;
+  background: var(--surface-2); border: 1px solid var(--border-1); border-radius: var(--radius-control); box-shadow: var(--shadow-3);
+}
+.vp-os[data-ui="still-air"] .mx-row:is(:hover, :has(:focus-visible)) .mx-row__quick { display: flex; }
+.vp-os[data-ui="still-air"] .mx-row:has(.mx-row__quick):is(:hover, :has(:focus-visible)) .mx-row__time { visibility: hidden; }
+.vp-os[data-ui="still-air"] .is-selecting .mx-row__quick { display: none; }
+@media (hover: none) { .vp-os[data-ui="still-air"] .mx-row__quick { display: none; } }
+.vp-os[data-ui="still-air"] .mx-row__quick-btn {
+  display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--radius-small);
+  color: var(--text-2); background: none; cursor: pointer;
+}
+.vp-os[data-ui="still-air"] .mx-row__quick-btn:hover { background: var(--surface-hover); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .mx-row__quick-btn .sa-ico { width: 16px; height: 16px; }
 .vp-os[data-ui="still-air"] .mx-row__main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .vp-os[data-ui="still-air"] .mx-row__top, .vp-os[data-ui="still-air"] .mx-row__subj { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
 .vp-os[data-ui="still-air"] .mx-row__who { flex: 1; min-width: 0; font: 500 14px/20px var(--font-ui); color: var(--text-1); overflow-wrap: anywhere; }
@@ -6029,35 +6041,21 @@
   font: var(--type-small); color: var(--text-3);
   display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere;
 }
-/* The message open in the reader: filled with the selection colour, with its
-   own text colours; the hairlines either side give way to it. */
-.vp-os[data-ui="still-air"] .mx-row.vm-active { background: var(--mx-sel); }
+/* The message open in the reader: a soft accent fill and an accent edge on
+   its left, its words in their own colours. A solid fill with white words
+   was the loudest thing on the page, louder than the message it pointed to;
+   the hairlines either side still give way to it. */
+.vp-os[data-ui="still-air"] .mx-row.vm-active { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
 .vp-os[data-ui="still-air"] .mx-row.vm-active::before, .vp-os[data-ui="still-air"] .mx-row.vm-active + .mx-row::before { border-color: transparent; }
-.vp-os[data-ui="still-air"] .mx-row.vm-active :is(.mx-row__who, .mx-row__subj-text) { color: var(--mx-on-sel); }
-.vp-os[data-ui="still-air"] .mx-row.vm-active :is(.mx-row__time, .mx-row__pv, .mx-row__marks) { color: var(--mx-on-sel-2); }
-.vp-os[data-ui="still-air"] .mx-row.vm-active .mx-row__dot { background: var(--mx-on-sel); }
-.vp-os[data-ui="still-air"] .mx-row.vm-active .mx-thread { color: var(--mx-sel); background: var(--mx-on-sel); }
-/* On the selected row a label reads as the count beside it does, in the row's own colours. */
-.vp-os[data-ui="still-air"] .mx-row.vm-active .mx-label { color: var(--mx-sel); background: var(--mx-on-sel); }
-/* The avatars' tints are translucent, so on the selection they darken into
-   it; the avatar inverts as the thread count does. */
-.vp-os[data-ui="still-air"] .mx-row.vm-active .mx-row__open > .vm-av:not(.vm-av--img) { color: var(--mx-sel); background: var(--mx-on-sel); }
 .vp-os[data-ui="still-air"] .mx-row.vm-focus { box-shadow: inset 0 0 0 2px var(--focus); }
-/* Picked rows wear the selection fill. Where two meet, their corners square
+/* Picked rows wear the same soft fill. Where two meet, their corners square
    off, so neighbours read as one block (Mail plan §8, item 3). While
    selecting, the open message is not marked as open. */
-.vp-os[data-ui="still-air"] .mx-row.is-picked { background: var(--mx-sel); }
+.vp-os[data-ui="still-air"] .mx-row.is-picked { background: var(--accent-soft); }
 .vp-os[data-ui="still-air"] .mx-row.is-picked::before, .vp-os[data-ui="still-air"] .mx-row.is-picked + .mx-row::before { border-color: transparent; }
-.vp-os[data-ui="still-air"] .mx-row.is-picked + .mx-row.is-picked::before { border-color: var(--mx-on-sel-2); opacity: 0.35; }
-.vp-os[data-ui="still-air"] .mx-row.is-picked :is(.mx-row__who, .mx-row__subj-text) { color: var(--mx-on-sel); }
-.vp-os[data-ui="still-air"] .mx-row.is-picked :is(.mx-row__time, .mx-row__pv, .mx-row__marks) { color: var(--mx-on-sel-2); }
-.vp-os[data-ui="still-air"] .mx-row.is-picked .mx-thread { color: var(--mx-sel); background: var(--mx-on-sel); }
 .vp-os[data-ui="still-air"] .mx-row.is-picked:has(+ .mx-row.is-picked) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .vp-os[data-ui="still-air"] .mx-row.is-picked + .mx-row.is-picked { border-top-left-radius: 0; border-top-right-radius: 0; }
-.vp-os[data-ui="still-air"] .is-selecting .mx-row.vm-active:not(.is-picked) { background: none; }
-.vp-os[data-ui="still-air"] .is-selecting .mx-row.vm-active:not(.is-picked) :is(.mx-row__who, .mx-row__subj-text) { color: var(--text-1); }
-.vp-os[data-ui="still-air"] .is-selecting .mx-row.vm-active:not(.is-picked) :is(.mx-row__time, .mx-row__pv, .mx-row__marks) { color: var(--text-3); }
-.vp-os[data-ui="still-air"] .is-selecting .mx-row.vm-active:not(.is-picked) .mx-thread { color: var(--text-2); background: var(--surface-press); }
+.vp-os[data-ui="still-air"] .is-selecting .mx-row.vm-active:not(.is-picked) { background: none; box-shadow: none; }
 
 /* What is picked, and what can be done to it, in the reader column. */
 .vp-os[data-ui="still-air"] .vm-split > .mx-select-host {
@@ -6122,6 +6120,24 @@
 .vp-os[data-ui="still-air"] .mx-tool:hover { background: var(--surface-hover); color: var(--text-1); text-decoration: none; }
 .vp-os[data-ui="still-air"] .mx-tool[aria-disabled="true"] { color: var(--text-4); cursor: default; background: none; }
 .vp-os[data-ui="still-air"] .mx-tool--danger:hover { color: var(--danger); }
+/* The most used tools say what they do. The reader is a container, so the
+   words fold to their icons by its own width, not the window's: the
+   secondary ones first, then Reply, Reply all and Forward. */
+.vp-os[data-ui="still-air"] .mx-reader { container-type: inline-size; }
+.vp-os[data-ui="still-air"] .mx-tool--word { grid-auto-flow: column; gap: var(--space-2); width: auto; padding: 0 var(--space-3); }
+.vp-os[data-ui="still-air"] .mx-tool__word { font: var(--type-small); font-weight: 500; white-space: nowrap; }
+@container (max-width: 880px) {
+  .vp-os[data-ui="still-air"] .mx-tool--word:not(.mx-tool--answer) { width: 32px; padding: 0; }
+  .vp-os[data-ui="still-air"] .mx-tool--word:not(.mx-tool--answer) .mx-tool__word { display: none; }
+}
+@container (max-width: 760px) {
+  .vp-os[data-ui="still-air"] .mx-tool--answer:not(.mx-tool--reply) { width: 32px; padding: 0; }
+  .vp-os[data-ui="still-air"] .mx-tool--answer:not(.mx-tool--reply) .mx-tool__word { display: none; }
+}
+@container (max-width: 600px) {
+  .vp-os[data-ui="still-air"] .mx-tool--reply { width: 32px; padding: 0; }
+  .vp-os[data-ui="still-air"] .mx-tool--reply .mx-tool__word { display: none; }
+}
 .vp-os[data-ui="still-air"] .mx-rtools .sa-pop__panel { min-width: 220px; }
 .vp-os[data-ui="still-air"] .mx-rtools .mx-rtools__group:first-child .sa-pop__panel { left: 0; right: auto; }
 .vp-os[data-ui="still-air"] .mx-rbody { flex: 1; width: 100%; max-width: 740px; margin: 0 auto; padding: var(--space-8) var(--space-6) var(--space-10); }
