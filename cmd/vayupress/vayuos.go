@@ -1982,7 +1982,7 @@ func (a *App) mailSide(r *http.Request, rd vmail.Reader, folder, view string, vi
 	mbox := mailAddrOf(rd.Key(), a.vayuMail.Config().Domain)
 	side := &osMailSide{User: rd.Key(), Address: mbox, Avatar: mailAvatarImg(mbox, a.mailboxAvatarSet()), Admin: a.isAdminRequest(r),
 		Folders: a.mailNavFor(rd, folder, view, viewCounts, false),
-		Used:    a.vayuMail.MailboxUsage(mbox), Quota: a.vayuMail.MailboxQuota(mbox), Writable: !a.vayuMail.ReaderReadOnly(rd)}
+		Used:    a.vayuMail.MailboxUsage(mbox), Quota: a.vayuMail.MailboxQuota(mbox), Writable: !a.vayuMail.ReaderReadOnly(rd), Own: rd.IsOwner()}
 	if acc := a.vayuMail.Accounts(); acc != nil {
 		side.Name = acc.FullNameFor(r.Context(), mbox)
 	}

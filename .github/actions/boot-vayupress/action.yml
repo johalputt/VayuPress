@@ -107,6 +107,9 @@ runs:
         for i in $(seq 1 90); do
           if curl -fsS http://localhost:8098/health/live >/dev/null 2>&1; then
             echo "MAIL_BASE_URL=http://localhost:8098" >> "$GITHUB_ENV"
+            # The server itself, past the proxy, for a spec that must be
+            # seen as a mailbox's holder: the proxy's key outranks a session.
+            echo "MAIL_UPSTREAM=http://localhost:8090" >> "$GITHUB_ENV"
             echo "mail install up"; exit 0
           fi
           sleep 1

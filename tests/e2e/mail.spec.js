@@ -1331,3 +1331,61 @@ test("the Inbox's category tabs sort it, and All gives it back", async ({ page }
   await tabs.locator(".mx-tabs__tab", { hasText: "All" }).click();
   await expect(rows.filter({ hasText: "Keys for the backup bucket" })).toHaveCount(1);
 });
+
+// A sealed message, end to end through the running install: sealed from
+// the holder's page, then opened by someone with no session at all, with
+// the passphrase alone, and answered into the holder's Inbox.
+test("a sealed message is opened and answered by someone outside", async ({ page, browser }) => {
+  // Sealing is the holder's own: a mailbox is made for the spec and its
+  // holder signs in, since the administrator reading a mailbox may not seal
+  // as it.
+  await page.goto("/os/vayumail/accounts");
+  const csrf = (await page.context().cookies()).find((c) => c.name === "vp_csrf");
+  const local = "sealer" + Date.now();
+  const made = await page.request.post("/os/vayumail/accounts/create", {
+    headers: { "X-CSRF-Token": csrf ? decodeURIComponent(csrf.value) : "" },
+    data: { local, name: "Sealer", pass: "e2e-sealer-passphrase-1", role: "mailbox" },
+  });
+  expect(made.ok()).toBeTruthy();
+  // Past the proxy, whose key would outrank the holder's session.
+  const origin = process.env.MAIL_UPSTREAM;
+  if (!origin) throw new Error("MAIL_UPSTREAM is not set: boot the mail install as .github/actions/boot-vayupress does");
+  const holder = await browser.newContext({ baseURL: origin, viewport: { width: 1440, height: 900 } });
+  page = await holder.newPage();
+  await page.goto("/os/login");
+  await page.locator("#login-email").fill(local + "@mail.test");
+  await page.locator("#login-password").fill("e2e-sealer-passphrase-1");
+  await page.locator(".login-form button[type=submit]").first().click();
+  await page.waitForURL((u) => !u.pathname.startsWith("/os/login"));
+  await page.goto("/os/vayumail/sealed");
+  const subject = "Sealed " + Date.now();
+  await page.locator('.mx-sealform input[name="to"]').fill("rohan@outside.example");
+  await page.locator('.mx-sealform input[name="subject"]').fill(subject);
+  await page.locator('.mx-sealform textarea[name="body"]').fill("The bucket key is in the safe.");
+  await page.locator('.mx-sealform input[name="passphrase"]').fill("a passphrase said by phone");
+  await page.locator('.mx-sealform button[type="submit"]').click();
+  const close = page.locator("#vm-sealed button", { hasText: "Close it now" }).first();
+  await expect(close).toBeVisible();
+  const id = JSON.parse(await close.getAttribute("hx-vals")).id;
+
+  const outside = await browser.newContext({ baseURL: origin });
+  const p = await outside.newPage();
+  await p.goto("/sealed/" + id);
+  await expect(p.locator("h1")).toHaveText("A sealed message");
+  await p.locator('input[name="passphrase"]').fill("not the passphrase");
+  await p.locator('button[type="submit"]').click();
+  await expect(p.locator(".login-error")).toContainText("not here");
+  await p.locator('input[name="passphrase"]').fill("a passphrase said by phone");
+  await p.locator('button[type="submit"]').click();
+  await expect(p.locator("h1")).toHaveText(subject);
+  await expect(p.locator(".mx-sealed__body")).toHaveText("The bucket key is in the safe.");
+  await p.locator('textarea[name="text"]').fill("Got it, thanks.");
+  await p.locator('button[type="submit"]').click();
+  await expect(p.locator("h1")).toHaveText("Your answer is on its way");
+  await outside.close();
+
+  await close.click();
+  await page.locator(".vp-confirm button").filter({ hasNotText: "Cancel" }).click();
+  await expect(page.locator("#vm-sealed button", { hasText: "Close it now" })).toHaveCount(0);
+  await holder.close();
+});

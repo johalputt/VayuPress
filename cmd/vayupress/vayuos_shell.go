@@ -416,7 +416,7 @@ func saMailSide(m *osMailSide, more string) string {
 		}
 		b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/import?user=` + qparam(m.User) + `"` + cur + `>` + saIcon("upload") + `<span class="sa-appside__label">Bring mail in</span></a>`)
 	}
-	if m.Writable {
+	if m.Writable && m.Own {
 		b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/sealed">` + saIcon("lock") + `<span class="sa-appside__label">Send a sealed message</span></a>`)
 	}
 	b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/download?user=` + qparam(m.User) + `" download>` + saIcon("download") + `<span class="sa-appside__label">Download all mail</span></a>`)

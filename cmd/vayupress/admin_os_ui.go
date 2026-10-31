@@ -1647,6 +1647,9 @@ type osMailSide struct {
 	// Search: mailSearchForm's markup, for the top bar, on a page that has
 	// the list for its results; "" elsewhere.
 	Search string
+	// Own: the session reads its own mailbox, not one an administrator
+	// opened; what only a holder may do (seal a message as it) needs it.
+	Own bool
 }
 
 // osSite is one hosted site in the switcher.
