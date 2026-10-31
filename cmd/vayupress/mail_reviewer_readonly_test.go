@@ -72,6 +72,12 @@ func TestAReviewerIsNotOfferedWhatWouldBeRefused(t *testing.T) {
 				t.Errorf("inbox as %s: offers %s = %v", role, control, !readOnly)
 			}
 		}
+		// The phone's Compose button, on the Mail page itself.
+		page := httptest.NewRecorder()
+		a.handleVayuOSInbox(page, withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/inbox?user=dana", nil), holder))
+		if offered := strings.Contains(page.Body.String(), `class="mx-fab"`); offered == readOnly {
+			t.Errorf("the Mail page as %s: offers the Compose button = %v", role, offered)
+		}
 		// The reader, both as a pane and as its own page.
 		for _, pane := range []bool{true, false} {
 			card, _ := a.vayuReaderCard(rd, "Inbox", id, readerView{Pane: pane})

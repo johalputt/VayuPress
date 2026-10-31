@@ -1278,3 +1278,39 @@ test("Settings finds a setting, and saves as it changes with Undo", async ({ pag
   await expect(page.locator('form[data-mx-autosave] input[name="name"]')).toHaveValue(was);
   await expect(page.locator("[data-mx-saved]")).toBeHidden();
 });
+
+// On a phone the list is worked by the thumb: Compose is a round button over
+// the list (gone on a message's screen), and a row swiped right past a third
+// of its width is archived. The spec puts the message back where it was.
+test("on a phone, a row swiped right is archived, and Compose is at the thumb", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(inbox);
+  const list = page.locator("#vm-inbox-list");
+  await expect(list.locator(".mx-row").first()).toBeVisible();
+  await expect(page.locator(".mx-fab")).toBeVisible();
+  const row = list.locator(".mx-row", { hasText: "Newsletter draft, October" });
+  await row.scrollIntoViewIfNeeded();
+  const id = await row.locator(".mx-check").getAttribute("value");
+  const moved = page.waitForResponse((r) => r.url().includes("/os/vayumail/inbox/action") && (r.request().postData() || "").includes("Archive"));
+  await row.evaluate((el) => {
+    const box = el.getBoundingClientRect(), y = box.top + box.height / 2;
+    const touch = (x) => new Touch({ identifier: 1, target: el, clientX: x, clientY: y });
+    el.dispatchEvent(new TouchEvent("touchstart", { bubbles: true, touches: [touch(40)], changedTouches: [touch(40)] }));
+    for (const x of [60, 120, 200, 300]) el.dispatchEvent(new TouchEvent("touchmove", { bubbles: true, touches: [touch(x)], changedTouches: [touch(x)] }));
+    el.dispatchEvent(new TouchEvent("touchend", { bubbles: true, touches: [], changedTouches: [touch(300)] }));
+  });
+  await moved;
+  await expect(list.locator(".mx-row", { hasText: "Newsletter draft, October" })).toHaveCount(0);
+
+  const csrf = (await page.context().cookies()).find((c) => c.name === "vp_csrf");
+  const back = await page.request.post("/os/vayumail/inbox/action", {
+    headers: { "X-CSRF-Token": decodeURIComponent(csrf.value), "Content-Type": "application/x-www-form-urlencoded" },
+    data: new URLSearchParams({ action: "move", to: "Inbox", user: "ankush", folder: "Archive", id }).toString(),
+  });
+  expect(back.ok()).toBeTruthy();
+
+  await page.goto(inbox);
+  await list.locator(".mx-row__open").first().click();
+  await expect(page.locator("body")).toHaveAttribute("data-mx-screen", "message");
+  await expect(page.locator(".mx-fab")).toBeHidden();
+});

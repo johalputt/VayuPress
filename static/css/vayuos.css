@@ -7170,6 +7170,35 @@
   }
   .vp-os[data-ui="still-air"] .mx-phonebar .mx-tool { color: var(--accent); }
   .vp-os[data-ui="still-air"] .mx-phonebar .sa-ico { width: 22px; height: 22px; }
+  /* Compose above the thumb, over the list; the head's pencil gives way. */
+  .vp-os[data-ui="still-air"] .mx-fab {
+    position: fixed; right: var(--space-5); bottom: calc(60px + var(--space-5) + env(safe-area-inset-bottom)); z-index: 205;
+    display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%;
+    color: var(--on-accent); background: var(--accent); box-shadow: var(--shadow-3);
+  }
+  .vp-os[data-ui="still-air"] .mx-fab .sa-ico { width: 22px; height: 22px; }
+  .vp-os[data-ui="still-air"]:is([data-mx-screen="message"], [data-mx-screen="boxes"]) .mx-fab { display: none; }
+  .vp-os[data-ui="still-air"] .mx-head__main a.btn--icon[aria-label="Write a message"] { display: none; }
+  /* A row swiped right is archived and left is snoozed: it follows the
+     finger, and says what letting go will do in the room it leaves. */
+  .vp-os[data-ui="still-air"] .vm-inbox-list { overflow-x: hidden; }
+  .vp-os[data-ui="still-air"] .mx-row:has(.mx-row__quick) { touch-action: pan-y; }
+  .vp-os[data-ui="still-air"] .mx-row.is-swiping { transition: none; z-index: 1; }
+  .vp-os[data-ui="still-air"] .mx-row.is-swiping::after {
+    position: absolute; top: 0; bottom: 0; display: flex; align-items: center; padding: 0 var(--space-5);
+    font: var(--type-small); font-weight: 600; color: var(--text-2); white-space: nowrap;
+  }
+  .vp-os[data-ui="still-air"] .mx-row.is-swiping[data-mx-swipe="archive"]::after { content: "Archive"; right: 100%; }
+  .vp-os[data-ui="still-air"] .mx-row.is-swiping[data-mx-swipe="snooze"]::after { content: "Snooze"; left: 100%; }
+  .vp-os[data-ui="still-air"] .mx-row.is-swiping.is-past::after { color: var(--accent); }
+  .vp-os[data-ui="still-air"] .mx-row.is-swiped-back { transition: transform var(--duration-standard) var(--ease-move); }
+  .vp-os[data-ui="still-air"] .vm-inbox-list.is-pulling::before {
+    content: "Release to refresh"; display: block; padding: var(--space-3) 0; text-align: center; font: var(--type-small); color: var(--text-3);
+  }
+}
+.vp-os[data-ui="still-air"] .mx-fab { display: none; }
+@media (max-width: 768px) {
+  .vp-os[data-ui="still-air"]:not([data-mx-screen="message"]):not([data-mx-screen="boxes"]) .mx-fab { display: grid; }
 }
 
 /* ── Talk (render 05) ────────────────────────────────────────────────────────

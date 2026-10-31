@@ -88,6 +88,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
+- **Mail on a phone is worked by the thumb.** A message swiped right in
+  the list is archived and swiped left is snoozed until tomorrow, the row
+  saying which as it follows the finger; the list pulled down from its top
+  refreshes; and Compose is a round button above the tab bar, gone while a
+  message or the folders are on screen. A read-only mailbox gets neither.
 - **Mail's Settings is one page of sections.** General, Addresses, Rules
   and replies, Privacy and security, and for a mailbox's holder Signing in
   (password, two-factor, passkeys, phones and mail apps) and Import and

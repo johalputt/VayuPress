@@ -2310,4 +2310,58 @@
       if (saved) saved.hidden = true;
     });
   })();
+
+  // ── Phone: swipe a row, pull the list ─────────────────────────────────────
+  // A row swiped right past a third of its width is archived, left is
+  // snoozed until tomorrow, through the row's own quick buttons (the ones a
+  // pointer uses), so the server sees the same request either way. A row
+  // with no such button (a read-only mailbox, a search result) does not
+  // move. The list pulled down from its top refreshes.
+  (function () {
+    var row = null, list = null, x0 = 0, y0 = 0, dx = 0, dy = 0, axis = '';
+    function reset(r) {
+      if (!r) return;
+      r.classList.add('is-swiped-back');
+      r.classList.remove('is-swiping', 'is-past');
+      r.style.transform = '';
+      setTimeout(function () { r.classList.remove('is-swiped-back'); r.removeAttribute('data-mx-swipe'); }, 260);
+    }
+    document.addEventListener('touchstart', function (e) {
+      if (e.touches.length !== 1) return;
+      list = document.getElementById('vm-inbox-list');
+      if (!list || list.classList.contains('is-selecting') || list.classList.contains('is-searching')) { list = null; return; }
+      var r = e.target.closest ? e.target.closest('#vm-inbox-list .mx-row') : null;
+      row = r && r.querySelector('.mx-row__quick') ? r : null;
+      if (!row && !(e.target.closest && e.target.closest('#vm-inbox-list'))) { list = null; return; }
+      x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = dy = 0; axis = '';
+    }, { passive: true });
+    document.addEventListener('touchmove', function (e) {
+      if (!list) return;
+      dx = e.touches[0].clientX - x0; dy = e.touches[0].clientY - y0;
+      if (!axis) {
+        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+        axis = Math.abs(dx) > Math.abs(dy) * 1.5 ? 'x' : 'y';
+      }
+      if (axis === 'x' && row) {
+        row.classList.add('is-swiping');
+        row.setAttribute('data-mx-swipe', dx > 0 ? 'archive' : 'snooze');
+        row.classList.toggle('is-past', Math.abs(dx) > row.offsetWidth / 3);
+        row.style.transform = 'translateX(' + dx + 'px)';
+      } else if (axis === 'y') {
+        list.classList.toggle('is-pulling', list.scrollTop <= 0 && dy > 70);
+      }
+    }, { passive: true });
+    document.addEventListener('touchend', function () {
+      if (!list) return;
+      if (axis === 'x' && row) {
+        var btn = Math.abs(dx) > row.offsetWidth / 3 &&
+          row.querySelector(dx > 0 ? '.mx-row__quick-btn[aria-label="Archive"]' : '.mx-row__quick-btn[aria-label="Snooze until tomorrow"]');
+        if (btn) btn.click(); else reset(row);
+      } else if (list.classList.contains('is-pulling')) {
+        list.classList.remove('is-pulling');
+        document.body.dispatchEvent(new CustomEvent('vm-mail-changed'));
+      }
+      row = list = null; axis = '';
+    });
+  })();
 })();
