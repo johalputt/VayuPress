@@ -1495,7 +1495,7 @@ func (e *Engine) isLocalRecipient(addr string) bool {
 // "*@domain", or "" when the domain has none or is not served here.
 func (e *Engine) catchAllFor(addr string) string {
 	_, domain := splitAddress(addr)
-	if e.accounts == nil || !e.cfg.AcceptsMailDomain(domain) {
+	if e.accounts == nil || !e.cfg.AcceptsMailDomain(domain) || e.accounts.AliasOff(context.Background(), addr) {
 		return ""
 	}
 	return e.accounts.ResolveAlias(context.Background(), "*@"+domain)
@@ -1530,6 +1530,11 @@ func (e *Engine) isMailboxOrAlias(addr string) bool {
 	// mail_enabled secondary (VayuDomains Stage 3b). Byte-identical to the historic
 	// primary-only check when no secondary mail domain is configured.
 	if !e.cfg.AcceptsMailDomain(domain) {
+		return false
+	}
+	// An address its holder turned off takes nothing, whatever else would
+	// have claimed it (throwaway.go).
+	if e.accounts != nil && e.accounts.AliasOff(context.Background(), addr) {
 		return false
 	}
 	if e.accounts != nil && e.accounts.ResolveAlias(context.Background(), addr) != "" {

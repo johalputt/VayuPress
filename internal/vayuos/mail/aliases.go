@@ -102,6 +102,16 @@ func (s *AccountStore) ResolveAlias(ctx context.Context, addr string) string {
 	return target
 }
 
+// AliasOff reports an alias that exists and is turned off: an address that
+// takes no mail, not even through its domain's catch-all.
+func (s *AccountStore) AliasOff(ctx context.Context, addr string) bool {
+	if s.db == nil {
+		return false
+	}
+	var one int
+	return s.db.QueryRowContext(ctx, `SELECT 1 FROM vayumail_aliases WHERE alias=? AND off=1`, normEmail(addr)).Scan(&one) == nil
+}
+
 // SetForward sets (or clears, with "") an account's auto-forward address. The
 // caller validates the address shape; the store rejects self-forwarding.
 func (s *AccountStore) SetForward(ctx context.Context, email, forwardTo string) error {

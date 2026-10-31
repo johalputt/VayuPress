@@ -10,6 +10,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **Throwaway addresses.** A mailbox's holder makes an address for one
+  website in a click from Settings (shop-x7k2qa@your domain), sees which
+  take mail and how much, turns one off when the website passes it on, and
+  removes it. An address turned off takes nothing by any road: it is
+  refused at the door, not filed under its own name, and not caught by
+  the domain's catch-all. Only the mailbox's own throwaway addresses can
+  be turned off or removed from it, never an operator's alias, and a
+  mailbox holds at most a hundred.
 - **Where you are signed in, and a security checklist.** A mailbox's
   Settings, and a staff member's My profile, list the console sessions
   open in their name, each with the browser and system it was opened from

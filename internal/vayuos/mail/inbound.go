@@ -152,6 +152,14 @@ func (e *Engine) deliver(envelopeFrom, recipientEmail string, raw []byte, stampe
 		return "", errors.New("vayumail: not started")
 	}
 	// An alias, or a catch-all, files into its target mailbox instead.
+	if e.accounts != nil {
+		// An address its holder turned off takes nothing by any road: not
+		// filed under its own name, not caught by the domain's catch-all.
+		if e.accounts.AliasOff(context.Background(), recipientEmail) {
+			return "", ErrAddressOff
+		}
+		e.accounts.noteThrowawayMail(recipientEmail)
+	}
 	recipientEmail = e.mailboxFor(recipientEmail)
 	local, domain := splitAddress(recipientEmail)
 	if local == "" {

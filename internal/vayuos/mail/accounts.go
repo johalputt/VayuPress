@@ -290,6 +290,20 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`); err != nil {
 		return s, err
 	}
+	// Throwaway addresses (throwaway.go): an alias a holder made for one
+	// website, what it is for, how much mail it has taken, and whether it is
+	// off. Every existing alias is kind '' and on, so nothing changes.
+	for _, stmt := range []string{
+		`ALTER TABLE vayumail_aliases ADD COLUMN kind TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE vayumail_aliases ADD COLUMN label TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE vayumail_aliases ADD COLUMN received INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE vayumail_aliases ADD COLUMN last_received DATETIME`,
+		`ALTER TABLE vayumail_aliases ADD COLUMN off INTEGER NOT NULL DEFAULT 0`,
+	} {
+		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return s, err
+		}
+	}
 	return s, nil
 }
 

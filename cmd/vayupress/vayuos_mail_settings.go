@@ -238,10 +238,12 @@ func (a *App) handleVayuOSMySettings(w http.ResponseWriter, r *http.Request) {
 		script = `<script nonce="` + nonce + `" src="/os/static/js/passkey.js?v=` + assetVer("js/passkey.js") + `"></script>`
 	}
 	after := mailSettingGroup("signin", "Signing in", signinItems...) +
+		mailSettingGroup("throwaway", "Throwaway addresses",
+			mailSetting{Name: "Throwaway addresses", Find: "alias disposable website shop sign up", HTML: a.throwawayBlock(a.mailReader(r, "")), Bare: true}) +
 		mailSettingGroup("export", "Import and export",
 			mailSetting{Name: "Bring mail in", Find: "import imap mbox", HTML: `<p class="text-sm"><a href="/os/vayumail/import?user=` + qparam(ac.Email) + `">Bring mail in</a> from another mail account or a file.</p>`},
 			mailSetting{Name: "Download all mail", Find: "export backup mbox zip", HTML: `<p class="text-sm"><a href="/os/vayumail/download?user=` + qparam(ac.Email) + `" download>Download all mail</a>, every folder as an mbox file in one zip.</p>`})
-	nav := append(append([][2]string{}, mailSettingsNav...), [2]string{"signin", "Signing in"}, [2]string{"export", "Import and export"})
+	nav := append(append([][2]string{}, mailSettingsNav...), [2]string{"signin", "Signing in"}, [2]string{"throwaway", "Throwaway addresses"}, [2]string{"export", "Import and export"})
 	body := mailSettingsLayout(head, sec, after, nav) + script +
 		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`
 	writeOSHTML(w, r, adminOSLayout(nonce, "Settings", "vayumail", cfg, htmpl.HTML(body)))

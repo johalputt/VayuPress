@@ -660,6 +660,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/templates/action", a.handleVayuOSTemplatesAction)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/searches/action", a.handleVayuOSSearchesAction)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/labels/action", a.handleVayuOSLabelsAction)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/throwaway", a.handleVayuOSThrowaway)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/unsubscribe", a.handleVayuOSUnsubscribe)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/import", a.handleVayuOSMailImport)
 		pr.Get("/os/vayumail/import/fragment", a.handleVayuOSMailImportFragment)
