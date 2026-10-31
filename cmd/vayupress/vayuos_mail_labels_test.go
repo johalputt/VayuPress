@@ -96,3 +96,48 @@ func TestWhatTheLabelActionRefuses(t *testing.T) {
 		t.Fatal("a writable mailbox has no Label menu")
 	}
 }
+
+// A label put on several selected messages at once, through the list's own
+// action: every one carries it on its row, the sidebar gains it, and an id
+// the folder does not hold is counted as failed rather than labelling
+// anything else. A read-only mailbox's selection is offered no Label menu.
+func TestALabelOnTheSelection(t *testing.T) {
+	a, holder, first := labelledApp(t)
+	if _, err := a.vayuMail.DeliverInbound("y@example.net", "dana@example.com", []byte("Message-ID: <lbl2@example.net>\r\nFrom: y@example.net\r\nTo: dana@example.com\r\nSubject: Budget\r\n\r\nbody\r\n")); err != nil {
+		t.Fatal(err)
+	}
+	rd := a.mailReader(withUser(httptest.NewRequest(http.MethodGet, "/", nil), holder), "")
+	second := ""
+	msgs, _ := a.vayuMail.ListFolder(rd, "Inbox")
+	for _, m := range msgs {
+		if m.MessageID == "lbl2@example.net" {
+			second = m.ID
+		}
+	}
+	if list, _ := a.vayuInboxBody(rd, "Inbox", "", 50, ""); !strings.Contains(list, `<summary class="btn mx-selpanel__act">`+saIcon("tag")+`Label…</summary>`) {
+		t.Fatal("the selection panel has no Label menu")
+	}
+	act := func(vals url.Values) *httptest.ResponseRecorder {
+		req := withUser(httptest.NewRequest(http.MethodPost, "/os/vayumail/inbox/action", strings.NewReader(vals.Encode())), holder)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		a.handleVayuOSInboxAction(rec, req)
+		return rec
+	}
+	rec := act(url.Values{"action": {"label"}, "label": {"Work"}, "on": {"1"}, "user": {"dana"}, "folder": {"Inbox"}, "id": {first, second}})
+	body := rec.Body.String()
+	if rec.Header().Get("HX-Trigger") != "" || strings.Count(body, `<span class="mx-label">Work</span>`) != 2 ||
+		!strings.Contains(body, `<span class="sa-appside__label">Work</span>`) {
+		t.Fatalf("the selection is not labelled, or the sidebar lacks the label: %q\n%s", rec.Header().Get("HX-Trigger"), body)
+	}
+	rec = act(url.Values{"action": {"label"}, "label": {"Later"}, "on": {"1"}, "user": {"dana"}, "folder": {"Inbox"}, "id": {"nope", first}})
+	if rec.Header().Get("HX-Trigger") != `{"vm-inbox-result":{"done":1,"failed":1}}` || strings.Count(rec.Body.String(), `<span class="mx-label">Later</span>`) != 1 {
+		t.Fatalf("an id not in the folder: %q\n%s", rec.Header().Get("HX-Trigger"), rec.Body.String())
+	}
+
+	ro, roHolder, _ := reviewerApp(t, vmail.RoleReviewer)
+	roRd := ro.mailReader(withUser(httptest.NewRequest(http.MethodGet, "/", nil), roHolder), "")
+	if list, _ := ro.vayuInboxBody(roRd, "Inbox", "", 50, ""); strings.Contains(list, "Label…") {
+		t.Fatal("a read-only mailbox's selection is offered the Label menu")
+	}
+}

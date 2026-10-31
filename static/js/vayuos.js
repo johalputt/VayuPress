@@ -121,8 +121,11 @@
       closeAll(d);
       openFrom(d.querySelector('.sa-pop__panel'), d.querySelector('summary'));
       // Opened from the keyboard: move into the menu so arrows work at once.
+      // A menu with no items yet (Label, before the first label) has only its
+      // field, which takes the focus, so the keys type into it and Escape,
+      // heard on the menu, closes it.
       if (d.dataset.kbd === '1') {
-        var first = items(d)[0];
+        var first = items(d)[0] || d.querySelector('.sa-pop__panel input:not([type="hidden"])');
         if (first) first.focus();
       }
       d.dataset.kbd = '';

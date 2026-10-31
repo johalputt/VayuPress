@@ -195,7 +195,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 	if pane && received && !readOnly && !strings.EqualFold(folder, "Snoozed") {
 		// "Later" (+4h) existed in the engine but had no button, so the
 		// fastest snooze the product could offer was "tomorrow".
-		c.WriteString(`<details class="sa-pop"><summary class="mx-tool mx-tool--word" title="Snooze (s)" aria-label="Snooze">` + saIcon("timer") + words("Snooze") + `</summary><div class="sa-pop__panel sa-menu" role="menu">`)
+		c.WriteString(`<details class="sa-pop"><summary class="mx-tool mx-tool--word" title="Snooze (b)" aria-label="Snooze">` + saIcon("timer") + words("Snooze") + `</summary><div class="sa-pop__panel sa-menu" role="menu">`)
 		for _, s := range [][2]string{{"later", "Later today"}, {"tomorrow", "Tomorrow, 8:00"}, {"nextweek", "Next week, Monday 8:00"}} {
 			c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem"` + hxPost + paneVals("snooze", s[0]) + `><span class="sa-menu__text">` + s[1] + `</span></button>`)
 		}
@@ -205,7 +205,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 	if cur.Flagged {
 		pinArgs, pinPage, pinLabel = paneVals("pin", "0"), `data-mail-pin="0"`, "Unpin"
 	}
-	tool("pin", pinLabel, "p", pinArgs, pinPage, false, "")
+	tool("pin", pinLabel, "s", pinArgs, pinPage, false, "")
 	c.WriteString(`</div><span class="mx-rtools__fill"></span><div class="mx-rtools__group">`)
 	if pos >= 0 {
 		c.WriteString(`<span class="mx-rtools__pos">` + strconv.Itoa(pos+1) + ` of ` + strconv.Itoa(len(msgs)) + `</span>`)
@@ -266,7 +266,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		if pane {
 			attrs = hxPost + paneVals("mark", "unread")
 		}
-		c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" ` + attrs + `><span class="sa-menu__text">Mark unread</span><kbd class="sa-menu__key">u</kbd></button>`)
+		c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" ` + attrs + `><span class="sa-menu__text">Mark unread</span><kbd class="sa-menu__key">⇧U</kbd></button>`)
 	}
 	c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" data-vm-print><span class="sa-menu__text">Print</span></button>`)
 	if !readOnly && received && fromAddr != "" {

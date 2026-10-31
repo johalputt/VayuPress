@@ -564,7 +564,7 @@ test("selection mode picks rows and says what is picked", async ({ page }) => {
 });
 
 // What is picked is acted on together: Mark unread from the panel, and
-// Snooze from the keyboard (s), which moves the picked message out of the
+// Snooze from the keyboard (b), which moves the picked message out of the
 // folder until it wakes.
 test("the picked messages are acted on together", async ({ page }) => {
   await openInbox(page);
@@ -582,25 +582,68 @@ test("the picked messages are acted on together", async ({ page }) => {
   await row("The Shield posture numbers").hover();
   await row("The Shield posture numbers").locator(".mx-check").click();
   await page.locator("body").click({ position: { x: 5, y: 5 } });
-  await page.keyboard.press("s");
+  await page.keyboard.press("b");
   await page.locator(".mx-select-host").getByRole("menuitem", { name: "Later today" }).click();
   await expect(row("The Shield posture numbers")).toHaveCount(0);
 });
 
-// The keys of plan §6 that are not the list's own: g then a folder's letter,
-// s and v opening the reader's menus, and ? listing them all.
+// The keys that are not the list's own: v, b and l open the reader's Move,
+// Snooze and Label menus, u takes the focus back to the open row, g then a
+// folder's letter goes there, and ? lists them all.
 test("the mail keys go to folders and open the menus", async ({ page }) => {
   await openInbox(page);
   await page.locator("body").click({ position: { x: 5, y: 5 } });
-  await page.keyboard.press("v");
-  await expect(page.locator('#vm-readpane details.sa-pop:has(> summary[aria-label="Move to"])')).toHaveAttribute("open", "");
-  await page.keyboard.press("Escape");
+  for (const [key, menu] of [["v", "Move to"], ["b", "Snooze"], ["l", "Label"]]) {
+    await page.keyboard.press(key);
+    const opened = page.locator(`#vm-readpane details.sa-pop:has(> summary[aria-label="${menu}"])`);
+    await expect(opened, `${key} does not open ${menu}`).toHaveAttribute("open", "");
+    await page.keyboard.press("Escape");
+    await expect(opened).not.toHaveAttribute("open", "");
+    await page.locator("body").click({ position: { x: 5, y: 5 } });
+  }
+  await page.keyboard.press("u");
+  await expect(page.locator("#vm-inbox-list .mx-row.vm-active .mx-row__open")).toBeFocused();
+  await page.locator("body").click({ position: { x: 5, y: 5 } });
   await page.keyboard.press("?");
-  await expect(page.locator(".vm-help")).toContainText("g then i · s · d");
+  await expect(page.locator(".vm-help")).toContainText("g then i · s · d · a");
   await page.keyboard.press("?");
+  await page.keyboard.press("g");
+  await page.keyboard.press("a");
+  await expect(page.locator(".mx-head__main .mx-head__title")).toHaveText("Archive");
   await page.keyboard.press("g");
   await page.keyboard.press("s");
   await expect(page.locator(".mx-head__main .mx-head__title")).toHaveText("Sent");
+});
+
+// A label is put on every picked message at once, from the panel's Label
+// menu; the sidebar gains it. The spec takes it off again, so the shared
+// mailbox is left as it was found.
+test("the picked messages are labelled together", async ({ page }) => {
+  await openInbox(page);
+  const list = page.locator("#vm-inbox-list");
+  const row = (text) => list.locator(".mx-row", { hasText: text });
+  // Two the tests before leave in the Inbox (the one picked above is snoozed).
+  const picked = ["Keys for the backup bucket", "Release v3.17.94 published"];
+  const ids = [];
+  for (const t of picked) {
+    await row(t).hover();
+    await row(t).locator(".mx-check").click();
+    ids.push(await row(t).locator(".mx-check").getAttribute("value"));
+  }
+  const panel = page.locator(".mx-select-host");
+  await panel.locator("summary", { hasText: "Label…" }).click();
+  await panel.getByRole("textbox", { name: "New label" }).fill("Batch");
+  await panel.getByRole("button", { name: "Add" }).click();
+  await expect(list).not.toHaveClass(/is-selecting/);
+  for (const t of picked) await expect(row(t).locator(".mx-label", { hasText: "Batch" })).toHaveCount(1);
+  await expect(page.locator("#vm-labels a", { hasText: "Batch" })).toHaveCount(1);
+  const csrf = (await page.context().cookies()).find((c) => c.name === "vp_csrf");
+  const form = new URLSearchParams({ action: "label", label: "Batch", on: "0", user: "ankush", folder: "Inbox" });
+  for (const id of ids) form.append("id", id);
+  const off = await page.request.post("/os/vayumail/inbox/action", {
+    headers: { "X-CSRF-Token": decodeURIComponent(csrf.value), "Content-Type": "application/x-www-form-urlencoded" }, data: form.toString(),
+  });
+  expect(off.ok()).toBeTruthy();
 });
 
 // The command bar offers what the page offers, by name (plan §6): the open

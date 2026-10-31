@@ -2363,6 +2363,10 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 			}
 			b.WriteString(`</div></details>`)
 		}
+		if !readOnly {
+			labels, _ := a.vayuMail.Labels(rd)
+			b.WriteString(selLabelMenu(labels, inc))
+		}
 		if received {
 			b.WriteString(sel("check", "Mark read", `{"action":"mark","mark":"read"}`, ""))
 			b.WriteString(sel("mail", "Mark unread", `{"action":"mark","mark":"unread"}`, ""))
@@ -2688,6 +2692,12 @@ func (a *App) handleVayuOSInboxAction(w http.ResponseWriter, r *http.Request) {
 				return nil
 			}
 			return a.vayuMail.MoveMessage(rd, id, folder, to)
+		case "label":
+			msgID, err := a.storedMessageID(rd, folder, id)
+			if err != nil {
+				return err
+			}
+			return a.vayuMail.SetLabel(rd, msgID, r.PostFormValue("label"), r.PostFormValue("on") == "1")
 		default:
 			return fmt.Errorf("unknown action")
 		}

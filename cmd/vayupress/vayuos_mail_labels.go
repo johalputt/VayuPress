@@ -78,7 +78,7 @@ func labelMenu(user, folder, id string, all, mine []string) string {
 	}
 	post := ` hx-post="/os/vayumail/labels/action" hx-target="#vm-readpane" hx-swap="innerHTML"`
 	var b strings.Builder
-	b.WriteString(`<details class="sa-pop"><summary class="mx-tool mx-tool--word" title="Label" aria-label="Label">` + saIcon("tag") + `<span class="mx-tool__word">Label</span></summary><div class="sa-pop__panel sa-menu mx-labelmenu" role="menu">`)
+	b.WriteString(`<details class="sa-pop"><summary class="mx-tool mx-tool--word" title="Label (l)" aria-label="Label">` + saIcon("tag") + `<span class="mx-tool__word">Label</span></summary><div class="sa-pop__panel sa-menu mx-labelmenu" role="menu">`)
 	for _, l := range all {
 		on := slices.ContainsFunc(mine, func(m string) bool { return strings.EqualFold(m, l) })
 		next, checked := "1", "false"
@@ -110,16 +110,10 @@ func (a *App) handleVayuOSLabelsAction(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "No mailbox you can change was named.", "")
 		return
 	}
-	// The Message-ID is read from the message itself, never taken from the
-	// form, so a label can only land on a message this mailbox holds.
-	raw, err := a.vayuMail.ReadFolderMessageStored(rd, folder, id)
+	msgID, err := a.storedMessageID(rd, folder, id)
 	if err != nil {
 		writeOSHTML(w, r, vayuReadpaneEmpty("Message not available."))
 		return
-	}
-	msgID := ""
-	if m, perr := mail.ReadMessage(bytes.NewReader(raw)); perr == nil {
-		msgID = m.Header.Get("Message-ID")
 	}
 	if err := a.vayuMail.SetLabel(rd, msgID, r.PostFormValue("label"), r.PostFormValue("on") == "1"); err != nil {
 		setMailSaid(w, "Not labelled: "+err.Error()+".", true)
@@ -132,4 +126,35 @@ func (a *App) handleVayuOSLabelsAction(w http.ResponseWriter, r *http.Request) {
 	}
 	labels, _ := a.vayuMail.Labels(rd)
 	writeOSHTML(w, r, card+mailLabelsGroup(rd.Key(), labels, true))
+}
+
+// storedMessageID is the Message-ID of the message id in folder, read from
+// the message itself and never taken from a form, so a label can only land
+// on a message this mailbox holds.
+func (a *App) storedMessageID(rd vmail.Reader, folder, id string) (string, error) {
+	raw, err := a.vayuMail.ReadFolderMessageStored(rd, folder, id)
+	if err != nil {
+		return "", err
+	}
+	m, err := mail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		return "", err
+	}
+	return m.Header.Get("Message-ID"), nil
+}
+
+// selLabelMenu is the selection panel's Label menu: every label in use, and
+// a field for a new one, each put on every selected message through the
+// list's own action.
+func selLabelMenu(all []string, inc string) string {
+	var b strings.Builder
+	b.WriteString(`<details class="sa-pop mx-selpanel__menu"><summary class="btn mx-selpanel__act">` + saIcon("tag") + `Label…</summary><div class="sa-pop__panel sa-menu mx-labelmenu" role="menu">`)
+	for _, l := range all {
+		b.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" hx-post="/os/vayumail/inbox/action"` + hxVals("action", "label", "label", l, "on", "1") + inc + `>` +
+			saIcon("tag") + `<span class="sa-menu__text">` + esc(l) + `</span></button>`)
+	}
+	b.WriteString(`<form class="mx-labelmenu__new" hx-post="/os/vayumail/inbox/action"` + inc + `><input type="hidden" name="action" value="label"><input type="hidden" name="on" value="1">` +
+		`<input class="input input--sm" name="label" required maxlength="30" placeholder="New label" aria-label="New label" autocomplete="off"><button class="btn btn--sm" type="submit">Add</button></form>`)
+	b.WriteString(`</div></details>`)
+	return b.String()
 }

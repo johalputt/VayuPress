@@ -103,6 +103,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   from, has attachments) under it while it has focus. The mode and world
   pair is not shown in Mail; a mode other than normal still shows its
   strip. The list no longer carries its own search field.
+- **Mail's keys follow the familiar ones.** `b` snoozes, `s` pins, `l`
+  opens Label, `Shift+U` marks unread, `u` goes from a message back to the
+  list, and `g` then `a` opens Archive; the reader's hints and the `?` sheet
+  say so. Picked messages can be labelled together from the selection's
+  new Label menu, an existing label or a new one. A menu opened from the
+  keyboard with nothing in it yet puts the focus in its field.
 - A write the console refuses now says why in its notice, after the
   status, when the server gave a reason.
 

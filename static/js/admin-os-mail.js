@@ -2019,13 +2019,12 @@
       help.setAttribute('role', 'dialog');
       help.setAttribute('aria-label', 'Keyboard shortcuts');
       try { help.setAttribute('popover', 'auto'); } catch (e) { /* older browser */ }
-      // The keys of Mail plan §6.
       var pairs = [
-        ['Older · newer message', 'j · k'], ['Open', 'Enter · o'],
+        ['Older · newer message', 'j · k'], ['Open', 'Enter · o'], ['Back to the list', 'u'],
         ['Reply · reply all · forward', 'r · a · f'], ['Compose', 'c'], ['Search', '/'],
-        ['Select the row', 'x'], ['Archive', 'e'], ['Delete', '#'], ['Snooze', 's'], ['Pin', 'p'],
-        ['Mark unread', 'u'], ['Move to…', 'v'], ['Junk · in Junk, not junk', '!'],
-        ['Full width · the list again', 'w'], ['Go to Inbox · Sent · Drafts', 'g then i · s · d'], ['Switch mailbox', '⌘⇧M · Ctrl+Shift+M'], ['These keys', '?']
+        ['Select the row', 'x'], ['Archive', 'e'], ['Delete', '#'], ['Snooze', 'b'], ['Pin', 's'],
+        ['Label', 'l'], ['Move to…', 'v'], ['Mark unread', '⇧U'], ['Junk · in Junk, not junk', '!'],
+        ['Full width · the list again', 'w'], ['Go to Inbox · Sent · Drafts · Archive', 'g then i · s · d · a'], ['Switch mailbox', '⌘⇧M · Ctrl+Shift+M'], ['These keys', '?']
       ];
       var h = '<div class="vm-help-title">Keyboard shortcuts</div><div class="vm-help-grid">';
       pairs.forEach(function (p) { h += '<span></span><span class="vm-kbd"></span>'; });
@@ -2106,6 +2105,20 @@
         if (sm && ((sm.getAttribute('aria-label') || sm.textContent).indexOf(label) === 0)) { menus[i].dataset.kbd = '1'; menus[i].open = true; return; }
       }
     }
+    // u: from a message back to the list. Over the list, the list comes
+    // back; beside it, the open row takes the focus, so j and k go on from
+    // there; on a message's own page, its folder opens.
+    function backToList() {
+      var sc = window.vmScreens;
+      if (sc && sc.open()) { sc.toList(); return; }
+      var open = document.querySelector('#vm-inbox-list .mx-row.vm-active .mx-row__open');
+      if (open) { open.focus(); return; }
+      var acts = document.querySelector('.mx-rtools[data-mail-actions]');
+      if (acts) {
+        window.location.href = '/os/vayumail/inbox?user=' + encodeURIComponent(acts.getAttribute('data-user') || '') +
+          '&folder=' + encodeURIComponent(acts.getAttribute('data-folder') || 'Inbox');
+      }
+    }
     function goFolder(name) {
       var links = document.querySelectorAll('#vm-folders a');
       for (var i = 0; i < links.length; i++) {
@@ -2148,10 +2161,10 @@
         if (s) { e.preventDefault(); s.focus(); } else { window.location.href = '/os/vayumail/search'; }
         return;
       }
-      // g then i, s or d goes to the Inbox, Sent or Drafts.
+      // g then i, s, d or a goes to the Inbox, Sent, Drafts or Archive.
       if (gAt && Date.now() - gAt < 1500) {
         gAt = 0;
-        var to = { i: 'Inbox', s: 'Sent', d: 'Drafts' }[e.key];
+        var to = { i: 'Inbox', s: 'Sent', d: 'Drafts', a: 'Archive' }[e.key];
         if (to) { e.preventDefault(); goFolder(to); return; }
       }
       if (e.key === 'g' && document.getElementById('vm-folders')) { gAt = Date.now(); return; }
@@ -2162,9 +2175,11 @@
           case 'e': selVals('"to":"Archive"'); return;
           case '!': selVals(inJunk() ? '"action":"notjunk"' : '"to":"Junk"'); return;
           case '#': selVals('"delete"'); return;
-          case 'u': selVals('"mark":"unread"'); return;
-          case 'p': selVals('"pin"'); return;
-          case 's': e.preventDefault(); openMenu(host, 'Snooze'); return;
+          case 'U': selVals('"mark":"unread"'); return;
+          case 's': selVals('"pin"'); return;
+          case 'u': clickIn(document, '[data-vm-select-done]'); return;
+          case 'b': e.preventDefault(); openMenu(host, 'Snooze'); return;
+          case 'l': e.preventDefault(); openMenu(host, 'Label'); return;
           case 'v': e.preventDefault(); openMenu(host, 'Move to'); return;
         }
       }
@@ -2177,12 +2192,14 @@
           case 'r': clickIn(reader, '[aria-label="Reply"]'); return;
           case 'a': clickIn(reader, '[aria-label="Reply all"]'); return;
           case 'f': clickIn(reader, '[aria-label="Forward"]'); return;
-          case 'u': clickIn(reader, '[data-mail-mark="unread"], button[hx-vals*="unread"]'); return;
+          case 'U': clickIn(reader, '[data-mail-mark="unread"], button[hx-vals*="unread"]'); return;
+          case 'u': e.preventDefault(); backToList(); return;
           case '#': clickIn(reader, '[aria-label="Move to Trash"], [aria-label="Delete for good"]'); return;
           case 'e': clickIn(reader, '[aria-label="Archive"]'); return;
           case '!': clickIn(reader, '[aria-label="Junk"], [aria-label="Not junk"]'); return;
-          case 'p': clickIn(reader, '[aria-label="Pin"], [aria-label="Unpin"]'); return;
-          case 's': e.preventDefault(); openMenu(reader, 'Snooze'); return;
+          case 's': clickIn(reader, '[aria-label="Pin"], [aria-label="Unpin"]'); return;
+          case 'b': e.preventDefault(); openMenu(reader, 'Snooze'); return;
+          case 'l': e.preventDefault(); openMenu(reader, 'Label'); return;
           case 'v': e.preventDefault(); openMenu(reader, 'Move to'); return;
           case 'j': clickIn(reader, '[aria-label="Older message"]'); return;
           case 'k': clickIn(reader, '[aria-label="Newer message"]'); return;
