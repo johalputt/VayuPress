@@ -14,6 +14,8 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/signin"
 	"github.com/johalputt/vayupress/internal/totp"
+	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
+	vtalk "github.com/johalputt/vayupress/internal/vayuos/vayutalk"
 )
 
 // withSignins opens the record of attempts on a's database, as openSignins
@@ -167,5 +169,61 @@ func TestARecoveryCodeIsRecordedAndABlockedSourceRefused(t *testing.T) {
 	}
 	if rec := post("192.0.2.31"); !strings.Contains(rec.Body.String(), "Sign-in from here is not allowed") {
 		t.Error("a blocked source was not refused the recovery code")
+	}
+}
+
+// VayuTalk's connect hands its check the client's address, so its failures
+// are recorded with their source and a block on it holds.
+func TestVayuTalkConnectHandsOnTheClientsAddress(t *testing.T) {
+	got := make(chan string, 1)
+	a := &App{}
+	e := vtalk.NewEngine(vtalk.Config{Enabled: true, Verify: func(ctx context.Context, _, _ string) bool {
+		got <- signinIPFrom(ctx)
+		return false
+	}, PubKey: func(string) (string, string, error) { return "", "", vpgp.ErrNotFound }})
+	if err := e.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = e.Stop(context.Background()) })
+	a.vayuTalk = e
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/talk/connect", strings.NewReader(`{"email":"dana@example.com","password":"x"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "203.0.113.77:4000"
+	a.handleTalkConnect(httptest.NewRecorder(), req)
+	select {
+	case ip := <-got:
+		if ip != "203.0.113.77" {
+			t.Errorf("VayuTalk's check was handed %q, want the client's address", ip)
+		}
+	default:
+		t.Fatal("VayuTalk's check was not called")
+	}
+}
+
+// At the console, a mailbox's right password stopped by the second factor of
+// the VayuOS account at its address is a right password with a wrong code.
+func TestTheConsolesMailboxPasswordWithAWrongCodeIsRecordedAsSuch(t *testing.T) {
+	a := credentialFloodApp(t)
+	st := withSignins(t, a)
+	ctx := context.Background()
+	u, err := a.userStore.Create(ctx, lockedMailbox, "Boss", "the-console-password-1", "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret, _ := totp.GenerateSecret()
+	_ = a.userStore.SetTOTPSecret(ctx, u.ID, secret)
+	_ = a.userStore.EnableTOTP(ctx, u.ID)
+	if code, _ := totp.GenerateAt(secret, time.Now()); code == "000000" {
+		t.Skip("the current code is the wrong one this test sends")
+	}
+	form := url.Values{"email": {lockedMailbox}, "password": {lockedRight}, "totp": {"000000"}}
+	req := httptest.NewRequest(http.MethodPost, "/os/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = "198.51.100.91:5000"
+	a.handleOSLoginSubmit(httptest.NewRecorder(), req)
+	_ = st.Flush(ctx)
+	rows, _ := st.Attempts(ctx, "", lockedMailbox, 10)
+	if len(rows) != 1 || rows[0].Stage != signin.StageCode || rows[0].Door != signin.DoorConsole {
+		t.Errorf("recorded %+v; want the mailbox's right password with a wrong code at the console", rows)
 	}
 }
