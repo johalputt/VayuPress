@@ -76,6 +76,10 @@ func (r Reader) Actor() string { return r.actor }
 // that is not theirs. This is the only kind a handover can refuse.
 func (r Reader) IsOperator() bool { return r.kind == readerOperator }
 
+// IsOwner reports the mailbox's own holder reading their own mail: the one
+// reader whose words a holder's own choices (such as model help) govern.
+func (r Reader) IsOwner() bool { return r.kind == readerOwner }
+
 // valid reports whether an authority was actually supplied.
 func (r Reader) valid() bool {
 	return r.kind == readerOwner || r.kind == readerOperator || r.kind == readerSystem

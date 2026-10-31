@@ -37,6 +37,10 @@ const (
 	// OpDraft writes a complete post in Markdown from a free-form instruction —
 	// the "give a prompt, get a draft" editor flow.
 	OpDraft = "draft"
+	// OpMailSummary sums up an email conversation; OpMailReply drafts an
+	// answer to one from a line saying what to say. Mail's model help.
+	OpMailSummary = "mail-summary"
+	OpMailReply   = "mail-reply"
 )
 
 // Provider kinds for a runtime-selected backend.
@@ -487,6 +491,14 @@ func buildPrompt(op, text string) (string, bool) {
 			"style. Add one or two coherent paragraphs. Return only the new text.\n\n" + text, true
 	case OpDraft:
 		return draftPrompt(text), true
+	case OpMailSummary:
+		return "Summarise the following email conversation in three to five short sentences: who wants what, " +
+			"what was decided, and what is still open. Placeholders in square brackets stand for details that " +
+			"were withheld; keep them exactly as they are. Return only the summary.\n\n" + text, true
+	case OpMailReply:
+		return "Write a short, plain reply to the last message of the following email conversation, saying what " +
+			"the line after \"What to say:\" asks for. Placeholders in square brackets stand for details that were " +
+			"withheld; keep them exactly as they are. Return only the reply's text, with no subject line.\n\n" + text, true
 	default:
 		return "", false
 	}

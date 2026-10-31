@@ -213,6 +213,13 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 		// address no longer signs in. NULL for every existing account, so the
 		// migration changes no behaviour.
 		`ALTER TABLE vayumail_accounts ADD COLUMN signin_name TEXT`,
+		// Model help (modelhelp.go): the holder's own switch, the operator's
+		// leave to send to a provider outside the server, and how much was
+		// sent where. Off, not allowed and nothing for every existing mailbox.
+		`ALTER TABLE vayumail_accounts ADD COLUMN model_help INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE vayumail_accounts ADD COLUMN model_outside INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE vayumail_accounts ADD COLUMN model_sent INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE vayumail_accounts ADD COLUMN model_sent_to TEXT NOT NULL DEFAULT ''`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_vayumail_accounts_signin_name ON vayumail_accounts(signin_name) WHERE signin_name IS NOT NULL`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {

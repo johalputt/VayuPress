@@ -74,6 +74,9 @@ func (a *App) mailboxSettingsSections(ctx context.Context, email string, forHold
 			mailSetting{Name: "Recovery", Find: "recovery codes", HTML: a.vayuCardRecovery(ctx, ac.Email), Bare: true},
 			mailSetting{Name: "Handover", Find: "ownership transfer", HTML: a.vayuCardHandover(ctx, ac), Bare: true})
 	}
+	if mh := a.modelHelpSetting(ctx, ac, forHolder); mh != "" {
+		privacy = append(privacy, mailSetting{Name: "Help from a model", Find: "ai summarise draft assistant", HTML: mh})
+	}
 	b.WriteString(mailSettingGroup("privacy", "Privacy and security", privacy...))
 
 	// One adaptation point: the shared builders mark their controls with the list

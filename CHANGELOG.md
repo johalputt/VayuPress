@@ -115,6 +115,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
+- **Help from a model in Mail, with its cautions enforced on the server.**
+  When the install has a model and a mailbox's holder turns it on (off
+  until they do), the reader offers to sum up the conversation open and to
+  draft an answer from a line, each button naming where the text goes ("on
+  this server", or the provider). A model counts as on this server only at
+  a loopback address; one anywhere else, the install's own included, is
+  used only for a mailbox an administrator allowed. To a model outside,
+  addresses, phone numbers and card-like numbers are replaced and put back
+  in its answer, and an encrypted or confidential message is never sent.
+  Only the conversation open is sent, at most five of its messages; only
+  the holder's own mailbox is ever helped, never one an administrator is
+  reading; every answer is a suggestion, and Reply with this opens a reply
+  holding it. Each request is counted against the mailbox with where it
+  went, which its administrator sees on its Settings, never the text.
 - **Links in mail lose their tracking parameters.** The utm_ family and the
   click identifiers advertisers add (fbclid, gclid, msclkid and the like)
   are taken out of every link a message shows, with pictures on or off;

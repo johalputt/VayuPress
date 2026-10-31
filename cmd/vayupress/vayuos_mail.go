@@ -184,12 +184,14 @@ func (a *App) composePrefill(r *http.Request) (to, cc, bcc, subject, bodyText, q
 	}
 	origFrom, origSubject, origBody, origDate := parseForQuote(raw)
 	quoted := quoteBody(origFrom, origDate, origBody)
+	// A reply may start from a model's suggestion the holder chose to use
+	// (vayuos_mail_modelhelp.go), carried as body like a direct prefill.
 	if replyAll {
 		to, cc := mailReplyAll(raw, mailAddrOf(user, a.cfgDomain()))
-		return to, cc, "", ensurePrefix(origSubject, "Re: "), "", quoted
+		return to, cc, "", ensurePrefix(origSubject, "Re: "), q.Get("body"), quoted
 	}
 	if reply {
-		return origFrom, "", "", ensurePrefix(origSubject, "Re: "), "", quoted
+		return origFrom, "", "", ensurePrefix(origSubject, "Re: "), q.Get("body"), quoted
 	}
 	// A forward's history is what is being sent, so it stays in the body.
 	return "", "", "", ensurePrefix(origSubject, "Fwd: "), "\r\n\r\n---------- Forwarded message ----------\r\n" + quoted, ""

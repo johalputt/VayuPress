@@ -6252,6 +6252,15 @@
 .vp-os[data-ui="still-air"] .mx-sealform { display: flex; flex-direction: column; gap: var(--space-4); max-width: 640px; margin-bottom: var(--space-8); }
 .vp-os[data-ui="still-air"] .mx-sealform .btn { align-self: flex-start; }
 .vp-os[data-ui="still-air"] .mx-sealed__body { margin: var(--space-5) 0; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--type-body); color: var(--text-1); }
+/* Model help in the reader: two quiet actions naming where the text goes, and the suggestion under them. */
+.vp-os[data-ui="still-air"] .mx-ai { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin: var(--space-4) 0 0; }
+.vp-os[data-ui="still-air"] .mx-ai__draft { display: flex; flex: 1; gap: var(--space-2); min-width: 240px; }
+.vp-os[data-ui="still-air"] .mx-ai__draft .input { flex: 1; min-width: 0; }
+.vp-os[data-ui="still-air"] .mx-ai__where { color: var(--text-3); font-weight: 400; }
+.vp-os[data-ui="still-air"] #vm-ai-out { flex-basis: 100%; }
+.vp-os[data-ui="still-air"] .mx-ai__out { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); padding: var(--space-4); background: var(--surface-2); border: 1px solid var(--border-1); border-radius: var(--radius-surface); }
+.vp-os[data-ui="still-air"] .mx-ai__note { margin: 0; font: var(--type-small); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .mx-ai__text { white-space: pre-wrap; font: var(--type-body); color: var(--text-1); }
 /* The trust line: quiet facts under the sender, each only when it applies;
    and the one amber line when a link or a name pretends. */
 .vp-os[data-ui="still-air"] .mx-trust { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); margin: var(--space-3) 0 0; font: var(--type-small); color: var(--text-3); }

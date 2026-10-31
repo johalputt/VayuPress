@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"sort"
 	"strconv"
@@ -355,6 +356,9 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 			trust.Warning = "" // mail this mailbox wrote warns no one
 		}
 		c.WriteString(mailTrustLine(trust))
+		if pane {
+			c.WriteString(a.modelHelpBar(context.Background(), rd, folder, id, cur, raw, pm.Subject))
+		}
 		// What this message did not reach, from the queue or a report.
 		if bounces, _ := a.vayuMail.Bounces(rd, cur.MessageID); len(bounces) > 0 {
 			c.WriteString(`<ul class="mx-bounces">`)
