@@ -38,6 +38,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   or always; its network for 30 days; sign-ins from its country) and "It
   was one of us"; each block in force can be lifted. Every action is in the
   audit log.
+- **Each mailbox's settings show its own sign-in attempts**, to its holder
+  and to an administrator: when, from where (masked), through which door
+  and what happened, with a warning when the password was right and the
+  code was not, and "It was me" on each source that tried it. The holder
+  can limit sign-in to a list of countries; a list that would shut out the
+  address they set it from is not saved.
 
 ### Changed
 
