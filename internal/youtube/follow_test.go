@@ -413,3 +413,24 @@ func TestOnlyTheFirstClaimMakesARow(t *testing.T) {
 		t.Error("another site's claim of the same video was refused")
 	}
 }
+
+// A spent quota stops the back catalogue, not the channel: its new videos
+// still come from the feeds, and the back catalogue goes on later.
+func TestASpentQuotaLeavesTheFeedsWorking(t *testing.T) {
+	now := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
+	w := channelWeb() // no API pages: every API call is refused
+	p := &poster{}
+	fw := follower(t, w, p, &now)
+	fw.Key = func(context.Context) string { return secretKey }
+	f, _ := fw.Store.Follow(context.Background(), "", Channel{ID: chanID}, true, false, true)
+	w.pages["https://youtube.googleapis.com/youtube/v3/playlistItems?maxResults=50&part=contentDetails&playlistId=UUSH"+chanID[2:]] = "x"
+	if _, err := fw.Check(context.Background(), f); err != nil {
+		t.Fatalf("a refused back catalogue failed the check: %v", err)
+	}
+	if len(p.posts) != 4 {
+		t.Errorf("the feeds' videos were not posted: %v", p.posts)
+	}
+	if f, _ = fw.Store.Channel(context.Background(), f.ID); f.BackfillDone || f.Failures != 0 {
+		t.Errorf("the back catalogue was marked read, or the check failed: %+v", f)
+	}
+}

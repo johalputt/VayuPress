@@ -21,6 +21,7 @@ import (
 	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/safefetch"
 	"github.com/johalputt/vayupress/internal/youtube"
@@ -305,5 +306,56 @@ func TestYouTubeIsAnAdministratorsPage(t *testing.T) {
 		if lvl := osPathMinLevel(p); lvl != accessAdmin {
 			t.Errorf("%s opens at level %d; want administrators only", p, lvl)
 		}
+	}
+}
+
+// One click for a new site: the follow makes the site and follows the
+// channel onto it. A bad address, or one already served, makes nothing; nor
+// does a channel that cannot be read.
+func TestFollowingOntoANewSiteMakesTheSite(t *testing.T) {
+	a := youtubeTestApp(t)
+	a.domains = domain.New(dbpkg.DB, dbpkg.RDB)
+	fakeYouTube(t, map[string]string{youtube.FeedURL(ytChannel): ytFeed(ytEntry("vvvvvvvvvv1", "First"))})
+	ctx := context.Background()
+	sites := func() int { l, _ := a.domains.List(ctx); return len(l) }
+	before := sites()
+
+	for host, want := range map[string]string{
+		"not a host!":        "write it as blog.example.com",
+		config.Cfg.Domain:    "own address; choose it",
+		"videos.example.com": "",
+	} {
+		body := ytPost(a.handleOSYouTubeResolve, "/os/api/youtube/resolve", url.Values{"address": {ytChannel}, "site": {youtubeNewSite}, "new_host": {host}}).Body.String()
+		if want != "" && !strings.Contains(body, want) {
+			t.Errorf("resolve onto %q: %s", host, body)
+		}
+		if want == "" && !strings.Contains(body, "Follow on videos.example.com") {
+			t.Errorf("resolve onto a new site: %s", body)
+		}
+	}
+	if sites() != before {
+		t.Fatal("finding the channel made a site")
+	}
+	fakeYouTube(t, map[string]string{})
+	if w := ytPost(a.handleOSYouTubeFollow, "/os/api/youtube/follow", url.Values{"channel": {ytChannel}, "site": {youtubeNewSite}, "new_host": {"videos.example.com"}}); w.Code != http.StatusBadGateway || sites() != before {
+		t.Fatalf("a channel that cannot be read: %d, %d sites", w.Code, sites())
+	}
+	fakeYouTube(t, map[string]string{youtube.FeedURL(ytChannel): ytFeed(ytEntry("vvvvvvvvvv1", "First"))})
+	if w := ytPost(a.handleOSYouTubeFollow, "/os/api/youtube/follow", url.Values{"channel": {ytChannel}, "site": {youtubeNewSite}, "new_host": {"videos.example.com"}, "auto": {"1"}, "publish": {"1"}}); w.Code != 200 {
+		t.Fatalf("follow onto a new site: %d %s", w.Code, w.Body)
+	}
+	d, err := a.domains.Resolve(ctx, "videos.example.com")
+	if err != nil || d.SiteType != domain.SiteBlog {
+		t.Fatalf("the new site: %+v %v", d, err)
+	}
+	chans, _ := a.youtube.Channels(ctx)
+	if len(chans) != 1 || chans[0].DomainID != d.ID {
+		t.Errorf("the channel is not followed on the new site: %+v", chans)
+	}
+	if body := a.youtubeBody(ctx); !strings.Contains(body, "On videos.example.com") || !strings.Contains(body, "its certificate is issued") {
+		t.Errorf("the page does not say the new site waits for its address:\n%s", body)
+	}
+	if body := ytPost(a.handleOSYouTubeResolve, "/os/api/youtube/resolve", url.Values{"address": {ytChannel}, "site": {youtubeNewSite}, "new_host": {"videos.example.com"}}).Body.String(); !strings.Contains(body, "exists already") {
+		t.Errorf("a new site at an address already served: %s", body)
 	}
 }

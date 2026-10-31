@@ -27,12 +27,19 @@ import (
 
 const youtubePage = "/os/youtube"
 
-// youtubeSite is a site a channel can be followed on.
-type youtubeSite struct{ ID, Host string }
+// youtubeSite is a site a channel can be followed on; Live is false while a
+// hosted site's address does not yet answer here.
+type youtubeSite struct {
+	ID, Host string
+	Live     bool
+}
+
+// youtubeNewSite is the site choice that makes a new hosted blog.
+const youtubeNewSite = "new"
 
 // youtubeSites is the primary site and every hosted site that is a blog.
 func (a *App) youtubeSites(ctx context.Context) []youtubeSite {
-	out := []youtubeSite{{ID: "", Host: config.Cfg.Domain}}
+	out := []youtubeSite{{ID: "", Host: config.Cfg.Domain, Live: true}}
 	if a.domains == nil {
 		return out
 	}
@@ -44,18 +51,37 @@ func (a *App) youtubeSites(ctx context.Context) []youtubeSite {
 		if d.IsPrimary || (d.SiteType != "" && d.SiteType != domain.SiteBlog) {
 			continue
 		}
-		out = append(out, youtubeSite{ID: d.ID, Host: d.Host})
+		out = append(out, youtubeSite{ID: d.ID, Host: d.Host, Live: d.TLSState == domain.TLSActive})
 	}
 	return out
 }
 
-func (a *App) youtubeSiteHost(sites []youtubeSite, id string) (string, bool) {
+func youtubeSiteFor(sites []youtubeSite, id string) (youtubeSite, bool) {
 	for _, s := range sites {
 		if s.ID == id {
-			return s.Host, true
+			return s, true
 		}
 	}
-	return "", false
+	return youtubeSite{}, false
+}
+
+// youtubeNewHost checks the address of a new site: a valid host, and not one
+// this install already serves. It returns the host, or why not in words.
+func (a *App) youtubeNewHost(ctx context.Context, raw string) (host, refusal string) {
+	if a.domains == nil {
+		return "", "This install cannot host another site."
+	}
+	host = domain.NormalizeHost(raw)
+	if domain.ValidateHost(host) != nil {
+		return "", "That is not a site's address: write it as blog.example.com."
+	}
+	if host == domain.NormalizeHost(config.Cfg.Domain) {
+		return "", "That is this install's own address; choose it from the list."
+	}
+	if _, err := a.domains.Resolve(ctx, host); err == nil {
+		return "", "That site exists already; choose it from the list."
+	}
+	return host, ""
 }
 
 func (a *App) handleOSYouTube(w http.ResponseWriter, r *http.Request) {
@@ -113,9 +139,12 @@ func (a *App) youtubeBody(ctx context.Context) string {
 	}
 	sections := []ui.HTML{ui.Sheet("yt-follow-sheet", "Follow a channel", ui.HTML(youtubeFollowForm(sites)))}
 	for i, f := range chans {
-		host, _ := a.youtubeSiteHost(sites, f.DomainID)
+		site, ok := youtubeSiteFor(sites, f.DomainID)
+		if !ok {
+			site = youtubeSite{Host: "a site no longer served", Live: true}
+		}
 		held, _ := a.youtube.Videos(ctx, f.ID, youtube.StateHeld, 50)
-		sections = append(sections, youtubeChannelSection(f, host, counts[i], held, keyed))
+		sections = append(sections, youtubeChannelSection(f, site, counts[i], held, keyed))
 	}
 	keyLine := `<p><strong>Without a YouTube API key</strong>, a channel is read from its public feeds: its newest videos and Shorts when it is first followed, and every new one after. <a href="/os/apikeys">Add a key</a> to bring the whole back catalogue too, and to post premieres and streams before they start.</p>`
 	if keyed {
@@ -134,20 +163,21 @@ func youtubeFollowForm(sites []youtubeSite) string {
 	b.WriteString(`<form class="yt-follow" hx-post="/os/api/youtube/resolve" hx-target="#yt-preview" hx-swap="innerHTML">`)
 	b.WriteString(`<div class="field"><label class="field-label" for="yt-address">Channel or video address</label>` +
 		`<input type="text" class="input" id="yt-address" name="address" required autocomplete="off" spellcheck="false" placeholder="youtube.com/@channel"></div>`)
-	if len(sites) > 1 {
-		b.WriteString(`<div class="field"><label class="field-label" for="yt-site">Post on</label><select class="input" id="yt-site" name="site">`)
-		for _, s := range sites {
-			b.WriteString(`<option value="` + html.EscapeString(s.ID) + `">` + html.EscapeString(s.Host) + `</option>`)
-		}
-		b.WriteString(`</select></div>`)
+	b.WriteString(`<div class="field"><label class="field-label" for="yt-site">Post on</label><select class="input" id="yt-site" name="site">`)
+	for _, s := range sites {
+		b.WriteString(`<option value="` + html.EscapeString(s.ID) + `">` + html.EscapeString(s.Host) + `</option>`)
 	}
+	b.WriteString(`<option value="` + youtubeNewSite + `">A new site…</option></select></div>`)
+	b.WriteString(`<div class="field"><label class="field-label" for="yt-new-host">The new site's address</label>` +
+		`<input type="text" class="input" id="yt-new-host" name="new_host" autocomplete="off" spellcheck="false" placeholder="videos.example.com">` +
+		`<p class="field-hint">Only for a new site. It is made with the channel's posts on it, and answers once its address points to this server (Site › Domains).</p></div>`)
 	b.WriteString(`<button class="btn btn--primary btn--sm" type="submit">Find the channel</button></form><div id="yt-preview" aria-live="polite"></div>`)
 	return b.String()
 }
 
 // youtubeChannelSection is one followed channel: what it has done, its
 // switches and its actions, and the videos waiting for Post.
-func youtubeChannelSection(f youtube.Followed, host string, counts map[string]int, held []youtube.Row, keyed bool) ui.HTML {
+func youtubeChannelSection(f youtube.Followed, site youtubeSite, counts map[string]int, held []youtube.Row, keyed bool) ui.HTML {
 	id := html.EscapeString(f.ID)
 	title := f.Title
 	if title == "" {
@@ -227,7 +257,11 @@ func youtubeChannelSection(f youtube.Followed, host string, counts map[string]in
 			ui.Table([]string{"Video", "Kind", "On YouTube", ""}, trs, ""),
 			ui.HTML(`<div class="yt-actions"><button type="button" class="btn btn--sm" hx-post="/os/api/youtube/`+id+`/post-all" hx-swap="none">Post all</button></div>`))))
 	}
-	return ui.Section(title, "On "+host, ui.HTML(body))
+	if !site.Live {
+		body = string(ui.Callout("info", ui.HTML(`The posts are made, and `+html.EscapeString(site.Host)+
+			` shows them once its address points to this server and its certificate is issued: <a href="/os/domains">Site › Domains</a>.`))) + body
+	}
+	return ui.Section(title, "On "+site.Host, ui.HTML(body))
 }
 
 // youtubeNext says when a channel is next checked.
@@ -275,12 +309,21 @@ func (a *App) handleOSYouTubeResolve(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(ui.Callout("warn", ui.Text("YouTube cannot be reached from here."))))
 		return
 	}
-	sites := a.youtubeSites(r.Context())
-	site := r.PostFormValue("site")
-	host, ok := a.youtubeSiteHost(sites, site)
-	if !ok {
-		_, _ = w.Write([]byte(ui.Callout("warn", ui.Text("Choose a site to post on."))))
-		return
+	site, host, newHost := r.PostFormValue("site"), "", ""
+	if site == youtubeNewSite {
+		h, refusal := a.youtubeNewHost(r.Context(), r.PostFormValue("new_host"))
+		if refusal != "" {
+			_, _ = w.Write([]byte(ui.Callout("warn", ui.Text(refusal))))
+			return
+		}
+		host, newHost = h, h
+	} else {
+		s, ok := youtubeSiteFor(a.youtubeSites(r.Context()), site)
+		if !ok {
+			_, _ = w.Write([]byte(ui.Callout("warn", ui.Text("Choose a site to post on."))))
+			return
+		}
+		host = s.Host
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
@@ -308,6 +351,7 @@ func (a *App) handleOSYouTubeResolve(w http.ResponseWriter, r *http.Request) {
 	}
 	b.WriteString(`<form hx-post="/os/api/youtube/follow" hx-swap="none">` +
 		`<input type="hidden" name="channel" value="` + html.EscapeString(ch.ID) + `"><input type="hidden" name="site" value="` + html.EscapeString(site) + `">` +
+		`<input type="hidden" name="new_host" value="` + html.EscapeString(newHost) + `">` +
 		string(ui.Rows(
 			ui.Row{Label: "Auto-post", Hint: "Every video, and every new one, becomes a post by itself.", ID: "yt-new-auto",
 				Control: ui.HTML(`<input type="checkbox" class="toggle" role="switch" id="yt-new-auto" name="auto" value="1" checked>`)},
@@ -332,16 +376,34 @@ func (a *App) handleOSYouTubeFollow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	site := r.PostFormValue("site")
-	if _, ok := a.youtubeSiteHost(a.youtubeSites(r.Context()), site); !ok {
+	newHost := ""
+	if site == youtubeNewSite {
+		h, refusal := a.youtubeNewHost(r.Context(), r.PostFormValue("new_host"))
+		if refusal != "" {
+			youtubeError(w, r, http.StatusBadRequest, refusal)
+			return
+		}
+		newHost = h
+	} else if _, ok := youtubeSiteFor(a.youtubeSites(r.Context()), site); !ok {
 		youtubeError(w, r, http.StatusBadRequest, "Choose a site to post on.")
 		return
 	}
 	// The name is read again from the channel itself, never taken from the
-	// form, and reading it is what proves the channel is there.
+	// form, and reading it is what proves the channel is there; a new site is
+	// made only after that.
 	ch, _, err := a.youtubeFollower().Resolve(r.Context(), id)
 	if err != nil {
 		youtubeError(w, r, http.StatusBadGateway, youtubeWords(err))
 		return
+	}
+	if newHost != "" {
+		d, err := a.domains.Create(r.Context(), newHost, domain.SiteBlog, false)
+		if err != nil {
+			youtubeError(w, r, http.StatusBadRequest, "The site could not be made: "+err.Error())
+			return
+		}
+		dbpkg.AuditLog("vayudomains.create", dbpkg.AuditActor(r), d.Host, "for YouTube channel "+ch.ID)
+		site = d.ID
 	}
 	on := func(k string) bool { return r.PostFormValue(k) == "1" }
 	_, err = a.youtube.Follow(r.Context(), site, ch, on("auto"), !on("publish"), on("shorts"))

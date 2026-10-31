@@ -184,11 +184,12 @@ func (fw *Follower) check(ctx context.Context, f Followed) (int, error) {
 	}
 	api, keyed := fw.api(ctx)
 	if keyed {
-		more, err := fw.backfill(ctx, api, f)
-		if err != nil {
-			return 0, err
+		// The back catalogue waits when the API refuses (a spent quota, a
+		// revoked key) and goes on at a later check; new videos keep coming
+		// from the feeds meanwhile, which need no key.
+		if more, err := fw.backfill(ctx, api, f); err == nil {
+			vids = append(vids, more...)
 		}
-		vids = append(vids, more...)
 	}
 	fresh, err := fw.unseen(ctx, f, vids)
 	if err != nil {
