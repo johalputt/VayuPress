@@ -81,15 +81,23 @@ func (a *App) signinsBody(ctx context.Context, days int, source string, tabs ui.
 	if rep.Failures > 0 {
 		page.State = ui.Text(countOf(rep.Failures, "failed sign-in") + " in " + label)
 	}
-	figs := []ui.Figure{
-		{Value: strconv.Itoa(rep.Failures), Label: "Failed attempts"},
-		{Value: strconv.Itoa(rep.Sources), Label: "Sources"},
-		{Value: strconv.Itoa(rep.Accounts), Label: "Accounts tried"},
-		{Value: strconv.Itoa(rep.PasswordKnown), Label: "Knew a password"},
+	// A figure shows only when it says something: none at all on a quiet
+	// install, and a count of nought is left out beside the others.
+	var figs []ui.Figure
+	for _, f := range []struct {
+		n     int
+		label string
+	}{{rep.Failures, "Failed attempts"}, {rep.Sources, "Sources"}, {rep.Accounts, "Accounts tried"}, {rep.PasswordKnown, "Knew a password"}} {
+		if f.n > 0 {
+			figs = append(figs, ui.Figure{Value: strconv.Itoa(f.n), Label: f.label})
+		}
 	}
 	blocks := a.signin.Blocks("")
 	band := ui.Band{Title: "Sign-ins", Hint: "The last " + signinWindowLabel(days), Figures: figs,
 		Aside: ui.Section("Blocks in force", strconv.Itoa(len(blocks))+" now", ui.HTML(signinBlocksList(blocks)))}
+	if len(figs) == 0 {
+		band.Sentence = "No one failed to sign in."
+	}
 
 	var sections []ui.HTML
 	if source != "" {
@@ -209,11 +217,7 @@ func signinBlockState(b signin.Block) string {
 
 // signinBlocksList is the blocks in force, each with its Lift.
 func signinBlocksList(blocks []signin.Block) string {
-	if len(blocks) == 0 {
-		return `<p class="table-empty">No source is blocked.</p>`
-	}
-	var b strings.Builder
-	b.WriteString(`<ul class="vs-locked">`)
+	rows := make([][]ui.HTML, 0, len(blocks))
 	for _, x := range blocks {
 		what := x.Label
 		switch x.Kind {
@@ -225,12 +229,11 @@ func signinBlocksList(blocks []signin.Block) string {
 		if x.Account != "" {
 			what += ", for " + x.Account
 		}
-		b.WriteString(`<li><span>` + html.EscapeString(what) + `</span> <span class="muted text-sm">` + html.EscapeString(signinBlockState(x)) +
-			` · ` + countOf(x.Hits, "refusal") + `</span> <button type="button" class="btn btn--ghost btn--sm" hx-post="/os/api/shield/sign-ins/lift?id=` +
-			strconv.FormatInt(x.ID, 10) + `" hx-swap="none">Lift</button></li>`)
+		rows = append(rows, []ui.HTML{ui.Text(what), ui.Text(signinBlockState(x)), ui.Text(strconv.Itoa(x.Hits)),
+			ui.HTML(`<button type="button" class="btn btn--ghost btn--sm" hx-post="/os/api/shield/sign-ins/lift?id=` +
+				strconv.FormatInt(x.ID, 10) + `" hx-swap="none">Lift</button>`)})
 	}
-	b.WriteString(`</ul>`)
-	return b.String()
+	return string(ui.Table([]string{"Blocked", "For", "Refused", ""}, rows, "No source is blocked."))
 }
 
 // signinAttemptsTable lists attempts in order; withAccount adds the account
