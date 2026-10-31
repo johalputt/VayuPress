@@ -174,3 +174,12 @@ func (s *AccountStore) HasContact(ctx context.Context, owner, email string) bool
 	var one int
 	return s.db.QueryRowContext(ctx, `SELECT 1 FROM vayumail_contacts WHERE owner=? AND email=?`, owner, email).Scan(&one) == nil
 }
+
+// IsContact reports whether addr is in the address book of the mailbox rd
+// reads.
+func (e *Engine) IsContact(rd Reader, addr string) bool {
+	if e.readAuthorised(rd) != nil || e.accounts == nil {
+		return false
+	}
+	return e.accounts.HasContact(context.Background(), e.mailboxAddr(rd), addr)
+}

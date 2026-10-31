@@ -56,7 +56,8 @@ var mailPictureTypes = map[string]bool{"image/png": true, "image/jpeg": true, "i
 
 // proxyImageSources points every remote picture in already sanitised HTML at
 // the proxy, keeps a data: picture as it is, and drops every other source
-// (srcset included, whose candidates would be fetched directly).
+// (srcset included, whose candidates would be fetched directly) and every
+// tracker's (isTrackerImg).
 func proxyImageSources(sanitized string) string {
 	ctx := &xhtml.Node{Type: xhtml.ElementNode, Data: "div", DataAtom: atom.Div}
 	nodes, err := xhtml.ParseFragment(strings.NewReader(sanitized), ctx)
@@ -75,10 +76,16 @@ func proxyImageSources(sanitized string) string {
 
 func proxyImgAttrs(n *xhtml.Node) {
 	if n.Type == xhtml.ElementNode && n.Data == "img" {
+		// A tracker is never fetched, even with pictures on: its only
+		// content is telling the sender the message was opened.
+		tracker := isTrackerImg(n)
 		keep := n.Attr[:0]
 		for _, a := range n.Attr {
 			switch strings.ToLower(a.Key) {
 			case "src":
+				if tracker {
+					continue
+				}
 				src := strings.TrimSpace(a.Val)
 				low := strings.ToLower(src)
 				switch {

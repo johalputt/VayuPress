@@ -88,6 +88,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
+- **The reader says what is known about where a message came from.** One
+  quiet line under the sender: "shop.example confirmed it sent this" when
+  the sending domain authenticated the message on its way in, and "2
+  trackers blocked" when it carries pictures that exist only to report the
+  opening. Such a tracker is never fetched now, even when pictures are
+  loaded. An amber line warns when a link's words name one site and it
+  goes to another ("A link says paypal.com but goes to paypa1.com"), or
+  when the sender's name is another site's address, and says first when
+  the sender is not in your contacts. The domain's confirmation is sealed
+  onto the message at delivery with a key only the install holds, over the
+  message as delivered, so a confirmation written by anyone else, or copied
+  from a genuine message onto another, does not read as one; the inbound
+  server removes a sender-written copy.
 - **Mail's list and reader, calmer and quicker to act on.** The message
   open in the reader is marked with a soft accent fill and an edge, not a
   solid blue block with white words; picked messages wear the same fill.

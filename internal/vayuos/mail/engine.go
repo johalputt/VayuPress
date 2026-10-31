@@ -31,6 +31,8 @@ type Engine struct {
 	cfg    Config
 	bridge Bridge
 	db     *sql.DB
+	// verdictKey seals the From domain's check onto inbound mail (verdict.go).
+	verdictKey []byte
 	// importer runs Bring mail in (imapimport.go), made on first use.
 	importer   *importer
 	importOnce sync.Once
@@ -965,6 +967,7 @@ func (e *Engine) Start(ctx context.Context) error {
 // inboundDeliver files each recipient's copy of a received message locally.
 func (e *Engine) inboundDeliver(from string, rcpts []string, raw []byte) error {
 	var firstErr error
+	raw = e.sealVerdict(raw)
 	for _, rcpt := range rcpts {
 		if _, derr := e.deliver(from, rcpt, raw, true); derr != nil && firstErr == nil {
 			firstErr = derr

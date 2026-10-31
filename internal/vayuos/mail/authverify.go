@@ -254,6 +254,7 @@ var trustedInboundHeaders = []string{
 	"x-vayumail-forwarded",        // forwarding loop breaker (inbound.go)
 	"x-vayumail-spam",             // any future X-VayuMail assertion
 	"x-vayumail-authenticated-as", //
+	"x-vayumail-checked",          // the From domain's sealed check (verdict.go)
 }
 
 // stripTrustedHeaders removes every header a remote sender must not be able to

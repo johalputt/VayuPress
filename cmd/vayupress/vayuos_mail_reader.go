@@ -346,6 +346,15 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 			}
 			c.WriteString(`<p class="mx-seal mx-seal--` + map[string]string{"ok": "ok", "danger": "danger", "": "plain"}[s.Tone] + `">` + saIcon(icon) + `<span>` + esc(s.Text) + `</span></p>`)
 		}
+		sanitized := ""
+		if strings.TrimSpace(pm.HTML) != "" {
+			sanitized = mailHTMLPolicyImages.Sanitize(pm.HTML)
+		}
+		trust := mailTrustFor(a.vayuMail.CheckedDomain(stored), sanitized, pm.From, !a.vayuMail.IsContact(rd, fromAddr))
+		if !received {
+			trust.Warning = "" // mail this mailbox wrote warns no one
+		}
+		c.WriteString(mailTrustLine(trust))
 		// What this message did not reach, from the queue or a report.
 		if bounces, _ := a.vayuMail.Bounces(rd, cur.MessageID); len(bounces) > 0 {
 			c.WriteString(`<ul class="mx-bounces">`)

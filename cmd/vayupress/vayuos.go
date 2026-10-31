@@ -598,6 +598,14 @@ func (a *App) bootVayuOS() {
 	// service-credential DEK (audit). Legacy plaintext rows keep verifying and
 	// re-seal on their next write.
 	a.vayuMail.UseTOTPCodec(a.secrets)
+	// The key that seals the From domain's check onto inbound mail, so the
+	// reader can say a domain confirmed a message (verdict.go). Without it
+	// nothing reads as confirmed, which is the safe way to be wrong.
+	if key, err := a.secrets.Derive("mail-verdict-v1"); err == nil {
+		a.vayuMail.UseVerdictKey(key)
+	} else {
+		logging.LogError("vayumail", "no verdict key; no message will read as confirmed by its domain", err.Error())
+	}
 	// Transparent PGP decryption when serving mail over IMAP to the owner.
 	a.vayuMail.SetDecryptHook(a.pgpDecryptForAccount)
 	// Mail filed into a mailbox redraws the open bells at once: new mail is

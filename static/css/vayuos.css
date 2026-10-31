@@ -6188,6 +6188,16 @@
 .vp-os[data-ui="still-air"] .mx-seal .sa-ico { width: 14px; height: 14px; }
 .vp-os[data-ui="still-air"] .mx-seal--ok { color: var(--ok); background: var(--ok-soft); }
 .vp-os[data-ui="still-air"] .mx-seal--danger { color: var(--danger); background: var(--danger-soft); }
+/* The trust line: quiet facts under the sender, each only when it applies;
+   and the one amber line when a link or a name pretends. */
+.vp-os[data-ui="still-air"] .mx-trust { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); margin: var(--space-3) 0 0; font: var(--type-small); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .mx-trust__item { display: inline-flex; align-items: center; gap: var(--space-2); }
+.vp-os[data-ui="still-air"] .mx-trust__item .sa-ico { width: 14px; height: 14px; }
+.vp-os[data-ui="still-air"] .mx-trust__warn {
+  display: flex; align-items: flex-start; gap: var(--space-3); margin: var(--space-4) 0 0; padding: var(--space-3) var(--space-4);
+  font: var(--type-small); color: var(--warn); background: var(--warn-soft); border-radius: var(--radius-control);
+}
+.vp-os[data-ui="still-air"] .mx-trust__warn .sa-ico { flex: none; width: 14px; height: 14px; margin-top: 3px; }
 /* Labels: quiet chips on a list row, and under the reader's subject, where each opens its search. */
 .vp-os[data-ui="still-air"] .mx-labels { display: inline-flex; flex-wrap: wrap; gap: 4px; margin: 0 0 0 var(--space-2); vertical-align: middle; }
 .vp-os[data-ui="still-air"] .mx-rbody header .mx-labels { display: flex; margin: var(--space-2) 0 0; }
