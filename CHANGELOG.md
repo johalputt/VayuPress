@@ -30,6 +30,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - A blocked source, or one outside an account's countries, is refused
   before its password is checked. A block or a fence that would stop the
   person setting it is refused.
+- **Shield › Sign-in attempts** shows who tried to sign in, over 24 hours,
+  7 or 30 days: the failed attempts, the sources (each with how many
+  attempts on how many accounts, through which doors, and whether it knew a
+  password), the accounts most tried, the doors, a map of where from and
+  the hours. Each source has a Block menu (the address for a day, 30 days
+  or always; its network for 30 days; sign-ins from its country) and "It
+  was one of us"; each block in force can be lifted. Every action is in the
+  audit log.
+
+### Changed
+
+- A write the console refuses now says why in its notice, after the
+  status, when the server gave a reason.
 
 ## [3.18.19] — 2026-10-30
 

@@ -586,6 +586,12 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/dismiss", a.handleOSShieldDismiss)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/release", a.handleOSShieldRelease)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/accounts/unlock", a.handleOSAccountUnlock)
+		// Shield › Sign-in attempts (admin_os_signin.go).
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/shield/sign-ins", a.handleOSSignins)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/sign-ins/block", a.handleOSSigninBlock)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/sign-ins/country", a.handleOSSigninCountry)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/sign-ins/lift", a.handleOSSigninLift)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/sign-ins/mine", a.handleOSSigninMine)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/settings", a.handleOSShieldSettings)
 		// Tier 2/3 in-panel toggle — records intent (a flag file); a root agent applies it.
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/tier", a.handleOSShieldTier)

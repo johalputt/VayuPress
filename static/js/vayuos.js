@@ -271,6 +271,12 @@
       return;
     }
     var msg = 'That did not go through' + (d.xhr && d.xhr.status ? ' (' + d.xhr.status + ')' : '') + '.';
+    // A refusal that says why adds its reason: "This would stop your own
+    // sign-in" tells the operator what to do; a status code alone does not.
+    try {
+      var j = JSON.parse(d.xhr.responseText);
+      if (j && j.error && typeof j.error.message === 'string' && j.error.message) msg += ' ' + j.error.message;
+    } catch (_) { /* not JSON: the status is all there is */ }
     if (live) live.textContent = msg;
     say(msg, 'error');
   });

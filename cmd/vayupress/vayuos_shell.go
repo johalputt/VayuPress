@@ -102,6 +102,7 @@ var saClearnetApps = []saApp{
 	}},
 	{Key: "shield", Label: "Shield", Icon: "shield", Href: "/os/shield", Tabbed: true, Sections: []saSection{
 		{Label: "Bot protection", Href: "/os/shield", Icon: "shield"},
+		{Label: "Sign-in attempts", Href: "/os/shield/sign-ins", Icon: "lock"},
 		{Label: "Sign-in security", Href: "/os/security", Icon: "lock"},
 		{Label: "VayuVeil", Href: "/os/vayuveil", Icon: "eye"},
 	}},

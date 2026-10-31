@@ -77,10 +77,10 @@ func TestAnAddressIsShownWithItsLastPartHidden(t *testing.T) {
 			t.Errorf("Mask(%s) = %s, want %s", in, got, want)
 		}
 	}
-	if got := networkLabel("103.21.x.x"); got != "103.21.x.0/24" {
+	if got := NetworkLabel("103.21.x.x"); got != "103.21.x.0/24" {
 		t.Errorf("network label = %s", got)
 	}
-	if got := networkLabel("2001:db8:x:x::"); got != "2001:db8:x::/48" {
+	if got := NetworkLabel("2001:db8:x:x::"); got != "2001:db8:x::/48" {
 		t.Errorf("IPv6 network label = %s", got)
 	}
 }

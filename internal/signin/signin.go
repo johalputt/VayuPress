@@ -299,8 +299,8 @@ func Mask(ip net.IP) string {
 	return "unknown"
 }
 
-// networkLabel is how a network block is shown, hiding what Mask hides.
-func networkLabel(masked string) string {
+// NetworkLabel is how a network block is shown, hiding what Mask hides.
+func NetworkLabel(masked string) string {
 	if strings.HasSuffix(masked, ".x.x") {
 		return strings.TrimSuffix(masked, ".x.x") + ".x.0/24"
 	}
@@ -627,7 +627,7 @@ func (s *Store) BlockSource(ctx context.Context, fp string, network bool, accoun
 	}
 	b := &Block{Kind: "address", Key: fp, Label: masked, Account: account, Reason: by, Created: s.Now()}
 	if network {
-		b.Kind, b.Key, b.Label = "network", netFP, networkLabel(masked)
+		b.Kind, b.Key, b.Label = "network", netFP, NetworkLabel(masked)
 	}
 	if d > 0 {
 		b.Until = b.Created.Add(d)
