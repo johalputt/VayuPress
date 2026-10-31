@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.20] — 2026-10-31
+
+VayuMail grows into its own app and is safer at every door: failed sign-ins seen and stopped, passkeys, a line that says who confirmed a message, sealed mail for anyone, throwaway addresses, an Inbox that sorts itself, Settings as one page, a phone worked by the thumb, and help from a model with its cautions enforced on the server.
+
 ### Security
 
 - **Mail to anyone, sealed.** For someone with no key, Mail › Send a
