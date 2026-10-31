@@ -10,6 +10,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **Where you are signed in, and a security checklist.** A mailbox's
+  Settings, and a staff member's My profile, list the console sessions
+  open in their name, each with the browser and system it was opened from
+  and when, "This one" marked, a Sign out on each other one and Sign out
+  everywhere else. A session is ended only among its own principal's.
+  Settings › Signing in opens with a checklist and its score: two-factor,
+  a passkey, a way back in, and no app password left unused (never used a
+  month after it was made, or not for three months), each with where to
+  put it right. Migration 128 adds the device to each session.
 - **Every failed sign-in is recorded, with where it came from, and its
   source can be blocked.** The site's mail sign-in, the console's, the
   app's, IMAP, POP3, SMTP, contacts and calendar sync, VayuTalk and the

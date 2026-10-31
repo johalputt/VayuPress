@@ -596,6 +596,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/passkeys/finish", a.handlePasskeyAddFinish)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/passkeys/remove", a.handlePasskeyDelete)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/passkeys/only", a.handlePasskeyOnly)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/sessions/end", a.handleSessionEnd)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/sessions/end-others", a.handleSessionEndOthers)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/sign-ins/password-on", a.handleOSSigninPasswordOn)
 		// Shield › Sign-in attempts (admin_os_signin.go).
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/shield/sign-ins", a.handleOSSignins)
@@ -2122,7 +2124,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-			token, terr := a.sessions.Create(r.Context(), "vmail:"+addr)
+			token, terr := a.startSession(r, "vmail:"+addr)
 			if terr != nil {
 				http.Error(w, "could not start session", http.StatusInternalServerError)
 				return
@@ -2159,7 +2161,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(osLoginPage(email, "Enter the 6-digit code from your authenticator app, then re-enter your password.", next)))
 		return
 	}
-	token, err := a.sessions.Create(r.Context(), u.ID)
+	token, err := a.startSession(r, u.ID)
 	if err != nil {
 		http.Error(w, "could not start session", http.StatusInternalServerError)
 		return

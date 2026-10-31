@@ -147,6 +147,73 @@ func (s *SessionStore) DestroyForUser(ctx context.Context, userID string) (int, 
 	return int(n), nil
 }
 
+// SessionInfo is one live session as its own principal's list shows it.
+// ID is the first 16 hex characters of the token's hash: enough to name it
+// to its owner, and no use to anyone as a credential.
+type SessionInfo struct {
+	ID, Device       string
+	Created, Expires time.Time
+}
+
+// sessionIDLen is how much of a token's hash names its session.
+const sessionIDLen = 16
+
+// SessionID is the ID of the session token carries, for marking "this one".
+func SessionID(token string) string {
+	return hashToken(token)[:sessionIDLen]
+}
+
+// Describe records the device a session was opened from.
+func (s *SessionStore) Describe(ctx context.Context, token, device string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE sessions SET device=? WHERE token_hash=?`, device, hashToken(token))
+	return err
+}
+
+// List is userID's live sessions, newest first.
+func (s *SessionStore) List(ctx context.Context, userID string) ([]SessionInfo, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT substr(token_hash,1,?),device,created_at,expires_at FROM sessions WHERE user_id=? AND expires_at>? ORDER BY created_at DESC`,
+		sessionIDLen, userID, time.Now().UTC().Format("2006-01-02 15:04:05"))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SessionInfo
+	for rows.Next() {
+		var si SessionInfo
+		if err := rows.Scan(&si.ID, &si.Device, &si.Created, &si.Expires); err != nil {
+			return nil, err
+		}
+		out = append(out, si)
+	}
+	return out, rows.Err()
+}
+
+// DestroyByID ends userID's session id, and no one else's: the id is only
+// looked for among userID's own sessions.
+func (s *SessionStore) DestroyByID(ctx context.Context, userID, id string) (bool, error) {
+	if len(id) != sessionIDLen {
+		return false, nil
+	}
+	res, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE user_id=? AND substr(token_hash,1,?)=?`, userID, sessionIDLen, id)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+// DestroyOthers ends every session of userID but the one keep carries, and
+// reports how many it ended.
+func (s *SessionStore) DestroyOthers(ctx context.Context, userID, keep string) (int, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE user_id=? AND token_hash<>?`, userID, hashToken(keep))
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
 // PurgeExpired removes all sessions whose expiry has passed. Intended to run on
 // a periodic sweep.
 func (s *SessionStore) PurgeExpired(ctx context.Context) (int64, error) {

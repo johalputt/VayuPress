@@ -450,6 +450,9 @@ func (a *App) handleOSProfile(w http.ResponseWriter, r *http.Request) {
 	if pk := a.passkeysBlock(r); pk != "" {
 		body += `<div class="card">` + pk + `</div><script nonce="` + nonce + `" src="/os/static/js/passkey.js?v=` + assetVer("js/passkey.js") + `"></script>`
 	}
+	if ss := a.sessionsBlock(r); ss != "" {
+		body += `<div class="card"><h2 class="card-title">Where you are signed in</h2>` + ss + `</div>`
+	}
 	writeOSHTML(w, r, adminOSLayout(nonce, "My profile", "profile", cfg, htmpl.HTML(body)))
 }
 

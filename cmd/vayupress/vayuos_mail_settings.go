@@ -222,6 +222,8 @@ func (a *App) handleVayuOSMySettings(w http.ResponseWriter, r *http.Request) {
 		`<div class="card vm-mbox-head">` + mailAvatarImg(ac.Email, a.mailboxAvatarSet()) +
 		`<div class="vm-mbox-head__meta"><div class="vm-mbox-head__email">` + esc(ac.Email) + `</div></div></div>`
 	signinItems := []mailSetting{
+		{Name: "Security checklist", Find: "score security check", HTML: a.securityChecklist(r, ac)},
+		{Name: "Where you are signed in", Find: "sessions devices sign out everywhere", HTML: a.sessionsBlock(r)},
 		{Name: "Password", Find: "change password", HTML: holderPasswordForm(), Bare: true},
 		// Two-factor stays on the site's account page (handlers_portal_totp.go),
 		// where turning it off asks for a current code; a second way to change

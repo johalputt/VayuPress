@@ -163,6 +163,9 @@ func osPathMinLevel(path string) int {
 		// A session's own passkeys: every handler acts on the passkeys of the
 		// account or mailbox the session is, and no other (passkey.go).
 		"passkeys",
+		// A session's own sessions: listed and ended for the principal the
+		// session is, and no other (sessions_mine.go).
+		"sessions",
 	}
 	// The per-domain console (/os/d/{id}/…) administers a HOSTED CUSTOMER'S site:
 	// its identity, its content, what it serves at "/", its theme code and its
@@ -642,7 +645,9 @@ func mailOnlyPathAllowed(path string) bool {
 		strings.HasPrefix(path, "/os/api/vayuos/mail/"),
 		// The mailbox's own passkeys: the handlers act on the session's
 		// principal only, never on an address the request names.
-		strings.HasPrefix(path, "/os/api/passkeys/"):
+		strings.HasPrefix(path, "/os/api/passkeys/"),
+		// The mailbox's own sessions, ended for the session's principal only.
+		strings.HasPrefix(path, "/os/api/sessions/"):
 		return true
 	case path == "/os/talk" || strings.HasPrefix(path, "/os/talk/"):
 		// VayuTalk, the chat that comes with a mailbox. A non-admin chats only
