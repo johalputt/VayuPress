@@ -60,6 +60,10 @@ func coreMiddleware() []func(http.Handler) http.Handler {
 // one place so main() stays focused on lifecycle orchestration (ADR-0048).
 func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Use(coreMiddleware()...)
+	// A source blocked from the whole site (Shield › Sign-in attempts) is
+	// refused here, before anything else is done for it. With no such block
+	// it costs one pointer read.
+	r.Use(a.siteBlockMiddleware)
 	// Maintenance mode — when the operator has taken the public site offline
 	// (VayuOS → Power & Maintenance), serve the premium maintenance page to
 	// visitors. A near-free pass-through when off; always lets /os, the health

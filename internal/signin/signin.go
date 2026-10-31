@@ -27,6 +27,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -85,6 +86,10 @@ const (
 	alarmEvery = time.Hour
 )
 
+// ErrPrivateSite refuses a whole-site block of an address on the install's
+// own network.
+var ErrPrivateSite = errors.New("signin: an address on this install's own network cannot be blocked from the whole site")
+
 // ErrSelf refuses a block that would stop the operator making it.
 var ErrSelf = errors.New("signin: this block would stop your own sign-in")
 
@@ -127,6 +132,7 @@ type Block struct {
 	Label   string // what the page shows: 103.21.x.x, 103.21.x.0/24, VN
 	Account string // "" for the whole install
 	Reason  string // "spraying", or who set it
+	Scope   string // "signin": the sign-in doors; "site": every request
 	Created time.Time
 	Until   time.Time // zero: always
 	Hits    int
@@ -180,6 +186,9 @@ type Store struct {
 	spray    map[string]*sprayState
 	alarmed  map[alarmKey]time.Time
 	lastTrim time.Time
+	// site is the whole-site blocks, copied for the request path
+	// (RefuseRequest), which every request reads.
+	site atomic.Pointer[map[string]siteEntry]
 }
 
 // Open loads the blocks, fences and known places. key is the fingerprints'
@@ -201,7 +210,7 @@ func Open(ctx context.Context, db *sql.DB, key []byte) (*Store, error) {
 }
 
 func (s *Store) reload(ctx context.Context) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, kind, key, label, account, reason, created, until, hits FROM signin_blocks WHERE lifted = 0`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, kind, key, label, account, reason, created, until, hits, scope FROM signin_blocks WHERE lifted = 0`)
 	if err != nil {
 		return err
 	}
@@ -209,7 +218,7 @@ func (s *Store) reload(ctx context.Context) error {
 	for rows.Next() {
 		var b Block
 		var created, until int64
-		if err := rows.Scan(&b.ID, &b.Kind, &b.Key, &b.Label, &b.Account, &b.Reason, &created, &until, &b.Hits); err != nil {
+		if err := rows.Scan(&b.ID, &b.Kind, &b.Key, &b.Label, &b.Account, &b.Reason, &created, &until, &b.Hits, &b.Scope); err != nil {
 			rows.Close()
 			return err
 		}
@@ -264,6 +273,7 @@ func (s *Store) reload(ctx context.Context) error {
 	}
 	s.mu.Lock()
 	s.blocks, s.fences, s.known = blocks, fences, known
+	s.rebuildSiteLocked()
 	s.mu.Unlock()
 	return nil
 }
@@ -603,29 +613,42 @@ func (s *Store) add(ctx context.Context, b *Block) (*Block, error) {
 	if !b.Until.IsZero() {
 		until = b.Until.Unix()
 	}
-	res, err := s.db.ExecContext(ctx, `INSERT INTO signin_blocks (kind, key, label, account, reason, created, until) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		b.Kind, b.Key, b.Label, b.Account, b.Reason, b.Created.Unix(), until)
+	if b.Scope == "" {
+		b.Scope = "signin"
+	}
+	res, err := s.db.ExecContext(ctx, `INSERT INTO signin_blocks (kind, key, label, account, reason, created, until, scope) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		b.Kind, b.Key, b.Label, b.Account, b.Reason, b.Created.Unix(), until, b.Scope)
 	if err != nil {
 		return nil, err
 	}
 	b.ID, _ = res.LastInsertId()
 	s.mu.Lock()
 	s.blocks = append(s.blocks, b)
+	s.rebuildSiteLocked()
 	s.mu.Unlock()
 	return b, nil
 }
 
 // BlockSource blocks the address behind fingerprint fp, or its network when
-// network is set, for account ("" for the install), for d (0: always). by
-// names who set it. self is the address of the person setting it: a block
-// that would refuse them is refused with ErrSelf.
-func (s *Store) BlockSource(ctx context.Context, fp string, network bool, account string, d time.Duration, by, self string) (*Block, error) {
+// network is set, for account ("" for the install), for d (0: always), from
+// signing in or, with site, from every request to the install. by names who
+// set it. self is the address of the person setting it: a block that would
+// refuse them is refused with ErrSelf.
+func (s *Store) BlockSource(ctx context.Context, fp string, network, site bool, account string, d time.Duration, by, self string) (*Block, error) {
 	var netFP, masked string
 	err := s.db.QueryRowContext(ctx, `SELECT net_fp, ip_masked FROM signin_attempts WHERE ip_fp = ? ORDER BY minute DESC LIMIT 1`, fp).Scan(&netFP, &masked)
 	if err != nil {
 		return nil, err
 	}
 	b := &Block{Kind: "address", Key: fp, Label: masked, Account: account, Reason: by, Created: s.Now()}
+	if site {
+		// An address on the install's own network may be its proxy, which
+		// every visitor shares: a whole-site block of it would close the site.
+		if maskedPrivate(masked) {
+			return nil, ErrPrivateSite
+		}
+		b.Scope, b.Account = "site", ""
+	}
 	if network {
 		b.Kind, b.Key, b.Label = "network", netFP, NetworkLabel(masked)
 	}
@@ -668,6 +691,7 @@ func (s *Store) Lift(ctx context.Context, id int64) error {
 		}
 	}
 	s.blocks = kept
+	s.rebuildSiteLocked()
 	s.mu.Unlock()
 	return nil
 }

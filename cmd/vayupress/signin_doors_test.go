@@ -76,7 +76,7 @@ func TestEachDoorRefusesABlockedSource(t *testing.T) {
 			if len(rows) != 1 {
 				t.Fatalf("no attempt recorded at %s", d.name)
 			}
-			if _, err := st.BlockSource(ctx, rows[0].FP, false, "", time.Hour, "admin", "192.0.2.200"); err != nil {
+			if _, err := st.BlockSource(ctx, rows[0].FP, false, false, "", time.Hour, "admin", "192.0.2.200"); err != nil {
 				t.Fatal(err)
 			}
 			if d.try(t, a, 2, lockedRight) {
@@ -164,7 +164,7 @@ func TestARecoveryCodeIsRecordedAndABlockedSourceRefused(t *testing.T) {
 	if len(rows) != 1 || rows[0].Door != signin.DoorRecovery || rows[0].Stage != signin.StagePassword {
 		t.Fatalf("recorded %+v; want one wrong recovery code", rows)
 	}
-	if _, err := st.BlockSource(ctx, rows[0].FP, false, "", time.Hour, "admin", "198.51.100.200"); err != nil {
+	if _, err := st.BlockSource(ctx, rows[0].FP, false, false, "", time.Hour, "admin", "198.51.100.200"); err != nil {
 		t.Fatal(err)
 	}
 	if rec := post("192.0.2.31"); !strings.Contains(rec.Body.String(), "Sign-in from here is not allowed") {

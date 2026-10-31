@@ -206,14 +206,14 @@ func (b *vayuMailBridge) verifyCredentialScoped(ctx context.Context, addr, passw
 	if !enforce && (webBootstrap || !requireApproval) {
 		// 1) CMS users (full VayuPress accounts).
 		if cmsBranchOpen && b.app.userStore != nil {
-			if _, err := b.app.userStore.Authenticate(ctx, addr, password); err == nil && !closed {
+			if u, err := b.app.userStore.Authenticate(ctx, addr, password); err == nil && !closed && !b.app.passkeyOnly(ctx, "user:"+u.ID) {
 				return true
 			}
 		}
 		// 2) Admin-managed mail-only accounts (email + password).
 		if accts != nil {
 			if hash := accts.HashFor(ctx, addr); hash != "" {
-				if auth.VerifySecretArgon2id(password, hash) && !closed {
+				if auth.VerifySecretArgon2id(password, hash) && !closed && !b.app.passkeyOnly(ctx, "vmail:"+addr) {
 					return true
 				}
 			}

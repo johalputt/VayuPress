@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -111,6 +112,7 @@ func (a *App) signinsBody(ctx context.Context, days int, source string, tabs ui.
 			string(ui.Section("Accounts most tried", "Failed attempts", ui.HTML(osBarList(signinBars(rep.ByAccount, false), osShareOf(rep.Failures), "No account was tried.")))),
 			string(ui.Section("Doors", "Where the attempts came in", ui.HTML(osBarList(signinBars(rep.ByDoor, true), osShareOf(rep.Failures), "No attempt."))))),
 		),
+		ui.HTML(a.passkeyOnlySection(ctx)),
 		ui.Section("Where from", "Failed attempts by country", ui.HTML(signinMap(rep.Countries)+osBarList(signinCountryBars(rep.Countries), osShareOf(rep.Failures), "No attempt came from a known country."))),
 		ui.Section("By hour", "Failed attempts by hour of the day, UTC", ui.HTML(osBarList(signinHourBars(rep.Hours), osShareHidden(), "No attempt."))),
 		ui.Explain(ui.HTML(`<p><strong>Automatic blocking is on.</strong> A source that fails on `+strconv.Itoa(signin.SprayAccounts)+
@@ -178,7 +180,10 @@ func signinSourcesTable(list []signin.Source, days int) string {
 			`<button class="sa-menu__item" role="menuitem" name="for" value="30">This address, for 30 days</button>` +
 			`<button class="sa-menu__item" role="menuitem" name="for" value="0">This address, always</button>` +
 			`<div class="sa-menu__sep"></div>` +
-			`<button class="sa-menu__item" role="menuitem" name="for" value="net">Its network, for 30 days<span class="sa-menu__meta">` + html.EscapeString(signin.NetworkLabel(s.Masked)) + `</span></button></form>`
+			`<button class="sa-menu__item" role="menuitem" name="for" value="net">Its network, for 30 days<span class="sa-menu__meta">` + html.EscapeString(signin.NetworkLabel(s.Masked)) + `</span></button>` +
+			`<div class="sa-menu__sep"></div>` +
+			`<button class="sa-menu__item" role="menuitem" name="for" value="site">This address from the whole site, 30 days<span class="sa-menu__meta">Every page, not only sign-in</span></button>` +
+			`<button class="sa-menu__item" role="menuitem" name="for" value="site-net">Its network from the whole site, 30 days</button></form>`
 		if s.Country != "" {
 			menu += `<form hx-post="/os/api/shield/sign-ins/country" hx-swap="none"><input type="hidden" name="country" value="` + html.EscapeString(s.Country) + `">` +
 				`<button class="sa-menu__item" role="menuitem">Refuse sign-ins from ` + html.EscapeString(countryName(s.Country)) + `<span class="sa-menu__meta">Pages stay readable</span></button></form>`
@@ -228,6 +233,9 @@ func signinBlocksList(blocks []signin.Block) string {
 		}
 		if x.Account != "" {
 			what += ", for " + x.Account
+		}
+		if x.Scope == "site" {
+			what += ", from the whole site"
 		}
 		rows = append(rows, []ui.HTML{ui.Text(what), ui.Text(signinBlockState(x)), ui.Text(strconv.Itoa(x.Hits)),
 			ui.HTML(`<button type="button" class="btn btn--ghost btn--sm" hx-post="/os/api/shield/sign-ins/lift?id=` +
@@ -321,6 +329,10 @@ func signinMap(m map[string]int) string {
 // signinActionError answers a refused action with its reason, which the
 // console's toast says.
 func signinActionError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, signin.ErrPrivateSite) {
+		writeAPIError(w, r, http.StatusConflict, "own-network", "That address is on this install's own network, which may be the proxy every visitor comes through, so it is blocked from sign-in only, never from the whole site.", "")
+		return
+	}
 	if errors.Is(err, signin.ErrSelf) {
 		writeAPIError(w, r, http.StatusConflict, "would-block-you", "This would stop your own sign-in, so it was not set.", "")
 		return
@@ -341,7 +353,7 @@ func (a *App) handleOSSigninBlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fp := r.PostFormValue("fp")
-	network, d := false, 30*24*time.Hour
+	network, site, d := false, false, 30*24*time.Hour
 	switch r.PostFormValue("for") {
 	case "1":
 		d = 24 * time.Hour
@@ -350,11 +362,15 @@ func (a *App) handleOSSigninBlock(w http.ResponseWriter, r *http.Request) {
 		d = 0
 	case "net":
 		network = true
+	case "site":
+		site = true
+	case "site-net":
+		site, network = true, true
 	default:
 		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "Say how long to block it for.", "")
 		return
 	}
-	b, err := a.signin.BlockSource(r.Context(), fp, network, "", d, dbpkg.AuditActor(r), auth.ClientIP(r))
+	b, err := a.signin.BlockSource(r.Context(), fp, network, site, "", d, dbpkg.AuditActor(r), auth.ClientIP(r))
 	if err != nil {
 		signinActionError(w, r, err)
 		return
@@ -424,5 +440,43 @@ func (a *App) handleOSSigninMine(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	dbpkg.AuditLog("signin.mine", dbpkg.AuditActor(r), fp, strconv.Itoa(len(seen))+" accounts")
+	signinDone(w, r)
+}
+
+// passkeyOnlySection lists the accounts and mailboxes whose password is off,
+// each with the administrator's way to turn it back on: the way back for one
+// who lost their passkeys, since the install's key opens this page. Empty
+// when there are none.
+func (a *App) passkeyOnlySection(ctx context.Context) string {
+	if a.passkeys == nil {
+		return ""
+	}
+	list, _ := a.passkeys.OnlyList(ctx)
+	if len(list) == 0 {
+		return ""
+	}
+	rows := make([][]ui.HTML, 0, len(list))
+	for _, e := range list {
+		rows = append(rows, []ui.HTML{ui.Text(e.Account), ui.Text(config.FormatSite(e.Since, "2 Jan 2006")),
+			ui.HTML(`<button type="button" class="btn btn--ghost btn--sm" hx-post="/os/api/shield/sign-ins/password-on?principal=` +
+				url.QueryEscape(e.Principal) + `" hx-swap="none" hx-confirm="Let this account sign in with its password again?">Turn the password back on</button>`)})
+	}
+	return string(ui.Section("Passkey only", "Their passwords are refused everywhere; they sign in with a passkey",
+		ui.Table([]string{"Account", "Since", ""}, rows, "")))
+}
+
+// handleOSSigninPasswordOn turns an account's or a mailbox's password back
+// on, for the administrator.
+func (a *App) handleOSSigninPasswordOn(w http.ResponseWriter, r *http.Request) {
+	principal := r.FormValue("principal")
+	if a.passkeys == nil || principal == "" {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "Name the account.", "")
+		return
+	}
+	if err := a.passkeys.SetOnly(r.Context(), principal, false); err != nil {
+		signinActionError(w, r, err)
+		return
+	}
+	dbpkg.AuditLog("passkey.only", dbpkg.AuditActor(r), principal, "off by the administrator")
 	signinDone(w, r)
 }

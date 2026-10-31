@@ -97,7 +97,7 @@ func TestNoWholeAddressIsWrittenDown(t *testing.T) {
 	if err := s.Flush(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.BlockSource(ctx, s.fp("address", net.ParseIP(v4).To4()), true, "", time.Hour, "admin", "198.51.100.9"); err != nil {
+	if _, err := s.BlockSource(ctx, s.fp("address", net.ParseIP(v4).To4()), true, false, "", time.Hour, "admin", "198.51.100.9"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := dbpkg.DB.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
@@ -281,7 +281,7 @@ func TestEachBlockRefusesWhatItNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	src, _ := s.source("198.51.100.50", false)
-	addr, err := s.BlockSource(ctx, src.fp, false, "", time.Hour, "admin", "192.0.2.9")
+	addr, err := s.BlockSource(ctx, src.fp, false, false, "", time.Hour, "admin", "192.0.2.9")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +291,7 @@ func TestEachBlockRefusesWhatItNames(t *testing.T) {
 	if _, r := s.Refuse("a@x.test", "198.51.100.51"); r {
 		t.Error("an address block refused its neighbour")
 	}
-	netb, err := s.BlockSource(ctx, src.fp, true, "", 0, "admin", "192.0.2.9")
+	netb, err := s.BlockSource(ctx, src.fp, true, false, "", 0, "admin", "192.0.2.9")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,10 +336,10 @@ func TestABlockThatWouldStopItsMakerIsRefused(t *testing.T) {
 	fail(s, "a@x.test", "198.51.100.60")
 	_ = s.Flush(ctx)
 	src, _ := s.source("198.51.100.60", false)
-	if _, err := s.BlockSource(ctx, src.fp, false, "", 0, "admin", "198.51.100.60"); !errors.Is(err, ErrSelf) {
+	if _, err := s.BlockSource(ctx, src.fp, false, false, "", 0, "admin", "198.51.100.60"); !errors.Is(err, ErrSelf) {
 		t.Errorf("blocking your own address: %v, want ErrSelf", err)
 	}
-	if _, err := s.BlockSource(ctx, src.fp, true, "", 0, "admin", "198.51.100.61"); !errors.Is(err, ErrSelf) {
+	if _, err := s.BlockSource(ctx, src.fp, true, false, "", 0, "admin", "198.51.100.61"); !errors.Is(err, ErrSelf) {
 		t.Errorf("blocking your own network: %v, want ErrSelf", err)
 	}
 	if _, err := s.BlockCountry(ctx, "IN", "", 0, "admin", "198.51.100.61"); !errors.Is(err, ErrSelf) {
@@ -486,5 +486,81 @@ func TestTheReportAddsUpTheFailures(t *testing.T) {
 	rows, _ = s.Attempts(ctx, vn, "", 10)
 	if len(rows) != 2 || rows[0].FP != vn || rows[1].FP != vn {
 		t.Errorf("one source's attempts = %+v; want its two counts", rows)
+	}
+}
+
+// A whole-site block refuses every request from its address, and its
+// network's from its network; a sign-in block refuses none; a lifted one
+// none; the reach survives a restart; an address on the install's own
+// network is never blocked from the whole site.
+func TestAWholeSiteBlockRefusesEveryRequest(t *testing.T) {
+	s, c := openStore(t)
+	ctx := context.Background()
+	for _, ip := range []string{"198.51.100.77", "203.0.113.78", "10.0.0.9"} {
+		fail(s, "a@x.test", ip)
+	}
+	_ = s.Flush(ctx)
+	fpOf := func(ip string) string { src, _ := s.source(ip, false); return src.fp }
+
+	if _, err := s.BlockSource(ctx, fpOf("203.0.113.78"), false, false, "", time.Hour, "admin", "192.0.2.1"); err != nil {
+		t.Fatal(err)
+	}
+	if s.RefuseRequest("203.0.113.78:4000") {
+		t.Error("a sign-in block refused a page request")
+	}
+	site, err := s.BlockSource(ctx, fpOf("198.51.100.77"), false, true, "", time.Hour, "admin", "192.0.2.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.RefuseRequest("198.51.100.77:4000") {
+		t.Error("a whole-site block did not refuse its address's request")
+	}
+	if _, r := s.Refuse("a@x.test", "198.51.100.77"); !r {
+		t.Error("a whole-site block did not refuse its address's sign-in")
+	}
+	if s.RefuseRequest("198.51.100.79") {
+		t.Error("an address block refused its neighbour's request")
+	}
+	again, err := Open(ctx, dbpkg.DB, testKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !again.RefuseRequest("198.51.100.77") {
+		t.Error("a whole-site block did not survive a restart as one")
+	}
+	if err := s.Lift(ctx, site.ID); err != nil {
+		t.Fatal(err)
+	}
+	if s.RefuseRequest("198.51.100.77") {
+		t.Error("a lifted whole-site block still refused")
+	}
+	if _, err := s.BlockSource(ctx, fpOf("198.51.100.77"), true, true, "", time.Hour, "admin", "192.0.2.1"); err != nil {
+		t.Fatal(err)
+	}
+	if !s.RefuseRequest("198.51.100.79") {
+		t.Error("a whole-site network block did not refuse an address in its /24")
+	}
+	c.add(2 * time.Hour)
+	if s.RefuseRequest("198.51.100.79") {
+		t.Error("a whole-site block refused after it ended")
+	}
+	if _, err := s.BlockSource(ctx, fpOf("10.0.0.9"), false, true, "", time.Hour, "admin", "192.0.2.1"); !errors.Is(err, ErrPrivateSite) {
+		t.Errorf("a whole-site block of an address on the own network: %v, want ErrPrivateSite", err)
+	}
+	if _, err := s.BlockSource(ctx, fpOf("10.0.0.9"), false, false, "", time.Hour, "admin", "192.0.2.1"); err != nil {
+		t.Errorf("a sign-in block of an address on the own network was refused: %v", err)
+	}
+}
+
+// What the mask keeps tells an address on the own network.
+func TestAMaskedAddressTellsItsOwnNetwork(t *testing.T) {
+	for masked, want := range map[string]bool{
+		"10.0.x.x": true, "127.0.x.x": true, "192.168.x.x": true, "172.16.x.x": true, "172.31.x.x": true,
+		"169.254.x.x": true, "fd12:3456:x:x::": true, "fe80:0:x:x::": true, "0:0:x:x::": true,
+		"172.32.x.x": false, "192.169.x.x": false, "198.51.x.x": false, "2001:db8:x:x::": false, "11.0.x.x": false,
+	} {
+		if got := maskedPrivate(masked); got != want {
+			t.Errorf("maskedPrivate(%s) = %v, want %v", masked, got, want)
+		}
 	}
 }

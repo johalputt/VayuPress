@@ -55,9 +55,28 @@ VayuMail's SMTP submission, DKIM signing (RFC 6376), Maildir storage, queue and
 DNS tooling are original VayuPress code written in pure Go on the standard
 library; VayuPress does not bundle or fork the Mox mail server.
 
+Passkey sign-in (WebAuthn) is checked by the following Go modules, compiled
+into the binary:
+
+* go-webauthn/webauthn and go-webauthn/x (registration and sign-in checks)
+  Copyright (c) github.com/go-webauthn authors
+  Licensed under the BSD-3-Clause License.
+  https://github.com/go-webauthn/webauthn
+
+* fxamacker/cbor and x448/float16 (CBOR, the encoding of authenticator data)
+  Copyright (c) Faye Amacker; Montgomery Edwards and Faye Amacker
+  Licensed under the MIT License.
+
+* google/go-tpm (TPM attestation formats)
+  Copyright Google LLC
+  Licensed under the Apache License, Version 2.0.
+
+* golang-jwt/jwt v5, tinylib/msgp and philhofer/fwd (metadata and its encoding)
+  Licensed under the MIT License.
+
 Go module dependencies retain their respective upstream licenses (MIT,
-Apache-2.0, and BSD-3-Clause) as declared in go.mod / go.sum; see
-docs/ARCHITECTURE.md for the dependency license inventory.
+Apache-2.0, and BSD-3-Clause) as declared in go.mod / go.sum; each module's
+own LICENSE file, in the module source, is its full text.
 
 
 Bundled web font (Vayu theme):

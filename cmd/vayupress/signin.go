@@ -186,3 +186,18 @@ func (a *App) accountPasswordClosed(ctx context.Context, addr string) bool {
 // given with a named mailbox's address; the page says only that the email or
 // password is wrong.
 var errSigninNameRequired = errors.New("this account signs in with its sign-in name")
+
+// siteBlockMiddleware refuses a request from a source blocked from the whole
+// site. The check is by the address's fingerprint, as every block is.
+func (a *App) siteBlockMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if a.signin != nil && a.signin.RefuseRequest(auth.ClientIP(r)) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte("Access to this site from your network is blocked.\n"))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}

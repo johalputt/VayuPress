@@ -61,11 +61,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   the country fence still refuse it. A passkey whose counter went back, a
   copied authenticator, is refused. The browser is never told which
   addresses have passkeys. Each passkey can be named and removed.
+- **Passkey only.** An account or mailbox with two passkeys (one to use,
+  one spare) can turn its password off: its own password is then refused
+  at every door, the site, the console, the app and mail apps, while its
+  app passwords and passkeys keep working. Removing passkeys below two
+  turns the password back on, so one lost device never shuts anyone out,
+  and an administrator can turn it back on from Shield › Sign-in attempts,
+  which the install's key always opens. It belongs to the account that
+  turned it on: a mailbox at the same address keeps its own password.
+- **Blocks that cover the whole site.** A source's Block menu also blocks
+  its address, or its network, from every page of the install for 30 days,
+  not only from signing in. It is matched by the address's keyed
+  fingerprint before anything else is done for the request, and costs
+  nothing while no such block exists. An address on the install's own
+  network, which may be the proxy every visitor comes through, can be
+  blocked from sign-in but never from the whole site.
 
 ### Dependencies
 
 - `github.com/go-webauthn/webauthn` v0.18.2 checks passkeys: the
-  registration and sign-in signatures, rather than code of our own.
+  registration and sign-in signatures, rather than code of our own. It is
+  BSD-3-Clause; the modules it brings are MIT (`fxamacker/cbor`,
+  `x448/float16`, `golang-jwt/jwt`, `tinylib/msgp`, `philhofer/fwd`),
+  BSD-3-Clause (`go-webauthn/x`) and Apache-2.0 (`google/go-tpm`), each
+  named in NOTICE.
 
 ### Changed
 

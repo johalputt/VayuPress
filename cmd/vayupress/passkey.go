@@ -7,6 +7,7 @@ package main
 // with one at /os/login, and the block that lists and removes them.
 
 import (
+	"context"
 	"errors"
 	"html"
 	"net/http"
@@ -257,6 +258,32 @@ func (a *App) handlePasskeySignInFinish(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, r, http.StatusOK, map[string]string{"next": next})
 }
 
+// handlePasskeyOnly turns passkey only on or off for the session's own
+// principal.
+func (a *App) handlePasskeyOnly(w http.ResponseWriter, r *http.Request) {
+	principal, account, ok := passkeyPrincipal(r)
+	if !ok || a.passkeys == nil {
+		writeAPIError(w, r, http.StatusForbidden, "no-account", "Passkeys are for a signed-in account or mailbox.", "")
+		return
+	}
+	on := r.URL.Query().Get("on") == "1"
+	if err := a.passkeys.SetOnly(r.Context(), principal, on); err != nil {
+		writeAPIError(w, r, http.StatusConflict, "needs-spare", err.Error(), "")
+		return
+	}
+	dbpkg.AuditLog("passkey.only", dbpkg.AuditActor(r), account, map[bool]string{true: "on", false: "off"}[on])
+	w.Header().Set("HX-Refresh", "true")
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// passkeyOnly reports whether principal signs in by passkey only, so that
+// its own password is refused at every door. The door checks the password
+// first and refuses after, so the answer and its time are a wrong
+// password's; app passwords are not its own password and keep working.
+func (a *App) passkeyOnly(ctx context.Context, principal string) bool {
+	return a.passkeys != nil && a.passkeys.Only(ctx, principal)
+}
+
 // passkeysBlock lists the session's own passkeys with Remove, and the control
 // that adds one on this device.
 func (a *App) passkeysBlock(r *http.Request) string {
@@ -279,6 +306,16 @@ func (a *App) passkeysBlock(r *http.Request) string {
 				`<button type="button" class="btn btn--ghost btn--sm" hx-post="/os/api/passkeys/remove?id=` + strconv.FormatInt(e.ID, 10) +
 				`" hx-swap="none" hx-confirm="Remove this passkey? It will no longer sign you in.">Remove</button></div>`)
 		}
+	}
+	switch {
+	case a.passkeys.Only(r.Context(), principal):
+		b.WriteString(`<div class="vm-row"><span class="text-sm"><strong>Your password is off.</strong> You sign in with a passkey only, so a stolen or guessed password opens nothing.</span>` +
+			`<button type="button" class="btn btn--ghost btn--sm" hx-post="/os/api/passkeys/only?on=0" hx-swap="none">Turn the password back on</button></div>`)
+	case len(list) >= passkey.OnlyNeeds:
+		b.WriteString(`<div class="vm-row"><span class="text-sm">With a spare passkey you can turn your password off, so only a passkey signs you in. Mail apps keep their app passwords.</span>` +
+			`<button type="button" class="btn btn--sm" hx-post="/os/api/passkeys/only?on=1" hx-swap="none" hx-confirm="Turn your password off? Only your passkeys will sign you in. Removing passkeys below two turns it back on.">Sign in by passkey only</button></div>`)
+	case len(list) == 1:
+		b.WriteString(`<p class="text-xs muted">Add a second passkey, on another device, and you can turn your password off.</p>`)
 	}
 	b.WriteString(`<div class="vm-row"><input class="input input--sm" data-passkey-name placeholder="This device" aria-label="Name for the passkey" maxlength="64">` +
 		`<button type="button" class="btn btn--sm" data-passkey-add>Add a passkey</button><span class="text-xs muted" data-passkey-say role="status"></span></div></div>`)

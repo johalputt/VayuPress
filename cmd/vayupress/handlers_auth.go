@@ -668,7 +668,7 @@ func (a *App) authMailAccount(ctx context.Context, email, pass, code string) (ad
 		addr += "@" + a.vayuMail.Config().Domain
 	}
 	hash := a.vayuMail.Accounts().HashFor(ctx, addr)
-	if hash == "" || !auth.VerifySecretArgon2id(pass, hash) || a.accountPasswordClosed(ctx, addr) {
+	if hash == "" || !auth.VerifySecretArgon2id(pass, hash) || a.accountPasswordClosed(ctx, addr) || a.passkeyOnly(ctx, "vmail:"+addr) {
 		return addr, false, false
 	}
 	if secret, enabled := a.vayuMail.Accounts().TOTPStatus(ctx, addr); enabled && secret != "" {

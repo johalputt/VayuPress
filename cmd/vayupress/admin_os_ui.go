@@ -595,6 +595,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/passkeys/begin", a.handlePasskeyAddBegin)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/passkeys/finish", a.handlePasskeyAddFinish)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/passkeys/remove", a.handlePasskeyDelete)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/passkeys/only", a.handlePasskeyOnly)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/sign-ins/password-on", a.handleOSSigninPasswordOn)
 		// Shield › Sign-in attempts (admin_os_signin.go).
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/shield/sign-ins", a.handleOSSignins)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/sign-ins/block", a.handleOSSigninBlock)
@@ -2093,7 +2095,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, err := a.userStore.Authenticate(signinCtx, email, pass)
-	if err == nil && a.accountPasswordClosed(signinCtx, email) {
+	if err == nil && (a.accountPasswordClosed(signinCtx, email) || a.passkeyOnly(signinCtx, "user:"+u.ID)) {
 		// The address of a mailbox with a sign-in name: the password was
 		// checked, and the sign-in fails as a wrong one does.
 		u, err = nil, errSigninNameRequired

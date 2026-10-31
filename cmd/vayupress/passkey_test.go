@@ -26,6 +26,7 @@ import (
 	"github.com/johalputt/vayupress/internal/passkey"
 	"github.com/johalputt/vayupress/internal/signin"
 	"github.com/johalputt/vayupress/internal/users"
+	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
 // softKey is an authenticator in software: one ES256 key and its credential
@@ -268,7 +269,7 @@ func TestAPasskeySignInIsRefusedWhenItShouldBe(t *testing.T) {
 	a.signin.Record(signinAttemptFrom("198.51.100.145"))
 	_ = a.signin.Flush(ctx)
 	rows, _ := a.signin.Attempts(ctx, "", "x@example.com", 1)
-	if _, err := a.signin.BlockSource(ctx, rows[0].FP, false, "", time.Hour, "admin", "192.0.2.200"); err != nil {
+	if _, err := a.signin.BlockSource(ctx, rows[0].FP, false, false, "", time.Hour, "admin", "192.0.2.200"); err != nil {
 		t.Fatal(err)
 	}
 	if rec := signInWith(t, a, k, handle, "198.51.100.145"); rec.Code != http.StatusForbidden {
@@ -335,5 +336,132 @@ func TestACopiedPasskeyIsRefused(t *testing.T) {
 	copied.count = 0
 	if rec := signInWith(t, a, &copied, handle, "198.51.100.151"); rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), "looks copied") {
 		t.Errorf("a copied passkey = %d %s, want refused as copied", rec.Code, rec.Body.String())
+	}
+}
+
+// postOnly turns u's passkey only on or off and gives back the answer.
+func postOnly(a *App, u *users.User, on string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/os/api/passkeys/only?on="+on, nil)
+	req = withUser(req, u)
+	rec := httptest.NewRecorder()
+	a.handlePasskeyOnly(rec, req)
+	return rec
+}
+
+// Passkey only needs a spare passkey; then the mailbox's own password is
+// refused at every door while an app password and a passkey still sign in;
+// removing passkeys below two, or the administrator, turns the password back
+// on.
+func TestPasskeyOnlyRefusesTheMailboxsOwnPassword(t *testing.T) {
+	a := passkeyApp(t)
+	ctx := context.Background()
+	if err := a.vayuMail.Accounts().SetRequireDeviceApproval(ctx, lockedMailbox, false); err != nil {
+		t.Fatal(err)
+	}
+	boss := holderOf(lockedMailbox)
+	k := newSoftKey(t)
+	handle := addPasskey(t, a, boss, k)
+	if rec := postOnly(a, boss, "1"); rec.Code != http.StatusConflict {
+		t.Fatalf("passkey only with one passkey = %d, want refused for want of a spare", rec.Code)
+	}
+	addPasskey(t, a, boss, newSoftKey(t))
+	if rec := postOnly(a, boss, "1"); rec.Code != http.StatusOK {
+		t.Fatalf("passkey only with a spare = %d", rec.Code)
+	}
+	const secret = "abcdabcdabcdabcdabcd"
+	hash, _ := auth.HashSecretArgon2id(secret)
+	_, _ = a.vayuMail.Accounts().CreateAppPassword(ctx, lockedMailbox, "phone", hash)
+
+	if _, got := postVayuMailLoginCode(t, a, "198.51.100.160", lockedMailbox, lockedRight, ""); got == "authenticated" {
+		t.Error("the site's sign-in took the password of a mailbox that signs in by passkey only")
+	}
+	if ok, _ := (&vayuMailBridge{app: a}).AuthUser(lockedMailbox, lockedRight, vmail.Origin{Addr: "198.51.100.161:1", Door: "imap"}); ok {
+		t.Error("IMAP took the password of a mailbox that signs in by passkey only")
+	}
+	form := url.Values{"email": {lockedMailbox}, "password": {lockedRight}}
+	req := httptest.NewRequest(http.MethodPost, "/os/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = "198.51.100.162:5000"
+	rec := httptest.NewRecorder()
+	a.handleOSLoginSubmit(rec, req)
+	if rec.Code == http.StatusSeeOther {
+		t.Error("the console took the password of a mailbox that signs in by passkey only")
+	}
+	if ok, _ := (&vayuMailBridge{app: a}).AuthUser(lockedMailbox, secret, vmail.Origin{Addr: "198.51.100.163:1", Door: "imap"}); !ok {
+		t.Error("an app password stopped working under passkey only")
+	}
+	if rec := signInWith(t, a, k, handle, "198.51.100.164"); rec.Code != http.StatusOK {
+		t.Errorf("the passkey under passkey only = %d", rec.Code)
+	}
+
+	list, _ := a.passkeys.List(ctx, "vmail:"+lockedMailbox)
+	del := httptest.NewRequest(http.MethodPost, "/os/api/passkeys/remove?id="+itoaSafe(int(list[1].ID)), nil)
+	a.handlePasskeyDelete(httptest.NewRecorder(), withUser(del, boss))
+	if _, got := postVayuMailLoginCode(t, a, "198.51.100.165", lockedMailbox, lockedRight, ""); got != "authenticated" {
+		t.Errorf("with one passkey left the password stayed off: %s", got)
+	}
+
+	addPasskey(t, a, boss, newSoftKey(t))
+	_ = postOnly(a, boss, "1")
+	adm := httptest.NewRequest(http.MethodPost, "/os/api/shield/sign-ins/password-on?principal="+url.QueryEscape("vmail:"+lockedMailbox), nil)
+	a.handleOSSigninPasswordOn(httptest.NewRecorder(), adm)
+	if _, got := postVayuMailLoginCode(t, a, "198.51.100.166", lockedMailbox, lockedRight, ""); got != "authenticated" {
+		t.Errorf("after the administrator turned it back on the password stayed off: %s", got)
+	}
+}
+
+// An install account's passkey only refuses that account's password, not
+// the password of the mailbox at the same address, which is another's.
+func TestPasskeyOnlyIsTheAccountsNotTheAddresss(t *testing.T) {
+	a := passkeyApp(t)
+	ctx := context.Background()
+	const consolePass = "the-console-password-1"
+	u, err := a.userStore.Create(ctx, lockedMailbox, "Boss", consolePass, "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addPasskey(t, a, u, newSoftKey(t))
+	addPasskey(t, a, u, newSoftKey(t))
+	if rec := postOnly(a, u, "1"); rec.Code != http.StatusOK {
+		t.Fatalf("passkey only = %d", rec.Code)
+	}
+	try := func(pass string) int {
+		form := url.Values{"email": {lockedMailbox}, "password": {pass}}
+		req := httptest.NewRequest(http.MethodPost, "/os/login", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.RemoteAddr = "198.51.100.170:5000"
+		rec := httptest.NewRecorder()
+		a.handleOSLoginSubmit(rec, req)
+		return rec.Code
+	}
+	if code := try(consolePass); code == http.StatusSeeOther {
+		t.Error("the account's own password signed in under passkey only")
+	}
+	auth.LiftAllAccountLockouts()
+	if code := try(lockedRight); code != http.StatusSeeOther {
+		t.Errorf("the mailbox's password at the same address = %d, want a sign-in: passkey only is the account's", code)
+	}
+}
+
+// The middleware refuses a request from a source blocked from the whole site
+// and passes any other.
+func TestTheSiteBlockMiddlewareRefusesABlockedSource(t *testing.T) {
+	a := passkeyApp(t)
+	ctx := context.Background()
+	a.signin.Record(signinAttemptFrom("198.51.100.180"))
+	_ = a.signin.Flush(ctx)
+	rows, _ := a.signin.Attempts(ctx, "", "x@example.com", 1)
+	if _, err := a.signin.BlockSource(ctx, rows[0].FP, false, true, "", time.Hour, "admin", "192.0.2.200"); err != nil {
+		t.Fatal(err)
+	}
+	h := a.siteBlockMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) }))
+	for ip, want := range map[string]int{"198.51.100.180": http.StatusForbidden, "198.51.100.181": http.StatusTeapot} {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.RemoteAddr = ip + ":5000"
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Errorf("a request from %s = %d, want %d", ip, rec.Code, want)
+		}
 	}
 }

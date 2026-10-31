@@ -208,7 +208,82 @@ func (s *Store) Delete(ctx context.Context, principal string, id int64) error {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNoPasskey
 	}
-	return nil
+	// Passkey only needs a spare: with fewer than two left, one lost device
+	// would shut the principal out, so the password comes back.
+	if s.count(ctx, principal) < OnlyNeeds {
+		_, err = s.db.ExecContext(ctx, `DELETE FROM passkey_only WHERE principal = ?`, principal)
+	}
+	return err
+}
+
+// ── Passkey only ─────────────────────────────────────────────────────────────
+
+// OnlyNeeds is how many passkeys a principal must hold to sign in by passkey
+// only: one to use and one spare, so losing a device does not shut them out.
+const OnlyNeeds = 2
+
+// ErrNeedsSpare refuses passkey only to a principal without a spare passkey.
+var ErrNeedsSpare = errors.New("passkey: add a second passkey, on another device, before turning off the password")
+
+func (s *Store) count(ctx context.Context, principal string) int {
+	var n int
+	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM passkeys WHERE principal = ?`, principal).Scan(&n)
+	return n
+}
+
+// SetOnly turns passkey only on or off for principal. On needs OnlyNeeds
+// passkeys.
+func (s *Store) SetOnly(ctx context.Context, principal string, on bool) error {
+	if !on {
+		_, err := s.db.ExecContext(ctx, `DELETE FROM passkey_only WHERE principal = ?`, principal)
+		return err
+	}
+	if s.count(ctx, principal) < OnlyNeeds {
+		return ErrNeedsSpare
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO passkey_only (principal, since) VALUES (?, ?) ON CONFLICT (principal) DO NOTHING`, principal, s.now().Unix())
+	return err
+}
+
+// Only reports whether any of principals signs in by passkey only.
+func (s *Store) Only(ctx context.Context, principals ...string) bool {
+	if s == nil {
+		return false
+	}
+	for _, p := range principals {
+		var n int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM passkey_only WHERE principal = ?`, p).Scan(&n); err == nil && n > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// OnlyEntry is a principal signing in by passkey only, as the administrator's
+// page lists it.
+type OnlyEntry struct {
+	Principal, Account string
+	Since              time.Time
+}
+
+// OnlyList is every principal signing in by passkey only.
+func (s *Store) OnlyList(ctx context.Context) ([]OnlyEntry, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT o.principal, COALESCE((SELECT account FROM passkeys p WHERE p.principal = o.principal LIMIT 1), ''), o.since FROM passkey_only o ORDER BY o.since`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []OnlyEntry
+	for rows.Next() {
+		var e OnlyEntry
+		var since int64
+		if err := rows.Scan(&e.Principal, &e.Account, &since); err != nil {
+			return nil, err
+		}
+		e.Since = time.Unix(since, 0)
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
 
 // ── Ceremonies ───────────────────────────────────────────────────────────────

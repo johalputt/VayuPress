@@ -276,14 +276,14 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 	consoleOpen := a.userStore != nil && !a.vayuMail.IsHandedOver(emailAddr)
 	matched := false
 	if consoleOpen {
-		_, err := a.userStore.Authenticate(ctx, emailAddr, body.Password)
-		matched = err == nil
+		u, err := a.userStore.Authenticate(ctx, emailAddr, body.Password)
+		matched = err == nil && !a.passkeyOnly(ctx, "user:"+u.ID)
 	}
 	if !matched {
 		// Verify even when the account is unknown (hash == "") to keep the
 		// timing and the response identical whether or not the address exists.
 		hash := accts.HashFor(ctx, emailAddr)
-		matched = auth.VerifySecretArgon2id(body.Password, hash) && hash != ""
+		matched = auth.VerifySecretArgon2id(body.Password, hash) && hash != "" && !a.passkeyOnly(ctx, "vmail:"+emailAddr)
 	}
 	// A mailbox with a sign-in name is not signed in to by its address.
 	if a.accountPasswordClosed(ctx, emailAddr) {
