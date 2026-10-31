@@ -162,6 +162,53 @@ newsletter sign-ups and webmentions are rate-limited per client address
 
 ---
 
+## Signing in
+
+- **Failed sign-ins are recorded at every door and stopped.** A source failing
+  on three accounts within an hour is refused sign-in for six hours, doubling
+  up to a day; a blocked source is refused before its password is checked. An
+  address is stored masked and as a fingerprint keyed outside the database
+  (`internal/signin`, ADR-0167).
+- **A right password with a wrong code** tells the holder at once, at both
+  their addresses (`notifySigninAlarm`).
+- **Passkeys** are checked by `go-webauthn`; a passkey signs in only as the
+  account that added it, a counter that went back is refused, and the browser
+  is never told which addresses have one. Passkey-only needs two passkeys
+  (`internal/passkey`, ADR-0168).
+- **A mailbox's public address can stop being a sign-in name** at every door;
+  the refusal reads and takes as long as a wrong password (ADR-0169).
+
+## Mail
+
+- **The sender's domain check is sealed at delivery**: an HMAC, with a key
+  only the install holds, over the domain and the message as delivered; a
+  sender-written copy is removed by the inbound server, and the reader trusts
+  only a seal it can verify (`internal/vayuos/mail/verdict.go`, ADR-0170).
+- **HTML mail is sanitised** to an allowlist with no scripts, handlers or
+  styles, under the console's CSP; pictures are fetched only on request and
+  through this server, and tracker pictures never (`vayuos_mail.go`,
+  `vayuos_mail_pictures.go`).
+- **Sealed messages** keep only a salt, a nonce and an AES-GCM box keyed by
+  Argon2id over the passphrase, with the message id as associated data; ten
+  wrong passphrases close one for good, failures count against the address,
+  and at most four derivations run at once (`internal/vayuos/mail/sealed.go`,
+  ADR-0171).
+- **Model help** sends nothing until the holder turns it on, sends to a model
+  outside only where an administrator allowed, masks personal details for one,
+  never sends an encrypted or confidential message, and helps only the
+  holder's own mailbox (`internal/vayuos/mail/modelhelp.go`, ADR-0173).
+
+## Fetching from YouTube
+
+A followed channel is read from three hosts only, `www.youtube.com`,
+`youtube.googleapis.com` and `i.ytimg.com`, over HTTPS, and only at addresses
+built from a checked channel or video id (`youtube.Fetchable`). The fetcher
+checks that before each request and again where any redirect ended
+(`youtubeGet`), on top of `internal/safefetch`'s public-address rule. A feed's
+own links are never fetched; a description is escaped as text; the API key is
+a sealed credential, and an API error never carries the address that holds it
+(ADR-0175).
+
 ## Dependency hygiene
 
 All Go modules (core + every tool under `tools/`) are kept current via

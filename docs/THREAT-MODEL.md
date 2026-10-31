@@ -120,6 +120,11 @@ mitigation that cannot be named is listed as a residual risk instead.
 | Privilege escalation (TA-06) | Roles per path, admin by default for the console API | `osPathMinLevel` (`cmd/vayupress/handlers_auth.go`) |
 | API key theft | Scoped, hashed, expiring, revocable keys | `internal/apikeys` (ADR-0134) |
 | An AI client doing too much | The connector's tools are limited to its key's scopes | `internal/mcp`, ADR-0139 |
+| Password spraying (TA-03): one source, many accounts | Every failed sign-in recorded at every door; a source failing on 3 accounts in an hour refused sign-in for 6 h, doubling to a day; refused before its password is checked | `internal/signin`, `cmd/vayupress/signin.go` (ADR-0167) |
+| A password known, a code not | The holder is told at once, at both addresses, where from and through which door | `notifySigninAlarm` (ADR-0167) |
+| Guessing at a public mail address | A mailbox may sign in by a name of its own; the address then signs in with no password at any door | `cmd/vayupress/vayuos_mail_signin.go` (ADR-0169) |
+| Phishing a password | Passkeys, bound to the account that added them; passkey-only with two passkeys | `internal/passkey`, `go-webauthn` (ADR-0168) |
+| A session left open somewhere | Each holder sees the sessions in their name, with device and time, and ends any | `sessions_mine.go` (ADR-0169) |
 
 ### Injection
 
@@ -130,12 +135,16 @@ mitigation that cannot be named is listed as a residual risk instead.
 | Template injection | `html/template` auto-escaping | Go standard library |
 | Path traversal | Cleaned and confined paths | `render.CacheWrite`, `unsafePathComponent`, the media name pattern |
 | Mail header injection | A decoded line break in a header becomes a space | `decodeMIMEWord` (`internal/vayuos/mail`) |
+| A forged "checked" header in mail | The sender's domain check is sealed at delivery with an install-held HMAC over the message; a sender-written copy is removed | `internal/vayuos/mail/verdict.go` (ADR-0170) |
+| A link that names one site and goes to another | The reader warns, and says when the sender is not a contact | `cmd/vayupress/vayuos_mail_trust.go` (ADR-0170) |
+| Markup in a YouTube description | The description is escaped as text before it becomes Markdown; only http(s) addresses and timestamps become links | `internal/youtube/post.go` (ADR-0175) |
 
 ### Network
 
 | Threat | Mitigation | Implementation |
 |--------|------------|----------------|
 | SSRF (TA-04) | Fetches of URLs a user or plugin supplies refuse private, loopback and link-local addresses | `internal/safefetch` — embeds, media import, AI providers, VayuFlow, feeds, mail recovery |
+| SSRF through a followed YouTube channel | Nothing pasted or read from a feed is fetched: every address is built from a checked id on three YouTube hosts, checked again where a redirect ended | `youtube.Fetchable`, `youtubeGet` (ADR-0175) |
 | Clickjacking | `X-Frame-Options: DENY`, `frame-ancestors 'none'` | Application headers |
 | Protocol downgrade | HSTS, two years with subdomains (clearnet only) | Application headers; nginx `ssl_protocols TLSv1.2 TLSv1.3` |
 | Application-layer floods, scrapers (TA-02) | VayuShield: lane, fair-shed, reputation, proof-of-work, optional XDP | `internal/vayushield` (ADR-0111) |
@@ -146,7 +155,9 @@ mitigation that cannot be named is listed as a residual risk instead.
 hosts; ACME (certbot); the update mirror (releases verified against a pinned
 Ed25519 key); the datacenter range feeds (AWS, Google Cloud, DigitalOcean); the
 Tor network when VayuTor is on; and, only when the operator configures them,
-payment providers, AI providers, Cloudflare's API, IndexNow and webmentions.
+payment providers, AI providers, Cloudflare's API, IndexNow, webmentions, and
+YouTube's three hosts for a followed channel (`www.youtube.com`,
+`youtube.googleapis.com` with the operator's key, `i.ytimg.com`).
 
 ### Supply Chain
 
@@ -169,6 +180,10 @@ payment providers, AI providers, Cloudflare's API, IndexNow and webmentions.
 | Database corruption | WAL mode; integrity checked on every staged update and every restore drill | `internal/update/snapshot.go`, `internal/vayukeep` |
 | Migration tampering | Checksum verification at start; the service will not start on drift | `internal/db` (ADR-0034) |
 | Reader tracking | No cookies, no IP or user agent stored; a daily-rotating salted hash | `internal/vayuanalytics/session` (ADR-0097) |
+| A sign-in attacker's address kept | Kept masked for people and as a fingerprint keyed outside the database; 30 days | `internal/signin` (ADR-0167) |
+| Mail read by an outside model | Off until the holder turns it on; outside only where an administrator allowed; personal details masked; encrypted or confidential messages never sent | `internal/vayuos/mail/modelhelp.go` (ADR-0173) |
+| A sealed message's passphrase guessed | Argon2id, ten tries then closed for good, failures counted against the address, four derivations at once | `internal/vayuos/mail/sealed.go` (ADR-0171) |
+| A mail open being reported | Tracker pictures are never fetched; other pictures only on request, through this server | `cmd/vayupress/vayuos_mail_pictures.go` (ADR-0170) |
 
 ### Infrastructure
 
@@ -178,7 +193,7 @@ payment providers, AI providers, Cloudflare's API, IndexNow and webmentions.
 | Writes outside the data directories | `ProtectSystem=full`, `ReadWritePaths` limited to data, log, cache, static and backup | `vayupress.service` |
 | Port scanning | `ufw`: 22, 80, 443 and mail ports | `scripts/deploy-vayupress.sh` |
 | Brute force on nginx | fail2ban jails `nginx-http-auth`, `nginx-limit-req` | `/etc/fail2ban/jail.d/vayupress.conf` |
-| Plugin escape | seccomp (seven architectures), namespaces, capabilities dropped, FDs closed, minimal env | `internal/sandbox` (ADR-0057) |
+| Plugin escape | Namespaces, cgroups, run as a set user, the binary's hash checked, FDs closed, minimal env; the seccomp filter, `NoNewPrivs` and the capability drop are written but not yet applied to the plugin process (RR-08) | `internal/sandbox` (ADR-0057) |
 | Certificate expiry | certbot's renewal timer | certbot |
 
 ---
@@ -194,6 +209,7 @@ payment providers, AI providers, Cloudflare's API, IndexNow and webmentions.
 | RR-05 | Mutual TLS for plugin IPC | Low | Security Lead | Plugins are local subprocesses; revisit when the plugin SDK is external |
 | RR-06 | IndexNow trusts the configured key and host | Low | Operator | Submissions are suppressed in read-only, quarantined and maintenance modes and journalled; the key is operator-supplied and not rotated automatically |
 | RR-07 | Both Spaces share one machine | Medium | Operator | Spaces separate identity and content, not the host; the console states this (ADR-0143) |
+| RR-08 | A plugin runs without its seccomp filter and capability drop | Medium | Security Lead | Both are written in `internal/sandbox` and need a step in the child between fork and exec; until then a plugin is held by its namespaces, cgroups, user and hash, and only a plugin the operator installed runs |
 
 ---
 
@@ -204,3 +220,4 @@ payment providers, AI providers, Cloudflare's API, IndexNow and webmentions.
 | 2026-06-12 | @johalputt | Initial threat model (v1.0) |
 | 2026-06-14 | @johalputt | Added the federation HTTP-signature gap and RR-06 (IndexNow) after a code audit |
 | 2026-10-16 | @johalputt | v2.0, rewritten against the code: the isso comment server, the `vayupress` user, `/data` paths, the cron integrity check and federation are gone; entry points, assets, outbound connections and mitigations now name their mechanisms; RR-02 (read-only does not refuse post writes), RR-04 and RR-07 added |
+| 2026-10-31 | @johalputt | Sign-in attacks (spraying, a known password, a public address, phishing, open sessions), forged mail verdicts, link warnings, outside models, sealed mail, mail trackers, YouTube following; the plugin sandbox row corrected to what is applied, and RR-08 |

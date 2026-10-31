@@ -12,7 +12,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 - **A YouTube channel as a blog, posting by itself.** Content › YouTube
   takes a channel's address (its page, its @handle, or any of its videos or
-  Shorts) and a site, shows the channel to confirm, and from then on every
+  Shorts) and a site, or a new site made in the same step, shows the channel
+  to confirm, and from then on every
   video becomes a post with nothing done by hand: its title; its
   description as text, with its links and its timestamps as links that open
   the video at that moment; its hashtags as tags; its picture copied into
@@ -27,7 +28,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - **With a YouTube API key** (Settings › API keys, kept sealed), a followed
   channel brings its whole back catalogue, read a few pages at a time over
   successive checks, and its premieres and streams are posted before they
-  start, then rewritten as the video once they have aired.
+  start, then rewritten as the video once they have aired. A spent quota or a
+  refused key holds the back catalogue for a later check; new videos keep
+  coming from the channel's feeds.
+- **Guides and decision records for what 3.18.17 to 3.18.20 brought.**
+  docs/VAYUMAIL.md is Mail's guide for a mailbox's holder and its
+  administrator; docs/YOUTUBE.md the YouTube one; VayuShield's guide gains its
+  sign-in section, and SECURITY.md and THREAT-MODEL.md name the mechanism of
+  each new control. ADR-0167 to ADR-0175 record the decisions: sign-in
+  attempts, passkeys, the sign-in name, the sealed verdict, sealed mail,
+  throwaway addresses, model help, the sorted Inbox and YouTube.
 
 ### Security
 

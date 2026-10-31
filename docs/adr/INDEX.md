@@ -9,6 +9,15 @@
 
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
+| [ADR-0175](ADR-0175-a-youtube-channel-as-a-blog.md) | A YouTube channel as a blog: every video a post through the editor's paths; public feeds first, the Data API for the back catalogue and premieres; only built addresses on three hosts are fetched; each video posted once (migration 129) | Accepted | Core | 2026-10-31 |
+| [ADR-0174](ADR-0174-the-inbox-sorts-itself-from-headers.md) | The Inbox sorts itself into Primary, Updates, Newsletters, Receipts and Social from headers and subject alone, in the listing cache; Follow-ups and Unsubscribe views | Accepted | Core | 2026-10-31 |
+| [ADR-0173](ADR-0173-model-help-with-server-side-cautions.md) | Model help in Mail: off until turned on; local only at loopback; to a model outside, personal details masked and encrypted or confidential messages never sent; the holder's own mailbox only | Accepted | Core | 2026-10-31 |
+| [ADR-0172](ADR-0172-throwaway-addresses.md) | Throwaway addresses a holder makes in a click; one turned off is refused at the door, not filed, and not caught by the catch-all | Accepted | Core | 2026-10-31 |
+| [ADR-0171](ADR-0171-sealed-mail-for-anyone.md) | Mail to anyone, sealed with a passphrase: kept on the server as Argon2id and AES-GCM bound to its id; ten wrong passphrases close it; derivations bounded | Accepted | Core | 2026-10-31 |
+| [ADR-0170](ADR-0170-a-verdict-sealed-at-delivery.md) | The sender's domain check is sealed onto a message at delivery with an install-held HMAC key; the reader's trust line, trackers never fetched, link and name warnings, tracking parameters removed | Accepted | Core | 2026-10-31 |
+| [ADR-0169](ADR-0169-a-mailbox-signs-in-by-its-own-name.md) | A mailbox signs in by a name of its own instead of its public address; where you are signed in; a security checklist (migration 128) | Accepted | Core | 2026-10-31 |
+| [ADR-0168](ADR-0168-passkeys-and-passkey-only.md) | Passkeys through go-webauthn; a passkey signs in only as its own account; passkey-only needs two passkeys (migration 126) | Accepted | Core | 2026-10-31 |
+| [ADR-0167](ADR-0167-failed-sign-ins-recorded-and-stopped.md) | Failed sign-ins recorded at every door with the address masked and keyed; password spraying blocked by itself; whole-site blocks (migrations 125, 127) | Accepted | Core | 2026-10-31 |
 | [ADR-0166](ADR-0166-a-theme-may-bring-its-layout.md) | A theme may name a template set; Halcyon is the first, and the theme new installs start on; every other theme byte-identical; existing installs keep theirs (migration 108) | Accepted | Core | 2026-10-10 |
 | [ADR-0165](ADR-0165-a-site-edited-by-file-or-built-from-a-repository.md) | A hosted site is edited file by file, or built from a repository the install pulls; one deploy path; a followed site refuses hand edits | Accepted | Core | 2026-09-27 |
 | [ADR-0164](ADR-0164-outside-services-in-a-sites-csp.md) | A site may allow outside services: passive content from typed origins, code only from a vetted catalogue; one merge point; session pages always strict | Accepted | Security | 2026-09-26 |

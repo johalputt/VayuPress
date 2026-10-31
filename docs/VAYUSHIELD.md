@@ -8,7 +8,8 @@ service.
 
 This guide is for the operator: what the shield does, in what order, what you
 control and where, what it records, what it cannot do, and what it costs. The
-design decisions behind it are in ADR-0111, 0112, 0118, 0137 and 0158.
+design decisions behind it are in ADR-0111, 0112, 0118, 0137, 0158 and, for
+sign-ins, 0167.
 
 ## Where it sits
 
@@ -135,6 +136,39 @@ dropped and has lost.
 The site's Security page reads these rows: refusals and challenges over
 time, the top paths, networks and countries, the rules that matched, the
 live feed, and the same range of the site's traffic beside them.
+
+## Sign-in attempts
+
+The shield also watches the doors that take a password: the site's mail
+sign-in, the console, the app, IMAP, POP3, SMTP, contacts and calendar sync,
+VayuTalk and the recovery code (ADR-0167).
+
+- **Every failed sign-in is recorded** by account, door and source: a wrong
+  password, a right password with a wrong code, or a try at a paused account.
+  An address is kept with its last part hidden (`203.0.x.x`) and as a
+  fingerprint made with a key that is not in the database. Attempts are kept
+  30 days.
+- **Password spraying is blocked by itself.** A source that fails on three or
+  more accounts within an hour is refused sign-in for six hours; caught again
+  within a day of that block ending, for twelve, then a day at most. An
+  address on the install's own network is never blocked automatically.
+  Signed-in sessions are untouched.
+- **Shield › Sign-in attempts** shows the failed attempts over 24 hours, 7 or
+  30 days: the sources, each with how many attempts on how many accounts,
+  through which doors and whether it knew a password; the accounts most
+  tried; the doors; a map and the hours. Each source has a **Block** menu:
+  the address for a day, 30 days or always; its network for 30 days; sign-ins
+  from its country; or the address or network from **the whole site** for 30
+  days, refused on every page, not only at sign-in. **It was one of us** clears
+  a source. Each block in force has **Lift**, and every action is in the audit
+  log.
+- A blocked source, or one outside an account's countries, is refused
+  **before its password is checked**. A block or a fence that would stop the
+  person setting it is refused, and an address on the install's own network,
+  which may be the proxy every visitor comes through, can be blocked from
+  sign-in but never from the whole site.
+- An account set to **passkey only** (ADR-0168) can have its password turned
+  back on here by an administrator.
 
 ## What it cannot do
 
