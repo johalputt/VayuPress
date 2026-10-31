@@ -6217,6 +6217,16 @@
   .vp-os[data-ui="still-air"] .mx-settings { grid-template-columns: minmax(0, 1fr); gap: var(--space-5); }
   .vp-os[data-ui="still-air"] .mx-settings__nav { position: static; }
 }
+/* The Inbox's categories as tabs over the list, each with its unread count. */
+.vp-os[data-ui="still-air"] .mx-tabs { display: flex; gap: var(--space-1); margin: 0 0 var(--space-3); padding: 0 var(--space-2); overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .mx-tabs__tab {
+  display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-3); margin-bottom: -1px;
+  font: var(--type-small); font-weight: 500; color: var(--text-2); text-decoration: none; white-space: nowrap; border-bottom: 2px solid transparent;
+}
+.vp-os[data-ui="still-air"] .mx-tabs__tab:hover { color: var(--text-1); text-decoration: none; }
+.vp-os[data-ui="still-air"] .mx-tabs__tab[aria-current="page"] { color: var(--text-1); border-bottom-color: var(--accent); }
+.vp-os[data-ui="still-air"] .mx-tabs__n { font: var(--type-meta); font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+.vp-os[data-ui="still-air"] .is-searching .mx-tabs { display: none; }
 /* The trust line: quiet facts under the sender, each only when it applies;
    and the one amber line when a link or a name pretends. */
 .vp-os[data-ui="still-air"] .mx-trust { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); margin: var(--space-3) 0 0; font: var(--type-small); color: var(--text-3); }

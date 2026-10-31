@@ -59,6 +59,8 @@ func summarize(r io.Reader, h *cachedHeaders) {
 	h.messageID = cleanMessageID(get("Message-Id"))
 	h.inReplyTo = cleanMessageID(get("In-Reply-To"))
 	h.refs = splitMessageIDs(get("References"))
+	h.category = categorize(hdr, h.from, h.subject)
+	h.list = get("List-Unsubscribe") != ""
 	if err != nil {
 		return // a header block with no end: no body to speak of
 	}

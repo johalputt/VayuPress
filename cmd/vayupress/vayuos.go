@@ -1888,6 +1888,11 @@ func mailFolderNav(n mailNav) string {
 	// the whole folder.
 	sb.WriteString(`<div class="sa-appside__group">Views</div>`)
 	for _, v := range mailViews {
+		// The categories are the list's tabs; a smart view is offered while
+		// it holds something, or while it is the one open.
+		if v.Tab || (v.Smart && n.ViewCounts[v.Key] == 0 && v.Key != n.View) {
+			continue
+		}
 		q, cur := "user="+user+"&folder="+qparam(n.Active)+"&view="+v.Key, ""
 		if v.Key == n.View {
 			q, cur = "user="+user+"&folder="+qparam(n.Active), ` aria-current="true"`
@@ -2279,21 +2284,30 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 		b.WriteString(`<div class="empty-state">Could not read folder: ` + esc(err.Error()) + `</div>`)
 		return b.String(), mailListFacts{}
 	}
-	counts := mailViewCounts(all)
+	vc := mailViewCtx{inbox: strings.EqualFold(folder, "Inbox"), now: time.Now()}
+	if vc.inbox {
+		if sent, err := a.vayuMail.ListFolder(rd, "Sent"); err == nil {
+			vc.answered = mailAnswered(sent)
+		}
+	}
+	counts := mailViewCounts(all, vc)
 	msgs := all
 	if view != "" {
 		msgs = make([]vmail.StoredMessage, 0, counts[view])
 		for _, m := range all {
-			if mailInView(m, view) {
+			if mailInView(m, view, vc) {
 				msgs = append(msgs, m)
 			}
+		}
+		if view == "lists" {
+			msgs = mailOnePerSender(msgs)
 		}
 	}
 
 	// Header: the folder (or the view of it), what is unread, compose.
 	title := folder
 	for _, v := range mailViews {
-		if v.Key == view {
+		if v.Key == view && !v.Tab {
 			title = v.Label + ` <span class="mx-head__in">in ` + esc(folder) + `</span>`
 		}
 	}
@@ -2325,6 +2339,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 	b.WriteString(`</div><div class="mx-head__sel" aria-live="polite"><h2 class="mx-head__title" data-vm-bulkcount>0 selected</h2><span class="mx-head__fill"></span>` +
 		`<button type="button" class="mx-head__link" data-vm-select-all` + mailCmd("Select every message in the list", "Mail", "") + `>Select all</button>` +
 		`<button type="button" class="btn btn--sm" data-vm-select-done` + mailCmd("Leave selection", "Mail", "Escape") + `>Done</button></div></header>`)
+	b.WriteString(mailCategoryTabs(user, folder, view, counts))
 	// The search itself is in the top bar (mailSearchForm); its results take
 	// the list's place here.
 	results := ""

@@ -88,6 +88,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
+- **The Inbox sorts itself, with nothing leaving the server.** Each
+  message is placed in Primary, Updates, Newsletters, Receipts or Social
+  from its headers and subject alone, as the listing reads them. When the
+  Inbox holds mail of two kinds or more, the kinds are tabs over the list,
+  each with its unread count; All, the first, is the Inbox as before. Two
+  views join the sidebar while they hold something: Follow-ups, a person's
+  message you read more than two days ago and have not answered (counted
+  from the replies in Sent), and Unsubscribe, the newest message of each
+  list you receive, whose reader offers to leave it.
 - **Mail on a phone is worked by the thumb.** A message swiped right in
   the list is archived and swiped left is snoozed until tomorrow, the row
   saying which as it follows the finger; the list pulled down from its top

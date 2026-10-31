@@ -38,6 +38,10 @@ type StoredMessage struct {
 	Attachment bool   `json:"attachment,omitempty"`
 	Encrypted  bool   `json:"encrypted,omitempty"`
 	Signed     bool   `json:"signed,omitempty"`
+	// Category is the Inbox category the message sorts into (category.go).
+	Category string `json:"category,omitempty"`
+	// List: it carries List-Unsubscribe, so its sender can be left.
+	List bool `json:"list,omitempty"`
 }
 
 // List returns the messages in an account's mailbox (new + cur), newest first.

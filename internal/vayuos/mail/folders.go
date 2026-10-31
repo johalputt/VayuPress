@@ -285,6 +285,7 @@ func (m *Maildir) ListFolder(domain, username, folder string) ([]StoredMessage, 
 			sm.From, sm.To, sm.Subject = h.from, h.to, h.subject
 			sm.MessageID, sm.InReplyTo, sm.References = h.messageID, h.inReplyTo, h.refs
 			sm.Preview, sm.Attachment, sm.Encrypted, sm.Signed = h.preview, h.attachment, h.encrypted, h.signed
+			sm.Category, sm.List = h.category, h.list
 			if h.hasDate {
 				sm.Date = h.date
 			}

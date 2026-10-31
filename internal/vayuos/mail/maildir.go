@@ -73,6 +73,8 @@ type cachedHeaders struct {
 	attachment bool
 	encrypted  bool
 	signed     bool
+	category   string // categorize's verdict, from the header block
+	list       bool   // carries List-Unsubscribe: a list one can leave
 }
 
 // cleanMessageID normalises a Message-Id / References token for comparison:

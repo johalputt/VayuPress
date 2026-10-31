@@ -18,11 +18,23 @@ import (
 
 // Mail views are filters over the folder being read (plan §3.1). They store
 // nothing: the folder's own listing is filtered after the header cache has
-// answered it.
-var mailViews = []struct{ Key, Label, Icon string }{
-	{"unread", "Unread", "mail"},
-	{"pinned", "Pinned", "pin"},
-	{"encrypted", "Encrypted", "lock"},
+// answered it. A Tab view is one of the Inbox's categories, drawn as a tab
+// over the list rather than in the sidebar; a Smart view is shown in the
+// sidebar only while it holds something.
+var mailViews = []struct {
+	Key, Label, Icon string
+	Tab, Smart       bool
+}{
+	{Key: "unread", Label: "Unread", Icon: "mail"},
+	{Key: "pinned", Label: "Pinned", Icon: "pin"},
+	{Key: "encrypted", Label: "Encrypted", Icon: "lock"},
+	{Key: "followup", Label: "Follow-ups", Icon: "reply", Smart: true},
+	{Key: "lists", Label: "Unsubscribe", Icon: "megaphone", Smart: true},
+	{Key: vmail.CategoryPrimary, Label: "Primary", Tab: true},
+	{Key: vmail.CategoryUpdates, Label: "Updates", Tab: true},
+	{Key: vmail.CategoryNewsletters, Label: "Newsletters", Tab: true},
+	{Key: vmail.CategoryReceipts, Label: "Receipts", Tab: true},
+	{Key: vmail.CategorySocial, Label: "Social", Tab: true},
 }
 
 // mailViewParam is the view a request names, or "" for the whole folder. An
@@ -40,7 +52,24 @@ func mailViewParam(r *http.Request) string {
 	return ""
 }
 
-func mailInView(m vmail.StoredMessage, view string) bool {
+// mailViewCtx is what the views need beyond the message itself: whether
+// the folder is the Inbox (follow-ups are the Inbox's), the Message-IDs this
+// mailbox has answered (its Sent mail's In-Reply-To and References) and the
+// time now.
+type mailViewCtx struct {
+	inbox    bool
+	answered map[string]bool
+	now      time.Time
+}
+
+// followUpAfter is how long a person's message waits, read and unanswered,
+// before it is a follow-up; followUpUntil is when it stops being one.
+const (
+	followUpAfter = 48 * time.Hour
+	followUpUntil = 30 * 24 * time.Hour
+)
+
+func mailInView(m vmail.StoredMessage, view string, vc mailViewCtx) bool {
 	switch view {
 	case "unread":
 		return !m.Seen
@@ -48,22 +77,115 @@ func mailInView(m vmail.StoredMessage, view string) bool {
 		return m.Flagged
 	case "encrypted":
 		return m.Encrypted
+	case "followup":
+		// A person's message, read, not answered, and neither new nor stale.
+		age := vc.now.Sub(m.Date)
+		return vc.inbox && m.Seen && m.Category == vmail.CategoryPrimary && m.MessageID != "" && !vc.answered[m.MessageID] &&
+			age >= followUpAfter && age <= followUpUntil
+	case "lists":
+		return m.List
+	case vmail.CategoryPrimary, vmail.CategoryUpdates, vmail.CategoryNewsletters, vmail.CategoryReceipts, vmail.CategorySocial:
+		return m.Category == view
 	}
 	return true
 }
 
-// mailViewCounts is how many messages of the folder each view holds, for the
-// sidebar. It is counted from the listing the page already made.
-func mailViewCounts(msgs []vmail.StoredMessage) map[string]int {
+// mailAnswered is the set of Message-IDs the messages in sent answer.
+func mailAnswered(sent []vmail.StoredMessage) map[string]bool {
+	out := map[string]bool{}
+	for _, m := range sent {
+		if m.InReplyTo != "" {
+			out[m.InReplyTo] = true
+		}
+		for _, r := range m.References {
+			out[r] = true
+		}
+	}
+	return out
+}
+
+// mailViewCounts is how many messages of the folder each view holds (unread
+// ones for a category), for the sidebar and the tabs. It is counted from the
+// listing the page already made.
+func mailViewCounts(msgs []vmail.StoredMessage, vc mailViewCtx) map[string]int {
 	c := map[string]int{}
 	for _, m := range msgs {
 		for _, v := range mailViews {
-			if mailInView(m, v.Key) {
+			if v.Tab {
+				if m.Category == v.Key {
+					c["all:"+v.Key]++
+					if !m.Seen {
+						c[v.Key]++
+					}
+				}
+				continue
+			}
+			if mailInView(m, v.Key, vc) {
 				c[v.Key]++
 			}
 		}
 	}
 	return c
+}
+
+// mailOnePerSender keeps the newest message of each sender, for the
+// Unsubscribe view, which lists the lists rather than their every issue.
+func mailOnePerSender(msgs []vmail.StoredMessage) []vmail.StoredMessage {
+	seen := map[string]bool{}
+	out := msgs[:0:0]
+	for _, m := range msgs {
+		_, addr := mailParseFrom(m.From)
+		k := strings.ToLower(addr)
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, m)
+	}
+	return out
+}
+
+// mailCategoryTabs is the Inbox's categories as tabs over the list: All,
+// then each category with its unread count. They are drawn only in the
+// Inbox and only when its mail falls into two categories or more, so a
+// mailbox that is all people's mail is not given tabs that sort nothing.
+func mailCategoryTabs(user, folder, view string, counts map[string]int) string {
+	if !strings.EqualFold(folder, "Inbox") {
+		return ""
+	}
+	used := 0
+	for _, c := range vmail.Categories {
+		if counts["all:"+c] > 0 {
+			used++
+		}
+	}
+	if used < 2 {
+		return ""
+	}
+	tab := func(key, label string, unread int) string {
+		q := "user=" + qparam(user) + "&folder=Inbox"
+		if key != "" {
+			q += "&view=" + key
+		}
+		cur := ""
+		if key == view {
+			cur = ` aria-current="page"`
+		}
+		n := ""
+		if unread > 0 {
+			n = `<span class="mx-tabs__n">` + itoaSafe(unread) + `</span>`
+		}
+		return `<a class="mx-tabs__tab" href="/os/vayumail/inbox?` + q + `" hx-get="/os/vayumail/inbox/fragment?` + q + `" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin" hx-push-url="/os/vayumail/inbox?` + q + `"` + cur + `>` + label + n + `</a>`
+	}
+	var b strings.Builder
+	b.WriteString(`<nav class="mx-tabs" aria-label="Categories">` + tab("", "All", 0))
+	for _, v := range mailViews {
+		if v.Tab && counts["all:"+v.Key] > 0 {
+			b.WriteString(tab(v.Key, v.Label, counts[v.Key]))
+		}
+	}
+	b.WriteString(`</nav>`)
+	return b.String()
 }
 
 // mailListGroup files a message under a date group, in the site's time zone:

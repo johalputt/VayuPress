@@ -1314,3 +1314,20 @@ test("on a phone, a row swiped right is archived, and Compose is at the thumb", 
   await expect(page.locator("body")).toHaveAttribute("data-mx-screen", "message");
   await expect(page.locator(".mx-fab")).toBeHidden();
 });
+
+// The Inbox's categories are tabs over the list: Updates shows the release
+// notice and not a person's message, and All gives the whole Inbox back.
+// (The notice stays in the Inbox through this file; the invoice does not.)
+test("the Inbox's category tabs sort it, and All gives it back", async ({ page }) => {
+  await openInbox(page);
+  const tabs = page.locator(".mx-tabs");
+  const rows = page.locator("#vm-inbox-list > .mx-list .mx-row");
+  await expect(tabs.locator(".mx-tabs__tab", { hasText: "All" })).toHaveAttribute("aria-current", "page");
+  await tabs.locator(".mx-tabs__tab", { hasText: "Updates" }).click();
+  await expect(page).toHaveURL(/view=updates/);
+  await expect(tabs.locator(".mx-tabs__tab", { hasText: "Updates" })).toHaveAttribute("aria-current", "page");
+  await expect(rows.filter({ hasText: "Release v3.17.94 published" })).toHaveCount(1);
+  await expect(rows.filter({ hasText: "Keys for the backup bucket" })).toHaveCount(0);
+  await tabs.locator(".mx-tabs__tab", { hasText: "All" }).click();
+  await expect(rows.filter({ hasText: "Keys for the backup bucket" })).toHaveCount(1);
+});
