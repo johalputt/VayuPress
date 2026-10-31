@@ -44,6 +44,7 @@ import (
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/newsletter"
 	"github.com/johalputt/vayupress/internal/oauth"
+	"github.com/johalputt/vayupress/internal/passkey"
 	"github.com/johalputt/vayupress/internal/payments"
 	"github.com/johalputt/vayupress/internal/plugins"
 	"github.com/johalputt/vayupress/internal/preview"
@@ -157,6 +158,8 @@ type App struct {
 	// The record of sign-in attempts and the blocks on their sources
 	// (signin.go); nil when its key could not be had.
 	signin *signin.Store
+	// Passkeys and the ceremonies under way (passkey.go).
+	passkeys *passkey.Store
 
 	// Resolved IndexNow key, cached. Resolving it means a SQL row read plus an
 	// AES-GCM open, and three hot paths need it on unauthenticated requests (the

@@ -160,6 +160,9 @@ func osPathMinLevel(path string) int {
 		// rows. Fail-closed to admin, an author's bell could be seen but not
 		// marked read, and could not go live.
 		"notifications",
+		// A session's own passkeys: every handler acts on the passkeys of the
+		// account or mailbox the session is, and no other (passkey.go).
+		"passkeys",
 	}
 	// The per-domain console (/os/d/{id}/…) administers a HOSTED CUSTOMER'S site:
 	// its identity, its content, what it serves at "/", its theme code and its
@@ -636,7 +639,10 @@ func mailOnlyPathAllowed(path string) bool {
 		// nav. A mail-confined principal is a READER who claimed a mailbox, not
 		// staff; infrastructure state is not theirs to read, and this is precisely
 		// what an untrusted agency client would have inherited.
-		strings.HasPrefix(path, "/os/api/vayuos/mail/"):
+		strings.HasPrefix(path, "/os/api/vayuos/mail/"),
+		// The mailbox's own passkeys: the handlers act on the session's
+		// principal only, never on an address the request names.
+		strings.HasPrefix(path, "/os/api/passkeys/"):
 		return true
 	case path == "/os/talk" || strings.HasPrefix(path, "/os/talk/"):
 		// VayuTalk, the chat that comes with a mailbox. A non-admin chats only

@@ -58,6 +58,7 @@ import (
 	"github.com/johalputt/vayupress/internal/newsletter"
 	"github.com/johalputt/vayupress/internal/oauth"
 	"github.com/johalputt/vayupress/internal/outbox"
+	"github.com/johalputt/vayupress/internal/passkey"
 	"github.com/johalputt/vayupress/internal/payments"
 	"github.com/johalputt/vayupress/internal/plugins"
 	"github.com/johalputt/vayupress/internal/preview"
@@ -871,6 +872,7 @@ func main() {
 	// Failed sign-ins at every door are recorded, and their sources can be
 	// blocked.
 	a.openSignins()
+	a.passkeys = passkey.New(dbpkg.DB)
 
 	// Scheduled publishing (Tier 1).
 	a.scheduler = scheduler.New(dbpkg.DB)

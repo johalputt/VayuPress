@@ -447,6 +447,9 @@ func (a *App) handleOSProfile(w http.ResponseWriter, r *http.Request) {
   </form>
 </div>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-profile.js?v=` + assetVer("js/admin-os-profile.js") + `"></script>`
+	if pk := a.passkeysBlock(r); pk != "" {
+		body += `<div class="card">` + pk + `</div><script nonce="` + nonce + `" src="/os/static/js/passkey.js?v=` + assetVer("js/passkey.js") + `"></script>`
+	}
 	writeOSHTML(w, r, adminOSLayout(nonce, "My profile", "profile", cfg, htmpl.HTML(body)))
 }
 

@@ -52,6 +52,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   password. App passwords keep working with the address, so mail apps
   already set up are not broken. Each mailbox's settings also say whether
   mail apps take app passwords only.
+- **Passkeys.** An account adds a passkey on My profile, and a mailbox's
+  holder on Mailbox settings; then "Sign in with a passkey" at /os/login
+  signs in with the device's own lock, with no name or password typed. A
+  passkey signs in only as the account or mailbox that added it. It cannot
+  be guessed or phished, so it still works while sign-ins to the address
+  are paused, which is how a holder gets in during an attack; blocks and
+  the country fence still refuse it. A passkey whose counter went back, a
+  copied authenticator, is refused. The browser is never told which
+  addresses have passkeys. Each passkey can be named and removed.
+
+### Dependencies
+
+- `github.com/go-webauthn/webauthn` v0.18.2 checks passkeys: the
+  registration and sign-in signatures, rather than code of our own.
 
 ### Changed
 

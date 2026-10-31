@@ -19,7 +19,9 @@ require (
 	github.com/emersion/go-msgauth v0.7.0
 	github.com/emersion/go-vcard v0.1.0
 	github.com/emersion/go-webdav v0.7.0
+	github.com/fxamacker/cbor/v2 v2.9.4
 	github.com/go-chi/chi/v5 v5.5.0
+	github.com/go-webauthn/webauthn v0.18.2
 	github.com/graphql-go/graphql v0.8.1
 	github.com/mattn/go-sqlite3 v1.14.52
 	github.com/microcosm-cc/bluemonday v1.0.27
@@ -78,8 +80,11 @@ require (
 	github.com/go-openapi/swag/yamlutils v0.27.3 // indirect
 	github.com/go-openapi/validate v0.26.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
+	github.com/go-webauthn/x v0.3.1 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/certificate-transparency-go v1.3.3 // indirect
 	github.com/google/go-containerregistry v0.21.7 // indirect
+	github.com/google/go-tpm v0.9.8 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
@@ -93,6 +98,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/parquet-go/bitpack v1.0.0 // indirect
 	github.com/parquet-go/jsonlite v1.0.0 // indirect
+	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.21 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sassoftware/relic v7.2.1+incompatible // indirect
@@ -108,10 +114,12 @@ require (
 	github.com/teambition/rrule-go v1.8.2 // indirect
 	github.com/theupdateframework/go-tuf v0.7.0 // indirect
 	github.com/theupdateframework/go-tuf/v2 v2.4.2 // indirect
+	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399 // indirect
 	github.com/transparency-dev/formats v0.1.1 // indirect
 	github.com/transparency-dev/merkle v0.0.2 // indirect
 	github.com/twpayne/go-geom v1.6.1 // indirect
+	github.com/x448/float16 v0.8.4 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	gitlab.com/yawning/edwards25519-extra v0.0.0-20231005122941-2149dcafc266 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

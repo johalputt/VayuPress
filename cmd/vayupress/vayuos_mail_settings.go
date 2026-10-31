@@ -223,6 +223,9 @@ func (a *App) handleVayuOSMySettings(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`<span id="vm-mbox-spin" class="htmx-indicator vm-spin" aria-hidden="true">saving…</span>`)
 	body.WriteString(`<div id="vm-mbox-settings">` + sec + `</div>`)
 	body.WriteString(holderPasswordForm())
+	if pk := a.passkeysBlock(r); pk != "" {
+		body.WriteString(`<div class="card">` + pk + `</div><script nonce="` + nonce + `" src="/os/static/js/passkey.js?v=` + assetVer("js/passkey.js") + `"></script>`)
+	}
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox settings", "vayumail", cfg, htmpl.HTML(body.String())))
 }

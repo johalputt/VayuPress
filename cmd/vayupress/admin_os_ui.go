@@ -117,6 +117,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	r.Get("/os/static/js/os-theme.js", serveAdminOSAsset("js/os-theme.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-newsletter.js", serveAdminOSAsset("js/admin-os-newsletter.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-profile.js", serveAdminOSAsset("js/admin-os-profile.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/passkey.js", serveAdminOSAsset("js/passkey.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-intel.js", serveAdminOSAsset("js/admin-os-intel.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-pages.js", serveAdminOSAsset("js/admin-os-pages.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-tools.js", serveAdminOSAsset("js/admin-os-tools.js", "application/javascript; charset=utf-8"))
@@ -171,6 +172,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	// Public: login page and credential forms.
 	r.Get("/os/login", a.handleOSLogin)
 	r.Post("/os/login", a.handleOSLoginSubmit)
+	// Signing in with a passkey names no one until it ends, so it is public
+	// like the password's sign-in (passkey.go).
+	r.Post("/os/passkey/begin", a.handlePasskeySignInBegin)
+	r.Post("/os/passkey/finish", a.handlePasskeySignInFinish)
 	r.Post("/os/logout", a.handleOSLogout)
 
 	// Protected pages and APIs — require session or API key.
@@ -586,6 +591,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/dismiss", a.handleOSShieldDismiss)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/release", a.handleOSShieldRelease)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/accounts/unlock", a.handleOSAccountUnlock)
+		// The session's own passkeys (passkey.go).
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/passkeys/begin", a.handlePasskeyAddBegin)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/passkeys/finish", a.handlePasskeyAddFinish)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/passkeys/remove", a.handlePasskeyDelete)
 		// Shield › Sign-in attempts (admin_os_signin.go).
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/shield/sign-ins", a.handleOSSignins)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/sign-ins/block", a.handleOSSigninBlock)
@@ -2316,9 +2325,12 @@ func osLoginPage(prefillEmail, errMsg, next string) string {
       </label>
       <button type="submit" class="btn btn--primary login-submit">Sign in</button>
     </form>
+    <button type="button" class="btn login-submit" data-passkey-signin hidden>Sign in with a passkey</button>
+    <p class="text-sm muted" data-passkey-signin-say role="status"></p>
     <p class="login-recover"><a href="/mail/recover">Forgot your mailbox password?</a></p>
   </div>
-  <div class="login-footer">`+saEdition()+`<span>Sovereign · zero-telemetry · yours completely</span></div>`)
+  <div class="login-footer">`+saEdition()+`<span>Sovereign · zero-telemetry · yours completely</span></div>
+  <script src="/os/static/js/passkey.js?v=`+assetVer("js/passkey.js")+`"></script>`)
 }
 
 // authPageShell wraps the calm auth-page layout (theme toggle + centered column)
