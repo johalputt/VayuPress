@@ -154,15 +154,15 @@ func (a *App) mailImportBody(ctx context.Context, rd vmail.Reader, note string) 
 	}
 	form := `<form hx-post="/os/vayumail/import/action" hx-target="#mx-import" hx-swap="innerHTML"><input type="hidden" name="user" value="` + esc(user) + `"><input type="hidden" name="action" value="start">` +
 		string(ui.Rows(
-			ui.Row{Label: "Server", Hint: "Its IMAP server, as the provider's help names it", Control: field("host", "text", host, "imap.gmail.com", ` spellcheck="false"`)},
+			ui.Row{Label: "Server", Hint: "Its IMAP server, as the provider's help names it", Control: field("host", "text", host, "imap.example.com", ` spellcheck="false"`)},
 			ui.Row{Label: "Connection", Control: ui.HTML(`<select class="input" name="port"><option value="993">TLS, port 993</option><option value="143">STARTTLS, port 143</option></select>`)},
-			ui.Row{Label: "User name", Hint: "Usually your address there", Control: field("username", "text", username, "you@gmail.com", ` spellcheck="false"`)},
-			ui.Row{Label: "Password", Hint: "Gmail, Outlook and iCloud need an app password and IMAP turned on, not your usual password. It is used for this copy and not kept.", Control: field("password", "password", "", "", "")},
+			ui.Row{Label: "User name", Hint: "Usually your address there", Control: field("username", "text", username, "you@example.com", ` spellcheck="false"`)},
+			ui.Row{Label: "Password", Hint: "Most large providers ask for an app password and IMAP turned on, not your usual password. It is used for this copy and not kept.", Control: field("password", "password", "", "", "")},
 		)) + `<div><button type="submit" class="btn btn--primary">Bring mail in</button></div></form>`
 	b.WriteString(string(ui.Section("Bring it in from", "", ui.HTML(form))))
 	b.WriteString(string(ui.Disclosure(ui.HTML(saIcon("info")), "What comes across", "", "", false, ui.Text(
 		"Inbox, Sent, Drafts, Junk, Trash and Archive come into theirs here; any other folder becomes one of your own, by its name there. "+
-			"Gmail's All Mail and Starred are left out, since they repeat mail kept in other folders; its labels arrive as folders, so a message with two labels arrives twice. "+
+			"A provider's All Mail and Starred folders are left out, since they repeat mail kept in other folders; where a provider shows labels as folders, a message with two labels arrives twice. "+
 			"What you have read and pinned there is read and pinned here. Running it again copies only what is new."))))
 	return string(ui.Status(page, ui.HTML(b.String())))
 }

@@ -41,7 +41,7 @@ license. The project's Apache-2.0 license does not alter those terms.
 The VayuPGP privacy layer and VayuMail sovereignty layer (added in v1.8.0) are
 built on the following Go modules, compiled into the single VayuPress binary:
 
-* ProtonMail go-crypto (VayuPGP: OpenPGP keygen, encrypt/decrypt/sign/verify, WKD)
+* go-crypto, github.com/ProtonMail/go-crypto (VayuPGP: OpenPGP keygen, encrypt/decrypt/sign/verify, WKD)
   Copyright (c) The ProtonMail Authors
   Licensed under the Apache License, Version 2.0.
   https://github.com/ProtonMail/go-crypto

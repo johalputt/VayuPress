@@ -59,7 +59,7 @@ the highest-value hour of work in this document.
 ### 3.1 The client can pull their own mail down, today
 
 VayuMail speaks **standard IMAP** (implicit TLS on 993). Any mail client —
-Thunderbird, Apple Mail, Outlook — can download the entire archive to the
+Thunderbird, Apple Mail and the like — can download the entire archive to the
 client's own machine.
 
 **It is an app password, not the mailbox password.** Device approval is on by

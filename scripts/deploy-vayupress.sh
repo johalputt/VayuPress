@@ -956,7 +956,7 @@ if [[ -n "$DOMAIN" && "$DOMAIN" != "localhost" ]]; then
     run systemctl reload nginx
 
     # One certificate covering the site AND the mail host (mail.<domain>), so
-    # VayuMail is trusted by strict mobile clients (the Gmail app, K-9). The mail
+    # VayuMail is trusted by strict mobile clients (phone mail apps, K-9). The mail
     # SAN is best-effort: if mail.<domain> DNS isn't set yet, retry without it so
     # the web cert still succeeds.
     # Preferred: one certificate covering the site, www, the blog subdomain

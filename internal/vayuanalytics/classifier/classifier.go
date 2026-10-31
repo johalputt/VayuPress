@@ -120,13 +120,15 @@ var socialPlatforms = map[string]string{
 	"lobste.rs":            "Lobsters",
 }
 
-// webmailHosts maps a webmail referrer host substring to the provider name.
+// webmailHosts maps a webmail referrer host substring to its label: Webmail
+// for every one, since a visit from mail is the signal and no mail service
+// is named in the product.
 var webmailHosts = map[string]string{
-	"mail.google.com":    "Gmail",
-	"outlook.live.com":   "Outlook",
-	"outlook.office.com": "Outlook",
-	"mail.yahoo.com":     "Yahoo Mail",
-	"mail.proton.me":     "Proton Mail",
+	"mail.google.com":    "Webmail",
+	"outlook.live.com":   "Webmail",
+	"outlook.office.com": "Webmail",
+	"mail.yahoo.com":     "Webmail",
+	"mail.proton.me":     "Webmail",
 	"webmail":            "Webmail",
 }
 

@@ -57,7 +57,7 @@ sovereignty engine, organised as four native layers — all compiled into the
    binary as VayuPress. No sidecars, no separate services, no second database.
 2. **Privacy by architecture.** PGP keypairs are generated automatically; private
    keys are AES-256-GCM encrypted at rest and never logged or transmitted.
-3. **Licence chain stays clean.** Crypto rests on ProtonMail go-crypto
+3. **Licence chain stays clean.** Crypto rests on the go-crypto OpenPGP library
    (Apache-2.0) and Cloudflare CIRCL (BSD-3-Clause). No GPL/AGPL/SSPL dependency
    may ever be introduced.
 4. **No telemetry.** The security-update watcher is opt-in and disabled by

@@ -162,7 +162,7 @@ func (b *vayuMailBridge) verifyCredentialScoped(ctx context.Context, addr, passw
 		creds = accts.AppPasswordCredentials(ctx, addr)
 	}
 
-	// Optional "app-password only" 2FA enforcement (Gmail/Outlook model): when
+	// Optional "app-password only" 2FA enforcement (as large mail providers do it): when
 	// enabled for this identity, the plain login/mailbox password stops
 	// authenticating IMAP/SMTP/POP3 and the client must use an app password
 	// (minting one already requires a fresh 2FA code). IMAP/SMTP/POP3 cannot
@@ -562,7 +562,7 @@ func (a *App) bootVayuOS() {
 		// Native ACME (Let's Encrypt) auto-provisioning. When no static cert is
 		// set and VAYUOS_MAIL_TLS_ACME=on, VayuMail obtains and auto-renews a
 		// trusted certificate for mail.<domain> itself — no certbot, no shell
-		// script — so mobile mail apps (the Gmail app, Apple Mail) connect. The
+		// script — so mobile mail apps (Apple Mail and the phone apps) connect. The
 		// HTTP-01 challenge is answered on VAYUOS_MAIL_ACME_HTTP_ADDR (default
 		// :80); on a bare VPS this just works.
 		if strings.EqualFold(config.EnvOr("VAYUOS_MAIL_TLS_ACME", "off"), "on") {
@@ -879,7 +879,7 @@ func (a *App) bootVayuOS() {
 		// certificate. Make this explicit and actionable at startup.
 		if a.vayuMail.TLSActive() && !a.vayuMail.TLSTrusted() {
 			logging.LogError("vayuos",
-				"VayuMail is serving a SELF-SIGNED certificate — mobile mail apps (Gmail, Apple Mail) will refuse to connect",
+				"VayuMail is serving a SELF-SIGNED certificate — mobile mail apps (Apple Mail and the phone apps) will refuse to connect",
 				"enable automatic certificates with VAYUOS_MAIL_TLS_ACME=on, run deploy/vayumail-setup.sh, or set VAYUOS_MAIL_TLS_CERT/VAYUOS_MAIL_TLS_KEY, then restart ("+a.vayuMail.TLSNote()+")")
 		}
 	}
@@ -3078,8 +3078,8 @@ func highlightMatch(text, q string) string {
 
 // handleVayuOSMessage shows a single message with Junk/Trash/Delete actions.
 // splitQuoted separates the freshly-written part of a plain-text reply from the
-// quoted history beneath it, so the reader can collapse the quote (like Gmail's
-// "…"). It returns (text, "") when there is no clear quote boundary or nothing
+// quoted history beneath it, so the reader can collapse the quote behind a
+// "…". It returns (text, "") when there is no clear quote boundary or nothing
 // above it, so a message is never hidden entirely.
 func splitQuoted(text string) (main, quoted string) {
 	lines := strings.Split(text, "\n")
@@ -3241,7 +3241,7 @@ func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Reque
 		writeOSHTML(w, r, vayuReadpaneEmpty("Moved to "+html.EscapeString(to)+"."))
 	case r.FormValue("mark") == "unread":
 		_, _ = a.vayuMail.MarkUnread(rd, folder, id)
-		// Gmail-style: marking unread closes the reader so the bold row stands out.
+		// Marking unread closes the reader so the bold row stands out.
 		writeOSHTML(w, r, vayuReadpaneEmpty("Marked unread."))
 	case r.FormValue("pin") == "1" || r.FormValue("pin") == "0":
 		if nid, err := a.vayuMail.SetPinned(rd, folder, id, r.FormValue("pin") == "1"); err == nil && nid != "" {

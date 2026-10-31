@@ -9,7 +9,7 @@
 VayuMail delivers outbound mail sovereignly — direct-to-MX from the host's own
 IP (ADR-0077). ADR-0084 made the message itself maximally correct (vetted DKIM
 signing, well-formed MIME). However, inbox placement at large providers
-(Gmail, Outlook) is dominated by **sending-IP reputation**, which is outside the
+(the large providers) is dominated by **sending-IP reputation**, which is outside the
 binary's control:
 
 - A brand-new self-hosted IP (e.g. a fresh VPS) has no sending history and is

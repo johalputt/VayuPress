@@ -104,8 +104,8 @@ type Config struct {
 	// When ACMEEnabled is true and no static TLSCertFile is configured,
 	// VayuMail obtains and auto-renews a CA-signed certificate for Hostname
 	// (and any ACMEExtraHosts) directly — no external certbot, no shell script.
-	// This is the foolproof path for real mail clients: mobile apps (the Gmail
-	// app, Apple Mail) reject the self-signed fallback, but accept the trusted
+	// This is the foolproof path for real mail clients: mobile apps (Apple Mail,
+	// the phone apps) reject the self-signed fallback, but accept the trusted
 	// ACME certificate. Certificates are cached on disk (ACMECacheDir) so they
 	// survive restarts and are shared by every mail TLS listener
 	// (993/995/587 + STARTTLS on 25/143/110).

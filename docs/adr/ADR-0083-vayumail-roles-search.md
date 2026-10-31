@@ -8,7 +8,7 @@
 
 VayuMail's admin-managed accounts were a flat list (email + password + active),
 with no notion of permissions, and the mailbox had no way to find a message
-beyond paging through folders. Moving toward a Gmail-like experience requires
+beyond paging through folders. Moving toward the experience of the large mail services requires
 both, but without violating the single-binary / low-resource / zero-telemetry
 constitution.
 
@@ -31,7 +31,7 @@ constitution.
 
 ## Consequences
 
-- Positive: foundational Gmail-like capabilities (permissions + findability)
+- Positive: foundational capabilities of a large mail service (permissions + findability)
   with zero new dependencies and no daemon; backward compatible (the role column
   migrates in place, defaulting existing accounts to `author`).
 - Trade-off: search is linear over Maildir (bounded), not a full inverted index;

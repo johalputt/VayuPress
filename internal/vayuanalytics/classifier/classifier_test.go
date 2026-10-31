@@ -55,7 +55,7 @@ func TestSocialAndCorporate(t *testing.T) {
 
 func TestEmailAndReferral(t *testing.T) {
 	if r := c("https://mail.google.com/mail/u/0"); r.Category != Email {
-		t.Fatalf("gmail -> %+v", r)
+		t.Fatalf("webmail -> %+v", r)
 	}
 	if r := c("https://someblog.example/post"); r.Category != Referral || r.Detail != "someblog.example" {
 		t.Fatalf("referral -> %+v", r)

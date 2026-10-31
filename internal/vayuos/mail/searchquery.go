@@ -39,7 +39,7 @@ func (q SearchQuery) Empty() bool {
 
 // ParseSearchQuery reads what was typed into the search field: from:, to:,
 // subject:, in: (a folder), label:, after: and before: (a day, YYYY-MM-DD or
-// YYYY/MM/DD; before: excludes the day, as Gmail reads it), has:attachment
+// YYYY/MM/DD; before: excludes the day, as mail search reads it), has:attachment
 // and is:unread, each value one word or "quoted words". Anything else is a
 // word. A term that cannot be read (a date that is not one, has: something
 // else) stays a word, so it is looked for as typed rather than dropped

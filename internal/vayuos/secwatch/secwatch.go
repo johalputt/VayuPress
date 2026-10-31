@@ -3,7 +3,7 @@
 // Package secwatch implements the VayuOS security-update watcher.
 //
 // It tracks the upstream releases of the security-critical Go dependencies that
-// power VayuPress's sovereignty layers — notably ProtonMail go-crypto (PGP) and
+// power VayuPress's sovereignty layers — notably go-crypto (PGP) and
 // Cloudflare CIRCL (the elliptic-curve backend) — and surfaces when a newer
 // upstream release exists so the operator can apply security patches promptly.
 //

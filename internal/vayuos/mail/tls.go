@@ -26,8 +26,8 @@ import (
 
 // tlsMode describes the provenance of the certificate a listener presents. It
 // drives operator-facing diagnostics: only "static" and "acme" certificates are
-// trusted by mainstream mail clients (the Gmail app, Apple Mail, Thunderbird,
-// Outlook). A "selfsigned" certificate still encrypts opportunistic STARTTLS
+// trusted by mainstream mail clients (phone mail apps, Apple Mail,
+// Thunderbird). A "selfsigned" certificate still encrypts opportunistic STARTTLS
 // between MTAs, but mobile/desktop clients reject it — surfacing as the dreaded
 // "Couldn't open connection to server".
 type tlsMode string

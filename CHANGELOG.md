@@ -115,6 +115,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
+- **No other mail service is named in VayuPress.** Its pages, docs,
+  decision records, changelog and comments say what a thing is ("most large
+  providers ask for an app password and IMAP turned on", examples at
+  imap.example.com) rather than whose it is, and Analytics labels a visit
+  from webmail as Webmail. The OpenPGP library's import path and its
+  licence notice, and the referrer hostnames Analytics must recognise, stay
+  as they are; a test refuses the names anywhere else in the tree.
 - **Help from a model in Mail, with its cautions enforced on the server.**
   When the install has a model and a mailbox's holder turns it on (off
   until they do), the reader offers to sum up the conversation open and to
@@ -1537,7 +1544,7 @@ checks the S/MIME signatures it is sent. Built with Go 1.27.2.
   be stopped; it records what it has copied, so stopping, a restart or
   running it again carries on from there and copies only what is new. The
   connection is TLS only (993, or 143 with STARTTLS), goes only to a public
-  address, and the password is used for the copy and never stored. Gmail's
+  address, and the password is used for the copy and never stored. A provider's
   All Mail and Starred are left out, since they repeat other folders.
 - **Download all mail.** The mailbox's sidebar downloads every folder as mbox
   files in one zip, which other mail apps import. An administrator's download
@@ -2040,7 +2047,7 @@ last of the overview pages.
 
 - **Reply on a message opens VayuMail, not your computer's mail program.**
   In Content › Messages, Reply was a mailto: link, so it opened whatever
-  mail app the computer had (Outlook, often). It opens VayuMail's compose
+  mail app the computer had (a desktop client, often). It opens VayuMail's compose
   now, with the writer, the subject and their message quoted; the writer's
   address opens a new message to them the same way. Without mail set up,
   compose says so and shows its setup.
@@ -2107,7 +2114,7 @@ overview pages of the Still Air page grammar.
 
 ### Security
 
-- **ProtonMail/go-crypto 1.5.2**, which corrects the order of an RSA key's
+- **`github.com/ProtonMail/go-crypto` 1.5.2**, which corrects the order of an RSA key's
   primes when OpenPGP keys are read and made. The console's own mail keys
   are EdDSA; an imported RSA key is read through the corrected path.
 
@@ -2935,7 +2942,7 @@ The Still Air redesign of the VayuOS console.
     those actions.
 
   An administrator acting on the mailbox is unaffected.
-- **go-crypto 1.5.1** (ProtonMail/go-crypto, the OpenPGP library behind
+- **go-crypto 1.5.1** (`github.com/ProtonMail/go-crypto`, the OpenPGP library behind
   VayuMail's encryption and signatures), up from 1.4.1.
 - **Clear caches deleted any old file in the temp directory**, not only
   VayuPress's own. With TMP_DIR pointed at a shared or data directory, it
@@ -22828,8 +22835,8 @@ it certifies against. Each ships with a regression test.
 ### Changed
 - **PGP encryption in the composer is now opt-in.** Previously a single-recipient
   message was silently encrypted whenever a recipient key was on file — so a plain
-  "test" to a Gmail address arrived as an unreadable `-----BEGIN PGP MESSAGE-----`
-  block (and scored as spam, since Gmail can't decrypt it). Compose now has an
+  "test" to an address at a large provider arrived as an unreadable `-----BEGIN PGP MESSAGE-----`
+  block (and scored as spam, since the provider can't decrypt it). Compose now has an
   explicit **🔒 Encrypt with PGP** checkbox, off by default; a message is
   encrypted only when you tick it (and the recipient has a key, one recipient, no
   attachments). System/transactional mail was already never encrypted and is
@@ -24281,7 +24288,7 @@ it certifies against. Each ships with a regression test.
     **Tomorrow 8:00** or **Next week (Mon 8:00)**. The message physically moves
     to a new **Snoozed** folder (visible in the panel and to IMAP clients) and
     a background sweeper returns it to its original folder at wake time, where
-    it **resurfaces as unread** — Gmail's model. Guard rails: Sent/Drafts and
+    it **resurfaces as unread**, as snooze works in mail generally. Guard rails: Sent/Drafts and
     Snoozed itself can't be snoozed; a failed wake-row write rolls the move
     back rather than strand mail asleep; a message moved out of Snoozed by hand
     leaves only a stale row that the sweeper discards (it can never resurrect a
@@ -24562,7 +24569,7 @@ source of a broken "Rotate" button), the tab now recommends the official
   "Recommended mail apps (K‑9 / Thunderbird)" card is replaced by an **official
   VayuMail Mobile** card (download + source links). "Instant setup" now points at
   both the Mozilla autoconfig XML and the `/.well-known/vayumail/autoconfig.json`
-  the app reads, and notes any standard client (Apple Mail, Gmail app, Outlook,
+  the app reads, and notes any standard client (Apple Mail, phone mail apps,
   Thunderbird) also works with the manual settings. Service status, the TLS‑trust
   guidance, Recommended settings, and Per‑mailbox setup are unchanged.
 
@@ -25661,7 +25668,7 @@ the running binary.
   authenticates IMAP, SMTP or POP3**. Those protocols cannot prompt for a second
   factor, so the enforcement point is the credential: the client must connect
   with a **rotating setup-QR app password**, and minting one already requires a
-  fresh 2FA code (shipped in v3.2.0). This is the model Gmail and Outlook use,
+  fresh 2FA code (shipped in v3.2.0). This is the model the large providers use,
   and it makes "connecting the app requires 2FA" actually true end-to-end. The
   check is conservative and fail-open: an account **without** 2FA is completely
   unaffected (its password works exactly as before), and any lookup error falls
@@ -25721,7 +25728,7 @@ the running binary.
   `multipart/mixed`, DKIM-signed message; Bcc recipients receive the mail without
   appearing in the headers; the exact assembled message (with attachments) is
   filed in Sent. Total attachment size is capped at a **generous 50 MB by
-  default** — above Gmail's 25 MB and Outlook's 20 MB — tunable with
+  default** — above the 20 to 25 MB the large providers allow — tunable with
   `VAYUMAIL_MAX_ATTACH_MB`. Filenames are sanitised against header injection, and
   the send endpoint accepts multipart uploads (with the same CSRF + per-mailbox
   sender rules) or the legacy JSON body. PGP auto-encryption still applies to a
@@ -26341,12 +26348,12 @@ race-clean integration suite in CI).
   `\Subscribed` flag (the client treated every folder as unsubscribed and synced
   nothing) and replied `BAD` to `SUBSCRIBE` (which K-9 treats as fatal).
   LIST/LSUB now advertise `\Subscribed` for every standard folder, and
-  `SUBSCRIBE`/`UNSUBSCRIBE` are accepted as no-ops. (Gmail and desktop
+  `SUBSCRIBE`/`UNSUBSCRIBE` are accepted as no-ops. (Phone and desktop
   Thunderbird were unaffected and already worked.)
 - **Mobile mail apps that wouldn't sync now have a clear cause surfaced.** When a
   trusted mail certificate is active but does **not** cover the hostname clients
   are told to connect to, desktop apps let the user accept the mismatch while the
-  Gmail app and Thunderbird for Android silently refuse — the "desktop syncs,
+  phone mail apps such as Thunderbird for Android silently refuse — the "desktop syncs,
   mobile doesn't" trap. The Connect tab now detects this, lists the names the
   certificate is actually valid for, and gives the exact fix (point
   `VAYUOS_MAIL_HOSTNAME` at a covered name, or reissue the cert to include the
@@ -26595,7 +26602,7 @@ race-clean integration suite in CI).
   TLS).** When nginx (or any proxy) already owns ports 80/443, VayuMail's native
   ACME could not complete its HTTP-01 challenge, so it silently fell back to a
   **self-signed certificate** on the mail ports — which mobile and desktop mail
-  apps (the Gmail app, Apple Mail, Thunderbird, Outlook) reject with *"Couldn't
+  apps (phone mail apps, Apple Mail, Thunderbird) reject with *"Couldn't
   open connection to server"*, even though 993/143/587 were online. Three changes
   make trusted certificates reliable in this very common topology:
   - **Operator/Let's Encrypt certificates now hot-reload.** A file-based
@@ -26676,8 +26683,8 @@ race-clean integration suite in CI).
   hostname, the certificate is issued in the background, cached under
   `<storage>/mail/acme`, and shared by every mail TLS listener (IMAPS 993, POP3S
   995, submission 587, and STARTTLS on 25/143/110). This is the foolproof path for
-  real mail apps: mobile/desktop clients (the Gmail app, Apple Mail, Thunderbird,
-  Outlook) reject the self-signed fallback but accept the ACME certificate. New
+  real mail apps: mobile/desktop clients (phone mail apps, Apple Mail,
+  Thunderbird) reject the self-signed fallback but accept the ACME certificate. New
   env vars: `VAYUOS_MAIL_TLS_ACME`, `VAYUOS_MAIL_ACME_EMAIL`,
   `VAYUOS_MAIL_ACME_HTTP_ADDR` (default `:80`), `VAYUOS_MAIL_ACME_CACHE`,
   `VAYUOS_MAIL_ACME_DIRECTORY`, `VAYUOS_MAIL_ACME_HOSTS`. While issuance settles,
@@ -26772,7 +26779,7 @@ administrators.
 
 A truly one-click update — installing from VayuOS now advances the binary, the
 embedded migrations **and** the admin assets together — plus automatic Let's
-Encrypt TLS for VayuMail so mobile mail apps (the Gmail app, Apple Mail) connect.
+Encrypt TLS for VayuMail so mobile mail apps (Apple Mail and the phone apps) connect.
 
 ### Changed
 
@@ -26799,7 +26806,7 @@ Encrypt TLS for VayuMail so mobile mail apps (the Gmail app, Apple Mail) connect
   the HTTP-01 challenge (briefly freeing port 80 when nginx holds it), wires
   `VAYUOS_MAIL_TLS_CERT`/`VAYUOS_MAIL_TLS_KEY` into the service environment, and
   installs a renewal deploy-hook that restarts the service so a renewed cert is
-  loaded. This closes the last gap that made mobile mail apps (the Gmail app,
+  loaded. This closes the last gap that made mobile mail apps (the phone apps,
   Apple Mail) refuse to connect — they reject VayuMail's self-signed fallback.
   Best-effort and idempotent; set `MAIL_TLS=off` to skip, or
   `MAIL_CERT_EMAIL=` to set the registration contact.
@@ -26840,15 +26847,15 @@ smooth, incremental updates (no site-wide rebuilds).
 
 - **VayuMail "Connect" tab — one-glance mail-app setup + live status.** A new
   Connect tab in the VayuMail console shows the exact IMAP/POP3/SMTP server,
-  ports and username needed to add a mailbox to any standard app (Gmail, Apple
-  Mail, Thunderbird, Outlook): IMAP `993` SSL / `143` STARTTLS, POP3 `995` SSL /
+  ports and username needed to add a mailbox to any standard app (Apple Mail,
+  Thunderbird, the phone apps): IMAP `993` SSL / `143` STARTTLS, POP3 `995` SSL /
   `110` STLS, SMTP submission `587` STARTTLS (auth required), username = full
   email, password = the mailbox password. It also reports the live online/offline
   status of every mail listener (and any bind error), and lists per-mailbox
   settings so each account can be set up by copying the values.
 
 - **VayuMail now works with real mail apps over IMAP and POP3.** You can add a
-  VayuMail mailbox to the Gmail app, Apple Mail, Thunderbird, Outlook, or any
+  VayuMail mailbox to Apple Mail, Thunderbird, a phone's mail app, or any
   standard client and read/send mail like any hosted provider. The IMAP server
   was rebuilt to a full RFC 3501 service: persistent, stable UIDs and per-folder
   UIDVALIDITY (so clients sync incrementally instead of re-downloading on every
@@ -26946,7 +26953,7 @@ smooth, incremental updates (no site-wide rebuilds).
   via a systemd drop-in (works regardless of how old the installed unit is),
   opens the firewall (ufw/firewalld), restarts, verifies the listeners, and
   reminds you to add the `mail.<domain>` DNS record and point VayuMail at a
-  trusted TLS cert (mobile clients like the Gmail app require a CA-signed cert).
+  trusted TLS cert (most phone mail apps require a CA-signed cert).
 
 - **ADR Registry now shows every record (duplicate ADR-0079 resolved).** Two
   different ADRs had both been numbered 0079 (VayuMail Transport Security and
@@ -27681,7 +27688,7 @@ smooth, incremental updates (no site-wide rebuilds).
 - **Optional outbound smarthost relay (deliverability without losing
   sovereignty).** When `VAYUOS_MAIL_RELAY_HOST` is set, VayuMail delivers
   outbound mail through an authenticated SMTP relay instead of direct-to-MX —
-  the pragmatic remedy for a fresh self-hosted IP that Gmail/Outlook still
+  the pragmatic remedy for a fresh self-hosted IP that the large providers still
   spam-file for lack of sending reputation. The relay's established IP reputation
   carries deliverability, while **inbound receive, IMAP, local delivery and DKIM
   signing all remain self-hosted**, and VayuMail still DKIM-signs with the domain
@@ -27767,7 +27774,7 @@ smooth, incremental updates (no site-wide rebuilds).
   (Receiving external mail still also requires port 25 reachable and MX/A DNS
   records pointing at the host.)
 
-- **Outbound deliverability hardening (fewer messages in Gmail/Outlook spam).**
+- **Outbound deliverability hardening (fewer messages in the large providers' spam).**
   - **DKIM signing now uses the vetted `github.com/emersion/go-msgauth/dkim`
     library** instead of a hand-rolled canonicalizer. A subtle canonicalization
     bug is one of the most common reasons a message that "looks" signed still
@@ -27911,7 +27918,7 @@ breaking the constitution (single binary, lightweight, privacy-first, strict CSP
 
 ## [1.13.0] — 2026-06-25
 
-**VayuMail towards Gmail-like usability — roles, Archive, and search.**
+**VayuMail towards the usability of the large mail services — roles, Archive, and search.**
 
 ### Added
 
@@ -27929,7 +27936,7 @@ breaking the constitution (single binary, lightweight, privacy-first, strict CSP
 
 ### Notes
 
-- This is the foundational slice of the Gmail-like VayuMail roadmap. Threaded
+- This is the foundational slice of that VayuMail roadmap. Threaded
   conversations, rich HTML compose with attachments and scheduling, server-side
   filters, vacation responder, and real-time notifications are tracked for
   v1.14.0.
@@ -28213,7 +28220,7 @@ privacy layer, and VayuOS the native control layer — all in the single binary.
   **never stored**. Public tracking script (`/static/vp-analytics.js`) sets no
   cookies and writes nothing to `localStorage`. Protected JSON API under
   `/api/v1/analytics/*`.
-- **VayuPGP** (`internal/vayuos/pgp`) — native PGP on ProtonMail go-crypto:
+- **VayuPGP** (`internal/vayuos/pgp`) — native PGP on go-crypto, the OpenPGP library:
   Ed25519 (sign) + Curve25519 (encrypt) keypairs, 2-year expiry, private keys
   **AES-256-GCM encrypted at rest** under a master-secret-derived key,
   encrypt/decrypt/sign/verify, encrypt-and-sign, key rotation preserving old

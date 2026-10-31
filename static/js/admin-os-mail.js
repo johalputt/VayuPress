@@ -1736,7 +1736,7 @@
       });
     });
 
-    // Mark unread → drop the Seen flag and return to the folder (Gmail-style).
+    // Mark unread → drop the Seen flag and return to the folder.
     actions.querySelectorAll('[data-mail-mark]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var mark = btn.getAttribute('data-mail-mark');
@@ -2003,7 +2003,7 @@
   }
 
   // ── Keyboard shortcuts + help overlay ────────────────────────────────────────
-  // Gmail/Superhuman-style single-key navigation. Shortcuts are ignored while
+  // Single-key navigation, as mail readers have it. Shortcuts are ignored while
   // typing in a field. "?" opens a help overlay (native popover when available,
   // a positioned fallback otherwise). All CSP-safe — no inline handlers/styles.
   (function () {

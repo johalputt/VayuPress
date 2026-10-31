@@ -126,7 +126,7 @@ func (c *imapClient) login(user, pass string) error {
 			return err
 		}
 		if _, err := c.finish(tag); err != nil {
-			return errors.New("the server refused the user name or password (some providers, Gmail among them, need an app password)")
+			return errors.New("the server refused the user name or password (most large providers need an app password)")
 		}
 		return nil
 	}
@@ -136,7 +136,7 @@ func (c *imapClient) login(user, pass string) error {
 		return errors.New("this server signs in only in a way that cannot carry this password")
 	}
 	if _, err := c.command("LOGIN " + qu + " " + qp); err != nil {
-		return errors.New("the server refused the user name or password (some providers, Gmail among them, need an app password)")
+		return errors.New("the server refused the user name or password (most large providers need an app password)")
 	}
 	return nil
 }

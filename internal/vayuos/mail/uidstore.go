@@ -15,7 +15,7 @@ import (
 // RFC 3501 requires every message in a mailbox to have a Unique Identifier (UID)
 // that is strictly ascending and stable for the life of the mailbox, plus a
 // UIDVALIDITY value that only changes if those UIDs are ever reassigned. Real
-// mail clients (Gmail app, Apple Mail, Thunderbird, Outlook) rely on this to
+// mail clients (phone mail apps, Apple Mail, Thunderbird) rely on this to
 // sync incrementally — without stable UIDs a client re-downloads everything, or
 // shows duplicates, on every reconnect.
 //

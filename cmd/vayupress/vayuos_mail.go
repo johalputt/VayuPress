@@ -279,7 +279,7 @@ func ensurePrefix(s, prefix string) string {
 }
 
 // composeMaxAttachMB is the total attachment budget for a single message, in MB.
-// Generous by design (default 50 MB, above Gmail's 25 / Outlook's 20); override
+// Generous by design (default 50 MB, above the 20 to 25 MB large providers allow); override
 // with VAYUMAIL_MAX_ATTACH_MB.
 func composeMaxAttachMB() int {
 	if n := config.GetEnvAsInt("VAYUMAIL_MAX_ATTACH_MB", 50); n >= 1 {
@@ -387,7 +387,7 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 	}
 	// Accept EITHER multipart/form-data (when the composer has attachments) or the
 	// legacy JSON body. maxAttachMB bounds total attachment bytes — generous by
-	// design (default 50 MB, above Gmail's 25 MB / Outlook's 20 MB), tunable via
+	// design (default 50 MB, above the 20 to 25 MB large providers allow), tunable via
 	// VAYUMAIL_MAX_ATTACH_MB.
 	maxAttachMB := int64(composeMaxAttachMB())
 	maxAttachBytes := maxAttachMB << 20
@@ -1532,7 +1532,7 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 		page.Detail = ui.HTML(`Nothing answers at <code>` + hHost + `</code>; see Listeners below.`)
 	case mismatch:
 		page.Tone, page.State = "warn", "Phones will refuse this server's certificate"
-		page.Detail = ui.HTML(`It does not cover <code>` + hHost + `</code>. Desktop apps let you accept it; the Gmail app and Thunderbird for Android do not.`)
+		page.Detail = ui.HTML(`It does not cover <code>` + hHost + `</code>. Desktop apps let you accept it; most phone mail apps, Thunderbird for Android among them, do not.`)
 	case down > 0:
 		page.Tone, page.State = "warn", itoaSafe(down)+" of "+itoaSafe(len(listeners))+" mail services are not listening"
 		page.Detail = ui.HTML(`Apps that use them cannot connect; see Listeners below.`)
@@ -1615,7 +1615,7 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	val := func(s string) ui.HTML {
 		return ui.HTML(`<span class="mono vm-connect__val">` + html.EscapeString(s) + `</span>`)
 	}
-	sections = append(sections, ui.Section("Any other mail app", "Thunderbird, Apple Mail, Outlook, K-9",
+	sections = append(sections, ui.Section("Any other mail app", "Thunderbird, Apple Mail, K-9 and the rest",
 		ui.HTML(`<p class="sa-list__note">Choose Add account and enter your address and password: Thunderbird and K-9 fill in the rest.`+
 			string(ui.Tip("Published at https://"+mc.Domain+"/.well-known/autoconfig/mail/config-v1.1.xml, and at /.well-known/vayumail/autoconfig.json for the VayuMail app."))+
 			` For an app that asks:</p>`+string(ui.Rows(

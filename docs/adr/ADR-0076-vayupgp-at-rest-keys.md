@@ -12,7 +12,7 @@ private keys safely on a single-VPS deployment.
 
 ## Decision
 
-1. Build on **ProtonMail go-crypto** (Apache-2.0); its transitive Cloudflare
+1. Build on **go-crypto**, the OpenPGP library (Apache-2.0); its transitive Cloudflare
    CIRCL backend is BSD-3-Clause. No GPL/AGPL is introduced.
 2. Generate **Ed25519** primary (sign/certify) + **Curve25519/X25519** subkey
    (encrypt), 2-year expiry.

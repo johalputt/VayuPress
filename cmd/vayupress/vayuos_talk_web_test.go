@@ -129,11 +129,11 @@ func TestTalkIdentityResolution(t *testing.T) {
 		t.Fatalf("email-on-domain: got %q", got)
 	}
 	// 3. Admin with an off-domain email → falls back to a real mailbox.
-	if got := a.talkIdentity(req(&users.User{ID: "u3", Email: "owner@gmail.com", Role: users.RoleAdmin})); got != "dana@example.com" {
+	if got := a.talkIdentity(req(&users.User{ID: "u3", Email: "owner@elsewhere.example", Role: users.RoleAdmin})); got != "dana@example.com" {
 		t.Fatalf("admin fallback: got %q", got)
 	}
 	// 4. Non-admin, off-domain email, no mailbox → no identity (clean empty).
-	if got := a.talkIdentity(req(&users.User{ID: "u4", Email: "someone@gmail.com", Role: users.RoleAuthor})); got != "" {
+	if got := a.talkIdentity(req(&users.User{ID: "u4", Email: "someone@elsewhere.example", Role: users.RoleAuthor})); got != "" {
 		t.Fatalf("non-admin off-domain: got %q, want empty", got)
 	}
 }

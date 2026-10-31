@@ -35,7 +35,7 @@ func TestMailAvatarImg(t *testing.T) {
 	}
 
 	// An external sender (not a local mailbox) → initials, never an <img>.
-	external := mailAvatarImg("Someone <someone@gmail.com>", set)
+	external := mailAvatarImg("Someone <someone@elsewhere.example>", set)
 	if strings.Contains(external, "<img") {
 		t.Errorf("an external sender must not render an avatar img, got: %s", external)
 	}

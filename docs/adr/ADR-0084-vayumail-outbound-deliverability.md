@@ -7,7 +7,7 @@
 ## Context
 
 VayuMail signs outbound mail with DKIM and delivers it direct-to-MX. In
-practice, legitimate messages were still being filed to **spam by Gmail**.
+practice, legitimate messages were still being filed to **spam by the large providers**.
 Outbound inbox placement depends on several factors, only some of which are
 solvable in code:
 
@@ -55,7 +55,7 @@ project already chose to avoid on the inbound path.
 - Positive: eliminates the bespoke-canonicalization failure mode; messages are
   structurally indistinguishable from those of mainstream clients. No new
   dependency — the library was already vendored for inbound checks.
-- **Honest limitation:** no code change can *guarantee* Gmail inbox placement
+- **Honest limitation:** no code change can *guarantee* inbox placement at a large provider
   for a fresh self-hosted IP. Sending-IP reputation and correct DNS (PTR + SPF +
   DKIM + DMARC) dominate, and a new IP typically needs a warm-up period. The
   self-check surfaces the operator-owned items; verifying with a tool such as

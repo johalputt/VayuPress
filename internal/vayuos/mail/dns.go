@@ -166,8 +166,8 @@ func Deliverability(ctx context.Context, cfg Config, dkimName, dkimTXT string) [
 	}
 
 	// HELO/hostname must be a fully-qualified domain name. A bare label or
-	// "localhost" announced in EHLO is an immediate spam signal for Gmail and
-	// Outlook.
+	// "localhost" announced in EHLO is an immediate spam signal for the large
+	// providers.
 	hn := RecordHealth{Type: "HELO hostname", Name: cfg.Hostname, Message: "ok", OK: true, Found: cfg.Hostname}
 	if cfg.Hostname == "" || !strings.Contains(strings.TrimSuffix(cfg.Hostname, "."), ".") || strings.EqualFold(cfg.Hostname, "localhost") {
 		hn.OK = false
@@ -224,7 +224,7 @@ func Deliverability(ctx context.Context, cfg Config, dkimName, dkimTXT string) [
 		case matched:
 			ptr.OK, ptr.Message = true, "ok"
 		case len(found) > 0:
-			ptr.Message = "reverse DNS does not match " + cfg.Hostname + " — set rDNS/PTR for your sending IP(s) at your VPS provider (allow a few minutes to propagate); Gmail/Outlook penalise a mismatch"
+			ptr.Message = "reverse DNS does not match " + cfg.Hostname + " — set rDNS/PTR for your sending IP(s) at your VPS provider (allow a few minutes to propagate); the large providers penalise a mismatch"
 		default:
 			ptr.Message = "no reverse DNS (PTR) found for " + cfg.Hostname + "'s IP(s) — set rDNS/PTR at your VPS provider"
 		}

@@ -9,7 +9,7 @@
 VayuMail already received mail (SMTP), stored it in Maildir, sent it (DKIM-signed,
 direct-to-MX or via a relay), and let the operator read/compose in the VayuOS
 panel. But the value of running your own mail is being able to use it from the
-apps you already use — the Gmail app, Apple Mail, Thunderbird, Outlook — over the
+apps you already use — phone mail apps, Apple Mail, Thunderbird — over the
 standard protocols. The existing IMAP server was a minimal read-only stub: it
 exposed only INBOX, used the message's position as its UID (so every reconnect
 looked like a brand-new mailbox to a client), supported no flags beyond \Seen,

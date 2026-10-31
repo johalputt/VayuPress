@@ -13,7 +13,7 @@ import (
 )
 
 // Reply on a message goes to this install's own mail, never a mailto: link,
-// which opens whatever mail program the operator's computer has (Outlook, on
+// which opens whatever mail program the operator's computer has (a desktop client, on
 // johal.in's). Its address does too, as a new message to the writer.
 func TestAMessageIsAnsweredFromThisInstallsMail(t *testing.T) {
 	m := contactMessage{ID: "m 1", Name: "Priya", Email: "priya@readers.example", Message: "Hello", Created: time.Now()}

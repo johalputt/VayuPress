@@ -27,7 +27,7 @@ import (
 type DecryptHook func(accountEmail string, raw []byte) []byte
 
 // IMAPServer is an RFC 3501 IMAP4rev1 server providing standard mail clients
-// (Gmail app, Apple Mail, Thunderbird, Outlook) full access to a VayuMail
+// (phone mail apps, Apple Mail, Thunderbird) full access to a VayuMail
 // account's folders. Authentication is delegated to VayuPress accounts via the
 // Bridge. UIDs/UIDVALIDITY are persisted (see UIDStore) so clients sync
 // incrementally. It is started only when inbound mail is enabled.

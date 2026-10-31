@@ -60,7 +60,7 @@ Any upgrade must preserve these; several were explicit design wins found during 
   untrusted data; nonce'd scripts; DOMPurify-guarded single sink (`admin-os-editor.js:1714`);
   OnionMode strips external origins at one chokepoint (`internal/render/csp.go:31-48`).
 - **Honest, human copy on the hard paths**: onion-delivery failures name each reason
-  (`onion_transport.go:286-324`); TLS mismatch predicts the exact Gmail-app symptom
+  (`onion_transport.go:286-324`); TLS mismatch predicts the exact phone-app symptom
   (`vayuos_mail.go:1370-1407`); recovery flows are enumeration-proof with constant responses
   (`handlers_mail_recovery.go:41-66`).
 - **Recovery console**: codes shown once with Copy-all / Download / print, link consumed only on
@@ -217,7 +217,7 @@ reply → compose → send.
 
 ### Phase 2 — Make it feel like a mail app
 
-*Goal: speed and flow at realistic mailbox sizes; close the gap to the Gmail-class experience ADR-0083 set.*
+*Goal: speed and flow at realistic mailbox sizes; close the gap to the large services ADR-0083 set as the bar.*
 
 | # | Item | IDs | Size |
 |---|------|-----|------|

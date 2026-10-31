@@ -1,8 +1,8 @@
 #!/bin/bash
 # vayumail-setup.sh — make VayuMail reachable from real mail apps.
 #
-# "Could not open connection to server" in a mail client (Gmail app, Apple Mail,
-# Thunderbird, Outlook) almost always means the mail PORTS are not reachable —
+# "Could not open connection to server" in a mail client (phone mail apps, Apple
+# Mail, Thunderbird) almost always means the mail PORTS are not reachable —
 # not a password problem. On a typical VPS there are two blockers:
 #
 #   1) VayuPress runs as a NON-ROOT service, so it cannot bind the privileged
@@ -14,7 +14,7 @@
 # service and verifies the listeners. It also reminds you about DNS + TLS.
 #
 # It also provisions a trusted Let's Encrypt TLS certificate for mail.<domain>
-# (mobile clients such as the Gmail app refuse the self-signed fallback) and
+# (most phone mail apps refuse the self-signed fallback) and
 # wires it into the service — fully automatic and best-effort.
 #
 # TIP: VayuPress can now provision and auto-renew the mail certificate itself,
@@ -76,7 +76,7 @@ else
 fi
 
 # ── 3) Provision a trusted TLS certificate (Let's Encrypt) ──────────────────
-# Mobile clients (the Gmail app, Apple Mail) refuse VayuMail's self-signed
+# Mobile clients (phone mail apps, Apple Mail) refuse VayuMail's self-signed
 # fallback certificate, so a CA-signed cert for mail.<domain> is required for
 # them to connect. This step is automatic and best-effort: it resolves your mail
 # hostname, obtains a certificate with certbot, wires VAYUOS_MAIL_TLS_CERT/KEY
@@ -331,7 +331,7 @@ echo
 if [[ "${MAIL_TLS:-auto}" != "off" && -n "${MAIL_HOST:-}" && -f "/etc/letsencrypt/live/${MAIL_HOST}/fullchain.pem" ]]; then
   ok "TLS: a trusted certificate for ${MAIL_HOST} is installed and wired in — mobile mail apps should connect."
 else
-  warn "TLS: no trusted certificate is active yet, so VayuMail is using a self-signed fallback that mobile apps (e.g. the Gmail app) will reject."
+  warn "TLS: no trusted certificate is active yet, so VayuMail is using a self-signed fallback that most phone mail apps will reject."
   echo "     Once mail.<domain> DNS points here and port 80 is reachable, re-run this script, or set manually:"
   echo "       VAYUOS_MAIL_TLS_CERT=/etc/letsencrypt/live/mail.<domain>/fullchain.pem"
   echo "       VAYUOS_MAIL_TLS_KEY=/etc/letsencrypt/live/mail.<domain>/privkey.pem"

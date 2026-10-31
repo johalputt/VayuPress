@@ -83,7 +83,7 @@ func (d *DKIM) RecordName() string {
 // implementation (relaxed/relaxed canonicalization, rsa-sha256) rather than a
 // bespoke canonicalizer: a subtle canonicalization bug is one of the most
 // common reasons a message that "looks" signed still fails verification at
-// Gmail/Outlook and is filed as spam. Using the vetted library removes that
+// the large providers and is filed as spam. Using the vetted library removes that
 // entire class of risk. All present headers are signed (HeaderKeys nil).
 func (d *DKIM) SignMessage(raw []byte) ([]byte, error) {
 	if d.priv == nil {

@@ -14,7 +14,7 @@ import (
 )
 
 // A mailbox's own download: every folder as an mbox file inside one zip, the
-// format other mail apps import (Thunderbird, Apple Mail, mutt; Gmail through
+// format other mail apps import (Thunderbird, Apple Mail, mutt; the large services through
 // them). mboxrd is used, the variant whose quoting can be undone exactly: a
 // body line starting with any number of '>' then "From " gains one more '>'.
 // Messages are written as the reader shows them, decrypted where this

@@ -87,7 +87,7 @@ confirmation).
 6. **VayuMail·Tor** is a separate service in the Tor Space: instance-local
    same-onion delivery needs zero DNS/TLS (works today); optional onion-to-onion
    federation dials the peer's mail onion over Tor SOCKS with key discovery over
-   the onion. Global email interop (Gmail/Outlook) is **out of scope by physics**
+   the onion. Global email interop with the large providers is **out of scope by physics**
    — it needs a public MX/PTR/DKIM that pins the server to a clearnet IP — and is
    only ever available as an explicit, clearly-labelled non-anonymous opt-in in
    the Clearnet Space.

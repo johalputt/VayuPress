@@ -14,7 +14,7 @@ import (
 // every client — panel and IMAP — sees consistent state) and records a wake
 // row. A background sweeper moves due messages back to their original folder;
 // the Maildir re-delivery lands them in new/ without the Seen flag, so a woken
-// message resurfaces as unread, exactly like Gmail's snooze. If the operator
+// message resurfaces as unread, as snooze works in mail generally. If the operator
 // moves a snoozed message out by hand, its stale wake row is discarded on the
 // next sweep — a snooze can never "wake" a message that left the folder.
 

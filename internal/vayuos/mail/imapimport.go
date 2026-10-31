@@ -332,7 +332,7 @@ func (e *Engine) copyImported(dom, local, folder string, m fetched) bool {
 
 // importTarget names the folder here a remote folder is copied into, or ""
 // for one not copied: a folder that cannot be opened, and the views a
-// provider builds from other folders (Gmail's All Mail and Starred), whose
+// provider builds from other folders (an All Mail or a Starred), whose
 // messages are copied from where they actually are.
 func importTarget(rf remoteFolder) string {
 	a := rf.attrs

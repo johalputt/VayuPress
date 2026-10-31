@@ -495,7 +495,7 @@ type ComposeMessage struct {
 	// when the operator asks for it AND the message is a single-recipient,
 	// no-attachment, no-Cc/Bcc message AND a recipient key is known. It is off by
 	// default so a plain message is delivered as readable text (encrypting to a
-	// recipient that cannot decrypt — e.g. a plain Gmail address — would arrive as
+	// recipient that cannot decrypt — e.g. a plain address at a large provider — would arrive as
 	// an unreadable ciphertext block and score as spam).
 	Encrypt bool
 	// Sign has the message signed with the sender's OpenPGP key: inside the
@@ -896,7 +896,7 @@ func (e *Engine) Start(ctx context.Context) error {
 		// certificate, native ACME auto-provisioning, then a self-signed
 		// fallback. Only the first two are trusted by real mail clients; the
 		// engine surfaces the active mode so the panel can warn when mobile
-		// apps (the Gmail app, Apple Mail) would reject the connection.
+		// apps (Apple Mail, the phone apps) would reject the connection.
 		if tp, terr := buildTLSProvider(e.cfg); terr == nil {
 			e.tlsProv = tp
 			e.tlsConf = tp.config
@@ -1016,7 +1016,7 @@ func (e *Engine) TLSMode() string {
 }
 
 // TLSTrusted reports whether the active certificate is one mainstream mail
-// clients (the Gmail app, Apple Mail, Thunderbird, Outlook) will accept without
+// clients (phone mail apps, Apple Mail, Thunderbird) will accept without
 // a manual exception. A false value is the usual cause of a client's "Couldn't
 // open connection to server" — the ports are up, but the certificate is the
 // self-signed fallback that mobile apps reject.
@@ -1034,7 +1034,7 @@ func (e *Engine) TLSNote() string {
 // TLSCertHosts returns the DNS names the served leaf certificate is valid for.
 // Empty when TLS is unavailable or the certificate can't be parsed. Used to warn
 // when the certificate doesn't cover the hostname clients are told to connect to
-// — a silent failure on strict mobile apps (the Gmail app, which validates from
+// — a silent failure on strict mobile apps (most phone mail apps, which validate from
 // Google's servers, and Thunderbird for Android), while desktop clients let the
 // user click through the mismatch.
 func (e *Engine) TLSCertHosts() []string {

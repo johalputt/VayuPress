@@ -251,9 +251,9 @@ func TestImportTargets(t *testing.T) {
 		f    remoteFolder
 		want string
 	}{
-		{remoteFolder{name: "[Gmail]/All Mail", attrs: `\hasnochildren \all`, delim: "/"}, ""},
-		{remoteFolder{name: "[Gmail]/Starred", attrs: `\flagged`, delim: "/"}, ""},
-		{remoteFolder{name: "[Gmail]", attrs: `\noselect \haschildren`, delim: "/"}, ""},
+		{remoteFolder{name: "[Mail]/All Mail", attrs: `\hasnochildren \all`, delim: "/"}, ""},
+		{remoteFolder{name: "[Mail]/Starred", attrs: `\flagged`, delim: "/"}, ""},
+		{remoteFolder{name: "[Mail]", attrs: `\noselect \haschildren`, delim: "/"}, ""},
 		{remoteFolder{name: "INBOX", delim: "/"}, "Inbox"},
 		{remoteFolder{name: "Gesendet", attrs: `\sent`, delim: "/"}, "Sent"},
 		{remoteFolder{name: "Deleted Items", delim: "/"}, "Trash"},

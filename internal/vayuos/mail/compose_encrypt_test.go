@@ -11,7 +11,7 @@ import (
 // TestComposeRichEncryptOptIn pins the fix for silent auto-encryption: the admin
 // composer (ComposeRich) must only PGP-encrypt when the operator opts in
 // (Encrypt:true). Encrypting to a recipient that cannot decrypt — e.g. a plain
-// Gmail address — would arrive as an unreadable ciphertext block and score as
+// address at a large provider — would arrive as an unreadable ciphertext block and score as
 // spam, which is exactly what happened before.
 func TestComposeRichEncryptOptIn(t *testing.T) {
 	t.Parallel()

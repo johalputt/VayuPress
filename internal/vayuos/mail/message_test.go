@@ -9,7 +9,7 @@ import (
 
 func crlf(s string) string { return strings.ReplaceAll(s, "\n", "\r\n") }
 
-// A multipart/alternative message (the common Gmail shape) must yield decoded
+// A multipart/alternative message (the common shape from the large services) must yield decoded
 // text and HTML parts plus decoded headers.
 func TestParseMessageMultipartAlternative(t *testing.T) {
 	t.Parallel()
