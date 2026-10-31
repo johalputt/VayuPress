@@ -207,7 +207,7 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
 		return
 	}
-	emailAddr := strings.TrimSpace(strings.ToLower(body.Email))
+	emailAddr, signinCtx := a.signinResolve(r.Context(), body.Email)
 	if emailAddr == "" || body.Password == "" {
 		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "Email and password are required", "")
 		return
@@ -271,7 +271,7 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 	// password did not match and had to sign in at /os (3ck). A handed-over
 	// mailbox belongs to its client: the console account no longer opens it,
 	// here as over IMAP.
-	ctx := r.Context()
+	ctx := signinCtx
 	accts := a.vayuMail.Accounts()
 	consoleOpen := a.userStore != nil && !a.vayuMail.IsHandedOver(emailAddr)
 	matched := false
@@ -284,6 +284,10 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 		// timing and the response identical whether or not the address exists.
 		hash := accts.HashFor(ctx, emailAddr)
 		matched = auth.VerifySecretArgon2id(body.Password, hash) && hash != ""
+	}
+	// A mailbox with a sign-in name is not signed in to by its address.
+	if a.accountPasswordClosed(ctx, emailAddr) {
+		matched = false
 	}
 	if !matched {
 		mailAuthThrottle.Fail(emailAddr)
@@ -398,7 +402,7 @@ func (a *App) handleMemberVayuMailDeviceRegister(w http.ResponseWriter, r *http.
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
 		return
 	}
-	emailAddr := strings.TrimSpace(strings.ToLower(body.Email))
+	emailAddr, signinCtx := a.signinResolve(r.Context(), body.Email)
 	if emailAddr == "" || body.Password == "" {
 		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "Email and password are required", "")
 		return
@@ -442,7 +446,7 @@ func (a *App) handleMemberVayuMailDeviceRegister(w http.ResponseWriter, r *http.
 	if d := mailAuthThrottle.Delay(emailAddr); d > 0 {
 		time.Sleep(d)
 	}
-	if !bridge.verifyCredentialWeb(r.Context(), emailAddr, body.Password) {
+	if !bridge.verifyCredentialWeb(signinCtx, emailAddr, body.Password) {
 		mailAuthThrottle.Fail(emailAddr)
 		auth.RecordAuthFailure(lockKey)
 		auth.RecordAccountFailure(emailAddr, clientIP)
@@ -607,7 +611,7 @@ func (a *App) handleMemberVayuMailPrivKey(w http.ResponseWriter, r *http.Request
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
 		return
 	}
-	emailAddr := strings.TrimSpace(strings.ToLower(body.Email))
+	emailAddr, signinCtx := a.signinResolve(r.Context(), body.Email)
 	if emailAddr == "" || body.Password == "" {
 		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "Email and password are required", "")
 		return
@@ -634,7 +638,7 @@ func (a *App) handleMemberVayuMailPrivKey(w http.ResponseWriter, r *http.Request
 	if d := mailAuthThrottle.Delay(emailAddr); d > 0 {
 		time.Sleep(d)
 	}
-	if !bridge.verifyCredential(r.Context(), emailAddr, body.Password) {
+	if !bridge.verifyCredential(signinCtx, emailAddr, body.Password) {
 		mailAuthThrottle.Fail(emailAddr)
 		auth.RecordAccountFailure(emailAddr, clientIP)
 		a.signinRecord(emailAddr, signin.DoorWeb, signin.StagePassword, clientIP)

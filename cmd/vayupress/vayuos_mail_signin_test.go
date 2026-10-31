@@ -14,6 +14,11 @@ import (
 	"github.com/johalputt/vayupress/internal/users"
 )
 
+// holderOf is the session of a mailbox's holder who is not an administrator.
+func holderOf(addr string) *users.User {
+	return &users.User{ID: "vmail:" + addr, Email: addr, Role: users.RoleAuthor, MailAddress: addr}
+}
+
 // postAsFrom posts the mailbox's sign-in card's form as u from addr.
 func postAsFrom(a *App, u *users.User, addr string, vals url.Values) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/os/vayumail/accounts/signin", strings.NewReader(vals.Encode()))
@@ -42,8 +47,7 @@ func TestAHolderSeesAndFencesTheirOwnSignIns(t *testing.T) {
 	st.Record(signin.Attempt{Account: lockedMailbox, Door: signin.DoorWeb, Stage: signin.StageCode, IP: "198.51.100.66"})
 	st.Record(signin.Attempt{Account: "someone@example.com", Door: signin.DoorIMAP, Stage: signin.StagePassword, IP: "203.0.113.70"})
 	_ = st.Flush(ctx)
-	boss := &users.User{ID: "vmail:" + lockedMailbox, Email: lockedMailbox, Role: users.RoleAuthor, MailAddress: lockedMailbox}
-	erin := &users.User{ID: "vmail:erin@example.com", Email: "erin@example.com", Role: users.RoleAuthor, MailAddress: "erin@example.com"}
+	boss, erin := holderOf(lockedMailbox), holderOf("erin@example.com")
 
 	sec, _ := a.mailboxSettingsSections(ctx, lockedMailbox, true)
 	for _, want := range []string{"198.51.x.x · ", "Your password was right but the code was wrong", "It was me"} {

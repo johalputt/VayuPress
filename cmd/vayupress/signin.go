@@ -9,6 +9,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -150,3 +151,38 @@ func (a *App) notifySigninAlarm(al signin.Alarm) {
 		_ = a.mailer.Send(email.Message{To: t, Subject: "Your password was used, and your second factor stopped it", Text: text})
 	}
 }
+
+// signinByNameKey marks a sign-in that gave a mailbox's sign-in name.
+type signinByNameKey struct{}
+
+// signinResolve reads the name a sign-in gave: a mailbox's sign-in name gives
+// its address, and the context it returns is marked so; an address, or a bare
+// local part, is given back as it came.
+func (a *App) signinResolve(ctx context.Context, given string) (string, context.Context) {
+	given = strings.ToLower(strings.TrimSpace(given))
+	if a.vayuMail == nil || a.vayuMail.Accounts() == nil || given == "" || strings.Contains(given, "@") {
+		return given, ctx
+	}
+	if addr := a.vayuMail.Accounts().AddressForSigninName(ctx, given); addr != "" {
+		return addr, context.WithValue(ctx, signinByNameKey{}, true)
+	}
+	return given, ctx
+}
+
+// accountPasswordClosed reports whether addr's own password may not sign in
+// on this attempt: the mailbox has a sign-in name and the attempt gave its
+// address instead. App passwords are not closed by it: they are random, not
+// guessable, and closing them would break every mail app already set up with
+// the address. A door that finds it closed still checks the password, so its
+// answer and its time are a wrong password's.
+func (a *App) accountPasswordClosed(ctx context.Context, addr string) bool {
+	if byName, _ := ctx.Value(signinByNameKey{}).(bool); byName || a.vayuMail == nil || a.vayuMail.Accounts() == nil {
+		return false
+	}
+	return a.vayuMail.Accounts().SigninName(ctx, mailAddrOf(strings.ToLower(strings.TrimSpace(addr)), a.vayuMail.Config().Domain)) != ""
+}
+
+// errSigninNameRequired is the console's own reason for a right password
+// given with a named mailbox's address; the page says only that the email or
+// password is wrong.
+var errSigninNameRequired = errors.New("this account signs in with its sign-in name")

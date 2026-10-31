@@ -25,11 +25,11 @@ import (
 // mailboxSigninRows is how many of a mailbox's attempts its card lists.
 const mailboxSigninRows = 12
 
-// vayuCardSignins is the mailbox's sign-in card, or "" when attempts are not
-// recorded on this install.
+// vayuCardSignins is the mailbox's sign-in card: its attempts and its fence
+// when attempts are recorded on this install, and its sign-in name always.
 func (a *App) vayuCardSignins(ctx context.Context, ac vmail.Account) string {
 	if a.signin == nil {
-		return ""
+		return a.signinNameBlock(ctx, ac)
 	}
 	account := auth.AccountKey(ac.Email)
 	rows, _ := a.signin.Attempts(ctx, "", account, mailboxSigninRows)
@@ -71,6 +71,8 @@ func (a *App) vayuCardSignins(ctx context.Context, ac vmail.Account) string {
 	}
 	b.WriteString(`<span class="text-xs muted">Addresses are shown with their last part hidden.</span></div>`)
 
+	b.WriteString(a.signinNameBlock(ctx, ac))
+
 	fence := strings.Join(a.signin.Fence(account), ", ")
 	b.WriteString(`<div class="vm-acct__sub"><span class="field-label">Sign in only from these countries</span>` +
 		`<form class="vm-row" hx-post="/os/vayumail/accounts/signin" hx-target="#vm-accounts-list" hx-swap="innerHTML">` +
@@ -81,13 +83,38 @@ func (a *App) vayuCardSignins(ctx context.Context, ac vmail.Account) string {
 	return b.String()
 }
 
+// signinNameBlock is the mailbox's sign-in name, and whether mail apps take
+// its own password.
+func (a *App) signinNameBlock(ctx context.Context, ac vmail.Account) string {
+	var b strings.Builder
+	name := a.vayuMail.Accounts().SigninName(ctx, ac.Email)
+	nameNote := "Empty: the address signs in, as it always has."
+	if name != "" {
+		nameNote = "Sign in with " + name + ", not the address, everywhere: the site, the console, the app and mail apps' own passwords. App passwords keep working with the address. An administrator can clear it."
+	}
+	b.WriteString(`<div class="vm-acct__sub"><span class="field-label">Sign-in name</span>` +
+		`<form class="vm-row" hx-post="/os/vayumail/accounts/signin" hx-target="#vm-accounts-list" hx-swap="innerHTML">` +
+		`<input type="hidden" name="email" value="` + html.EscapeString(ac.Email) + `"><input type="hidden" name="op" value="name">` +
+		`<input class="input input--sm" name="name" value="` + html.EscapeString(name) + `" placeholder="None" autocomplete="off" aria-label="Sign-in name">` +
+		`<button class="btn btn--sm" type="submit">Save</button></form>` +
+		`<span class="text-xs muted">The address people write to is public, so it is guessed at. With a sign-in name it no longer signs in, and a guesser who has it has nothing. ` +
+		html.EscapeString(nameNote) + `</span></div>`)
+	mailApps := "Mail apps sign in with app passwords only; this mailbox's own password is refused over IMAP, POP3 and SMTP."
+	if !ac.RequireDeviceApproval {
+		mailApps = "Mail apps may sign in with this mailbox's own password. An administrator can require app passwords only."
+	}
+	b.WriteString(`<div class="vm-acct__sub"><span class="field-label">Mail apps</span><span class="text-sm">` + html.EscapeString(mailApps) + `</span></div>`)
+
+	return b.String()
+}
+
 // handleVayuOSAccountSignin applies the card's two controls for a mailbox's
 // holder or an administrator: "It was me" on a source that tried it, and its
 // fence. A fence the holder sets that would shut out the address they set it
 // from is refused.
 func (a *App) handleVayuOSAccountSignin(w http.ResponseWriter, r *http.Request) {
-	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil || a.signin == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "unavailable", "Sign-in attempts are not recorded on this install.", "")
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
 		return
 	}
 	_ = r.ParseForm()
@@ -98,7 +125,12 @@ func (a *App) handleVayuOSAccountSignin(w http.ResponseWriter, r *http.Request) 
 	}
 	account := auth.AccountKey(email)
 	var opErr error
-	switch r.FormValue("op") {
+	op := r.FormValue("op")
+	if a.signin == nil && op != "name" {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "unavailable", "Sign-in attempts are not recorded on this install.", "")
+		return
+	}
+	switch op {
 	case "mine":
 		fp := r.FormValue("fp")
 		// Only a source that tried this mailbox: "It was me" teaches the
@@ -129,6 +161,11 @@ func (a *App) handleVayuOSAccountSignin(w http.ResponseWriter, r *http.Request) 
 			} else if opErr == nil {
 				dbpkg.AuditLog("signin.fence", dbpkg.AuditActor(r), account, strings.Join(list, ","))
 			}
+		}
+	case "name":
+		name := r.FormValue("name")
+		if opErr = a.vayuMail.Accounts().SetSigninName(r.Context(), email, name); opErr == nil {
+			dbpkg.AuditLog("signin.name", dbpkg.AuditActor(r), account, map[bool]string{true: "cleared", false: "set"}[strings.TrimSpace(name) == ""])
 		}
 	default:
 		opErr = errors.New("unknown action")

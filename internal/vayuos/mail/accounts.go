@@ -209,6 +209,11 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 		// Empty for existing accounts, so the migration changes no behaviour.
 		`ALTER TABLE vayumail_accounts ADD COLUMN avatar_blob BLOB`,
 		`ALTER TABLE vayumail_accounts ADD COLUMN avatar_type TEXT NOT NULL DEFAULT ''`,
+		// A sign-in name of the mailbox's own (signinname.go): when set, the
+		// address no longer signs in. NULL for every existing account, so the
+		// migration changes no behaviour.
+		`ALTER TABLE vayumail_accounts ADD COLUMN signin_name TEXT`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_vayumail_accounts_signin_name ON vayumail_accounts(signin_name) WHERE signin_name IS NOT NULL`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return s, err

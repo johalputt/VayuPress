@@ -44,6 +44,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   code was not, and "It was me" on each source that tried it. The holder
   can limit sign-in to a list of countries; a list that would shut out the
   address they set it from is not saved.
+- **A sign-in name of its own, per mailbox.** The address people write to is
+  public, so it is what guessers try. With a sign-in name set, the address
+  no longer signs in with the mailbox's own password at any door (the
+  site, the console, the app, IMAP, POP3, SMTP, contacts and calendars,
+  VayuTalk); the name does. The refusal reads and takes as long as a wrong
+  password. App passwords keep working with the address, so mail apps
+  already set up are not broken. Each mailbox's settings also say whether
+  mail apps take app passwords only.
 
 ### Changed
 

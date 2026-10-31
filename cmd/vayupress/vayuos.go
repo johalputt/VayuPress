@@ -53,6 +53,7 @@ import (
 // servers do (vayuMailBridge.AuthUser).
 func (a *App) talkVerify(ctx context.Context, email, password string) bool {
 	ip := signinIPFrom(ctx)
+	email, ctx = a.signinResolve(ctx, email)
 	if a.signinRefused(email, ip) {
 		return false
 	}
@@ -90,11 +91,10 @@ type vayuMailBridge struct{ app *App }
 var mailAuthThrottle = vmail.NewAuthThrottle()
 
 func (b *vayuMailBridge) AuthUser(username, password string, from vmail.Origin) (bool, error) {
-	ctx := context.Background()
 	domain := b.app.vayuMail.Config().Domain
-	addr := username
+	addr, ctx := b.app.signinResolve(context.Background(), username)
 	if !strings.Contains(addr, "@") {
-		addr = username + "@" + domain
+		addr = addr + "@" + domain
 	}
 	// A blocked source, or one outside the account's fence, is refused before
 	// its password is checked, as a wrong password: it is told nothing more.
@@ -200,17 +200,20 @@ func (b *vayuMailBridge) verifyCredentialScoped(ctx context.Context, addr, passw
 		cmsBranchOpen = false
 	}
 
+	// A mailbox with a sign-in name takes its own password only with the
+	// name (accountPasswordClosed); both checks still run, for the time.
+	closed := b.app.accountPasswordClosed(ctx, addr)
 	if !enforce && (webBootstrap || !requireApproval) {
 		// 1) CMS users (full VayuPress accounts).
 		if cmsBranchOpen && b.app.userStore != nil {
-			if _, err := b.app.userStore.Authenticate(ctx, addr, password); err == nil {
+			if _, err := b.app.userStore.Authenticate(ctx, addr, password); err == nil && !closed {
 				return true
 			}
 		}
 		// 2) Admin-managed mail-only accounts (email + password).
 		if accts != nil {
 			if hash := accts.HashFor(ctx, addr); hash != "" {
-				if auth.VerifySecretArgon2id(password, hash) {
+				if auth.VerifySecretArgon2id(password, hash) && !closed {
 					return true
 				}
 			}

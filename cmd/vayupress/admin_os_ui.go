@@ -2064,6 +2064,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	// Brute-force guard — shared lockout state with the v2 surface and the
 	// API-key path so attempts cannot be split across surfaces.
 	ip := loginClientIP(r)
+	email, signinCtx := a.signinResolve(r.Context(), email)
 	if a.signinRefused(email, ip) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(osLoginPage(email, signinRefusedMessage, next)))
@@ -2082,11 +2083,16 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(osLoginPage(email, loginLockoutMessage(until), next)))
 		return
 	}
-	u, err := a.userStore.Authenticate(r.Context(), email, pass)
+	u, err := a.userStore.Authenticate(signinCtx, email, pass)
+	if err == nil && a.accountPasswordClosed(signinCtx, email) {
+		// The address of a mailbox with a sign-in name: the password was
+		// checked, and the sign-in fails as a wrong one does.
+		u, err = nil, errSigninNameRequired
+	}
 	if err != nil {
 		// Fall back to a VayuMail account login (mailbox / author / editor / etc.),
 		// so those email accounts can sign in from the same website login button.
-		if addr, mok, totpMissing := a.authMailAccount(r.Context(), email, pass, r.FormValue("totp")); mok {
+		if addr, mok, totpMissing := a.authMailAccount(signinCtx, email, pass, r.FormValue("totp")); mok {
 			// The second factor belongs to the address, as on the site's
 			// sign-in (3ck): a mailbox with no two-factor of its own does not
 			// let its password past the VayuOS account's at the same address.

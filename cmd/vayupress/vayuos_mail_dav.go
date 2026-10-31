@@ -6,6 +6,7 @@ package main
 // (internal/vayuos/mail/davserver.go), signed in as the mail protocols are.
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -41,8 +42,9 @@ func (a *App) handleMailDAV(w http.ResponseWriter, r *http.Request) {
 // default and always for an address with no mailbox here. A contact or an
 // event can so only be kept by a credential minted for a mailbox.
 func (a *App) davSignIn(user, password, ip string) (string, bool) {
-	addr := strings.ToLower(mailAddrOf(strings.TrimSpace(user), a.vayuMail.Config().Domain))
-	if ok, _ := (&vayuMailBridge{app: a}).AuthUser(addr, password, vmail.Origin{Addr: ip, Door: signin.DoorDAV}); !ok {
+	resolved, _ := a.signinResolve(context.Background(), user)
+	addr := strings.ToLower(mailAddrOf(resolved, a.vayuMail.Config().Domain))
+	if ok, _ := (&vayuMailBridge{app: a}).AuthUser(user, password, vmail.Origin{Addr: ip, Door: signin.DoorDAV}); !ok {
 		return "", false
 	}
 	return addr, true
