@@ -214,6 +214,11 @@ test("the mailbox switcher opens from the account and switches", async ({ page }
   // The sidebar is a scroll container; the wider panel must not widen it, or
   // focusing the search scrolls the whole sidebar sideways.
   expect(await page.locator("nav.sa-appside").evaluate((e) => [e.scrollLeft, e.scrollWidth - e.clientWidth]), "the switcher pushed the sidebar sideways").toEqual([0, 0]);
+  // And it is wider than the sidebar, so it opens whole inside the window:
+  // held to the sidebar's edge, it was pushed half off the window's left.
+  const [left, right, width] = await panel.evaluate((p) => { const r = p.getBoundingClientRect(); return [r.left, r.right, document.documentElement.clientWidth]; });
+  expect(left, "the switcher opens off the window's left edge").toBeGreaterThanOrEqual(0);
+  expect(right, "the switcher opens off the window's right edge").toBeLessThanOrEqual(width);
 
   const rows = panel.locator(".mx-switch__row:visible");
   await expect(rows).toHaveCount(3);

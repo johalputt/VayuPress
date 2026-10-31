@@ -41,7 +41,11 @@
     panel.style.translate = '';
     var r = panel.getBoundingClientRect();
     var lo = 0, hi = document.documentElement.clientWidth;
-    for (var el = panel.parentElement; el && el !== document.body; el = el.parentElement) {
+    // A fixed panel is not clipped by the boxes it sits in, only by the
+    // window: Mail's switcher is fixed so it can be wider than the sidebar,
+    // and held to the sidebar's edge it was pushed half off the window.
+    var fixed = getComputedStyle(panel).position === 'fixed';
+    for (var el = fixed ? null : panel.parentElement; el && el !== document.body; el = el.parentElement) {
       if (getComputedStyle(el).overflowX === 'visible') continue;
       var c = el.getBoundingClientRect();
       lo = Math.max(lo, c.left);
