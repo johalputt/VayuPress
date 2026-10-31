@@ -177,7 +177,7 @@ type Block struct {
 	URL   string   `json:"url,omitempty"`   // image, embed
 	Alt   string   `json:"alt,omitempty"`   // image alt text
 	Lang  string   `json:"lang,omitempty"`  // code language hint
-	Style string   `json:"style,omitempty"` // list: "ordered"|"unordered"; callout: tone
+	Style string   `json:"style,omitempty"` // list: "ordered"|"unordered"; callout: tone; video embed: "tall" for an upright Short
 	// image block extras.
 	Caption string `json:"caption,omitempty"` // image / gallery caption
 	Width   string `json:"width,omitempty"`   // image layout: "wide" | "full" (else regular)
@@ -652,7 +652,13 @@ func renderBlock(b, plain *strings.Builder, blk Block) {
 		// facade with no source.
 		if blk.Kind == "video" && !config.Cfg.OnionMode {
 			if src := safeEmbedSrc(blk.EmbedSrc); src != "" {
-				b.WriteString(`<div class="video-facade" data-embed-src="` + html.EscapeString(src) +
+				// A Short is filmed upright: drawn at 16:9 it is a sliver of
+				// picture between two black bars.
+				cls := "video-facade"
+				if blk.Style == "tall" {
+					cls += " video-facade--tall"
+				}
+				b.WriteString(`<div class="` + cls + `" data-embed-src="` + html.EscapeString(src) +
 					`" data-embed-title="` + html.EscapeString(blk.Title) + `">`)
 				if blk.ThumbURL != "" {
 					b.WriteString(`<img class="video-facade__poster" src="` + html.EscapeString(blk.ThumbURL) + `" alt="" loading="lazy">`)
