@@ -33,7 +33,7 @@
 
 ## About
 
-> **Live install:** **[johal.in](https://johal.in)** — **235,008 posts**, **14 sites** and a full mail server, all on **one Contabo VPS 10**, on VayuPress 3.18.15 (read 30 October 2026). [See the numbers →](#running-in-production--johalin)
+> **Live install:** **[johal.in](https://johal.in)** — **235,014 posts**, **14 sites** and a full mail server, all on **one Contabo VPS 10**, on VayuPress 3.18.21 (read 1 November 2026). [See the numbers →](#running-in-production--johalin)
 
 **Vayu** is Sanskrit for *wind* — the invisible force that moves everything and is owned by no one. VayuPress moves your online presence the same way: entirely under your control, seen by no third party.
 
@@ -299,11 +299,11 @@ Benchmarks are easy to stage. This is a live install you can open right now and 
 | | |
 |---|---|
 | **Site** | **[johal.in](https://johal.in)** — a working blog, publicly reachable |
-| **Published posts** | **235,008**, in one SQLite database |
+| **Published posts** | **235,014**, in one SQLite database |
 | **Hardware** | A single **Contabo VPS&nbsp;10** — one box, nothing else |
 | **Running on it** | **14 sites** across `johal.in` and `vayupress.com` (3 blogs, 10 hand-built sites, 1 business template), every certificate live, **+** the mail server (SMTP, IMAP, POP3, DKIM, WKD) |
 | **VayuShield** | Protecting, with 41 inspection rules and three datacenter range feeds |
-| **Version** | VayuPress 3.18.15, read through its connector on 30 October 2026 |
+| **Version** | VayuPress 3.18.21, read through its connector on 1 November 2026 |
 
 ### Google PageSpeed Insights
 
