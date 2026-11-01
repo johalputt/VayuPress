@@ -378,6 +378,10 @@ func TestTheSitesOfferedAreTheBlogsAsTheyServeNow(t *testing.T) {
 	if err := a.domains.SetSite(ctx, built.ID, domain.SiteConfig{Mode: "custom"}); err != nil {
 		t.Fatal(err)
 	}
+	sub, _ := a.domains.Create(ctx, "shop.example.com", domain.SiteBusiness, false)
+	if err := a.domains.SetSite(ctx, sub.ID, domain.SiteConfig{Mode: "business_subpath"}); err != nil {
+		t.Fatal(err)
+	}
 	var hosts []string
 	for _, s := range a.youtubeSites(ctx) {
 		hosts = append(hosts, s.Host)
@@ -385,6 +389,9 @@ func TestTheSitesOfferedAreTheBlogsAsTheyServeNow(t *testing.T) {
 	got := strings.Join(hosts, " ")
 	if !strings.Contains(got, "vashno.example.com") {
 		t.Errorf("a site serving a blog is not offered: %s", got)
+	}
+	if !strings.Contains(got, "shop.example.com") {
+		t.Errorf("a website with its blog at /blog is not offered: %s", got)
 	}
 	if strings.Contains(got, "built.example.com") {
 		t.Errorf("a hand-built site is offered: %s", got)

@@ -4,6 +4,7 @@ package safefetch
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -115,5 +116,22 @@ func TestDohLookupIPsFiltersAnswers(t *testing.T) {
 	}
 	if len(ips) != 1 || ips[0].String() != "140.82.121.5" {
 		t.Fatalf("ips = %v, want only the public 140.82.121.5", ips)
+	}
+}
+
+// An answer with more AAAA records than are raced still races an IPv4
+// address, second: a host with no IPv6 route reaches it.
+func TestPublicIPsKeepsIPv4InTheRaceBehindManyIPv6(t *testing.T) {
+	var ips []net.IPAddr
+	for i := 1; i <= 8; i++ {
+		ips = append(ips, net.IPAddr{IP: net.ParseIP(fmt.Sprintf("2001:4860:4802:3%d::7f", i))})
+	}
+	ips = append(ips, net.IPAddr{IP: net.ParseIP("142.250.70.14")}, net.IPAddr{IP: net.ParseIP("142.250.70.46")})
+	got := publicIPs(ips)
+	if len(got) != maxRacingIPs {
+		t.Fatalf("raced %d addresses, want %d", len(got), maxRacingIPs)
+	}
+	if got[0].To4() != nil || got[1].String() != "142.250.70.14" || got[3].String() != "142.250.70.46" {
+		t.Fatalf("the families do not alternate, v6 first: %v", got)
 	}
 }

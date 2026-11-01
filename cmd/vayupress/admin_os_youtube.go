@@ -52,7 +52,8 @@ func (a *App) youtubeSites(ctx context.Context) []youtubeSite {
 		// console and the connector read it; the registry's site_type column
 		// is what it was created as, and on johal.in it disagreed for every
 		// hosted blog, so the list offered none of them.
-		if d.IsPrimary || scopedSiteMode(d) != "blog" {
+		// A website with its blog at /blog has posts too.
+		if m := scopedSiteMode(d); d.IsPrimary || (m != "blog" && m != "business_subpath") {
 			continue
 		}
 		out = append(out, youtubeSite{ID: d.ID, Host: d.Host, Live: d.TLSState == domain.TLSActive})

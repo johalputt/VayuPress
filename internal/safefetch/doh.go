@@ -58,7 +58,7 @@ const (
 
 // publicIPs filters the resolver's answer down to dialable public addresses
 // (the same isPrivateOrReservedIP rule the dialer enforced anyway) and caps
-// the list at maxRacingIPs, IPv6 first per RFC 8305 preference.
+// the list at maxRacingIPs, the two families alternating, IPv6 first.
 func publicIPs(ips []net.IPAddr) []net.IP {
 	out := make([]net.IP, 0, len(ips))
 	for _, ipa := range ips {
@@ -67,16 +67,25 @@ func publicIPs(ips []net.IPAddr) []net.IP {
 		}
 		out = append(out, ipa.IP)
 	}
-	// Stable partition: v6 before v4, keeping resolver order within family.
-	partition := make([]net.IP, 0, len(out))
+	// Families interleaved, v6 first, keeping resolver order within each
+	// (RFC 8305 §4). Grouped v6-then-v4, an answer with maxRacingIPs or more
+	// AAAA records (www.youtube.com's) left no IPv4 address in the race, and
+	// a server with no IPv6 route failed every request to that host.
+	var v6, v4 []net.IP
 	for _, ip := range out {
 		if ip.To4() == nil {
-			partition = append(partition, ip)
+			v6 = append(v6, ip)
+		} else {
+			v4 = append(v4, ip)
 		}
 	}
-	for _, ip := range out {
-		if ip.To4() != nil {
-			partition = append(partition, ip)
+	partition := make([]net.IP, 0, len(out))
+	for i := 0; i < len(v6) || i < len(v4); i++ {
+		if i < len(v6) {
+			partition = append(partition, v6[i])
+		}
+		if i < len(v4) {
+			partition = append(partition, v4[i])
 		}
 	}
 	if len(partition) > maxRacingIPs {
