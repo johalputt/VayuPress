@@ -8,9 +8,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.18.22] — 2026-11-01
+## [3.18.23] — 2026-11-01
 
-A message read full width can be answered in place, and Content › YouTube offers every hosted blog and reads a channel's oldest short address.
+Compose on a phone is whole on the screen, above the tab bar.
 
 ### Fixed
 
@@ -18,6 +18,12 @@ A message read full width can be answered in place, and Content › YouTube offe
   tab bar, which covered Send and the tools, and its From line ran past the
   right edge; it is now the whole screen, over the tab bar, and minimised it
   stands on the bar instead of under it.
+
+## [3.18.22] — 2026-11-01
+
+A message read full width can be answered in place, and Content › YouTube offers every hosted blog and reads a channel's oldest short address.
+
+### Fixed
 
 - **A message read full width can be answered.** With Reading set to full
   width, or a message widened, Reply, Reply all, Forward and the reply field
