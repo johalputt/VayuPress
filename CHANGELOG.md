@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.24] — 2026-11-01
+
+YouTube is reached from a server without IPv6, and a website with its blog at /blog can take a channel.
+
+### Fixed
+
+- **Outside services are reached from a server with no IPv6 route.** The
+  addresses tried for a host were all its IPv6 ones first, cut at six, so a
+  host with six or more (www.youtube.com) was never tried over IPv4 and
+  Content › YouTube said "could not be reached". The two families now take
+  turns, IPv6 first.
+- **Content › YouTube offers a website with its blog at /blog**, not only a
+  site that is all blog.
+
 ## [3.18.23] — 2026-11-01
 
 Compose on a phone is whole on the screen, above the tab bar.
