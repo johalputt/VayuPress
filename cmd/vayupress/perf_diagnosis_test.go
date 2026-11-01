@@ -66,8 +66,11 @@ func TestACardPassSaysWhetherItFinished(t *testing.T) {
 	}
 }
 
-// The performance tool carries both readings.
+// The performance tool carries both readings. It counts posts and jobs from
+// the database, so it opens one of its own: run first in a shuffled order it
+// found none and the whole package died on a nil reader.
 func TestThePerformanceToolReportsWaitsAndCards(t *testing.T) {
+	openMigratedDB(t)
 	rec := httptest.NewRecorder()
 	(&App{}).buildMCPServer().ServeHTTP(rec, keyCtxRequest(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_performance","arguments":{}}}`,
 		apikeys.SuperuserKeyInfo("s", "root", apikeys.ScopeExternal)))
