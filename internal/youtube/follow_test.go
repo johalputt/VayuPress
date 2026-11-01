@@ -467,6 +467,11 @@ func TestAMissingChannelFeedIsReadFromTheUploadsPlaylist(t *testing.T) {
 	if _, all, err := fw.latest(context.Background(), chanID); err != nil || len(all) != 0 {
 		t.Errorf("a check with neither feed: %d videos, %v", len(all), err)
 	}
+	// An id typed in, with no feed, is not taken on trust: nothing confirms
+	// the channel is there.
+	if _, _, err := fw.Resolve(context.Background(), "https://www.youtube.com/channel/"+chanID); !errors.Is(err, errNoFeed) {
+		t.Errorf("a typed id with no feed: %v", err)
+	}
 	// A feed YouTube fails to serve is still a failure, not an empty channel.
 	w.pages[FeedURL(chanID)] = "<not a feed"
 	if _, _, err := fw.Resolve(context.Background(), "youtube.com/vayu"); err == nil {

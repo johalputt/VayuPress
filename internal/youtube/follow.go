@@ -50,6 +50,10 @@ func (fw *Follower) Resolve(ctx context.Context, raw string) (Channel, []Video, 
 	}
 	id := ref.ChannelID
 	name := ""
+	// confirmed: YouTube itself named this channel (its page or the API), so
+	// a channel with no feed is one with no videos yet. An id typed in is
+	// confirmed only by a feed.
+	confirmed := id == ""
 	api, keyed := fw.api(ctx)
 	switch {
 	case id != "":
@@ -80,7 +84,10 @@ func (fw *Follower) Resolve(ctx context.Context, raw string) (Channel, []Video, 
 		}
 	}
 	ch, vids, err := fw.uploads(ctx, id)
-	if err != nil {
+	switch {
+	case errors.Is(err, errNoFeed) && confirmed:
+		ch = Channel{ID: id}
+	case err != nil:
 		return Channel{}, nil, err
 	}
 	if keyed {
@@ -135,10 +142,8 @@ func (fw *Follower) feed(ctx context.Context, u, channelID string) (Channel, []V
 
 // uploads is a channel's newest uploads: its channel feed, or, when YouTube
 // answers that one 404 or with an error (it has, for channels that exist),
-// the feed of its uploads playlist. When YouTube has neither feed (a
-// channel with no public video has none) the channel has no videos yet: it
-// is followed all the same and posts as soon as a feed lists one, and with
-// an API key its back catalogue is read without the feeds.
+// the feed of its uploads playlist. Neither is errNoFeed: a channel with no
+// public video has none.
 func (fw *Follower) uploads(ctx context.Context, channelID string) (Channel, []Video, error) {
 	ch, vids, err := fw.feed(ctx, FeedURL(channelID), channelID)
 	if err == nil {
@@ -149,7 +154,7 @@ func (fw *Follower) uploads(ctx context.Context, channelID string) (Channel, []V
 	case perr == nil:
 		return ch, vids, nil
 	case errors.Is(err, errNoFeed) && errors.Is(perr, errNoFeed):
-		return Channel{ID: channelID}, nil, nil
+		return Channel{}, nil, errNoFeed
 	}
 	return Channel{}, nil, err
 }
@@ -168,8 +173,10 @@ func (fw *Follower) playlist(ctx context.Context, u, channelID string) ([]Video,
 // Shorts told apart by the Shorts playlist, and the newest of each playlist
 // that the all-uploads feed is too short to reach.
 func (fw *Follower) latest(ctx context.Context, channelID string) (Channel, []Video, error) {
+	// A followed channel with no feed has no public video yet: nothing new,
+	// and not a failure. With an API key its back catalogue comes without one.
 	ch, all, err := fw.uploads(ctx, channelID)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNoFeed) {
 		return Channel{}, nil, err
 	}
 	shorts, err := fw.playlist(ctx, ShortsFeedURL(channelID), channelID)
