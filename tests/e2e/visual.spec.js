@@ -24,10 +24,18 @@ async function settle(page, path) {
 // "1 November 2026" and Home's date moved 400 and 1,600 pixels against
 // baselines recorded on October days. Just before its picture, every date and
 // clock on the page (an opened panel's included) is given the same text, and a
-// mask is then the same box on any day.
+// mask is then the same box on any day. It is kept so: the bell redraws itself
+// from its live stream, and a redraw between this and the picture brought the
+// real dates back (the bell 1,154 pixels off on 0fa600e), so an observer gives
+// any date drawn afterwards the same text before it is painted.
 async function sameDay(page) {
   await page.evaluate(() => {
-    for (const e of document.querySelectorAll("time, .sa-home__date")) e.textContent = "1 January 2026";
+    const day = "1 January 2026";
+    const fix = () => {
+      for (const e of document.querySelectorAll("time, .sa-home__date")) if (e.textContent !== day) e.textContent = day;
+    };
+    fix();
+    new MutationObserver(fix).observe(document.body, { subtree: true, childList: true, characterData: true });
   });
 }
 
