@@ -2760,7 +2760,7 @@ func osPostInspector(p postDetail) string {
 	if !isDraft && !p.Created.IsZero() {
 		when = p.Created
 	}
-	b.WriteString(`<dt>State</dt><dd><span id="post-istate-` + esc + `">` + osPostState(p.Status) + `</span> <span class="muted">` + config.FormatSite(when, "2 Jan, 15:04") + `</span></dd>`)
+	b.WriteString(`<dt>State</dt><dd><span id="post-istate-` + esc + `">` + osPostState(p.Status) + `</span> <time class="muted" datetime="` + when.UTC().Format(time.RFC3339) + `">` + config.FormatSite(when, "2 Jan, 15:04") + `</time></dd>`)
 	if len(p.Tags) > 0 {
 		b.WriteString(`<dt>Tags</dt><dd>` + html.EscapeString(strings.Join(p.Tags, ", ")) + `</dd>`)
 	}

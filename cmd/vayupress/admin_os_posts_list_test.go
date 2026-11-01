@@ -105,7 +105,7 @@ func TestThePostInspectorAnswersOnlyForAPost(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("a post: %d", rec.Code)
 	}
-	for _, want := range []string{`href="/os/editor/hello"`, `id="post-istate-hello"`, `id="post-pub-hello"`, `id="post-pin-hello"`, "Not public yet"} {
+	for _, want := range []string{`href="/os/editor/hello"`, `id="post-istate-hello"`, `id="post-pub-hello"`, `id="post-pin-hello"`, "Not public yet", `<time class="muted" datetime="`} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Errorf("the inspector lacks %q:\n%s", want, rec.Body.String())
 		}
