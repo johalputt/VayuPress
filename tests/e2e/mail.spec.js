@@ -340,6 +340,39 @@ test("on a phone, compose's More options is not cut off by the sheet", async ({ 
   expect(edge, "the panel is cut off at an edge").toEqual({ left: true, right: true });
 });
 
+// On a phone the compose sheet is the whole screen, over the tab bar: kept to
+// the split, the bar covered Send and the tools, and the From line ran past
+// the right edge. Every part of it is inside the window and is what a tap
+// there lands on; minimised, it stands on the tab bar instead of under it.
+test("on a phone, the compose sheet is whole on the screen, above the tab bar", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(inbox);
+  await page.locator(".mx-fab").click();
+  const sheet = page.locator("[data-mx-compose-host] .mx-compose");
+  await expect(sheet.locator("[data-c-send]")).toBeVisible();
+  await page.waitForTimeout(400);
+  const reach = (sel) => page.locator(sel).first().evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return { inside: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight, tapped: el.contains(hit) };
+  });
+  for (const sel of ["[data-mx-compose-host] [data-c-close]", "[data-mx-compose-host] .mx-compose__from",
+    "[data-mx-compose-host] [data-c-body]", "[data-mx-compose-host] [data-c-send]", "[data-mx-compose-host] .mx-compose__foot > :last-child"]) {
+    expect(await reach(sel), sel).toEqual({ inside: true, tapped: true });
+  }
+
+  await page.locator("[data-mx-compose-host] [data-c-min]").click();
+  await expect(page.locator("[data-mx-compose-host]")).toHaveClass(/is-min/);
+  await page.waitForTimeout(400);
+  const stand = await page.evaluate(() => ({
+    bar: document.querySelector("[data-mx-compose-host] .mx-compose").getBoundingClientRect().bottom,
+    tabs: document.querySelector(".sa-tabbar").getBoundingClientRect().top,
+  }));
+  expect(stand.bar, "the minimised bar is under the tab bar").toBeLessThanOrEqual(stand.tabs + 1);
+  expect(await reach("[data-mx-compose-host] [data-c-title]")).toEqual({ inside: true, tapped: true });
+  expect(await reach(".sa-tabbar .sa-tab")).toEqual({ inside: true, tapped: true });
+});
+
 test("the compose sheet minimises, and closing keeps a draft", async ({ page }) => {
   await openInbox(page);
   await page.locator("body").click({ position: { x: 5, y: 5 } });

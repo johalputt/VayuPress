@@ -7137,8 +7137,15 @@
    window's edge, so Reply and the reply field showed nothing. On a phone it
    fills the screen and slides up from the bottom edge (§8 item 4). */
 .vp-os[data-ui="still-air"][data-mx-screens] .vm-split > .mx-compose-host { grid-column: 1 / -1; }
+/* On a phone the sheet is the screen: fixed to the window and above the tab
+   bar (z-index 200). Kept inside the split, the bar covered its last 60px
+   (Send and the tools) and the split's own width cut the From line on the
+   right. Minimised, it is a bar standing on the tab bar. */
 @media (max-width: 759px) {
-  .vp-os[data-ui="still-air"] .vm-split > .mx-compose-host { padding: 0; }
+  .vp-os[data-ui="still-air"] .vm-split > .mx-compose-host {
+    position: fixed; inset: 0; z-index: 300; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+  .vp-os[data-ui="still-air"] .vm-split > .mx-compose-host.is-min { padding: 0; bottom: calc(60px + env(safe-area-inset-bottom)); }
   .vp-os[data-ui="still-air"] .mx-compose { border-radius: 0; border: 0; animation-name: mx-sheet-up; }
   .vp-os[data-ui="still-air"] .mx-compose__label { width: 52px; }
 }

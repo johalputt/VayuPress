@@ -14,6 +14,11 @@ A message read full width can be answered in place, and Content › YouTube offe
 
 ### Fixed
 
+- **Compose on a phone is whole on the screen.** The sheet lay under the
+  tab bar, which covered Send and the tools, and its From line ran past the
+  right edge; it is now the whole screen, over the tab bar, and minimised it
+  stands on the bar instead of under it.
+
 - **A message read full width can be answered.** With Reading set to full
   width, or a message widened, Reply, Reply all, Forward and the reply field
   under the message opened their sheet beyond the window's edge, so nothing
