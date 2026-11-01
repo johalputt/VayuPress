@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.26] — 2026-11-01
+
+A channel YouTube gives no feed for is followed all the same, and posts once it has one.
+
+### Fixed
+
+- **A channel is followed when YouTube serves no feed for it.** YouTube
+  has no feed for a channel with no public video, and following one was
+  refused with "no feed for that channel". The channel is now followed,
+  named from its page, with no videos yet; each check posts what a feed
+  lists from then on, and with an API key its back catalogue is read
+  without the feeds. A failure that is not YouTube's 404 no longer says
+  YouTube could not be reached.
+
 ## [3.18.25] — 2026-11-01
 
 A channel YouTube's channel feed refuses is read from its uploads playlist.
