@@ -15,6 +15,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   under the message opened their sheet beyond the window's edge, so nothing
   showed and typing went nowhere; the sheet now covers the message, as it
   does on a narrow screen.
+- **Content › YouTube offers every hosted blog to post on.** The list chose
+  sites by the type each was created as, not by what it serves now, so a
+  hosted site serving a blog was left out and only the main site was
+  offered.
 
 ## [3.18.21] — 2026-11-01
 

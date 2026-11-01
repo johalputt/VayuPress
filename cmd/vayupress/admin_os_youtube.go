@@ -48,7 +48,11 @@ func (a *App) youtubeSites(ctx context.Context) []youtubeSite {
 		return out
 	}
 	for _, d := range list {
-		if d.IsPrimary || (d.SiteType != "" && d.SiteType != domain.SiteBlog) {
+		// What a site serves is its own setting (scopedSiteMode), as the
+		// console and the connector read it; the registry's site_type column
+		// is what it was created as, and on johal.in it disagreed for every
+		// hosted blog, so the list offered none of them.
+		if d.IsPrimary || scopedSiteMode(d) != "blog" {
 			continue
 		}
 		out = append(out, youtubeSite{ID: d.ID, Host: d.Host, Live: d.TLSState == domain.TLSActive})

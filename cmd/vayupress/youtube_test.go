@@ -359,3 +359,34 @@ func TestFollowingOntoANewSiteMakesTheSite(t *testing.T) {
 		t.Errorf("a new site at an address already served: %s", body)
 	}
 }
+
+// A hosted site is offered by what it serves now, as the console reads it,
+// not by the type it was created as: on johal.in every hosted blog had been
+// created as another type, and the list offered none of them.
+func TestTheSitesOfferedAreTheBlogsAsTheyServeNow(t *testing.T) {
+	a := youtubeTestApp(t)
+	a.domains = domain.New(dbpkg.DB, dbpkg.RDB)
+	ctx := context.Background()
+	blog, err := a.domains.Create(ctx, "vashno.example.com", domain.SiteBusiness, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.domains.SetSite(ctx, blog.ID, domain.SiteConfig{Mode: "blog"}); err != nil {
+		t.Fatal(err)
+	}
+	built, _ := a.domains.Create(ctx, "built.example.com", domain.SiteBlog, false)
+	if err := a.domains.SetSite(ctx, built.ID, domain.SiteConfig{Mode: "custom"}); err != nil {
+		t.Fatal(err)
+	}
+	var hosts []string
+	for _, s := range a.youtubeSites(ctx) {
+		hosts = append(hosts, s.Host)
+	}
+	got := strings.Join(hosts, " ")
+	if !strings.Contains(got, "vashno.example.com") {
+		t.Errorf("a site serving a blog is not offered: %s", got)
+	}
+	if strings.Contains(got, "built.example.com") {
+		t.Errorf("a hand-built site is offered: %s", got)
+	}
+}
