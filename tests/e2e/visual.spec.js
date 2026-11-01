@@ -19,6 +19,18 @@ async function settle(page, path) {
   await page.evaluate(() => document.fonts.ready);
 }
 
+// A mask hides a date's pixels but is drawn the size of its text, so a date of
+// another width is a different picture: on 1 November 2026 the post's
+// "1 November 2026" and Home's date moved 400 and 1,600 pixels against
+// baselines recorded on October days. Just before its picture, every date and
+// clock on the page (an opened panel's included) is given the same text, and a
+// mask is then the same box on any day.
+async function sameDay(page) {
+  await page.evaluate(() => {
+    for (const e of document.querySelectorAll("time, .sa-home__date")) e.textContent = "1 January 2026";
+  });
+}
+
 // What moves by itself on a fresh install: clocks, counts, the version, the
 // live status, and any sentence that says how long ago something was. Home's
 // date, its clock and its install facts (version, uptime, response time)
@@ -99,6 +111,7 @@ for (const scheme of ["light", "dark"]) {
       test(`${s.name} looks as designed`, async ({ page }) => {
         await settle(page, s.path);
         if (s.open) await s.open(page);
+        await sameDay(page);
         await expect(page).toHaveScreenshot(`${s.name}-${scheme}.png`, { ...shot, mask: masks(page) });
       });
     }
@@ -107,10 +120,12 @@ for (const scheme of ["light", "dark"]) {
     test.use({ colorScheme: scheme, viewport: { width: 390, height: 844 }, hasTouch: true, reducedMotion: "reduce" });
     test("home looks as designed", async ({ page }) => {
       await settle(page, "/os/");
+      await sameDay(page);
       await expect(page).toHaveScreenshot(`phone-home-${scheme}.png`, { ...shot, mask: masks(page) });
     });
     test("site-post-phone looks as designed", async ({ page }) => {
       await settle(page, "/hello-vayupress");
+      await sameDay(page);
       await expect(page).toHaveScreenshot(`phone-site-post-${scheme}.png`, { ...shot, mask: masks(page) });
     });
   });
