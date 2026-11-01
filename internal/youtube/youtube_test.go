@@ -92,9 +92,6 @@ func TestPlaylistAddressesSwapThePrefix(t *testing.T) {
 	if got := LongFeedURL(chanID); !strings.HasSuffix(got, "playlist_id=UULFabcdefghijklmnopqrstuv") {
 		t.Errorf("long feed: %s", got)
 	}
-	if UploadsPlaylist(chanID) != "UUabcdefghijklmnopqrstuv" || ShortsPlaylist(chanID) != "UUSHabcdefghijklmnopqrstuv" {
-		t.Error("playlist ids")
-	}
 }
 
 func entry(id, ch, title, desc, pub string) string {

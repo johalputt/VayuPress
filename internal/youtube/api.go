@@ -221,9 +221,3 @@ func (a API) Videos(ctx context.Context, ids []string) ([]Video, error) {
 	}
 	return out, nil
 }
-
-// UploadsPlaylist is a channel's every upload, UU and the id's tail.
-func UploadsPlaylist(channelID string) string { return "UU" + channelID[2:] }
-
-// ShortsPlaylist is a channel's Shorts, UUSH and the id's tail.
-func ShortsPlaylist(channelID string) string { return "UUSH" + channelID[2:] }
