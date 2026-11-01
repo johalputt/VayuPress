@@ -8,6 +8,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **A message read full width can be answered.** With Reading set to full
+  width, or a message widened, Reply, Reply all, Forward and the reply field
+  under the message opened their sheet beyond the window's edge, so nothing
+  showed and typing went nowhere; the sheet now covers the message, as it
+  does on a narrow screen.
+
 ## [3.18.21] — 2026-11-01
 
 A YouTube channel becomes a blog that posts by itself, with its back catalogue and premieres given a key; a message read with pictures off no longer opens as lines lost in blank space; the mailbox switcher opens inside the window; and Mail, sign-in protection and YouTube have their guides and decision records.

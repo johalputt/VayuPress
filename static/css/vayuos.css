@@ -7131,11 +7131,12 @@
 .vp-os[data-ui="still-air"] .mx-compose__sigedit .mx-compose__input { width: 100%; padding: var(--space-3); border: 1px solid var(--border-2); border-radius: var(--radius-control); resize: vertical; }
 .vp-os[data-ui="still-air"] .mx-compose__sigbar { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; font: var(--type-small); color: var(--text-3); }
 .vp-os[data-ui="still-air"] .mx-compose .vm-undobar { margin: 0 var(--space-4) var(--space-3); }
-/* Narrower than three columns the sheet covers list and reader alike; on a
-   phone it fills the screen and slides up from the bottom edge (§8 item 4). */
-@media (max-width: 1099px) {
-  .vp-os[data-ui="still-air"] .vm-split > .mx-compose-host { grid-column: 1 / -1; }
-}
+/* With messages as screens (narrower than three columns, Reading set to full
+   width, or one message widened) the split has one column, and the sheet
+   covers it whole: kept to the reader's column it was placed beyond the
+   window's edge, so Reply and the reply field showed nothing. On a phone it
+   fills the screen and slides up from the bottom edge (§8 item 4). */
+.vp-os[data-ui="still-air"][data-mx-screens] .vm-split > .mx-compose-host { grid-column: 1 / -1; }
 @media (max-width: 759px) {
   .vp-os[data-ui="still-air"] .vm-split > .mx-compose-host { padding: 0; }
   .vp-os[data-ui="still-air"] .mx-compose { border-radius: 0; border: 0; animation-name: mx-sheet-up; }

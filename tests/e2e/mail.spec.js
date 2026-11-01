@@ -933,6 +933,34 @@ test("a message opens full width and comes back to the columns", async ({ page }
   await expect(page).toHaveURL(/\/os\/vayumail\/inbox/);
 });
 
+// A message read full width answers like one beside the list: Reply and the
+// reply field under it open the sheet in the window, over the message. The
+// sheet sat in the reader's column, and full width has one column, so it
+// opened beyond the window's edge: nothing showed and typing went nowhere.
+test("a message read full width is answered in place", async ({ page }) => {
+  await openInbox(page);
+  const pane = page.locator("#vm-readpane");
+  await pane.getByRole("button", { name: "Full width" }).click();
+  await expect.poll(() => page.evaluate(() => document.body.hasAttribute("data-mx-screens"))).toBe(true);
+  const sheet = page.locator("[data-mx-compose-host] .mx-compose");
+  // Whether the sheet is in the window, wide enough to write in, and its own
+  // close button is what a click on it lands on. (Off the edge, a two-pixel
+  // sliver of it was still in the window.)
+  const inView = () => sheet.evaluate((s) => {
+    const r = s.getBoundingClientRect(), c = s.querySelector("[data-c-close]").getBoundingClientRect();
+    const at = document.elementFromPoint(c.left + c.width / 2, c.top + c.height / 2);
+    return r.width >= 320 && r.left >= 0 && r.right <= window.innerWidth && !!at && !!at.closest("[data-c-close]");
+  });
+  await pane.locator('.mx-rtools [aria-label="Reply"]').click();
+  await expect(sheet.locator("[data-c-title]")).toHaveText(/^Re: /);
+  await expect.poll(inView, { message: "Reply opened the sheet outside the window" }).toBe(true);
+  await sheet.locator("[data-c-close]").click();
+  await expect(page.locator("[data-mx-compose-host]")).toBeHidden();
+  await pane.locator("[data-mx-quick-reply]").pressSequentially("Thanks, Saturday works");
+  await expect(sheet.locator("[data-c-body]")).toHaveValue(/^Thanks, Saturday works/);
+  await expect.poll(inView, { message: "the reply field opened the sheet outside the window" }).toBe(true);
+});
+
 // Reading set to full width (pipeline 3y) is the person's own choice, kept on
 // their account; this run signs in with the API key, which has none, so the
 // page is served as the server draws it for that person (the server's side is
