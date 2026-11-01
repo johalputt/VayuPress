@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.25] — 2026-11-01
+
+A channel YouTube's channel feed refuses is read from its uploads playlist.
+
+### Fixed
+
+- **A channel is followed when YouTube's channel feed answers 404.** YouTube
+  has answered 404 for the feed of channels that exist, and Content ›
+  YouTube said it had no channel by that id. The channel's uploads playlist
+  feed, the same videos, is now read in its place, for a follow and for
+  each check.
+
 ## [3.18.24] — 2026-11-01
 
 YouTube is reached from a server without IPv6, and a website with its blog at /blog can take a channel.
