@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.27] — 2026-11-01
+
+A channel with no feed is followed only when YouTube itself named it.
+
+### Fixed
+
+- **A mistyped channel id is not followed as an empty channel.** Since
+  3.18.26 a channel with no feed was followed as one with no videos yet,
+  including one named only by an id typed into the address, which nothing
+  had shown to exist. A channel with no feed is now followed only when
+  YouTube's own page (its @handle or one of its videos) or the API named it;
+  an id with no feed is refused, as before.
+
 ## [3.18.26] — 2026-11-01
 
 A channel YouTube gives no feed for is followed all the same, and posts once it has one.
