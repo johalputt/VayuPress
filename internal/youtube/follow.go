@@ -76,7 +76,7 @@ func (fw *Follower) Resolve(ctx context.Context, raw string) (Channel, []Video, 
 			return Channel{}, nil, err
 		}
 	}
-	ch, vids, err := fw.feed(ctx, FeedURL(id), id)
+	ch, vids, err := fw.uploads(ctx, id)
 	if err != nil {
 		return Channel{}, nil, err
 	}
@@ -106,8 +106,10 @@ func (fw *Follower) pageID(ctx context.Context, u string, read func([]byte) (str
 	return id, err
 }
 
-// feed reads one feed. A playlist feed that does not exist (a channel with no
-// Shorts has no Shorts playlist) is an empty one.
+// errNoFeed is a feed YouTube answered 404 for.
+var errNoFeed = errors.New("YouTube has no feed for that channel now")
+
+// feed reads one feed; a feed that is not there is errNoFeed.
 func (fw *Follower) feed(ctx context.Context, u, channelID string) (Channel, []Video, error) {
 	status, body, err := fw.Get(ctx, u)
 	if err != nil {
@@ -117,27 +119,49 @@ func (fw *Follower) feed(ctx context.Context, u, channelID string) (Channel, []V
 	case 200:
 		return ParseFeed(body, channelID)
 	case 404:
-		if strings.Contains(u, "playlist_id=") {
-			return Channel{ID: channelID}, nil, nil
-		}
-		return Channel{}, nil, errors.New("YouTube has no channel by that id now")
+		return Channel{}, nil, errNoFeed
 	}
 	return Channel{}, nil, fmt.Errorf("YouTube answered %d", status)
+}
+
+// uploads is a channel's newest uploads: its channel feed, or, when YouTube
+// answers that one 404 or with an error (it has, for channels that exist),
+// the feed of its uploads playlist.
+func (fw *Follower) uploads(ctx context.Context, channelID string) (Channel, []Video, error) {
+	ch, vids, err := fw.feed(ctx, FeedURL(channelID), channelID)
+	if err == nil {
+		return ch, vids, nil
+	}
+	ch, vids, perr := fw.feed(ctx, UploadsFeedURL(channelID), channelID)
+	if perr != nil {
+		return Channel{}, nil, err
+	}
+	return ch, vids, nil
+}
+
+// playlist is a playlist feed, which a channel without that kind of video
+// (no Shorts) does not have: then it is empty.
+func (fw *Follower) playlist(ctx context.Context, u, channelID string) ([]Video, error) {
+	_, vids, err := fw.feed(ctx, u, channelID)
+	if errors.Is(err, errNoFeed) {
+		return nil, nil
+	}
+	return vids, err
 }
 
 // latest is a channel's newest videos from its feeds: every upload, with the
 // Shorts told apart by the Shorts playlist, and the newest of each playlist
 // that the all-uploads feed is too short to reach.
 func (fw *Follower) latest(ctx context.Context, channelID string) (Channel, []Video, error) {
-	ch, all, err := fw.feed(ctx, FeedURL(channelID), channelID)
+	ch, all, err := fw.uploads(ctx, channelID)
 	if err != nil {
 		return Channel{}, nil, err
 	}
-	_, shorts, err := fw.feed(ctx, ShortsFeedURL(channelID), channelID)
+	shorts, err := fw.playlist(ctx, ShortsFeedURL(channelID), channelID)
 	if err != nil {
 		return Channel{}, nil, err
 	}
-	_, long, err := fw.feed(ctx, LongFeedURL(channelID), channelID)
+	long, err := fw.playlist(ctx, LongFeedURL(channelID), channelID)
 	if err != nil {
 		return Channel{}, nil, err
 	}

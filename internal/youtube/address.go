@@ -155,6 +155,13 @@ func FeedURL(channelID string) string {
 	return "https://" + pageHost + "/feeds/videos.xml?channel_id=" + channelID
 }
 
+// UploadsFeedURL is the public feed of a channel's uploads playlist (UU),
+// the same videos as FeedURL's. YouTube's channel feed has answered 404 for
+// channels that exist while this one answered, so it stands in.
+func UploadsFeedURL(channelID string) string {
+	return "https://" + pageHost + "/feeds/videos.xml?playlist_id=UU" + channelID[2:]
+}
+
 // ShortsFeedURL is the public feed of a channel's newest Shorts: its UUSH
 // playlist, the channel id with its UC prefix swapped.
 func ShortsFeedURL(channelID string) string {

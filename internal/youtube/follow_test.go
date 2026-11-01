@@ -434,3 +434,25 @@ func TestASpentQuotaLeavesTheFeedsWorking(t *testing.T) {
 		t.Errorf("the back catalogue was marked read, or the check failed: %+v", f)
 	}
 }
+
+// YouTube has answered 404 for the channel feed of a channel that exists;
+// its uploads playlist's feed stands in, for a follow and for a check.
+func TestAMissingChannelFeedIsReadFromTheUploadsPlaylist(t *testing.T) {
+	now := time.Now()
+	w := channelWeb()
+	w.pages[UploadsFeedURL(chanID)] = w.pages[FeedURL(chanID)]
+	delete(w.pages, FeedURL(chanID))
+	w.pages[HandlePageURL("vayu")] = `<link rel="canonical" href="https://www.youtube.com/channel/` + chanID + `">`
+	fw := follower(t, w, &poster{}, &now)
+	ch, vids, err := fw.Resolve(context.Background(), "youtube.com/vayu")
+	if err != nil || ch.ID != chanID || len(vids) != 3 {
+		t.Fatalf("Resolve = %+v, %d videos, %v", ch, len(vids), err)
+	}
+	if _, all, err := fw.latest(context.Background(), chanID); err != nil || len(all) != 4 {
+		t.Fatalf("latest = %d videos, %v", len(all), err)
+	}
+	delete(w.pages, UploadsFeedURL(chanID))
+	if _, _, err := fw.Resolve(context.Background(), "youtube.com/vayu"); !errors.Is(err, errNoFeed) {
+		t.Errorf("with neither feed: %v", err)
+	}
+}

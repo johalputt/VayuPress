@@ -54,6 +54,7 @@ type atomFeed struct {
 	XMLName   xml.Name    `xml:"http://www.w3.org/2005/Atom feed"`
 	ChannelID string      `xml:"http://www.youtube.com/xml/schemas/2015 channelId"`
 	Title     string      `xml:"http://www.w3.org/2005/Atom title"`
+	Author    string      `xml:"http://www.w3.org/2005/Atom author>name"`
 	Entries   []atomEntry `xml:"http://www.w3.org/2005/Atom entry"`
 }
 
@@ -86,7 +87,13 @@ func ParseFeed(body []byte, want string) (Channel, []Video, error) {
 	if want != "" && f.ChannelID != want {
 		return Channel{}, nil, errors.New("the feed is for another channel")
 	}
-	ch := Channel{ID: f.ChannelID, Title: clip(f.Title, maxTitleRunes)}
+	// The author is the channel's name in a channel feed and a playlist feed
+	// alike; a playlist's own title is "Uploads from" the channel.
+	title := f.Author
+	if strings.TrimSpace(title) == "" {
+		title = f.Title
+	}
+	ch := Channel{ID: f.ChannelID, Title: clip(title, maxTitleRunes)}
 	var out []Video
 	for _, e := range f.Entries {
 		if len(out) == MaxFeedEntries {
