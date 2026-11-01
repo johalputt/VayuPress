@@ -99,8 +99,18 @@ func ParseAddress(raw string) (Ref, error) {
 		// A legacy name is resolved like a handle: YouTube serves the same page
 		// for /c/name and /@name, and the API's forHandle takes it.
 		return handleRef(parts[1])
+	case len(parts) == 1 && !reservedPaths[first]:
+		// youtube.com/name, the oldest custom address, still opens the channel.
+		return handleRef(first)
 	}
 	return Ref{}, ErrUnrecognised
+}
+
+// reservedPaths are YouTube's own pages, never a channel's short name.
+var reservedPaths = map[string]bool{
+	"watch": true, "feed": true, "results": true, "playlist": true, "shorts": true, "live": true,
+	"channel": true, "c": true, "user": true, "embed": true, "about": true, "account": true,
+	"premium": true, "music": true, "gaming": true, "kids": true, "t": true, "redirect": true,
 }
 
 func handleRef(h string) (Ref, error) {

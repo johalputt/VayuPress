@@ -31,6 +31,7 @@ func TestParseAddressReadsEveryShape(t *testing.T) {
 		"https://www.youtube.com/shorts/dQw4w9WgXcQ":          {VideoID: "dQw4w9WgXcQ"},
 		"https://www.youtube.com/live/dQw4w9WgXcQ":            {VideoID: "dQw4w9WgXcQ"},
 		"https://www.youtube.com/c/VayuPress":                 {Handle: "VayuPress"},
+		"youtube.com/johalputt":                               {Handle: "johalputt"},
 		"  https://music.youtube.com/channel/" + chanID + " ": {ChannelID: chanID},
 	}
 	for in, want := range cases {
@@ -56,6 +57,8 @@ func TestParseAddressRefusesOtherHostsAndBadIDs(t *testing.T) {
 		"@a":                                    ErrUnrecognised,
 		"@vayu/../../x":                         ErrUnrecognised,
 		"https://www.youtube.com/feed/trending": ErrUnrecognised,
+		"https://www.youtube.com/results":       ErrUnrecognised,
+		"https://www.youtube.com/premium":       ErrUnrecognised,
 	}
 	for in, want := range cases {
 		if _, err := ParseAddress(in); !errors.Is(err, want) {

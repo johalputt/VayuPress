@@ -19,6 +19,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   sites by the type each was created as, not by what it serves now, so a
   hosted site serving a blog was left out and only the main site was
   offered.
+- **A channel's oldest short address works**: youtube.com/name is read as
+  the channel's handle, as YouTube itself still opens it; YouTube's own
+  pages (watch, results, premium and the like) are not taken for one.
 
 ## [3.18.21] — 2026-11-01
 
