@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"errors"
+	"html"
 	"regexp"
 	"strings"
 	"time"
@@ -137,6 +138,18 @@ func ChannelIDFromPage(body []byte) (string, error) {
 		}
 	}
 	return "", ErrNoChannelOnPage
+}
+
+// channelNameRe is how a channel's page names it, for a channel whose feed
+// YouTube does not serve.
+var channelNameRe = regexp.MustCompile(`<meta property="og:title" content="([^"]{1,200})"`)
+
+// ChannelNameFromPage reads a channel page for the channel's name, or "".
+func ChannelNameFromPage(body []byte) string {
+	if m := channelNameRe.FindSubmatch(body); m != nil {
+		return clip(html.UnescapeString(string(m[1])), maxTitleRunes)
+	}
+	return ""
 }
 
 // ChannelIDFromVideoPage reads a video's page for its channel's id.

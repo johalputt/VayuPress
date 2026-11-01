@@ -303,7 +303,7 @@ func youtubeWords(err error) string {
 	case errors.As(err, &ae):
 		return ae.Error() + ". Check the key on API keys."
 	}
-	return "YouTube could not be reached: " + err.Error()
+	return "Reading the channel from YouTube failed: " + err.Error()
 }
 
 // handleOSYouTubeResolve finds the channel an address names and draws it for

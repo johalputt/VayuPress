@@ -228,11 +228,13 @@ func TestAFailedPostIsTriedAgain(t *testing.T) {
 
 func TestFailingChecksWaitLongerAndRingTheBell(t *testing.T) {
 	now := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
-	fw := follower(t, &web{pages: map[string]string{}}, &poster{}, &now)
+	// Feeds that come back broken: a 404 is a channel with no videos yet.
+	broken := &web{pages: map[string]string{FeedURL(chanID): "<broken", UploadsFeedURL(chanID): "<broken"}}
+	fw := follower(t, broken, &poster{}, &now)
 	f, _ := fw.Store.Follow(context.Background(), "", Channel{ID: chanID}, true, false, true)
 	for i, wait := range []time.Duration{15 * time.Minute, time.Hour, 6 * time.Hour, 24 * time.Hour, 24 * time.Hour} {
 		if _, err := fw.Check(context.Background(), f); err == nil {
-			t.Fatal("a channel with no feed was read")
+			t.Fatal("a channel with broken feeds was read")
 		}
 		f, _ = fw.Store.Channel(context.Background(), f.ID)
 		if f.Failures != i+1 || !f.NextCheck.Equal(now.Add(wait)) || f.LastError == "" {
@@ -451,8 +453,23 @@ func TestAMissingChannelFeedIsReadFromTheUploadsPlaylist(t *testing.T) {
 	if _, all, err := fw.latest(context.Background(), chanID); err != nil || len(all) != 4 {
 		t.Fatalf("latest = %d videos, %v", len(all), err)
 	}
-	delete(w.pages, UploadsFeedURL(chanID))
-	if _, _, err := fw.Resolve(context.Background(), "youtube.com/vayu"); !errors.Is(err, errNoFeed) {
-		t.Errorf("with neither feed: %v", err)
+	// With neither feed (a channel with no public video) it is still the
+	// channel the page named, with no videos yet, called by the page's name;
+	// a check finds nothing and does not fail.
+	for _, u := range []string{UploadsFeedURL(chanID), ShortsFeedURL(chanID), LongFeedURL(chanID)} {
+		delete(w.pages, u)
+	}
+	w.pages[HandlePageURL("vayu")] += `<meta property="og:title" content="Vayu &amp; Friends">`
+	ch, vids, err = fw.Resolve(context.Background(), "youtube.com/vayu")
+	if err != nil || ch.ID != chanID || ch.Title != "Vayu & Friends" || len(vids) != 0 {
+		t.Errorf("with neither feed: %+v, %d videos, %v", ch, len(vids), err)
+	}
+	if _, all, err := fw.latest(context.Background(), chanID); err != nil || len(all) != 0 {
+		t.Errorf("a check with neither feed: %d videos, %v", len(all), err)
+	}
+	// A feed YouTube fails to serve is still a failure, not an empty channel.
+	w.pages[FeedURL(chanID)] = "<not a feed"
+	if _, _, err := fw.Resolve(context.Background(), "youtube.com/vayu"); err == nil {
+		t.Error("a broken feed was taken for a channel with no videos")
 	}
 }

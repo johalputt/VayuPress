@@ -49,6 +49,7 @@ func (fw *Follower) Resolve(ctx context.Context, raw string) (Channel, []Video, 
 		return Channel{}, nil, err
 	}
 	id := ref.ChannelID
+	name := ""
 	api, keyed := fw.api(ctx)
 	switch {
 	case id != "":
@@ -68,11 +69,13 @@ func (fw *Follower) Resolve(ctx context.Context, raw string) (Channel, []Video, 
 		}
 		id = vs[0].ChannelID
 	case ref.Handle != "":
-		if id, err = fw.pageID(ctx, HandlePageURL(ref.Handle), ChannelIDFromPage); err != nil {
+		var page []byte
+		if id, page, err = fw.pageID(ctx, HandlePageURL(ref.Handle), ChannelIDFromPage); err != nil {
 			return Channel{}, nil, err
 		}
+		name = ChannelNameFromPage(page)
 	default:
-		if id, err = fw.pageID(ctx, VideoPageURL(ref.VideoID), ChannelIDFromVideoPage); err != nil {
+		if id, _, err = fw.pageID(ctx, VideoPageURL(ref.VideoID), ChannelIDFromVideoPage); err != nil {
 			return Channel{}, nil, err
 		}
 	}
@@ -83,27 +86,33 @@ func (fw *Follower) Resolve(ctx context.Context, raw string) (Channel, []Video, 
 	if keyed {
 		if full, err := api.ChannelByID(ctx, id); err == nil {
 			ch.Videos = full.Videos
+			if ch.Title == "" {
+				ch.Title = full.Title
+			}
 		}
+	}
+	if ch.Title == "" {
+		ch.Title = name
 	}
 	return ch, vids, nil
 }
 
-func (fw *Follower) pageID(ctx context.Context, u string, read func([]byte) (string, error)) (string, error) {
+func (fw *Follower) pageID(ctx context.Context, u string, read func([]byte) (string, error)) (string, []byte, error) {
 	status, body, err := fw.Get(ctx, u)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if status == 404 {
-		return "", ErrUnrecognised
+		return "", nil, ErrUnrecognised
 	}
 	if status != 200 {
-		return "", fmt.Errorf("YouTube answered %d", status)
+		return "", nil, fmt.Errorf("YouTube answered %d", status)
 	}
 	id, err := read(body)
 	if errors.Is(err, ErrNoChannelOnPage) {
-		return "", ErrConsent
+		return "", nil, ErrConsent
 	}
-	return id, err
+	return id, body, err
 }
 
 // errNoFeed is a feed YouTube answered 404 for.
@@ -126,17 +135,23 @@ func (fw *Follower) feed(ctx context.Context, u, channelID string) (Channel, []V
 
 // uploads is a channel's newest uploads: its channel feed, or, when YouTube
 // answers that one 404 or with an error (it has, for channels that exist),
-// the feed of its uploads playlist.
+// the feed of its uploads playlist. When YouTube has neither feed (a
+// channel with no public video has none) the channel has no videos yet: it
+// is followed all the same and posts as soon as a feed lists one, and with
+// an API key its back catalogue is read without the feeds.
 func (fw *Follower) uploads(ctx context.Context, channelID string) (Channel, []Video, error) {
 	ch, vids, err := fw.feed(ctx, FeedURL(channelID), channelID)
 	if err == nil {
 		return ch, vids, nil
 	}
 	ch, vids, perr := fw.feed(ctx, UploadsFeedURL(channelID), channelID)
-	if perr != nil {
-		return Channel{}, nil, err
+	switch {
+	case perr == nil:
+		return ch, vids, nil
+	case errors.Is(err, errNoFeed) && errors.Is(perr, errNoFeed):
+		return Channel{ID: channelID}, nil, nil
 	}
-	return ch, vids, nil
+	return Channel{}, nil, err
 }
 
 // playlist is a playlist feed, which a channel without that kind of video
