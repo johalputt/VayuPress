@@ -25,7 +25,7 @@ by `applyPostStatus`, so the cache purge, the feeds and the IndexNow ping
 are the ones every post gets.
 
 **The description is text, never markup.** Every ASCII punctuation mark is
-escaped before it becomes Markdown; only http(s) addresses and timestamps
+escaped before it becomes Markdown; only http and https addresses and timestamps
 gain links, and hashtags become tags.
 
 **The public feed before the API.** A channel's three public feeds (every

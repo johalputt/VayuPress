@@ -137,7 +137,7 @@ mitigation that cannot be named is listed as a residual risk instead.
 | Mail header injection | A decoded line break in a header becomes a space | `decodeMIMEWord` (`internal/vayuos/mail`) |
 | A forged "checked" header in mail | The sender's domain check is sealed at delivery with an install-held HMAC over the message; a sender-written copy is removed | `internal/vayuos/mail/verdict.go` (ADR-0170) |
 | A link that names one site and goes to another | The reader warns, and says when the sender is not a contact | `cmd/vayupress/vayuos_mail_trust.go` (ADR-0170) |
-| Markup in a YouTube description | The description is escaped as text before it becomes Markdown; only http(s) addresses and timestamps become links | `internal/youtube/post.go` (ADR-0175) |
+| Markup in a YouTube description | The description is escaped as text before it becomes Markdown; only http and https addresses and timestamps become links | `internal/youtube/post.go` (ADR-0175) |
 
 ### Network
 

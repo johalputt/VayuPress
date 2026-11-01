@@ -76,7 +76,7 @@ func Blocks(v Video, cover string) []blockrender.Block {
 }
 
 // Paragraphs turns a description into Markdown paragraphs: blank lines part
-// paragraphs, a line break stays a line break, and only http(s) addresses and
+// paragraphs, a line break stays a line break, and only http and https addresses and
 // timestamps become links.
 func Paragraphs(desc, videoID string) []string {
 	desc = strings.ReplaceAll(desc, "\r\n", "\n")
@@ -168,7 +168,7 @@ func trimURL(u string) string {
 	return u
 }
 
-// safeLink reports whether u, which urlRe already holds to http(s) with no
+// safeLink reports whether u, which urlRe already holds to http or https with no
 // space or angle bracket, has a host and can stand as a Markdown destination
 // in angle brackets, where a backslash would escape the bracket that ends it.
 func safeLink(u string) bool {
