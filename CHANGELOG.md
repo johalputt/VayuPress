@@ -8,6 +8,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **An administrator can add a passkey from Mail.** Mail › Settings opens an
+  administrator's own mailbox on the page that manages any mailbox, which
+  had no passkeys, so only a mailbox signed in on its own was offered one.
+  An administrator's own mailbox now has its Passkeys section; another
+  person's mailbox never does.
+
 ## [3.18.27] — 2026-11-01
 
 A channel with no feed is followed only when YouTube itself named it.

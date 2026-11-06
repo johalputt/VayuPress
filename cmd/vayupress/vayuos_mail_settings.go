@@ -176,6 +176,17 @@ func (a *App) isMailboxHolder(r *http.Request, email string) bool {
 	return own != "" && strings.EqualFold(own, strings.TrimSpace(email))
 }
 
+// isOwnMailbox reports whether email is the signed-in account's own
+// mailbox: the one assigned to it, or the one at the address it signs in
+// with, which on most installs is the owner's and is never "assigned".
+func (a *App) isOwnMailbox(r *http.Request, email string) bool {
+	if a.isMailboxHolder(r, email) {
+		return true
+	}
+	u := currentUser(r)
+	return u != nil && u.Email != "" && strings.EqualFold(u.Email, strings.TrimSpace(email))
+}
+
 // mayChangeMailboxSettings is who may change a mailbox's personal settings: an
 // administrator, as before, or its holder.
 func (a *App) mayChangeMailboxSettings(r *http.Request, email string) bool {
@@ -383,7 +394,19 @@ func (a *App) handleVayuOSMailboxSettings(w http.ResponseWriter, r *http.Request
 	sec, _ := a.mailboxSettingsSections(r.Context(), ac.Email, false)
 	head := body.String()
 	body.Reset()
-	body.WriteString(mailSettingsLayout(head, sec, "", mailSettingsNav))
+	// The administrator's own mailbox carries their passkeys, as a holder's
+	// page does: an administrator opening Mail › Settings lands here, and
+	// had no way to add one from Mail. Another person's mailbox never shows
+	// them: a passkey is the signed-in account's, and the block lists only
+	// the session's own.
+	after := ""
+	if a.isOwnMailbox(r, ac.Email) {
+		if pk := a.passkeysBlock(r); pk != "" {
+			after = mailSettingGroup("signin", "Signing in", mailSetting{Name: "Passkeys", Find: "passkey only security key fingerprint face", HTML: pk, Bare: true})
+			after += `<script nonce="` + nonce + `" src="/os/static/js/passkey.js?v=` + assetVer("js/passkey.js") + `"></script>`
+		}
+	}
+	body.WriteString(mailSettingsLayout(head, sec, after, mailSettingsNav))
 
 	// This page hosts the recovery card too, whose controls are driven by
 	// admin-os-mail-recovery.js. Loading only admin-os-mail.js would leave them as

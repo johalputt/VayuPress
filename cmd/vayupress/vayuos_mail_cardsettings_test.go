@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"github.com/johalputt/vayupress/internal/auth"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -210,5 +211,37 @@ func TestTheCatchAllAlias(t *testing.T) {
 	aliases, _ := a.vayuMail.Accounts().ListAliases(context.Background())
 	if len(aliases) != 1 || aliases[0].Alias != "*@example.com" {
 		t.Fatalf("aliases %+v", aliases)
+	}
+}
+
+// An administrator's own mailbox page carries their passkeys, since Mail ›
+// Settings sends an administrator there; another person's mailbox page
+// never does, so no one is offered a passkey for an address they are not
+// signed in as.
+func TestTheAdministratorsOwnMailboxHasTheirPasskeys(t *testing.T) {
+	openMigratedDB(t) // the passkey store's own database, whatever ran before
+	a := appWithMailAccounts(t)
+	a.passkeys = passkeyStoreForTest()
+	hash, err := auth.HashSecretArgon2id("other-mailbox-pass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.vayuMail.Accounts().Create(context.Background(), "erin@example.com", hash, "Erin", "mailbox"); err != nil {
+		t.Fatal(err)
+	}
+	admin := &users.User{ID: "admin1", Email: "dana@example.com", Role: users.RoleAdmin}
+	page := func(addr string) string {
+		rec := httptest.NewRecorder()
+		a.handleVayuOSMailboxSettings(rec, withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/accounts/settings?user="+addr, nil), admin))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status %d", addr, rec.Code)
+		}
+		return rec.Body.String()
+	}
+	if own := page("dana@example.com"); !strings.Contains(own, "data-passkey-add") || !strings.Contains(own, "js/passkey.js") {
+		t.Error("the administrator's own mailbox offers no passkey")
+	}
+	if other := page("erin@example.com"); strings.Contains(other, "data-passkey") {
+		t.Error("another person's mailbox offers the administrator a passkey")
 	}
 }
