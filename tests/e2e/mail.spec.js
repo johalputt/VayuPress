@@ -653,6 +653,19 @@ test("the mail keys go to folders and open the menus", async ({ page }) => {
   await expect(page.locator(".mx-head__main .mx-head__title")).toHaveText("Sent");
 });
 
+// Escape closes a menu its key has just opened, before the menu has taken the
+// focus: both keys land in one task here, ahead of the toggle event that moves
+// the focus in, which is the window a quick l then Escape fell into.
+test("Escape closes a menu its key has only just opened", async ({ page }) => {
+  await openInbox(page);
+  await page.locator("body").click({ position: { x: 5, y: 5 } });
+  const label = page.locator('#vm-readpane details.sa-pop:has(> summary[aria-label="Label"])');
+  await page.evaluate(() => {
+    for (const key of ["l", "Escape"]) document.body.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+  });
+  await expect(label).not.toHaveAttribute("open", "");
+});
+
 // A label is put on every picked message at once, from the panel's Label
 // menu; the sidebar gains it. The spec takes it off again, so the shared
 // mailbox is left as it was found.

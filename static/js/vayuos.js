@@ -187,6 +187,16 @@
     var inside = e.target.closest ? e.target.closest('details.sa-pop') : null;
     closeAll(inside);
   });
+  // Escape closes an open menu even before the focus has moved into it: a
+  // menu opened from a key takes the focus on its toggle event, a task later,
+  // so l then Escape pressed together left Label open.
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    var open = pops.filter(function (d) { return d.open && !d.dataset.closing; });
+    if (!open.length) return;
+    e.preventDefault();
+    open.forEach(shut);
+  });
 
   /* ── Colour scheme ─────────────────────────────────────────────────────
      Applied at once, saved for every device, mirrored for the sign-in pages

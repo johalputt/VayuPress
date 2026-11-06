@@ -58,6 +58,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   and menu, not the operator's.
 - A hosted site's settings, saved, show on its pages at once: its cached
   pages were served as they were until they aged out.
+- Escape closes a menu opened from the keyboard at once (Move to, Snooze,
+  Label in Mail): pressed before the menu had taken the focus, it was not
+  heard and the menu stayed open.
 - Home's "This install" shows Response time before a request has been
   timed ("Not measured yet"), so the section is one height from the first
   visit.
