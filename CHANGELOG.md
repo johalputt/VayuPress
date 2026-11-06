@@ -17,6 +17,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   are saved to that site alone and are what its pages are drawn with; they
   were the install's for every site. A switch takes only its two values,
   and a refused value saves nothing.
+- **A hosted site's own menu and footer.** Its settings page gains Menu and
+  footer, with the same editors as the install's Settings, saved to that
+  site alone. Until it sets a menu, a hosted site links to its home and its
+  feed, not to the console.
 
 ### Fixed
 

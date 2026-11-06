@@ -1868,3 +1868,35 @@ test("a connector is disconnected from its sheet", async ({ page }) => {
   await Promise.all([page.waitForEvent("load"), page.locator(".vp-confirm").getByRole("button", { name: "Remove" }).click({ timeout: 5000 })]);
   await expect(page.locator(".settings-row", { hasText: "VayuMCP (read-only)" })).toHaveCount(before - 1);
 });
+
+// A hosted site's menu is edited on its own settings page, with the
+// install's editor, and kept for that site; the page passes the design lint.
+test("a hosted site's menu is edited and saved on its own settings page", async ({ page }) => {
+  await openConsole(page);
+  const host = `menu-${Date.now()}.example.com`;
+  const made = await page.evaluate(async (host) => {
+    const m = document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);
+    const r = await fetch("/os/api/domains", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(m[1]) },
+      body: JSON.stringify({ host }),
+    });
+    return { status: r.status, j: await r.json() };
+  }, host);
+  expect(made.status).toBe(200);
+  await page.goto(`/os/d/${made.j.id}/settings`);
+  const section = page.locator("details.mon-acc", { hasText: "Menu and footer" });
+  await section.locator("summary").click();
+  const rows = section.locator("#nav-editor [data-nav-row]");
+  await expect(rows).toHaveCount(2);
+  await section.locator("#nav-add-btn").click();
+  await rows.last().locator("[data-nav-label]").fill("About");
+  await rows.last().locator("[data-nav-href]").fill("/about");
+  await section.getByRole("button", { name: "Save" }).click();
+  await expect(page.locator("#scoped-status")).toHaveText(/Saved/);
+
+  await page.reload();
+  await page.locator("details.mon-acc", { hasText: "Menu and footer" }).locator("summary").click();
+  await expect(page.locator("#nav-editor [data-nav-label]").last()).toHaveValue("About");
+  expect(await page.evaluate(lintPage)).toEqual([]);
+});

@@ -308,10 +308,16 @@ func settingsNavEditor(ctx context.Context, a *App) ui.HTML {
 		// The editor starts from the menu readers see now, not a blank list.
 		navJSON = `[{"label":"Home","href":"/"},{"label":"Feed","href":"/feed.xml"},{"label":"Console","href":"/admin"}]`
 	}
+	return navEditorHTML(navJSON, "data-setting-key")
+}
+
+// navEditorHTML is the menu editor over navJSON; keyAttr names the save its
+// hidden input belongs to (data-setting-key or data-scoped-key).
+func navEditorHTML(navJSON, keyAttr string) ui.HTML {
 	return ui.HTML(`<div class="settings-panel"><p class="settings-panel__lead">Point a link at a page of yours (<code>/about</code>), a feed, or another site.</p>
   <div id="nav-editor" data-nav-json="` + html.EscapeString(navJSON) + `"></div>
   <button type="button" class="btn btn--sm" id="nav-add-btn">Add link</button>
-  <input type="hidden" id="nav-json-input" data-setting-key="` + settings.KeyNavItems + `" value="` + html.EscapeString(navJSON) + `"></div>`)
+  <input type="hidden" id="nav-json-input" ` + keyAttr + `="` + settings.KeyNavItems + `" value="` + html.EscapeString(navJSON) + `"></div>`)
 }
 
 // defaultFooterSeed starts an unconfigured footer from a complete layout (a
@@ -323,6 +329,12 @@ func settingsFooterEditor(ctx context.Context, a *App) ui.HTML {
 	if strings.TrimSpace(footerJSON) == "" {
 		footerJSON = defaultFooterSeed
 	}
+	return footerEditorHTML(footerJSON, "data-setting-key")
+}
+
+// footerEditorHTML is the footer editor over footerJSON; keyAttr as for
+// navEditorHTML.
+func footerEditorHTML(footerJSON, keyAttr string) ui.HTML {
 	esc := html.EscapeString(footerJSON)
 	return ui.Join(
 		ui.Rows(
@@ -338,7 +350,7 @@ func settingsFooterEditor(ctx context.Context, a *App) ui.HTML {
   <button type="button" class="btn btn--sm" id="footer-add-social">Add social link</button>
   <h3 class="settings-panel__title">Legal links</h3><p class="settings-panel__lead">Beside the copyright: Privacy, Terms, Cookies.</p><div id="footer-legal"></div>
   <button type="button" class="btn btn--sm" id="footer-add-legal">Add legal link</button>
-  <input type="hidden" id="footer-json-input" data-setting-key="`+settings.KeyFooterConfig+`" data-footer-seed="`+esc+`" value="`+esc+`"></div>`),
+  <input type="hidden" id="footer-json-input" `+keyAttr+`="`+settings.KeyFooterConfig+`" data-footer-seed="`+esc+`" value="`+esc+`"></div>`),
 	)
 }
 
@@ -482,7 +494,40 @@ if(discardBtn)discardBtn.addEventListener('click',function(){
 window.addEventListener('beforeunload',function(e){if(changed().length){e.preventDefault();e.returnValue='';}});
 // A search result lands on its row: show which one.
 if(location.hash){var t=document.querySelector(location.hash);var tr=t&&rowOf(t);if(tr){tr.classList.add('is-found');t.focus({preventScroll:false});}}
-function moveRow(row,dir,sync){
+// Site mark. The endpoint and the preview follow the page's scope, taken from
+// the image the server rendered: a hard-coded /os/api/branding/favicon made a
+// hosted domain's save change the install-wide mark.
+var favFile=document.getElementById('brand-favicon-file');
+var favUp=document.getElementById('brand-favicon-upload');
+var favRm=document.getElementById('brand-favicon-remove');
+var favImg=document.getElementById('brand-favicon-img');
+var favState=document.getElementById('brand-favicon-state');
+var favBase=(favImg&&favImg.getAttribute('src')||'/favicon.ico').split('?')[0];
+var favPost=favBase==='/favicon.ico'?'/os/api/branding/favicon':favBase.replace('/branding/mark','/api/branding/favicon');
+function favSend(fd,btn,done){
+  btn.disabled=true;
+  fetch(favPost,{method:'POST',headers:{'X-CSRF-Token':csrf()},body:fd})
+    .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
+    .then(function(res){btn.disabled=false;if(res.ok){if(favImg)favImg.src=favBase+'?t='+Date.now();done();}else{vpToast(res.d.error||res.d.detail||'The mark could not be changed','error');}})
+    .catch(function(e){btn.disabled=false;vpToast('The mark could not be changed: '+e,'error');});
+}
+if(favUp)favUp.addEventListener('click',function(){
+  var f=favFile&&favFile.files&&favFile.files[0];
+  if(!f){vpToast('Choose a PNG or ICO first','warn');return;}
+  var fd=new FormData();fd.append('favicon',f);
+  favSend(fd,favUp,function(){if(favState)favState.textContent='Your own mark, stored in the database.';vpToast('Mark updated','ok');});
+});
+if(favRm)favRm.addEventListener('click',function(){
+  var fd=new FormData();fd.append('remove','1');
+  favSend(fd,favRm,function(){if(favState)favState.textContent='Using the default mark.';vpToast('Default mark restored','ok');});
+});
+` + linkEditorsScript + `refresh();`
+
+// linkEditorsScript draws the public menu and footer editors from their
+// hidden inputs and keeps those inputs in step, calling refresh() after each
+// change. The install's Settings page and a hosted site's settings page both
+// run it, each with its own refresh, so the two editors cannot drift apart.
+const linkEditorsScript = `function moveRow(row,dir,sync){
   if(dir<0){var p=row.previousElementSibling;if(p)row.parentNode.insertBefore(row,p);}
   else{var n=row.nextElementSibling;if(n)row.parentNode.insertBefore(n,row);}
   if(sync)sync();
@@ -524,33 +569,6 @@ if(navEditor&&navHidden){
   var navAdd=document.getElementById('nav-add-btn');
   if(navAdd)navAdd.addEventListener('click',function(){navEditor.appendChild(linkRow('','','/path or https://…',navSync,navAttrs));});
 }
-// Site mark. The endpoint and the preview follow the page's scope, taken from
-// the image the server rendered: a hard-coded /os/api/branding/favicon made a
-// hosted domain's save change the install-wide mark.
-var favFile=document.getElementById('brand-favicon-file');
-var favUp=document.getElementById('brand-favicon-upload');
-var favRm=document.getElementById('brand-favicon-remove');
-var favImg=document.getElementById('brand-favicon-img');
-var favState=document.getElementById('brand-favicon-state');
-var favBase=(favImg&&favImg.getAttribute('src')||'/favicon.ico').split('?')[0];
-var favPost=favBase==='/favicon.ico'?'/os/api/branding/favicon':favBase.replace('/branding/mark','/api/branding/favicon');
-function favSend(fd,btn,done){
-  btn.disabled=true;
-  fetch(favPost,{method:'POST',headers:{'X-CSRF-Token':csrf()},body:fd})
-    .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
-    .then(function(res){btn.disabled=false;if(res.ok){if(favImg)favImg.src=favBase+'?t='+Date.now();done();}else{vpToast(res.d.error||res.d.detail||'The mark could not be changed','error');}})
-    .catch(function(e){btn.disabled=false;vpToast('The mark could not be changed: '+e,'error');});
-}
-if(favUp)favUp.addEventListener('click',function(){
-  var f=favFile&&favFile.files&&favFile.files[0];
-  if(!f){vpToast('Choose a PNG or ICO first','warn');return;}
-  var fd=new FormData();fd.append('favicon',f);
-  favSend(fd,favUp,function(){if(favState)favState.textContent='Your own mark, stored in the database.';vpToast('Mark updated','ok');});
-});
-if(favRm)favRm.addEventListener('click',function(){
-  var fd=new FormData();fd.append('remove','1');
-  favSend(fd,favRm,function(){if(favState)favState.textContent='Using the default mark.';vpToast('Default mark restored','ok');});
-});
 // Footer.
 var footerInput=document.getElementById('footer-json-input');
 if(footerInput){
@@ -608,4 +626,4 @@ if(footerInput){
   var addLegal=document.getElementById('footer-add-legal');
   if(addLegal)addLegal.addEventListener('click',function(){fLegal.appendChild(linkRow('','',fHint,function(){footerSync();},fAttrs));footerSync();});
 }
-refresh();`
+`

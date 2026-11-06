@@ -4,6 +4,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -83,11 +85,61 @@ func TestThePublishingSectionShowsTheSitesOwnChoices(t *testing.T) {
 			t.Errorf("the page lacks %s", want)
 		}
 	}
-	if n := strings.Count(page, "data-scoped-save"); n != 4 {
-		t.Errorf("%d Save buttons, want one for each of Identity, Colour, Publishing and Stylesheet", n)
+	if n := strings.Count(page, "data-scoped-save"); n != 5 {
+		t.Errorf("%d Save buttons, want one for each of Identity, Colour, Publishing, Stylesheet and Menu and footer", n)
 	}
 	if src := scopedSettingsScript("n"); !strings.Contains(src, "querySelectorAll('[data-scoped-save]')") ||
 		!strings.Contains(src, "getAttribute('data-off')") {
 		t.Error("the script does not wire every Save button or send a cleared switch's off value")
+	}
+}
+
+// A hosted site's menu and footer are its own, drawn with the install's own
+// editors and saved to the site; until it sets a menu, it links to its home
+// and feed, not to the operator's console.
+func TestAHostedSitesMenuAndFooterAreItsOwn(t *testing.T) {
+	a, _, blog := hostedBlogApp(t)
+	s, _ := a.brandForRequest(requestFor("/", blog))
+	if strings.Contains(s.NavJSON, "/admin") || !strings.Contains(s.NavJSON, "/feed.xml") {
+		t.Errorf("an unset site's menu is %s", s.NavJSON)
+	}
+
+	nav := `[{"label":"About","href":"/about"}]`
+	foot := `{"tagline":"Notes","copyright":"© {year} {site}","columns":[],"social":[],"legal":[]}`
+	navJ, _ := json.Marshal(nav)
+	footJ, _ := json.Marshal(foot)
+	rec := scopedSave(a, blog, `{"settings":{"`+settings.KeyNavItems+`":`+string(navJ)+`,"`+settings.KeyFooterConfig+`":`+string(footJ)+`}}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("save: %d %s", rec.Code, rec.Body.String())
+	}
+	s, _ = a.brandForRequest(requestFor("/", blog))
+	if s.NavJSON != nav || s.FooterJSON != foot {
+		t.Errorf("the site is drawn with menu %s and footer %s", s.NavJSON, s.FooterJSON)
+	}
+	if v := a.siteSettings.Get(context.Background(), settings.ForPrimary(), settings.KeyNavItems); v == nav {
+		t.Error("the install's own menu was changed")
+	}
+
+	rec = scopedSave(a, blog, `{"settings":{"`+settings.KeyNavItems+`":"[{\"label\":"}}`)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "bad-value") {
+		t.Errorf("a menu that is not JSON: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// The page draws both editors writing this site's keys and runs the one
+// editor script the install's Settings page runs.
+func TestTheMenuAndFooterEditorsAreOnTheSitesPage(t *testing.T) {
+	page := scopedSettingsBody("d1", "notes.example.com", map[string]string{}, presDefault)
+	for _, want := range []string{
+		`id="nav-json-input" data-scoped-key="` + settings.KeyNavItems + `"`,
+		`id="footer-json-input" data-scoped-key="` + settings.KeyFooterConfig + `"`,
+		html.EscapeString(hostedNavSeed),
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the page lacks %s", want)
+		}
+	}
+	if !strings.Contains(scopedSettingsScript("n"), linkEditorsScript) || !strings.Contains(settingsPageScript, linkEditorsScript) {
+		t.Error("the site's page and the install's Settings page do not run the same editor script")
 	}
 }

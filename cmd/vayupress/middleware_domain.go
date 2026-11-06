@@ -146,6 +146,9 @@ func (a *App) brandForRequest(r *http.Request) (render.SiteSettings, bool) {
 					*f.v = ""
 				}
 			}
+			if strings.TrimSpace(s.NavJSON) == "" {
+				s.NavJSON = hostedNavSeed
+			}
 			s.BlogBase = a.blogBaseFor(r)
 			return s, true
 		}

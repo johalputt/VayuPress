@@ -84,13 +84,31 @@ var scopedTexts = []struct {
 	{settings.KeyThemeCustomCSS, "Stylesheet", "Added to every page of this site. Never loaded in the console.", 8},
 }
 
+// scopedLinkKeys are this site's own menu and footer, edited with the
+// install's own editors (navEditorHTML, footerEditorHTML, linkEditorsScript).
+var scopedLinkKeys = []struct{ Key, Label, Hint string }{
+	{settings.KeyNavItems, "Menu", "The links across the top of this site."},
+	{settings.KeyFooterConfig, "Footer", "This site's footer: tagline, link columns, social and legal links."},
+}
+
+// hostedNavSeed is a hosted site's menu until it sets one: its home and its
+// feed. The install's default also links to the console, which is the
+// operator's, not the site's readers'.
+const hostedNavSeed = `[{"label":"Home","href":"/"},{"label":"Feed","href":"/feed.xml"}]`
+
+// hostedFooterSeed is what a hosted site's footer shows until it sets one:
+// the copyright line alone (footerHTML's default), with no link to a Privacy
+// or Terms page the site may not have.
+const hostedFooterSeed = `{"tagline":"","copyright":"© {year} {site}. All rights reserved.","columns":[],"social":[],"legal":[]}`
+
 // scopedEditableKeys is every key this page may write.
 // The save allowlist reads from here so a field added to either group is
 // editable without a second edit somewhere else.
 func scopedEditableKeys() []struct{ Key, Label, Hint string } {
-	out := make([]struct{ Key, Label, Hint string }, 0, len(scopedSettingKeys)+len(scopedColourKeys)+len(scopedSwitches)+len(scopedTexts))
+	out := make([]struct{ Key, Label, Hint string }, 0, len(scopedSettingKeys)+len(scopedColourKeys)+len(scopedLinkKeys)+len(scopedSwitches)+len(scopedTexts))
 	out = append(out, scopedSettingKeys...)
 	out = append(out, scopedColourKeys...)
+	out = append(out, scopedLinkKeys...)
 	for _, f := range scopedSwitches {
 		out = append(out, struct{ Key, Label, Hint string }{f.Key, f.Label, f.Hint})
 	}
@@ -100,15 +118,20 @@ func scopedEditableKeys() []struct{ Key, Label, Hint string } {
 	return out
 }
 
-// scopedSwitchValue is v when it is one of key's two values, and ok=false for
-// anything else; a key that is not a switch passes as given.
-func scopedSwitchValue(key, v string) (string, bool) {
+// scopedValueOK reports whether v is a value key takes: a switch only its two
+// values, the menu and footer blank or JSON. Any other key takes any text.
+func scopedValueOK(key, v string) bool {
 	for _, f := range scopedSwitches {
 		if f.Key == key {
-			return v, v == f.On || v == f.Off
+			return v == f.On || v == f.Off
 		}
 	}
-	return v, true
+	for _, f := range scopedLinkKeys {
+		if f.Key == key {
+			return v == "" || json.Valid([]byte(v))
+		}
+	}
+	return true
 }
 
 // handleOSScopedSettings renders one domain's own settings.
@@ -310,6 +333,23 @@ func scopedSettingsBody(domainID, host string, values map[string]string, pres pr
 			`</textarea><span class="field-hint">`+esc(css.Hint)+`</span></label>`+
 			`<div class="vm-row"><button type="button" class="btn btn--primary btn--sm" data-scoped-save>Save</button></div></div>`))
 
+	// Menu and footer, with the install's own editors writing this site's keys.
+	nav, foot := values[settings.KeyNavItems], values[settings.KeyFooterConfig]
+	linkChip := `<span class="mon-chip mon-chip--off">Not set</span>`
+	if strings.TrimSpace(nav) != "" || strings.TrimSpace(foot) != "" {
+		linkChip = `<span class="mon-chip mon-chip--on">Set</span>`
+	}
+	if strings.TrimSpace(nav) == "" {
+		nav = hostedNavSeed
+	}
+	if strings.TrimSpace(foot) == "" {
+		foot = hostedFooterSeed
+	}
+	b.WriteString(monAcc(saIcon("list"), "Menu and footer", "The links across the top and the foot of this site", linkChip, false,
+		`<div class="card"><div class="settings-block-title">Menu</div>`+string(navEditorHTML(nav, "data-scoped-key"))+
+			`<div class="settings-block-title">Footer</div>`+string(footerEditorHTML(foot, "data-scoped-key"))+
+			`<div class="vm-row"><button type="button" class="btn btn--primary btn--sm" data-scoped-save>Save</button></div></div>`))
+
 	styleChip := `<span class="mon-chip mon-chip--off">Not known</span>`
 	switch pres {
 	case presDefault:
@@ -341,6 +381,8 @@ var node=document.getElementById('scoped-ctx');
 var ID=node?node.getAttribute('data-id'):'';
 if(!ID)return;
 var st=document.getElementById('scoped-status');
+function refresh(){}
+` + linkEditorsScript + `
 // Every section's Save button saves the page: querySelector wired only the
 // first, so the Colour section's button did nothing.
 function errText(j){return j&&((j.error&&j.error.message)||j.message);}
@@ -422,12 +464,12 @@ func (a *App) handleOSScopedSettingsSave(w http.ResponseWriter, r *http.Request)
 		if !allowed[k] {
 			continue
 		}
-		val, ok := scopedSwitchValue(k, strings.TrimSpace(v))
-		if !ok {
-			writeAPIError(w, r, http.StatusBadRequest, "bad-value", "a switch was sent a value it does not take; nothing was saved", "")
+		v = strings.TrimSpace(v)
+		if !scopedValueOK(k, v) {
+			writeAPIError(w, r, http.StatusBadRequest, "bad-value", "a setting was sent a value it does not take; nothing was saved", "")
 			return
 		}
-		kv[k] = val
+		kv[k] = v
 	}
 	if len(kv) == 0 {
 		writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
