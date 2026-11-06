@@ -27,6 +27,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - A hosted site that has not set a tagline, description or author no longer
   shows the product's sample tagline and description or the product
   author's by-line; they are left out until the site sets its own.
+- A hosted site's topic, topics, tag and search pages, its author pages,
+  its web-app manifest and its llms.txt are in its own name, with its own
+  menu and footer; they read the install's. Its author page lists only its
+  own posts: it listed every site's, linking to posts its address does not
+  serve.
 
 ## [3.18.29] — 2026-11-06
 

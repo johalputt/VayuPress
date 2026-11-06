@@ -102,7 +102,7 @@ func (a *App) handleLLMsTxt(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s := render.GetActiveSettings()
+	s := a.requestSiteSettings(r)
 	body := seo.Render(seo.LLMsDoc{
 		SiteName:    s.Name,
 		Origin:      origin,

@@ -46,7 +46,7 @@ func (a *App) handleTagIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	html, err := render.RenderTagIndex(config.Cfg.Domain, Version, idx.infos, idx.total)
+	html, err := render.RenderTagIndexFor(a.siteFor(r), config.Cfg.Domain, Version, idx.infos, idx.total)
 	if err != nil {
 		http.Error(w, "render error", http.StatusInternalServerError)
 		return
@@ -279,7 +279,12 @@ func (a *App) handleTagPage(w http.ResponseWriter, r *http.Request) {
 	if mostRead {
 		limit = 0
 	}
-	articles, total := a.articlesByTag(r.Context(), tag, limit, scope, scoped)
+	site := a.siteFor(r)
+	author := render.GetActiveSettings().Author
+	if site != nil {
+		author = site.Author
+	}
+	articles, total := a.articlesByTag(r.Context(), tag, limit, scope, scoped, author)
 	if total == 0 {
 		// No published post carries this tag — indistinguishable from a bad URL.
 		a.handleNotFound(w, r)
@@ -289,7 +294,7 @@ func (a *App) handleTagPage(w http.ResponseWriter, r *http.Request) {
 		articles = a.halcyonTopicMostRead(r.Context(), tag, 200, scope, scoped)
 	}
 
-	in := render.TopicInput{Domain: config.Cfg.Domain, Version: Version, Tag: tag, Articles: articles, Total: total,
+	in := render.TopicInput{Settings: site, Domain: config.Cfg.Domain, Version: Version, Tag: tag, Articles: articles, Total: total,
 		Broad: broadTag(key), MostRead: mostRead, ReadDays: halcyonReadDays}
 	if halcyon {
 		key, _, _, count := a.halcyonScope(r)
@@ -314,7 +319,8 @@ func (a *App) handleTagPage(w http.ResponseWriter, r *http.Request) {
 // stays fast at 1M+ posts instead of full-scanning the articles table with a
 // `tags LIKE '%..%'` predicate. At most `max` articles are materialised for the
 // page; total still reflects every published match.
-func (a *App) articlesByTag(ctx context.Context, tag string, max int, scope string, scoped bool) ([]render.HomeArticle, int) {
+// Each card names author, the site's own.
+func (a *App) articlesByTag(ctx context.Context, tag string, max int, scope string, scoped bool, author string) ([]render.HomeArticle, int) {
 	if dbpkg.DB == nil {
 		return nil, 0
 	}
@@ -354,7 +360,6 @@ func (a *App) articlesByTag(ctx context.Context, tag string, max int, scope stri
 	_ = rows.Close()
 
 	out := listingCards(ctx, ids)
-	author := render.GetActiveSettings().Author
 	for i := range out {
 		out[i].Author = author
 	}

@@ -601,6 +601,9 @@ func (a *App) handlePublicAuthor(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Robots-Tag", "index, follow")
 
 	brand := esc(config.Cfg.Domain)
+	if s := a.siteFor(r); s != nil {
+		brand = esc(s.Name) // a hosted site's author page is in its name
+	}
 	name := esc(u.Name)
 	if name == "" {
 		name = esc(authorFallbackName(u.Email))
@@ -639,19 +642,26 @@ func (a *App) handlePublicAuthor(w http.ResponseWriter, r *http.Request) {
 	// of posts with no explicit author_id, so for them we use the proven,
 	// index-friendly "all published" query. Secondary authors filter on the
 	// indexed author_id column (they have few posts) — scale-safe on 234k rows.
-	siteAuthor := strings.TrimSpace(render.GetActiveSettings().Author)
+	siteAuthor := strings.TrimSpace(a.requestSiteSettings(r).Author)
 	isPrimary := siteAuthor != "" && strings.EqualFold(strings.TrimSpace(u.Name), siteAuthor)
 	postsHTML := `<p class="au-posts-empty">No posts published yet.</p>`
 	var (
 		rows *sql.Rows
 		qerr error
 	)
+	// Only this site's posts, as its home lists them: a hosted site's author
+	// page listed every site's, linking to posts its host does not serve.
+	domClause := ""
+	var domArgs []any
+	if a.multiDomain(r) {
+		domClause, domArgs = " AND domain_id=?", []any{a.contentScope(r)}
+	}
 	if isPrimary {
 		rows, qerr = dbpkg.Reader().QueryContext(r.Context(),
-			`SELECT title,slug,created_at,COALESCE(excerpt,'') FROM articles WHERE status='published' AND is_page=0 ORDER BY created_at DESC LIMIT 60`)
+			`SELECT title,slug,created_at,COALESCE(excerpt,'') FROM articles WHERE status='published' AND is_page=0`+domClause+` ORDER BY created_at DESC LIMIT 60`, domArgs...)
 	} else {
 		rows, qerr = dbpkg.Reader().QueryContext(r.Context(),
-			`SELECT title,slug,created_at,COALESCE(excerpt,'') FROM articles WHERE author_id=? AND status='published' AND is_page=0 ORDER BY created_at DESC LIMIT 60`, u.ID)
+			`SELECT title,slug,created_at,COALESCE(excerpt,'') FROM articles WHERE author_id=? AND status='published' AND is_page=0`+domClause+` ORDER BY created_at DESC LIMIT 60`, append([]any{u.ID}, domArgs...)...)
 	}
 	if qerr == nil {
 		defer rows.Close()

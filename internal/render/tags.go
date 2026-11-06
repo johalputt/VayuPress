@@ -165,11 +165,17 @@ var tagPageTmpl = template.Must(template.New("tagpage").Funcs(tagFuncs).Parse(`<
 // RenderTagIndex renders the public topic-index page listing every tag with its
 // post count. tags should already be sorted by the caller (count desc, name asc).
 func RenderTagIndex(domain, version string, tags []TagInfo, totalPosts int) (string, error) {
+	return RenderTagIndexFor(nil, domain, version, tags, totalPosts)
+}
+
+// RenderTagIndexFor is RenderTagIndex for one site's settings; nil is the
+// install's own.
+func RenderTagIndexFor(site *SiteSettings, domain, version string, tags []TagInfo, totalPosts int) (string, error) {
+	s := siteOr(site)
 	if cfg, ok := Halcyon(); ok {
-		return renderHalcyonTopics(domain, tags, totalPosts, cfg)
+		return renderHalcyonTopics(s, domain, tags, totalPosts, cfg)
 	}
 	var buf strings.Builder
-	s := getActiveSettings()
 	err := tagIndexTmpl.Execute(&buf, tagIndexPage{
 		Domain:              domain,
 		Version:             version,
@@ -210,11 +216,17 @@ const thinTagPosts = 3
 // on so large a part of the site that its page lists the site, not a topic,
 // and is kept out of search like a thin one.
 func RenderTagPage(domain, version, tag string, articles []HomeArticle, totalCount int, broad bool) (string, error) {
+	return RenderTagPageFor(nil, domain, version, tag, articles, totalCount, broad)
+}
+
+// RenderTagPageFor is RenderTagPage for one site's settings; nil is the
+// install's own.
+func RenderTagPageFor(site *SiteSettings, domain, version, tag string, articles []HomeArticle, totalCount int, broad bool) (string, error) {
 	if cfg, ok := Halcyon(); ok {
-		return renderHalcyonTopic(TopicInput{Domain: domain, Version: version, Tag: tag, Articles: articles, Total: totalCount, Broad: broad}, cfg)
+		return renderHalcyonTopic(TopicInput{Settings: site, Domain: domain, Version: version, Tag: tag, Articles: articles, Total: totalCount, Broad: broad}, cfg)
 	}
 	var buf strings.Builder
-	s := getActiveSettings()
+	s := siteOr(site)
 	err := tagPageTmpl.Execute(&buf, tagPage{
 		Domain:              domain,
 		Version:             version,

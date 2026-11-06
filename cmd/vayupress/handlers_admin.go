@@ -425,7 +425,7 @@ func (a *App) handleSearchPage(w http.ResponseWriter, r *http.Request) {
 	if len(q) > 120 {
 		q = q[:120]
 	}
-	in := render.SearchInput{Domain: config.Cfg.Domain, Version: Version, Query: q}
+	in := render.SearchInput{Settings: a.siteFor(r), Domain: config.Cfg.Domain, Version: Version, Query: q}
 	_, halcyon := render.Halcyon()
 	if halcyon {
 		// A topic page's search box scopes to its topic and keeps its order.
@@ -2137,10 +2137,7 @@ func (a *App) homeInput(r *http.Request, page, total, totalPages int, domClause 
 	// Per-domain branding: a secondary domain with its own brand renders from its
 	// branded settings; the primary and single-domain installs take the original
 	// call, byte-identical.
-	s, branded := a.brandForRequest(r)
-	if !branded {
-		s = render.GetActiveSettings()
-	}
+	s := a.requestSiteSettings(r)
 	// The site's own author: a hosted site's cards named the install's.
 	for i := range articles {
 		articles[i].Author = s.Author

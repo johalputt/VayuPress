@@ -201,6 +201,24 @@ func siteSettingsFromValues(v map[string]string) render.SiteSettings {
 	}
 }
 
+// siteFor is the settings of the hosted site a request is for, or nil on the
+// install's own site, for a renderer whose nil means the install's settings.
+func (a *App) siteFor(r *http.Request) *render.SiteSettings {
+	if s, ok := a.brandForRequest(r); ok {
+		return &s
+	}
+	return nil
+}
+
+// requestSiteSettings is the settings of the site a request is for: a hosted
+// site's own, or the install's.
+func (a *App) requestSiteSettings(r *http.Request) render.SiteSettings {
+	if s := a.siteFor(r); s != nil {
+		return *s
+	}
+	return render.GetActiveSettings()
+}
+
 // applyBrand overlays a secondary domain's non-empty branding fields onto a copy
 // of the site settings. Every blank field inherits the primary's value, so a
 // domain can re-brand just its name and keep the rest of the operator's design.

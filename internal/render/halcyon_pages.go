@@ -427,6 +427,8 @@ func homeJSONLD(in HomeInput, origin, canonical string) template.HTML {
 
 // TopicInput is everything a topic page is rendered from.
 type TopicInput struct {
+	// Settings is the site the page belongs to; nil is the install's own.
+	Settings        *SiteSettings
 	Domain, Version string
 	Tag             string
 	Articles        []HomeArticle
@@ -444,13 +446,13 @@ type TopicInput struct {
 func RenderTopicPage(in TopicInput) (string, error) {
 	cfg, ok := Halcyon()
 	if !ok {
-		return RenderTagPage(in.Domain, in.Version, in.Tag, in.Articles, in.Total, in.Broad)
+		return RenderTagPageFor(in.Settings, in.Domain, in.Version, in.Tag, in.Articles, in.Total, in.Broad)
 	}
 	return renderHalcyonTopic(in, cfg)
 }
 
 func renderHalcyonTopic(in TopicInput, cfg theme.HalcyonConfig) (string, error) {
-	s := getActiveSettings()
+	s := siteOr(in.Settings)
 	c := halcyonChrome(s, cfg, "topic")
 	c.PageTitle = topicName(in.Tag) + " — " + c.SiteName
 	c.Description = groupThousands(in.Total) + " " + pluralWord(in.Total, "article", "articles") + " filed under “" + in.Tag + "” on " + c.SiteName + "."
@@ -514,8 +516,8 @@ type hTopics struct {
 	Total int
 }
 
-func renderHalcyonTopics(domain string, tags []TagInfo, total int, cfg theme.HalcyonConfig) (string, error) {
-	c := halcyonChrome(getActiveSettings(), cfg, "topics")
+func renderHalcyonTopics(s SiteSettings, domain string, tags []TagInfo, total int, cfg theme.HalcyonConfig) (string, error) {
+	c := halcyonChrome(s, cfg, "topics")
 	c.PageTitle = "Topics — " + c.SiteName
 	c.Description = "Every topic on " + c.SiteName + ", with how many articles each holds."
 	c.Canonical = seo.Origin(domain) + "/tags"
@@ -533,6 +535,8 @@ func renderHalcyonTopics(domain string, tags []TagInfo, total int, cfg theme.Hal
 // Halcyon the topic it is scoped to with that topic page's order, and the
 // largest topics to offer when nothing matches.
 type SearchInput struct {
+	// Settings is the site searched; nil is the install's own.
+	Settings               *SiteSettings
 	Domain, Version, Query string
 	Hits                   []SearchHit
 	Topic                  string
@@ -547,7 +551,7 @@ func RenderSearchPage(in SearchInput) (string, error) {
 	if cfg, ok := Halcyon(); ok {
 		return renderHalcyonSearch(in, cfg)
 	}
-	return RenderSearch(in.Domain, in.Version, in.Query, in.Hits)
+	return RenderSearchFor(in.Settings, in.Domain, in.Version, in.Query, in.Hits)
 }
 
 type hSearch struct {
@@ -560,7 +564,7 @@ type hSearch struct {
 }
 
 func renderHalcyonSearch(in SearchInput, cfg theme.HalcyonConfig) (string, error) {
-	c := halcyonChrome(getActiveSettings(), cfg, "search")
+	c := halcyonChrome(siteOr(in.Settings), cfg, "search")
 	c.PageTitle = "Search — " + c.SiteName
 	if in.Query != "" {
 		c.PageTitle = "Search: " + in.Query + " — " + c.SiteName

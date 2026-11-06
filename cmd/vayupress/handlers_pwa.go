@@ -53,7 +53,7 @@ func (a *App) handleChromaCSS(w http.ResponseWriter, r *http.Request) {
 // description and theme colour follow site settings; identity and icons do not,
 // because they decide whether the install is a real app.
 func (a *App) handlePWAManifest(w http.ResponseWriter, r *http.Request) {
-	s := render.GetActiveSettings()
+	s := a.requestSiteSettings(r)
 	name := s.Name
 	if name == "" {
 		name = config.Cfg.Domain

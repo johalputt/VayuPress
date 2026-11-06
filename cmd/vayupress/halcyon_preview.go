@@ -62,7 +62,7 @@ func (a *App) writeHalcyonPreview(w http.ResponseWriter, r *http.Request, tok th
 			page = "home"
 			break
 		}
-		arts, total := a.articlesByTag(ctx, topic, 200, "", false)
+		arts, total := a.articlesByTag(ctx, topic, 200, "", false, render.GetActiveSettings().Author)
 		p.Topic = render.TopicInput{Domain: config.Cfg.Domain, Version: Version, Tag: topic, Articles: arts,
 			Total: total, Topics: topics, TopicTotal: topicTotal}
 	case "article":

@@ -553,6 +553,14 @@ func SearchEnabled() bool { return searchEnabled.Load() }
 // GetActiveSettings returns a copy of the current active settings (exported for callers outside this package).
 func GetActiveSettings() SiteSettings { return getActiveSettings() }
 
+// siteOr is the site's own settings, or the install's when there is none.
+func siteOr(s *SiteSettings) SiteSettings {
+	if s != nil {
+		return *s
+	}
+	return getActiveSettings()
+}
+
 // getActiveSettings returns a copy of the current active settings.
 func getActiveSettings() SiteSettings {
 	activeSettingsMu.RLock()
@@ -2300,11 +2308,17 @@ var searchTmpl = template.Must(template.New("search").Funcs(homeFuncs).Parse(`<!
 // Results pages are marked noindex (thin, query-dependent) but follow links so
 // the linked posts are still discoverable.
 func RenderSearch(domain, version, query string, hits []SearchHit) (string, error) {
+	return RenderSearchFor(nil, domain, version, query, hits)
+}
+
+// RenderSearchFor is RenderSearch for one site's settings; nil is the
+// install's own.
+func RenderSearchFor(site *SiteSettings, domain, version, query string, hits []SearchHit) (string, error) {
 	if cfg, ok := Halcyon(); ok {
-		return renderHalcyonSearch(SearchInput{Domain: domain, Version: version, Query: query, Hits: hits}, cfg)
+		return renderHalcyonSearch(SearchInput{Settings: site, Domain: domain, Version: version, Query: query, Hits: hits}, cfg)
 	}
 	var buf strings.Builder
-	s := getActiveSettings()
+	s := siteOr(site)
 	err := searchTmpl.Execute(&buf, searchPage{
 		Domain:              domain,
 		Version:             version,

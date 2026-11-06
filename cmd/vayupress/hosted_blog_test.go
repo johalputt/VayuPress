@@ -86,3 +86,25 @@ func TestAnUnnamedHostedSiteIsCalledByItsAddress(t *testing.T) {
 		t.Errorf("the site's Not found page is not in its own name:\n%.400s", page)
 	}
 }
+
+// A hosted site's search page and web-app manifest are in its own name: both
+// read the install's settings.
+func TestAHostedSitesSearchAndAppAreInItsName(t *testing.T) {
+	a, _, blog := hostedBlogApp(t)
+	prev := render.GetActiveSettings()
+	render.SetActiveSettings(render.SiteSettings{Name: "The Install"})
+	prevSearch := render.SearchEnabled()
+	render.SetSearchEnabled(true)
+	t.Cleanup(func() { render.SetActiveSettings(prev); render.SetSearchEnabled(prevSearch) })
+
+	rec := httptest.NewRecorder()
+	a.handleSearchPage(rec, requestFor("/search", blog))
+	if page := rec.Body.String(); strings.Contains(page, "The Install") || !strings.Contains(page, "notes.example.com") {
+		t.Errorf("the site's search page is not in its own name:\n%.400s", page)
+	}
+	rec = httptest.NewRecorder()
+	a.handlePWAManifest(rec, requestFor("/manifest.webmanifest", blog))
+	if body := rec.Body.String(); !strings.Contains(body, `"name":"notes.example.com"`) {
+		t.Errorf("the site's app manifest: %s", body)
+	}
+}
