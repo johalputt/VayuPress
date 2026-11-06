@@ -428,12 +428,8 @@ func saMailSide(m *osMailSide, more string) string {
 		// Reading (pipeline 3y): beside the list, or over it at full width.
 		// The person's own choice, kept on their account (POST
 		// /os/vayumail/layout) and applied at once by admin-os-mail.js.
-		opt := func(value, label string, on bool) string {
-			return `<button type="button" class="sa-menu__item" role="menuitemradio" aria-checked="` + strconv.FormatBool(on) + `" data-mx-layout-choice="` + value + `"><span class="sa-menu__text">` + label + `</span></button>`
-		}
 		b.WriteString(`<details class="sa-pop mx-reading"><summary class="sa-appside__item">` + saIcon("columns") + `<span class="sa-appside__label">Reading</span></summary>` +
-			`<div class="sa-pop__panel sa-menu" role="menu" aria-label="Open messages"><p class="sa-menu__label">Open messages</p>` +
-			opt("", "Beside the list", !m.FullOpen) + opt("full", "Full width", m.FullOpen) + `</div></details>`)
+			`<div class="sa-pop__panel sa-menu" role="menu" aria-label="Open messages">` + mailReadingChoices(m) + `</div></details>`)
 	}
 	if m.Quota > 0 {
 		pct := int(float64(m.Used) / float64(m.Quota) * 100)
@@ -454,6 +450,38 @@ func saMailSide(m *osMailSide, more string) string {
 	}
 	b.WriteString(`</div>`)
 	return b.String()
+}
+
+// mailReadingChoices is where a message opens, as menu items: beside the
+// list or over it at full width. The sidebar's Reading menu and the top
+// bar's quick settings both draw it; admin-os-mail.js applies and keeps a
+// choice from either.
+func mailReadingChoices(m *osMailSide) string {
+	opt := func(value, label string, on bool) string {
+		return `<button type="button" class="sa-menu__item" role="menuitemradio" aria-checked="` + strconv.FormatBool(on) + `" data-mx-layout-choice="` + value + `"><span class="sa-menu__text">` + label + `</span></button>`
+	}
+	return `<p class="sa-menu__label">Open messages</p>` + opt("", "Beside the list", !m.FullOpen) + opt("full", "Full width", m.FullOpen)
+}
+
+// mailTopTools are Mail's own tools in the top bar, beside its search: the
+// keyboard sheet, which ? also opens, and the settings people change most
+// (where a message opens, the colour scheme), then the way to all of them.
+func mailTopTools(m *osMailSide, theme string) string {
+	settings := "/os/vayumail/settings"
+	if m.Admin {
+		settings = "/os/vayumail/accounts/settings?user=" + qparam(m.Address)
+	}
+	reading := ""
+	if m.Reading {
+		reading = mailReadingChoices(m) + `<div class="sa-menu__sep" role="separator"></div>`
+	}
+	return `<button type="button" class="sa-iconbtn" data-mx-help aria-label="Keyboard shortcuts" aria-keyshortcuts="Shift+Slash" title="Keyboard shortcuts (?)">` + saIcon("keyboard") + `</button>` +
+		`<details class="sa-pop mx-quick"><summary class="sa-iconbtn" aria-label="Quick settings" title="Quick settings">` + saIcon("settings") + `</summary>` +
+		`<div class="sa-pop__panel sa-menu" role="menu" aria-label="Quick settings">` + reading +
+		`<div class="sa-menu__row"><span>Appearance</span><span class="sa-seg" role="group" aria-label="Colour scheme">` +
+		saSeg("light", "Light", theme) + saSeg("dark", "Dark", theme) + saSeg("auto", "System", theme) + `</span></div>` +
+		`<div class="sa-menu__sep" role="separator"></div>` +
+		`<a class="sa-menu__item" role="menuitem" href="` + settings + `"><span class="sa-menu__text">All settings</span></a></div></details>`
 }
 
 // stillAirShellHead is adminOSShellHead for the Still Air design. Same contract:
@@ -656,7 +684,7 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 		brand += `<a class="sa-appname" href="/os/vayumail/inbox?user=` + qparam(s.MailSide.User) + `">Mail</a>`
 		status = ""
 		if s.MailSide.Search != "" {
-			search = `<div class="sa-topsearch">` + s.MailSide.Search + `</div>`
+			search = `<div class="sa-topsearch">` + s.MailSide.Search + `</div>` + mailTopTools(s.MailSide, theme)
 		}
 	}
 

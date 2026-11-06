@@ -5990,6 +5990,10 @@
 .vp-os[data-ui="still-air"] .mx-search__input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; color: var(--text-1); font: var(--type-body); outline: none; }
 .vp-os[data-ui="still-air"] .mx-search__key { font: var(--type-meta); color: var(--text-3); padding: 0 6px; border: 1px solid var(--border-1); border-radius: 4px; }
 .vp-os[data-ui="still-air"] .mx-search:focus-within .mx-search__key { visibility: hidden; }
+/* Mail's tools beside the search: the keyboard sheet and quick settings,
+   which keep their size while the field takes what is left. */
+.vp-os[data-ui="still-air"] .sa-sysbar [data-mx-help],
+.vp-os[data-ui="still-air"] .mx-quick { flex: none; }
 .vp-os[data-ui="still-air"] .mx-banner {
   display: flex; align-items: flex-start; gap: var(--space-3); margin: 0 0 var(--space-3); padding: var(--space-4);
   font: var(--type-small); color: var(--danger); background: var(--danger-soft); border-radius: var(--radius-control);
@@ -6540,7 +6544,8 @@
   /* In Mail the mark and "Mail" name the place, and the search needs the
      width the site's name would take; there is no key to press for it. */
   .vp-os[data-ui="still-air"].sa-mailapp :is(.sa-mark__site, .sa-sites),
-  .vp-os[data-ui="still-air"] .mx-search__key { display: none; }
+  .vp-os[data-ui="still-air"] .mx-search__key,
+  .vp-os[data-ui="still-air"] .sa-sysbar [data-mx-help] { display: none; }
   .vp-os[data-ui="still-air"] .sa-search { flex: 0 0 30px; width: 30px; padding: 0; justify-content: center; margin-left: auto; margin-right: 0; border: 0; background: none; }
   /* The words stay for a screen reader: they are the button's name. */
   .vp-os[data-ui="still-air"] .sa-search__text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"github.com/johalputt/vayupress/internal/auth"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	"net/http"
@@ -256,7 +257,7 @@ func TestTheVacationReplySavesAsItChangesOnSettings(t *testing.T) {
 	rec := httptest.NewRecorder()
 	a.handleVayuOSMailboxSettings(rec, withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/accounts/settings?user=dana@example.com", nil), admin))
 	page := rec.Body.String()
-	if !strings.Contains(page, `<form data-mx-autosave class="vm-ooo-form"`) {
+	if !strings.Contains(page, autosaveAttrs+` class="vm-ooo-form"`) {
 		t.Error("the vacation reply does not save as it changes on Settings")
 	}
 	if !strings.Contains(page, `<details open class="vm-ooo vm-acct__sub">`) {
@@ -265,5 +266,26 @@ func TestTheVacationReplySavesAsItChangesOnSettings(t *testing.T) {
 	card := a.vayuCardVacation(context.Background(), vmail.Account{Email: "dana@example.com"})
 	if strings.Contains(card, "data-mx-autosave") || strings.Contains(card, "<details open") {
 		t.Error("the accounts list's vacation card lost its Save button or its folded section")
+	}
+}
+
+// A save sent as a field changed is not redrawn when it succeeds, and is
+// when it fails, so its message shows; a save from a Save button (no header)
+// is redrawn as before.
+func TestAnAutosaveIsRedrawnOnlyWhenItFails(t *testing.T) {
+	for _, c := range []struct {
+		autosave bool
+		err      error
+		quiet    bool
+	}{{true, nil, true}, {true, errors.New("no body"), false}, {false, nil, false}} {
+		r := httptest.NewRequest(http.MethodPost, "/os/vayumail/autoreply/action", nil)
+		if c.autosave {
+			r.Header.Set(autosaveHeader, "1")
+		}
+		rec := httptest.NewRecorder()
+		quietWhenSaved(rec, r, c.err)
+		if got := rec.Header().Get("HX-Reswap") == "none"; got != c.quiet {
+			t.Errorf("autosave %v, error %v: quiet %v, want %v", c.autosave, c.err, got, c.quiet)
+		}
 	}
 }

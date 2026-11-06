@@ -93,3 +93,22 @@ func TestSearchSuggestionFiltersCountFromToday(t *testing.T) {
 		t.Errorf("the date filters:\n%s", got)
 	}
 }
+
+// Mail's top bar tools: the keyboard button, and quick settings holding the
+// Reading choices (when Reading is offered), the colour scheme and the way
+// to all settings, which for an administrator is their own mailbox's page.
+func TestMailTopToolsOfferTheKeysAndQuickSettings(t *testing.T) {
+	holder := mailTopTools(&osMailSide{User: "ankush", Address: "ankush@example.com", Reading: true}, "dark")
+	for _, want := range []string{`data-mx-help`, `data-mx-layout-choice="full"`, `data-sa-theme="dark" aria-pressed="true"`, `href="/os/vayumail/settings"`} {
+		if !strings.Contains(holder, want) {
+			t.Errorf("a holder's top tools lack %q:\n%s", want, holder)
+		}
+	}
+	admin := mailTopTools(&osMailSide{User: "ankush", Address: "ankush@example.com", Admin: true}, "auto")
+	if !strings.Contains(admin, `href="/os/vayumail/accounts/settings?user=ankush%40example.com"`) {
+		t.Errorf("an administrator's All settings is not their mailbox's page:\n%s", admin)
+	}
+	if strings.Contains(admin, "data-mx-layout-choice") {
+		t.Errorf("Reading choices are offered where Reading is not:\n%s", admin)
+	}
+}

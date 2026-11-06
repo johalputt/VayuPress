@@ -1177,6 +1177,7 @@ func (a *App) handleVayuOSAutoreplyAction(w http.ResponseWriter, r *http.Request
 	if opErr != nil {
 		card = saCallout("danger", html.EscapeString(opErr.Error())) + card
 	}
+	quietWhenSaved(w, r, opErr)
 	writeOSHTML(w, r, card)
 }
 
@@ -1268,6 +1269,7 @@ func (a *App) handleVayuOSAliasAction(w http.ResponseWriter, r *http.Request) {
 	if opErr != nil {
 		card = saCallout("danger", html.EscapeString(opErr.Error())) + card
 	}
+	quietWhenSaved(w, r, opErr)
 	writeOSHTML(w, r, card)
 }
 

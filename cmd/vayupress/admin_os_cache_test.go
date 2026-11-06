@@ -382,3 +382,15 @@ func TestTheSweepKeepsARegisteredDomainsPages(t *testing.T) {
 		}
 	}
 }
+
+// A refresh of a site with one post counts it as one post, not "1 posts",
+// which the console's design lint refuses wherever it is drawn.
+func TestTheRefreshCountsOnePostAsOne(t *testing.T) {
+	got := refreshStatusHTML(&warmRun{Refresh: true, Total: 1, Checked: 1, Rebuilt: 1})
+	if !strings.Contains(got, "1 of 1 post checked · 1 page rebuilt") {
+		t.Errorf("one post is not counted as one: %s", got)
+	}
+	if got := refreshStatusHTML(&warmRun{Refresh: true, Total: 3, Checked: 2}); !strings.Contains(got, "2 of 3 posts checked") {
+		t.Errorf("three posts: %s", got)
+	}
+}

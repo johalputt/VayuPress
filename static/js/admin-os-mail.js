@@ -2158,6 +2158,10 @@
       return help;
     }
     function helpOpen() { return help && ((help.matches && help.matches(':popover-open')) || help.classList.contains('vm-help--open')); }
+    // The top bar's keyboard button opens the same sheet ? does.
+    document.addEventListener('click', function (e) {
+      if (e.target && e.target.closest && e.target.closest('[data-mx-help]')) { e.preventDefault(); toggleHelp(); }
+    });
     function toggleHelp() {
       var el = buildHelp();
       if (helpOpen()) { if (el.hidePopover) { try { el.hidePopover(); return; } catch (e) {} } el.classList.remove('vm-help--open'); return; }
@@ -2410,21 +2414,59 @@
           before[i.name] = d ? d.value : '';
         } else before[i.name] = i.defaultValue;
       });
-      undo = { url: form.getAttribute('hx-post'), target: form.getAttribute('hx-target'), values: before };
+      // Undo goes back to before the run of edits, not the last field's: a
+      // later save of the same form while "Saved" shows keeps the first
+      // snapshot (leaving a field to press Undo is itself such a save). A
+      // form is told apart by its address and its place among the forms
+      // with that address, which two share.
+      var url = form.getAttribute('hx-post');
+      var key = formKey(form);
+      var bar = document.querySelector('[data-mx-saved]');
+      if (!(undo && undo.key === key && bar && !bar.hidden)) {
+        undo = { key: key, url: url, target: form.getAttribute('hx-target'), values: before };
+      }
       window.htmx.trigger(form, 'submit');
     });
+    function formKey(form) {
+      return form.getAttribute('hx-post') + '#' + Array.prototype.indexOf.call(document.querySelectorAll('.mx-settings form[data-mx-autosave]'), form);
+    }
+    // Saves still on their way: Undo waits for them, or it could reach the
+    // server first and be undone by the save it meant to undo.
+    var inFlight = 0, afterSaves = [];
+    document.body.addEventListener('htmx:beforeRequest', function (e) {
+      var elt = e.detail && e.detail.elt;
+      if (elt && elt.matches && elt.matches('form[data-mx-autosave]')) inFlight++;
+    });
+    function saveDone(e) {
+      var elt = e.detail && e.detail.elt;
+      if (elt && elt.matches && elt.matches('form[data-mx-autosave]') && inFlight > 0 && --inFlight === 0) {
+        afterSaves.splice(0).forEach(function (f) { f(); });
+      }
+    }
+    document.body.addEventListener('htmx:afterRequest', saveDone);
+    document.body.addEventListener('htmx:sendAbort', saveDone);
     document.body.addEventListener('htmx:afterRequest', function (e) {
       var elt = e.detail && e.detail.elt;
       var saved = document.querySelector('[data-mx-saved]');
       if (!saved || !elt || !elt.matches || !elt.matches('form[data-mx-autosave]') || !e.detail.successful) return;
+      // A save the server kept quiet leaves the form as it is: what it now
+      // holds is what is saved, and the next Undo starts from there.
+      var xhr = e.detail.xhr;
+      if (xhr && xhr.getResponseHeader('HX-Reswap') === 'none') {
+        elt.querySelectorAll('input[name], select[name], textarea[name]').forEach(function (i) {
+          if (i.type === 'checkbox' || i.type === 'radio') i.defaultChecked = i.checked;
+          else if (i.tagName === 'SELECT') Array.prototype.forEach.call(i.options, function (o) { o.defaultSelected = o.selected; });
+          else i.defaultValue = i.value;
+        });
+      }
       saved.hidden = false;
       clearTimeout(timer);
       timer = setTimeout(function () { saved.hidden = true; }, 10000);
     });
-    // A save redraws the settings, and it lands after focus has moved on:
-    // the field being typed in was replaced, with what had been typed since.
-    // The field in hand, its words and its caret are put back after the
-    // redraw. A field is found again by its form's address, which forms on
+    // A save that fails is redrawn with its message, as Undo is, and that
+    // lands after focus may have moved on: the field being typed in was
+    // replaced, with what had been typed since. The field in hand, its words
+    // and its caret are put back after the redraw. A field is found again by its form's address, which forms on
     // the page share (two post to the aliases action), its place among
     // those forms, and its name.
     var held = null;
@@ -2437,8 +2479,10 @@
       if (!form) return;
       var post = form.getAttribute('hx-post');
       var same = Array.prototype.slice.call(into.querySelectorAll('form[hx-post]')).filter(function (f) { return f.getAttribute('hx-post') === post; });
-      held = { post: post, at: same.indexOf(form), name: el.name, value: el.value, typed: el.value !== el.defaultValue,
-        caret: typeof el.selectionStart === 'number' ? el.selectionStart : null };
+      // The field itself is kept, not its words: the console's view
+      // transitions make the swap land a moment after this, and keys typed in
+      // that moment are read from it then.
+      held = { post: post, at: same.indexOf(form), name: el.name, el: el };
     });
     document.body.addEventListener('htmx:afterSwap', function (e) {
       var into = e.detail && e.detail.target;
@@ -2449,14 +2493,38 @@
       var form = same[h.at];
       var el = form && form.querySelector('[name="' + h.name.replace(/["\\]/g, '') + '"]');
       if (!el) return;
-      if (h.typed && el.type !== 'checkbox' && el.type !== 'radio') el.value = h.value;
+      var old = h.el, caret = typeof old.selectionStart === 'number' ? old.selectionStart : null;
+      if (old.value !== old.defaultValue && el.type !== 'checkbox' && el.type !== 'radio') {
+        el.value = old.value;
+        // Words put back are not ones the browser saw typed, so leaving the
+        // field fires no change and they were never saved: say it here.
+        el.addEventListener('blur', function () {
+          if (el.value !== el.defaultValue) el.dispatchEvent(new Event('change', { bubbles: true }));
+        }, { once: true });
+      }
       el.focus({ preventScroll: true });
-      if (h.caret !== null && typeof el.setSelectionRange === 'function') { try { el.setSelectionRange(h.caret, h.caret); } catch (err) { /* a date field has no caret */ } }
+      if (caret !== null && typeof el.setSelectionRange === 'function') { try { el.setSelectionRange(caret, caret); } catch (err) { /* a date field has no caret */ } }
     });
     document.addEventListener('click', function (e) {
       if (!e.target.closest || !e.target.closest('[data-mx-undo]') || !undo || !window.htmx) return;
-      window.htmx.ajax('POST', undo.url, { target: undo.target, swap: 'innerHTML', values: undo.values });
+      var u = undo;
       undo = null;
+      var sent = false;
+      var send = function () {
+        if (sent) return;
+        sent = true;
+        window.htmx.ajax('POST', u.url, { target: u.target, swap: 'innerHTML', values: u.values });
+      };
+      // Saves queue on their form, and the next starts as the last one ends:
+      // Undo looks again a moment after the queue empties, so it is sent
+      // after every save, never between two. A save that never reports back
+      // must not hold it for good.
+      var whenClear = function () {
+        if (inFlight > 0) { afterSaves.push(whenClear); return; }
+        setTimeout(function () { if (inFlight > 0) afterSaves.push(whenClear); else send(); }, 0);
+      };
+      whenClear();
+      setTimeout(send, 5000);
       var saved = document.querySelector('[data-mx-saved]');
       if (saved) saved.hidden = true;
     });

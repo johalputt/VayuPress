@@ -310,7 +310,7 @@ func (a *App) modelHelpSetting(ctx context.Context, ac vmail.Account, forHolder 
 		if on {
 			checked = " checked"
 		}
-		return `<form data-mx-autosave class="vm-row" hx-post="/os/vayumail/model/settings" hx-target="#vm-mbox-settings" hx-swap="innerHTML">` +
+		return autosaveAttrs + ` class="vm-row" hx-post="/os/vayumail/model/settings" hx-target="#vm-mbox-settings" hx-swap="innerHTML">` +
 			`<input type="hidden" name="email" value="` + esc(ac.Email) + `"><input type="hidden" name="op" value="` + op + `">` +
 			`<label class="field--check"><input type="checkbox" name="on" value="1"` + checked + `> ` + label + `</label><button class="btn btn--sm" type="submit">Save</button></form>`
 	}
@@ -361,5 +361,6 @@ func (a *App) handleVayuOSMailModelSettings(w http.ResponseWriter, r *http.Reque
 		writeAPIError(w, r, http.StatusBadRequest, "not-saved", err.Error(), "")
 		return
 	}
+	quietWhenSaved(w, r, nil)
 	writeOSFragment(w, a.acctRefresh(r, email))
 }

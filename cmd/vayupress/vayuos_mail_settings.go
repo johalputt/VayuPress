@@ -445,8 +445,27 @@ func mailSettingGroup(id, title string, items ...mailSetting) string {
 // autosaveForm marks a one-value setting's form to save as it changes on
 // the Settings page (admin-os-mail.js), where its Save button is not shown;
 // the accounts list, which shares the builder, keeps the button.
+//
+// Such a form says so (autosaveHeader), and a save of it that succeeds is
+// not redrawn (quietWhenSaved): a redraw replaced the form while the person
+// was still in it, taking their place and what they had typed since. Its
+// saves queue on the form, which therefore stays; an error is still drawn.
 func autosaveForm(form string) string {
-	return strings.Replace(form, "<form ", "<form data-mx-autosave ", 1)
+	return strings.Replace(form, "<form ", autosaveAttrs+" ", 1)
+}
+
+// autosaveAttrs marks a form that saves as it changes.
+const autosaveAttrs = `<form data-mx-autosave hx-sync="this:queue last" hx-headers='{"` + autosaveHeader + `":"1"}'`
+
+// autosaveHeader is sent by a form that saves as it changes.
+const autosaveHeader = "X-Mail-Autosave"
+
+// quietWhenSaved tells htmx to leave the page as it is after a save sent as a
+// field changed that succeeded; a failed one is redrawn with its message.
+func quietWhenSaved(w http.ResponseWriter, r *http.Request, err error) {
+	if err == nil && r.Header.Get(autosaveHeader) == "1" {
+		w.Header().Set("HX-Reswap", "none")
+	}
 }
 
 // openSection draws a setting's collapsible section open: on the Settings

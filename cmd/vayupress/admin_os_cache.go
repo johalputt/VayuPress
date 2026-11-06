@@ -152,7 +152,7 @@ func refreshStatusHTML(run *warmRun) string {
 	if run.Removed > 0 {
 		removed = ` · removed ` + itoaSafe(run.Removed) + ` page` + plural(run.Removed) + ` whose post is gone (` + humanBytes(run.Freed) + `)`
 	}
-	counts := itoaSafe(run.Checked) + ` of ` + itoaSafe(run.Total) + ` posts checked · ` + itoaSafe(run.Rebuilt) + ` page` + plural(run.Rebuilt) + ` rebuilt` + removed
+	counts := itoaSafe(run.Checked) + ` of ` + itoaSafe(run.Total) + ` post` + plural(run.Total) + ` checked · ` + itoaSafe(run.Rebuilt) + ` page` + plural(run.Rebuilt) + ` rebuilt` + removed
 	if !run.Finished.IsZero() {
 		state := "Last refresh finished " + run.Finished.UTC().Format("2006-01-02 15:04") + " UTC"
 		if run.Cancelled {

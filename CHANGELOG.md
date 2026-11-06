@@ -21,13 +21,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - **The vacation reply saves as it is written** on Mail's Settings, as the
   name and forwarding do, with Undo; its section stays open through each
   save.
+- **Mail's top bar has a keyboard button and quick settings.** Beside the
+  search: the keyboard sheet (which ? also opens), and a gear with where a
+  message opens, the colour scheme and the way to all settings.
 
 ### Fixed
 
-- **Typing goes on through a setting's save.** A save on Mail's Settings
-  redraws the settings and lands after focus has moved on, so the field
-  being typed in next was replaced, with what had been typed; the field, its
-  words and its caret are now put back.
+- **Typing goes on through a setting's save.** A setting that saves as it
+  changes redrew Mail's Settings after each save, after focus had moved on,
+  so the field being typed in next was replaced with what had been typed;
+  an edit made while a save was on its way was dropped; and Undo pressed
+  then could be overtaken by that save. A save that succeeds now leaves the
+  page as it is, saves made together queue, and Undo goes back to before
+  the whole run of edits, after every save has landed.
+- **The colour scheme's switch shows the scheme wherever it is drawn.** It
+  marked only the button pressed, so a second switch on the page showed the
+  old scheme.
+- **Storage counts one post as one**, not "1 posts", while pages refresh.
 - **A search for a word such as "in" or "from" looks for it.** A word that
   is also a search term's name, typed without its colon, was dropped from
   the search unseen.

@@ -197,7 +197,9 @@
     b.addEventListener('click', function () {
       var next = b.getAttribute('data-sa-theme');
       document.body.dataset.theme = next;
-      seg.forEach(function (o) { o.setAttribute('aria-pressed', o === b ? 'true' : 'false'); });
+      // Pressed follows the scheme, not the click: Mail's quick settings and
+      // the account menu both draw a switch, and each shows the one scheme.
+      seg.forEach(function (o) { o.setAttribute('aria-pressed', o.getAttribute('data-sa-theme') === next ? 'true' : 'false'); });
       try { localStorage.setItem('vp-os-theme', next); } catch (e) { /* private mode: page-only */ }
       saveSetting('admin.theme', next).catch(function () {
         say('Colour scheme changed for this page only — it could not be saved.', 'warn');

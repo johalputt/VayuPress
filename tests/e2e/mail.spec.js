@@ -753,6 +753,51 @@ test("Mail folds the console's rail away, and the menu brings it back", async ({
   await expect(rail).toBeHidden();
 });
 
+// Mail's top bar has its own tools beside the search: the keyboard sheet
+// (which ? opens too) and quick settings, where a message opens and the
+// colour scheme, each applied at once, then the way to all settings. The
+// spec puts the scheme and the reading back as it found them.
+test("the top bar's keyboard button and quick settings", async ({ page }) => {
+  await openInbox(page);
+  await page.locator(".sa-sysbar [data-mx-help]").click();
+  await expect(page.locator(".vm-help")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".vm-help")).toBeHidden();
+
+  const quick = page.locator(".sa-sysbar .mx-quick");
+  await quick.locator("summary").click();
+  const panel = quick.locator(".sa-pop__panel");
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole("menuitem", { name: "All settings" })).toHaveAttribute("href", /\/os\/vayumail\/(accounts\/)?settings/);
+  const was = await page.evaluate(() => document.body.dataset.theme);
+  const other = was === "dark" ? "light" : "dark";
+  const savedScheme = page.waitForResponse((r) => r.request().method() === "POST" && (r.request().postData() || "").includes("admin.theme"));
+  await panel.locator(`[data-sa-theme="${other}"]`).click();
+  await savedScheme;
+  expect(await page.evaluate(() => document.body.dataset.theme)).toBe(other);
+  // The account menu's own switch follows: one scheme, wherever it is set.
+  await expect(page.locator(`details:has(.sa-account__btn) [data-sa-theme="${other}"]`)).toHaveAttribute("aria-pressed", "true");
+  const back = page.waitForResponse((r) => r.request().method() === "POST" && (r.request().postData() || "").includes("admin.theme"));
+  await panel.locator(`[data-sa-theme="${was}"]`).click();
+  await back;
+
+  // Reading is kept on a person's account, so it is offered where the
+  // sidebar offers it (a signed-in person), and nowhere else; this install's
+  // key session has none, which the Go test of mailTopTools covers.
+  const offered = await page.locator(".mx-reading").count();
+  await expect(panel.locator("[data-mx-layout-choice]")).toHaveCount(offered ? 2 : 0);
+  if (!offered) return;
+  const full = page.waitForResponse((r) => r.url().includes("/os/vayumail/layout") && (r.request().postData() || "").includes("layout=full"));
+  await panel.locator('[data-mx-layout-choice="full"]').click();
+  await full;
+  await expect(quick).not.toHaveAttribute("open", "");
+  await expect(page.locator('.mx-reading [data-mx-layout-choice="full"]')).toHaveAttribute("aria-checked", "true");
+  const beside = page.waitForResponse((r) => r.url().includes("/os/vayumail/layout") && r.request().method() === "POST");
+  await quick.locator("summary").click();
+  await panel.locator('[data-mx-layout-choice=""]').click();
+  await beside;
+});
+
 // Search in place: the field is in the top bar, the
 // scope comes down beneath it, results take the list's place as the list's
 // own rows, and Escape gives the list back where it was.
@@ -1377,9 +1422,8 @@ test("Settings finds a setting, and saves as it changes with Undo", async ({ pag
 });
 
 // The vacation reply saves as it is written, like the one-value settings: a
-// field left saves, and the redraw that brings back what was saved keeps the
-// next field's words and focus, and the section stays open. Undo puts the
-// reply back as it was drawn.
+// field left saves, and the page is left as it is, the next field's words
+// and focus with it. Undo puts the reply back as it was drawn.
 test("the vacation reply saves as it is written, and typing goes on through the save", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/os/vayumail/accounts/settings?user=ankush%40mail.test");
@@ -1400,10 +1444,24 @@ test("the vacation reply saves as it is written, and typing goes on through the 
   await expect(page.locator('form.vm-ooo-form input[name="subject"]')).toHaveValue("Away this week");
   await expect(page.locator('form.vm-ooo-form textarea[name="body"]')).toBeFocused();
   await expect(page.locator('form.vm-ooo-form textarea[name="body"]')).toHaveValue(/Back on Monday\.$/);
-  const undone = page.waitForResponse((r) => r.url().includes("/os/vayumail/autoreply/action") && r.request().method() === "POST");
+  // A second edit whose save is still on its way when Undo is pressed: Undo
+  // goes back to before both, and waits for that save, so the server ends
+  // where the page was drawn, whatever order the requests would have met it.
+  let held = 0;
+  await page.route("**/os/vayumail/autoreply/action", async (route) => {
+    if (held++ === 0) await new Promise((f) => setTimeout(f, 800));
+    await route.continue();
+  });
+  await page.locator('form.vm-ooo-form input[name="subject"]').fill("Away next week");
+  await page.locator('form.vm-ooo-form input[name="subject"]').press("Tab");
   await page.locator("[data-mx-undo]").click();
-  await undone;
+  // The message's save (held), the subject's (queued behind it), then Undo.
+  await expect.poll(() => held, { message: "Undo never reached the server" }).toBe(3);
+  await page.waitForLoadState("networkidle");
+  await page.unroute("**/os/vayumail/autoreply/action");
+  await page.reload();
   await expect(page.locator('form.vm-ooo-form input[name="subject"]')).toHaveValue(was);
+  await expect(page.locator('form.vm-ooo-form textarea[name="body"]')).not.toHaveValue(/Back on Monday/);
 });
 
 // On a phone the list is worked by the thumb: Compose is a round button over
