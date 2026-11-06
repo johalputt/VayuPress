@@ -124,6 +124,17 @@ func (s *AccountStore) IsHandedOver(key string) bool {
 // database refuses to clear handed_at (migration 081 trigger), so this cannot be
 // undone by the party who runs the database.
 func (s *AccountStore) HandOver(ctx context.Context, key, by, recoveryContact string) error {
+	return s.handOver(ctx, key, by, recoveryContact, "handover", "operator panel access to this mailbox ended")
+}
+
+// MakePrivate is the holder handing their own mailbox to themselves: the same
+// one-way state as HandOver, recorded as the holder's own act.
+func (s *AccountStore) MakePrivate(ctx context.Context, key, recoveryContact string) error {
+	return s.handOver(ctx, key, s.normaliseMailbox(key), recoveryContact, "private",
+		"the holder made this mailbox private; administrators can no longer open it or change its settings")
+}
+
+func (s *AccountStore) handOver(ctx context.Context, key, by, recoveryContact, action, detail string) error {
 	mbox := s.normaliseMailbox(key)
 	if mbox == "" {
 		return errors.New("vayumail: handover needs a mailbox")
@@ -138,7 +149,7 @@ func (s *AccountStore) HandOver(ctx context.Context, key, by, recoveryContact st
 		return err
 	}
 	s.invalidateHandover(mbox)
-	return s.AppendLedger(ctx, mbox, by, "handover", "operator panel access to this mailbox ended")
+	return s.AppendLedger(ctx, mbox, by, action, detail)
 }
 
 // invalidateHandover drops a cached verdict so a handover takes effect at once

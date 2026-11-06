@@ -1092,7 +1092,8 @@ func (a *App) handleVayuOSFilterAction(w http.ResponseWriter, r *http.Request) {
 	accts := a.vayuMail.Accounts()
 	email := strings.TrimSpace(r.FormValue("email"))
 	if !a.mayChangeMailboxSettings(r, email) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "only this mailbox's holder or an administrator", "")
+		code, msg := a.settingsRefusal(email)
+		writeAPIError(w, r, http.StatusForbidden, code, msg, "")
 		return
 	}
 	var opErr error
@@ -1138,7 +1139,8 @@ func (a *App) handleVayuOSAutoreplyAction(w http.ResponseWriter, r *http.Request
 	_ = r.ParseForm()
 	email := strings.TrimSpace(r.FormValue("email"))
 	if !a.mayChangeMailboxSettings(r, email) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "only this mailbox's holder or an administrator", "")
+		code, msg := a.settingsRefusal(email)
+		writeAPIError(w, r, http.StatusForbidden, code, msg, "")
 		return
 	}
 	ar := vmail.Autoreply{
@@ -1195,6 +1197,11 @@ func (a *App) handleVayuOSAliasAction(w http.ResponseWriter, r *http.Request) {
 	// administrator gives them out (3cl, 3cs).
 	if op := r.FormValue("op"); !a.isAdminRequest(r) && (op != "forward-set" && op != "name-set" || !a.isMailboxHolder(r, r.FormValue("email"))) {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
+		return
+	}
+	if op := r.FormValue("op"); (op == "forward-set" || op == "name-set") &&
+		a.refusedAsPrivate(r, r.FormValue("email"), "change its forwarding or the name it sends under") {
+		writeAPIError(w, r, http.StatusForbidden, "private-mailbox", "This mailbox is private: only its holder can change where it forwards and the name it sends under.", "")
 		return
 	}
 	accts := a.vayuMail.Accounts()
@@ -1899,6 +1906,14 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 		writeMailSessionRequired(w, r)
 		return
 	}
+	// A private mailbox keeps its quota and suspension with the administrator
+	// (they stop abuse and free space without reading anything); what it says
+	// and keeps is its holder's.
+	if (in.Signature != nil || in.SignByDefault != nil || in.RetentionDays != nil) &&
+		a.refusedAsPrivate(r, in.Email, "change its signature or how long it keeps mail") {
+		writeAPIError(w, r, http.StatusForbidden, "private-mailbox", "This mailbox is private: only its holder can change its signature and what it keeps.", "")
+		return
+	}
 	if in.Signature != nil {
 		if err := a.vayuMail.Accounts().SetSignature(r.Context(), in.Email, *in.Signature); err != nil {
 			writeAPIError(w, r, 400, "update-failed", err.Error(), "")
@@ -2013,6 +2028,12 @@ func (a *App) handleVayuOSAccountTOTP(w http.ResponseWriter, r *http.Request) {
 	// the same act from the other side: it hands the caller the factor.
 	if !a.mailCredentialActionAuthorized(r, email) {
 		writeMailSessionRequired(w, r)
+		return
+	}
+	// A private mailbox's second factor is its holder's: enrolling one for it
+	// hands the administrator the code.
+	if a.refusedAsPrivate(r, email, "change its two-step sign-in") {
+		writeAPIError(w, r, http.StatusForbidden, "private-mailbox", "This mailbox is private: only its holder can change its sign-in.", "")
 		return
 	}
 	accts := a.vayuMail.Accounts()
@@ -2458,6 +2479,12 @@ func (a *App) handleVayuOSDeviceAction(w http.ResponseWriter, r *http.Request) {
 	accts := a.vayuMail.Accounts()
 	email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
 	op := r.FormValue("op")
+	// Approving a device for a private mailbox lets a sign-in through that its
+	// holder did not let through; its devices are its holder's.
+	if a.refusedAsPrivate(r, email, "change its devices") {
+		writeAPIError(w, r, http.StatusForbidden, "private-mailbox", "This mailbox is private: only its holder can change its devices.", "")
+		return
+	}
 	var opErr error
 	if op == "require-set" {
 		on := r.FormValue("on") == "1"

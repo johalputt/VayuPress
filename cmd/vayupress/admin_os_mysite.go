@@ -451,6 +451,10 @@ func mySiteLedgerLabel(action string) string {
 		return "Your mailbox was handed over to you"
 	case "break-glass":
 		return "An administrator used the emergency override"
+	case "private":
+		return "You made your mailbox private"
+	case "refused":
+		return "An administrator was refused"
 	default:
 		return action
 	}

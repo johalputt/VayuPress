@@ -34,6 +34,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/auth"
 	avatarpkg "github.com/johalputt/vayupress/internal/avatar"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
@@ -187,10 +188,38 @@ func (a *App) isOwnMailbox(r *http.Request, email string) bool {
 	return u != nil && u.Email != "" && strings.EqualFold(u.Email, strings.TrimSpace(email))
 }
 
-// mayChangeMailboxSettings is who may change a mailbox's personal settings: an
-// administrator, as before, or its holder.
+// mayChangeMailboxSettings is who may change a mailbox's personal settings: its
+// holder, or an administrator while the mailbox is not private. A private
+// (handed-over) mailbox's settings are its holder's alone; an administrator's
+// attempt is refused here and written to the holder's record.
 func (a *App) mayChangeMailboxSettings(r *http.Request, email string) bool {
-	return a.isAdminRequest(r) || a.isMailboxHolder(r, email)
+	if a.isOwnMailbox(r, email) {
+		return true
+	}
+	if !a.isAdminRequest(r) {
+		return false
+	}
+	return !a.refusedAsPrivate(r, email, "change its settings")
+}
+
+// refusedAsPrivate reports whether email is a private mailbox someone other
+// than its holder is acting on, and if so writes the attempt to the holder's
+// record ("what" completes "An administrator tried to …").
+func (a *App) refusedAsPrivate(r *http.Request, email, what string) bool {
+	if a.vayuMail == nil || a.isOwnMailbox(r, email) || !a.vayuMail.IsHandedOver(email) {
+		return false
+	}
+	_ = a.vayuMail.AppendLedger(r.Context(), email, dbpkg.AuditActor(r), "refused", "an administrator tried to "+what)
+	return true
+}
+
+// settingsRefusal is the reason a settings change was refused, in the
+// words of whichever rule refused it.
+func (a *App) settingsRefusal(email string) (code, msg string) {
+	if a.vayuMail != nil && a.vayuMail.IsHandedOver(email) {
+		return "private-mailbox", "This mailbox is private: only its holder can change its settings."
+	}
+	return "forbidden", "only this mailbox's holder or an administrator"
 }
 
 // handleVayuOSMySettings is the holder's own settings page: forwarding,
@@ -252,12 +281,14 @@ func (a *App) handleVayuOSMySettings(w http.ResponseWriter, r *http.Request) {
 		script = `<script nonce="` + nonce + `" src="/os/static/js/passkey.js?v=` + assetVer("js/passkey.js") + `"></script>`
 	}
 	after := mailSettingGroup("signin", "Signing in", signinItems...) +
+		mailSettingGroup("private", "Privacy",
+			mailSetting{Name: "Private mailbox", Find: "private privacy administrator admin access handover", HTML: a.privateMailboxBlock(r, ac.Email), Bare: true}) +
 		mailSettingGroup("throwaway", "Throwaway addresses",
 			mailSetting{Name: "Throwaway addresses", Find: "alias disposable website shop sign up", HTML: a.throwawayBlock(a.mailReader(r, "")), Bare: true}) +
 		mailSettingGroup("export", "Import and export",
 			mailSetting{Name: "Bring mail in", Find: "import imap mbox", HTML: `<p class="text-sm"><a href="/os/vayumail/import?user=` + qparam(ac.Email) + `">Bring mail in</a> from another mail account or a file.</p>`},
 			mailSetting{Name: "Download all mail", Find: "export backup mbox zip", HTML: `<p class="text-sm"><a href="/os/vayumail/download?user=` + qparam(ac.Email) + `" download>Download all mail</a>, every folder as an mbox file in one zip.</p>`})
-	nav := append(append([][2]string{}, mailSettingsNav...), [2]string{"signin", "Signing in"}, [2]string{"throwaway", "Throwaway addresses"}, [2]string{"export", "Import and export"})
+	nav := append(append([][2]string{}, mailSettingsNav...), [2]string{"signin", "Signing in"}, [2]string{"private", "Privacy"}, [2]string{"throwaway", "Throwaway addresses"}, [2]string{"export", "Import and export"})
 	body := mailSettingsLayout(head, sec, after, nav) + script +
 		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`
 	writeOSHTML(w, r, adminOSLayout(nonce, "Settings", "vayumail", cfg, htmpl.HTML(body)))

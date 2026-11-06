@@ -68,7 +68,8 @@ func (a *App) handleVayuOSAvatarUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !a.mayChangeMailboxSettings(r, email) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "only this mailbox's holder or an administrator", "")
+		code, msg := a.settingsRefusal(email)
+		writeAPIError(w, r, http.StatusForbidden, code, msg, "")
 		return
 	}
 	file, _, err := r.FormFile("avatar")
@@ -112,7 +113,8 @@ func (a *App) handleVayuOSAvatarRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !a.mayChangeMailboxSettings(r, email) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "only this mailbox's holder or an administrator", "")
+		code, msg := a.settingsRefusal(email)
+		writeAPIError(w, r, http.StatusForbidden, code, msg, "")
 		return
 	}
 	if err := a.vayuMail.Accounts().ClearAvatar(r.Context(), email); err != nil {
@@ -209,7 +211,8 @@ func (a *App) handleVayuOSAvatarCartoon(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if !a.mayChangeMailboxSettings(r, email) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "only this mailbox's holder or an administrator", "")
+		code, msg := a.settingsRefusal(email)
+		writeAPIError(w, r, http.StatusForbidden, code, msg, "")
 		return
 	}
 	n := cartoonIndexParam(r.FormValue("n"))

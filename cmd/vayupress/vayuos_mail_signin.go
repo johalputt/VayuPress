@@ -120,7 +120,8 @@ func (a *App) handleVayuOSAccountSignin(w http.ResponseWriter, r *http.Request) 
 	_ = r.ParseForm()
 	email := strings.TrimSpace(r.FormValue("email"))
 	if !a.mayChangeMailboxSettings(r, email) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "only this mailbox's holder or an administrator", "")
+		code, msg := a.settingsRefusal(email)
+		writeAPIError(w, r, http.StatusForbidden, code, msg, "")
 		return
 	}
 	account := auth.AccountKey(email)

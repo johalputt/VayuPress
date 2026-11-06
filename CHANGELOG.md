@@ -10,6 +10,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Private mailbox.** A mailbox's holder can make it private from their own
+  Mail settings (Privacy), with their password, the address typed back and
+  a recovery address set. Administrators can then no longer open it, set
+  its password, clear its two-step sign-in, give it an app password,
+  approve its devices or change its settings (vacation reply, filters,
+  forwarding, name, picture, signature, what it keeps); each attempt is
+  refused with the reason and written to the holder's access record. It
+  cannot be undone. It is not encryption, and the page says so: whoever
+  runs the server can still read the files on its disk. Administrators keep
+  suspending, deleting and the storage allowance.
+
 - **A hosted site's own publishing choices.** A site's settings page gains
   Publishing (Sign in and Subscribe buttons, comments, the home hero,
   nofollow on outbound links, the author bio) and Stylesheet (the site's own
