@@ -53,11 +53,13 @@ func ParseSearchQuery(s string) SearchQuery {
 		}
 	}
 	for _, tok := range searchTokens(s) {
-		name, val, _ := strings.Cut(tok, ":")
+		name, val, colon := strings.Cut(tok, ":")
 		name, val = strings.ToLower(name), unquote(val)
 		// A token opening with a quote names no term ("from:x" quoted is a
-		// phrase): its name starts with the quote, which no term's does.
-		if !searchTermNames[name] {
+		// phrase): its name starts with the quote, which no term's does. A
+		// term's name without its colon is a word: "in" or "from" typed
+		// alone was read as a term with no value and dropped unseen.
+		if !colon || !searchTermNames[name] {
 			word(tok)
 			continue
 		}

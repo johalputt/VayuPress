@@ -150,3 +150,17 @@ func TestNarrowingTermsReachPastTheScanBound(t *testing.T) {
 		t.Fatalf("a bound of 2 let %d through, want 2", len(got))
 	}
 }
+
+// A term's name typed without its colon is a word, looked for as typed:
+// "sent in error" searched for "sent error" before.
+func TestATermNameWithoutItsColonIsAWord(t *testing.T) {
+	for _, in := range []string{"in", "from", "to", "is", "has", "subject", "label", "after", "before"} {
+		q := ParseSearchQuery("sent " + in + " error")
+		if len(q.Words) != 3 || q.Words[1] != in {
+			t.Errorf("%q: words %q", in, q.Words)
+		}
+	}
+	if q := ParseSearchQuery("from:"); !q.Empty() {
+		t.Errorf("a term still being typed asks for something: %+v", q)
+	}
+}

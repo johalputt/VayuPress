@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Search suggestions in Mail.** Typing in Mail's search shows, under the
+  field, a sentence read as search terms ("pdf from priya last month" as
+  From priya, the dates of last month and Has attachment), the mailbox's
+  own contacts matching the word being typed, filter chips (From, To, Has
+  attachment, Unread, the last 7 or 30 days) and, with nothing typed, this
+  browser's recent searches. Arrow keys move through them; Enter or a click
+  takes one.
+
+### Fixed
+
+- **A search for a word such as "in" or "from" looks for it.** A word that
+  is also a search term's name, typed without its colon, was dropped from
+  the search unseen.
+
 ## [3.18.28] — 2026-11-06
 
 An administrator adds a passkey from Mail, and every direct dependency is at its latest release, brotli past its advisory.

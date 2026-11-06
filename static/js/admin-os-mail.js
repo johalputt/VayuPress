@@ -137,6 +137,8 @@
     if (input) { input.value = ''; input.blur(); }
     var res = document.getElementById('vm-search-results');
     if (res) res.textContent = '';
+    var sug = form && form.querySelector('[data-mx-suggest]');
+    if (sug) sug.textContent = '';
     l.classList.remove('is-searching', 'has-results');
     l.scrollTop = searchScroll;
     if (refreshHeld) {
@@ -166,7 +168,124 @@
   // The scope hangs under the field while it has focus; pressing a choice
   // must not take the focus away, or the scope folds before the click lands.
   document.addEventListener('mousedown', function (e) {
-    if (e.target && e.target.closest && e.target.closest('[data-mx-search] .mx-scope')) e.preventDefault();
+    if (e.target && e.target.closest && e.target.closest('[data-mx-search] .mx-drop')) e.preventDefault();
+  });
+
+  // Suggestions under the field (vayuos_mail_suggest.go): the sentence read
+  // as terms, people from the mailbox's contacts, the filters as chips, and
+  // with nothing typed this browser's recent searches, which stay in this
+  // browser. Arrow keys move through them, Enter or a click takes one: its
+  // terms go into the field and the search runs; a filter that still needs
+  // its value ("from:") waits for it.
+  var suggestSeq = 0, suggestTimer = null;
+  function searchParts() {
+    var form = document.querySelector('[data-mx-search]');
+    return form && { form: form, input: form.querySelector('input[name="q"]'), box: form.querySelector('[data-mx-suggest]'),
+      user: (form.querySelector('input[name="user"]') || {}).value || '' };
+  }
+  function recentKey(user) { return 'vm-recent-search:' + user; }
+  function recentRead(user) {
+    try { var v = JSON.parse(localStorage.getItem(recentKey(user)) || '[]'); return Array.isArray(v) ? v : []; } catch (err) { return []; }
+  }
+  function recentKeep(user, q) {
+    q = q.trim();
+    if (!q) return;
+    var list = recentRead(user).filter(function (x) { return x !== q; });
+    list.unshift(q);
+    try { localStorage.setItem(recentKey(user), JSON.stringify(list.slice(0, 6))); } catch (err) { /* private window: nothing kept */ }
+  }
+  function recentGroup(user) {
+    var list = recentRead(user);
+    if (!list.length) return null;
+    var frag = document.createDocumentFragment();
+    var head = document.createElement('div');
+    head.className = 'mx-suggest__head';
+    head.setAttribute('role', 'presentation');
+    head.textContent = 'Recent';
+    frag.appendChild(head);
+    list.forEach(function (q) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'mx-suggest__opt';
+      b.setAttribute('role', 'option');
+      b.setAttribute('aria-selected', 'false');
+      b.setAttribute('data-mx-q', q);
+      b.textContent = q;
+      frag.appendChild(b);
+    });
+    return frag;
+  }
+  function suggestNow() {
+    var p = searchParts();
+    if (!p || !p.input || !p.box) return;
+    var seq = ++suggestSeq, q = p.input.value;
+    fetch('/os/vayumail/search/suggest?user=' + encodeURIComponent(p.user) + '&q=' + encodeURIComponent(q), { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.text() : ''; })
+      .then(function (markup) {
+        if (seq !== suggestSeq) return; // a later keystroke's answer is on its way
+        var box = searchParts() && searchParts().box;
+        if (!box) return;
+        box.innerHTML = markup; // the server's own escaped fragment
+        if (!q.trim()) {
+          var recent = recentGroup(p.user);
+          if (recent) box.insertBefore(recent, box.firstChild);
+        }
+        // The sentence read as terms is what Enter takes, when there is one.
+        var first = box.querySelector('.mx-suggest__head + .mx-suggest__opt');
+        if (first && box.firstElementChild && box.firstElementChild.textContent === 'Search for') first.setAttribute('aria-selected', 'true');
+      })
+      .catch(function () { /* suggestions are a help; the search works without them */ });
+  }
+  function suggestSoon() { clearTimeout(suggestTimer); suggestTimer = setTimeout(suggestNow, 120); }
+  function suggestPick(opt) {
+    var p = searchParts();
+    if (!p || !p.input) return;
+    var add = opt.getAttribute('data-mx-add');
+    if (add) {
+      var v = p.input.value.replace(/\s+$/, '');
+      p.input.value = (v ? v + ' ' : '') + add;
+      if (add.charAt(add.length - 1) === ':') { p.input.focus(); suggestNow(); return; }
+    } else {
+      p.input.value = opt.getAttribute('data-mx-q') || '';
+    }
+    p.input.focus();
+    p.input.dispatchEvent(new Event('search', { bubbles: true }));
+    suggestNow();
+  }
+  document.addEventListener('input', function (e) {
+    if (e.target && e.target.closest && e.target.closest('[data-mx-search] input[name="q"]')) suggestSoon();
+  });
+  document.addEventListener('focusin', function (e) {
+    if (e.target && e.target.closest && e.target.closest('[data-mx-search] input[name="q"]')) suggestNow();
+  });
+  document.addEventListener('click', function (e) {
+    var opt = e.target && e.target.closest ? e.target.closest('[data-mx-suggest] .mx-suggest__opt') : null;
+    if (opt) { e.preventDefault(); suggestPick(opt); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (!e.target || !e.target.closest || !e.target.closest('[data-mx-search] input[name="q"]')) return;
+    var box = searchParts() && searchParts().box;
+    if (!box) return;
+    var opts = Array.prototype.slice.call(box.querySelectorAll('.mx-suggest__opt'));
+    var at = opts.findIndex(function (o) { return o.getAttribute('aria-selected') === 'true'; });
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (!opts.length) return;
+      e.preventDefault();
+      if (at >= 0) opts[at].setAttribute('aria-selected', 'false');
+      at = e.key === 'ArrowDown' ? (at + 1) % opts.length : (at <= 0 ? opts.length - 1 : at - 1);
+      opts[at].setAttribute('aria-selected', 'true');
+      opts[at].scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter' && at >= 0) {
+      e.preventDefault();
+      suggestPick(opts[at]);
+    }
+  });
+  // A search that ran with words is one to offer again.
+  document.body.addEventListener('htmx:afterRequest', function (e) {
+    var elt = e.detail && e.detail.elt;
+    if (!elt || !elt.matches || !elt.matches('[data-mx-search]') || !e.detail.successful) return;
+    var p = searchParts();
+    if (p && p.input) recentKeep(p.user, p.input.value);
   });
   document.addEventListener('focusout', function (e) {
     var form = e.target && e.target.closest ? e.target.closest('[data-mx-search]') : null;

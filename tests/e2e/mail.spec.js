@@ -783,6 +783,37 @@ test("search from the top bar gives the list back", async ({ page }) => {
   expect(await list.evaluate((e) => e.scrollTop), "the list did not come back where it was").toBe(600);
 });
 
+// Under the field, what is typed is offered back as terms: a sentence's
+// reading is what Enter takes, a filter chip adds its term, and a search
+// that ran is offered again, from this browser, when the field is empty.
+test("search suggests the terms a sentence reads as, and recent searches", async ({ page }) => {
+  await openInbox(page);
+  const input = page.locator(".sa-sysbar .mx-search__input");
+  await input.focus();
+  await page.evaluate(() => localStorage.clear());
+  await page.keyboard.type("bucket unread");
+  const suggest = page.locator("[data-mx-suggest]");
+  const reading = suggest.locator('.mx-suggest__opt[data-mx-q="bucket is:unread"]');
+  await expect(reading).toBeVisible();
+  await expect(reading).toHaveAttribute("aria-selected", "true");
+  await expect(reading.locator(".mx-suggest__chip", { hasText: "Unread" })).toBeVisible();
+  const ran = page.waitForResponse((r) => r.url().includes("/os/vayumail/search/fragment") && r.url().includes("is%3Aunread"));
+  await page.keyboard.press("Enter");
+  await ran;
+  await expect(input).toHaveValue("bucket is:unread");
+
+  await input.fill("");
+  await expect(suggest.locator(".mx-suggest__head", { hasText: "Recent" })).toBeVisible();
+  await expect(suggest.locator('.mx-suggest__opt[data-mx-q="bucket is:unread"]')).toBeVisible();
+
+  const filtered = page.waitForResponse((r) => r.url().includes("/os/vayumail/search/fragment") && r.url().includes("has%3Aattachment"));
+  await suggest.locator('.mx-suggest__opt[data-mx-add="has:attachment"]').click();
+  await filtered;
+  await expect(input).toHaveValue("has:attachment");
+  await expect(input).toBeFocused();
+  await input.press("Escape");
+});
+
 // The list's own refresh (the poller, fired when a message is read or moved)
 // waits while a search is on screen, so the results stay under the reader,
 // and runs once the search is let go of.

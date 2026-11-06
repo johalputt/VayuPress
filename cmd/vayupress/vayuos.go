@@ -1960,7 +1960,7 @@ func mailSearchForm(user, folder, search string, oob bool) string {
 	}
 	b.WriteString(`<span class="mx-search__field">` + saIcon("search") +
 		`<input class="mx-search__input" type="search" name="q" value="` + esc(search) + `" placeholder="Search mail" aria-label="Search mail" title="Search words, or terms: from:, to:, subject:, in:, after:, before:, has:attachment, is:unread" autocomplete="off"><kbd class="mx-search__key" aria-hidden="true">/</kbd></span>` +
-		`<div class="mx-scope" role="radiogroup" aria-label="Search in">`)
+		`<div class="mx-drop"><div class="mx-scope" role="radiogroup" aria-label="Search in">`)
 	for _, sc := range [][2]string{{"folder", "This folder"}, {"all", "All mail"}, {"from", "From"}, {"attach", "Has attachments"}} {
 		if sc[0] == "folder" && !inFolder {
 			continue
@@ -1971,7 +1971,9 @@ func mailSearchForm(user, folder, search string, oob bool) string {
 		}
 		b.WriteString(`<label class="mx-scope__opt"><input type="radio" name="scope" value="` + sc[0] + `"` + checked + `><span>` + sc[1] + `</span></label>`)
 	}
-	b.WriteString(`</div></form>`)
+	// Suggestions for what is typed (vayuos_mail_suggest.go), drawn by
+	// admin-os-mail.js as the field changes.
+	b.WriteString(`</div><div class="mx-suggest" role="listbox" aria-label="Suggestions" data-mx-suggest></div></div></form>`)
 	return b.String()
 }
 
