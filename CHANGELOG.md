@@ -16,6 +16,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   An administrator's own mailbox now has its Passkeys section; another
   person's mailbox never does.
 
+### Security
+
+- **brotli raised to v1.2.8**, past the advisory fixed in v1.2.7, which the
+  Parquet export of Analytics and backups reach.
+- **Direct dependencies brought to their latest releases**: go-sqlite3
+  v1.14.53, maxminddb-golang v2.9.0, iploc v1.0.20261101 (the country
+  database), pkcs7 and lyrebird.
+
 ## [3.18.27] — 2026-11-01
 
 A channel with no feed is followed only when YouTube itself named it.

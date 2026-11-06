@@ -14,7 +14,7 @@ require (
 	filippo.io/edwards25519 v1.2.0
 	github.com/ProtonMail/go-crypto v1.5.2
 	github.com/alecthomas/chroma/v2 v2.27.0
-	github.com/digitorus/pkcs7 v0.0.0-20260914070511-d678ea5ea03f
+	github.com/digitorus/pkcs7 v0.0.0-20261104125046-a476de3098e4
 	github.com/emersion/go-ical v0.0.0-20250609112844-439c63cef608
 	github.com/emersion/go-msgauth v0.7.0
 	github.com/emersion/go-vcard v0.1.0
@@ -23,16 +23,16 @@ require (
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-webauthn/webauthn v0.18.2
 	github.com/graphql-go/graphql v0.8.1
-	github.com/mattn/go-sqlite3 v1.14.52
+	github.com/mattn/go-sqlite3 v1.14.53
 	github.com/microcosm-cc/bluemonday v1.0.27
-	github.com/oschwald/maxminddb-golang/v2 v2.8.0
+	github.com/oschwald/maxminddb-golang/v2 v2.9.0
 	github.com/parquet-go/parquet-go v0.32.0
-	github.com/phuslu/iploc v1.0.20261015
+	github.com/phuslu/iploc v1.0.20261101
 	github.com/rs/cors v1.11.1
 	github.com/sigstore/sigstore-go v1.4.0
 	github.com/yuin/goldmark v1.8.7
 	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/goptlib v1.6.0
-	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/lyrebird v0.0.0-20261008205628-362a60bb4e3f
+	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/lyrebird v0.0.0-20261104192811-59ac7e400c38
 	golang.org/x/crypto v0.58.0
 	golang.org/x/net v0.62.0
 	golang.org/x/sys v0.49.0
@@ -42,7 +42,7 @@ require (
 )
 
 require (
-	github.com/andybalholm/brotli v1.1.1 // indirect
+	github.com/andybalholm/brotli v1.2.8 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
