@@ -24,6 +24,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/theme"
 )
 
 // scopedSettingKeys is the field set this page owns. Narrow on purpose: every
@@ -101,6 +102,11 @@ const hostedNavSeed = `[{"label":"Home","href":"/"},{"label":"Feed","href":"/fee
 // or Terms page the site may not have.
 const hostedFooterSeed = `{"tagline":"","copyright":"© {year} {site}. All rights reserved.","columns":[],"social":[],"legal":[]}`
 
+// scopedThemeKey is this site's own Halcyon options, one JSON object written
+// by the Theme section's choices (theme.ParseSiteHalcyon says what it takes).
+var scopedThemeKey = struct{ Key, Label, Hint string }{
+	settings.KeyThemeHalcyonOptions, "Theme", "This site's own layout, reading face and reading tools."}
+
 // scopedEditableKeys is every key this page may write.
 // The save allowlist reads from here so a field added to either group is
 // editable without a second edit somewhere else.
@@ -109,6 +115,7 @@ func scopedEditableKeys() []struct{ Key, Label, Hint string } {
 	out = append(out, scopedSettingKeys...)
 	out = append(out, scopedColourKeys...)
 	out = append(out, scopedLinkKeys...)
+	out = append(out, scopedThemeKey)
 	for _, f := range scopedSwitches {
 		out = append(out, struct{ Key, Label, Hint string }{f.Key, f.Label, f.Hint})
 	}
@@ -130,6 +137,10 @@ func scopedValueOK(key, v string) bool {
 		if f.Key == key {
 			return v == "" || json.Valid([]byte(v))
 		}
+	}
+	if key == scopedThemeKey.Key {
+		_, ok := theme.ParseSiteHalcyon(v)
+		return ok
 	}
 	return true
 }
@@ -172,7 +183,8 @@ func (a *App) handleOSScopedSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	own := a.siteHasOwnMark(r.Context(), d.ID)
-	body := scopedSettingsBody(d.ID, d.Host, values, pres, own) + scopedSettingsScript(nonce)
+	inst, _ := theme.Load(r.Context(), dbpkg.DB)
+	body := scopedSettingsBody(d.ID, d.Host, values, pres, scopedExtras{OwnMark: own, Install: inst}) + scopedSettingsScript(nonce)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Settings · "+d.Host, "optimize", cfg, htmpl.HTML(body)))
 }
 
@@ -198,8 +210,16 @@ const (
 	presCustom
 )
 
-// own is whether the site has a mark of its own.
-func scopedSettingsBody(domainID, host string, values map[string]string, pres presentationState, own bool) string {
+// scopedExtras are what the page shows beside the site's own values.
+type scopedExtras struct {
+	OwnMark bool // the site has a mark of its own
+	// Install is the install's theme; its Halcyon options are what a site
+	// that has chosen none is shown with.
+	Install theme.Tokens
+}
+
+func scopedSettingsBody(domainID, host string, values map[string]string, pres presentationState, extra scopedExtras) string {
+	own := extra.OwnMark
 	var b strings.Builder
 
 	b.WriteString(`<div id="scoped-ctx" data-id="` + esc(domainID) + `" hidden></div>` +
@@ -335,6 +355,46 @@ func scopedSettingsBody(domainID, host string, values map[string]string, pres pr
 			`</textarea><span class="field-hint">`+esc(css.Hint)+`</span></label>`+
 			`<div class="vm-row"><button type="button" class="btn btn--primary btn--sm" data-scoped-save>Save</button></div></div>`))
 
+	// Theme: the site's own Halcyon options, over the install's Halcyon. A site
+	// that has chosen none is shown, and drawn, with the install's.
+	if extra.Install.Layout == theme.LayoutHalcyon {
+		raw := values[scopedThemeKey.Key]
+		chosen, _ := theme.ParseSiteHalcyon(raw)
+		var th strings.Builder
+		th.WriteString(`<div class="card"><div class="form-grid">`)
+		for _, o := range theme.SiteHalcyonOptions() {
+			cur := chosen[o.Key]
+			if cur == "" {
+				cur = extra.Install.Options[o.Key]
+			}
+			if cur == "" {
+				cur = o.Default
+			}
+			th.WriteString(`<label class="field"><span class="field-label">` + esc(o.Label) + `</span><select class="input" data-halcyon-opt="` + esc(o.Key) + `">`)
+			for _, c := range o.Choices {
+				sel := ""
+				if c.Value == cur {
+					sel = " selected"
+				}
+				th.WriteString(`<option value="` + esc(c.Value) + `"` + sel + `>` + esc(c.Label) + `</option>`)
+			}
+			th.WriteString(`</select>`)
+			if o.Help != "" {
+				th.WriteString(`<span class="field-hint">` + esc(o.Help) + `</span>`)
+			}
+			th.WriteString(`</label>`)
+		}
+		th.WriteString(`</div><input type="hidden" data-halcyon-input data-scoped-key="` + esc(scopedThemeKey.Key) + `" value="` + esc(raw) + `">` +
+			`<div class="vm-row"><button type="button" class="btn btn--primary btn--sm" data-scoped-save>Save</button>` +
+			`<button type="button" class="btn btn--ghost btn--sm" data-halcyon-clear>Same as your site</button></div>` +
+			`<p class="text-sm muted">Until a choice here is changed, this site is laid out as your own site is. Its colours and stylesheet are in Colour and Stylesheet.</p></div>`)
+		themeChip := `<span class="mon-chip mon-chip--off">As your site</span>`
+		if len(chosen) > 0 {
+			themeChip = `<span class="mon-chip mon-chip--on">Its own</span>`
+		}
+		b.WriteString(monAcc(saIcon("palette"), "Theme", "This site's layout, reading face and reading tools", themeChip, false, th.String()))
+	}
+
 	// The site's mark, uploaded to its own scope with the install's editor. With
 	// none, nothing is drawn: its route answers 404, never another site's mark.
 	markChip := `<span class="mon-chip mon-chip--off">Default</span>`
@@ -395,6 +455,17 @@ if(!ID)return;
 var st=document.getElementById('scoped-status');
 function refresh(){}
 ` + linkEditorsScript + siteMarkScript + `
+// The Theme section's choices are written to its one key only once one is
+// changed (or cleared): saved untouched, a site laid out as your own site
+// keeps following your own site rather than freezing a copy of it.
+var hIn=document.querySelector('[data-halcyon-input]');
+function hWrite(){var o={};document.querySelectorAll('[data-halcyon-opt]').forEach(function(sel){o[sel.getAttribute('data-halcyon-opt')]=sel.value;});hIn.value=JSON.stringify(o);}
+if(hIn){
+  document.querySelectorAll('[data-halcyon-opt]').forEach(function(sel){sel.addEventListener('change',hWrite);});
+  var hClr=document.querySelector('[data-halcyon-clear]');
+  if(hClr)hClr.addEventListener('click',function(){hIn.value='';if(st)st.textContent='Press Save to lay this site out as your own';});
+}
+
 // Every section's Save button saves the page: querySelector wired only the
 // first, so the Colour section's button did nothing.
 function errText(j){return j&&((j.error&&j.error.message)||j.message);}
@@ -491,6 +562,9 @@ func (a *App) handleOSScopedSettingsSave(w http.ResponseWriter, r *http.Request)
 		writeAPIError(w, r, http.StatusInternalServerError, "save-failed", err.Error(), "")
 		return
 	}
+	// The site's cached pages were drawn with what was there before; marked
+	// stale, each is drawn again on its next visit, as a theme save does.
+	render.CachePurgeAll()
 	writeJSON(w, r, http.StatusOK, map[string]any{"status": "ok", "host": d.Host})
 }
 

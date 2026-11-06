@@ -82,6 +82,9 @@ const (
 	KeyThemeAccentLight  = "theme.accent_light"
 	KeyThemeAccentDark   = "theme.accent_dark"
 	KeyThemeCustomCSS    = "theme.custom_css"
+	// KeyThemeHalcyonOptions is a hosted site's own Halcyon options, a JSON
+	// object of option key to choice. Unset, the site reads the install's.
+	KeyThemeHalcyonOptions = "theme.halcyon_options"
 
 	// Declarative <head> capabilities. These replace the former raw-HTML
 	// `theme.custom_head` field (removed): arbitrary head HTML allowed
@@ -753,6 +756,7 @@ var AllKeys = map[string]bool{
 	KeyThemeOGImage:            true,
 	KeyThemeOGImageType:        true,
 	KeyHomeHero:                true,
+	KeyThemeHalcyonOptions:     true,
 	KeyAuthorBio:               true,
 	KeyNavItems:                true,
 	KeyFooterConfig:            true,

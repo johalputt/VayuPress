@@ -338,6 +338,7 @@ func halcyonTopTopics(topics []TagInfo, total, n int) []TagInfo {
 
 func renderHalcyonHome(in HomeInput, cfg theme.HalcyonConfig) (string, error) {
 	page, totalPages := max(in.Page, 1), max(in.TotalPages, 1)
+	cfg = in.Settings.halcyon(cfg)
 	c := halcyonChrome(in.Settings, cfg, "home")
 	origin := seo.Origin(in.Domain)
 	canonical := blogPageURL(in.Settings.blogBase(), page)
@@ -453,6 +454,7 @@ func RenderTopicPage(in TopicInput) (string, error) {
 
 func renderHalcyonTopic(in TopicInput, cfg theme.HalcyonConfig) (string, error) {
 	s := siteOr(in.Settings)
+	cfg = s.halcyon(cfg)
 	c := halcyonChrome(s, cfg, "topic")
 	c.PageTitle = topicName(in.Tag) + " — " + c.SiteName
 	c.Description = groupThousands(in.Total) + " " + pluralWord(in.Total, "article", "articles") + " filed under “" + in.Tag + "” on " + c.SiteName + "."
@@ -517,6 +519,7 @@ type hTopics struct {
 }
 
 func renderHalcyonTopics(s SiteSettings, domain string, tags []TagInfo, total int, cfg theme.HalcyonConfig) (string, error) {
+	cfg = s.halcyon(cfg)
 	c := halcyonChrome(s, cfg, "topics")
 	c.PageTitle = "Topics — " + c.SiteName
 	c.Description = "Every topic on " + c.SiteName + ", with how many articles each holds."
@@ -564,7 +567,9 @@ type hSearch struct {
 }
 
 func renderHalcyonSearch(in SearchInput, cfg theme.HalcyonConfig) (string, error) {
-	c := halcyonChrome(siteOr(in.Settings), cfg, "search")
+	s := siteOr(in.Settings)
+	cfg = s.halcyon(cfg)
+	c := halcyonChrome(s, cfg, "search")
 	c.PageTitle = "Search — " + c.SiteName
 	if in.Query != "" {
 		c.PageTitle = "Search: " + in.Query + " — " + c.SiteName
@@ -580,6 +585,7 @@ func renderHalcyonSearch(in SearchInput, cfg theme.HalcyonConfig) (string, error
 }
 
 func renderHalcyon404(cfg theme.HalcyonConfig, s SiteSettings) string {
+	cfg = s.halcyon(cfg)
 	c := halcyonChrome(s, cfg, "notfound")
 	c.PageTitle = "Not found — " + c.SiteName
 	c.Robots = "noindex"
@@ -613,6 +619,7 @@ type hArticle struct {
 // model, already resolved (head, author, related), so both themes describe a
 // post identically to search engines and differ only in how it reads.
 func renderHalcyonArticle(s SiteSettings, data articlePage, cfg theme.HalcyonConfig) (string, error) {
+	cfg = s.halcyon(cfg)
 	c := halcyonChrome(s, cfg, "article")
 	c.PageTitle = data.TitleTag
 	c.Description = data.SEODescription

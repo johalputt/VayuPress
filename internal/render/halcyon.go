@@ -210,6 +210,15 @@ type hChrome struct {
 }
 
 // halcyonChrome builds the shared part of every page from the site settings.
+// halcyon is the site's own Halcyon options when it has chosen them, and
+// the install's (cfg) when it has not.
+func (s SiteSettings) halcyon(cfg theme.HalcyonConfig) theme.HalcyonConfig {
+	if s.Halcyon != nil {
+		return *s.Halcyon
+	}
+	return cfg
+}
+
 func halcyonChrome(s SiteSettings, cfg theme.HalcyonConfig, kind string) hChrome {
 	name := strings.TrimSpace(s.Name)
 	if name == "" {

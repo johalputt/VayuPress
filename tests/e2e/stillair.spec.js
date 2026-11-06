@@ -1929,3 +1929,34 @@ test("a hosted site's mark is uploaded and removed on its own settings page", as
   await expect(img).toBeHidden();
   expect((await page.request.get(`/os/d/${id}/branding/mark`)).status()).toBe(404);
 });
+
+// A hosted site's theme options are chosen and saved on its own settings
+// page, and "Same as your site" puts it back on the install's.
+test("a hosted site's theme is chosen on its own settings page", async ({ page }) => {
+  await openConsole(page);
+  await page.goto(`/os/d/${await addSite(page, "theme")}/settings`);
+  const open = async () => {
+    const s = page.locator("details.mon-acc", { hasText: "This site's layout" });
+    await s.locator("summary").click();
+    return s;
+  };
+  let section = await open();
+  await expect(section.locator(".mon-chip")).toHaveText("As your site");
+  const face = section.locator('[data-halcyon-opt="face"]');
+  const other = (await face.inputValue()) === "sans" ? "serif" : "sans";
+  await face.selectOption(other);
+  await section.getByRole("button", { name: "Save" }).click();
+  await expect(page.locator("#scoped-status")).toHaveText(/Saved/);
+
+  await page.reload();
+  section = await open();
+  await expect(section.locator('[data-halcyon-opt="face"]')).toHaveValue(other);
+  await expect(section.locator(".mon-chip")).toHaveText("Its own");
+  expect(await page.evaluate(lintPage)).toEqual([]);
+
+  await section.getByRole("button", { name: "Same as your site" }).click();
+  await section.getByRole("button", { name: "Save" }).click();
+  await expect(page.locator("#scoped-status")).toHaveText(/Saved/);
+  await page.reload();
+  await expect((await open()).locator(".mon-chip")).toHaveText("As your site");
+});

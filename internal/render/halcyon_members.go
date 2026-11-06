@@ -66,7 +66,9 @@ func HalcyonMemberPageFor(site *SiteSettings, page string, kind MemberPage) stri
 }
 
 func halcyonMemberPage(site *SiteSettings, page string, kind MemberPage, cfg theme.HalcyonConfig) string {
-	c := halcyonChrome(siteOr(site), cfg, "member")
+	s := siteOr(site)
+	cfg = s.halcyon(cfg)
+	c := halcyonChrome(s, cfg, "member")
 	// The config's values are its options' own literals (theme.ResolveHalcyon),
 	// and are escaped here anyway: this tag is assembled as a string, outside
 	// html/template, so nothing an option ever holds can leave its attribute.

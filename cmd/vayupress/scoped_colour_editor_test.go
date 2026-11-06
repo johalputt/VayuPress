@@ -19,7 +19,7 @@ import (
 func TestAHostedSiteCanStillEditItsOwnColours(t *testing.T) {
 	page := scopedSettingsBody("d1", "customer.example", map[string]string{
 		settings.KeyThemeAccentLight: "#2563eb",
-	}, presCustom, false)
+	}, presCustom, scopedExtras{})
 
 	for _, k := range []string{
 		settings.KeyThemeAccentLight, settings.KeyThemeAccentDark, settings.KeyHeadThemeColor,

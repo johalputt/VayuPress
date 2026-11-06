@@ -49,12 +49,12 @@ func TestAHostedSiteNeverWearsTheOperatorsMark(t *testing.T) {
 // A hosted site's settings page uploads its mark to its own scope, with the
 // install's editor, and draws no preview when it has none.
 func TestAHostedSitesMarkIsEditedOnItsSettingsPage(t *testing.T) {
-	none := scopedSettingsBody("d1", "notes.example.com", map[string]string{}, presDefault, false)
+	none := scopedSettingsBody("d1", "notes.example.com", map[string]string{}, presDefault, scopedExtras{})
 	if !strings.Contains(none, `data-mark-post="/os/d/d1/api/branding/favicon"`) ||
 		!strings.Contains(none, `<img id="brand-favicon-img" class="settings-mark__img" hidden data-mark-src="/os/d/d1/branding/mark"`) {
 		t.Errorf("the site's mark editor without a mark is wrong:\n%s", none[strings.Index(none, "Site mark"):][:900])
 	}
-	if own := scopedSettingsBody("d1", "notes.example.com", map[string]string{}, presDefault, true); !strings.Contains(own, `src="/os/d/d1/branding/mark?t=`) {
+	if own := scopedSettingsBody("d1", "notes.example.com", map[string]string{}, presDefault, scopedExtras{OwnMark: true}); !strings.Contains(own, `src="/os/d/d1/branding/mark?t=`) {
 		t.Error("the site's own mark is not shown")
 	}
 	if !strings.Contains(string(siteMarkHTML("/favicon.ico", "/favicon.ico", "/os/api/branding/favicon", false)), `src="/favicon.ico?t=`) {

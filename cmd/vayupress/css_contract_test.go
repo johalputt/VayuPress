@@ -163,7 +163,7 @@ func TestTheOtherPerSitePagesEmitNoUnstyledClass(t *testing.T) {
 	// all seven.
 	assertClassesAreStyled(t, "the settings page", css,
 		scopedSettingsBody("d1", "customer.example",
-			map[string]string{settings.KeySiteName: "Customer Ltd"}, presCustom, false))
+			map[string]string{settings.KeySiteName: "Customer Ltd"}, presCustom, scopedExtras{}))
 	assertClassesAreStyled(t, "the SEO page", css,
 		scopedSEOBody("d1", "https://customer.example", map[string]string{}))
 	assertClassesAreStyled(t, "the visitors page", css,

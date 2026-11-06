@@ -266,7 +266,7 @@ func TestScopedContentPageMeetsTheHouseStyle(t *testing.T) {
 // the other four could establish the pattern first.
 func TestScopedSettingsPageMeetsTheHouseStyle(t *testing.T) {
 	// The state a customer's domain is in on the day it is handed over.
-	empty := scopedSettingsBody("d1", "customer.example", map[string]string{}, presDefault, false)
+	empty := scopedSettingsBody("d1", "customer.example", map[string]string{}, presDefault, scopedExtras{})
 	assertHouseStyle(t, empty, houseStyle{
 		Name: "Settings (nothing set)", MinTiles: 4, MinBands: 2,
 		IDs:   []string{"scoped-ctx", "scoped-status", "scoped-style-status"},
@@ -306,7 +306,7 @@ func TestScopedSettingsPageMeetsTheHouseStyle(t *testing.T) {
 		settings.KeySiteTagline:     "We do the thing",
 		settings.KeySiteDescription: "A sentence for search engines.",
 		settings.KeySiteAuthor:      "A Person",
-	}, presCustom, false)
+	}, presCustom, scopedExtras{})
 	assertHouseStyle(t, full, houseStyle{Name: "Settings (filled in)", MinTiles: 4, MinBands: 2})
 	for _, label := range []string{"Identity", "Search description"} {
 		if v := statCardIn(t, full, label); strings.Contains(v, "stat-card--warn") {
@@ -337,7 +337,7 @@ func TestScopedSettingsPageMeetsTheHouseStyle(t *testing.T) {
 // defect exactly, and a capability an operator cannot find is one the product
 // does not have.
 func TestTheCopyFromPrimaryActionIsReachableFromThePage(t *testing.T) {
-	page := scopedSettingsBody("d1", "customer.example", map[string]string{}, presDefault, false)
+	page := scopedSettingsBody("d1", "customer.example", map[string]string{}, presDefault, scopedExtras{})
 	if !strings.Contains(page, "data-scoped-copy-style") {
 		t.Fatal("no control for copy-from-primary on any page; the endpoint is reachable only by " +
 			"hand-crafting a request")
@@ -370,7 +370,7 @@ func TestTheCopyFromPrimaryActionIsReachableFromThePage(t *testing.T) {
 // the copy list says, so the two are pinned together: an edit that adds the site
 // name to the copy list fails here rather than on a customer's live domain.
 func TestTheHouseStyleBandDoesNotPromiseMoreThanTheCopyListDelivers(t *testing.T) {
-	page := scopedSettingsBody("d1", "customer.example", map[string]string{}, presDefault, false)
+	page := scopedSettingsBody("d1", "customer.example", map[string]string{}, presDefault, scopedExtras{})
 	if !strings.Contains(page, "not</b> copied") {
 		t.Fatal("the band no longer tells the operator that identity is excluded")
 	}
@@ -406,7 +406,7 @@ func TestTheHouseStyleBandDoesNotPromiseMoreThanTheCopyListDelivers(t *testing.T
 // confident wrong answer does the most damage, because nothing else on screen
 // is contradicting it.
 func TestThePresentationTileDoesNotInventAnAnswerWhenTheReadFailed(t *testing.T) {
-	unknown := scopedSettingsBody("d1", "customer.example", map[string]string{}, presUnknown, false)
+	unknown := scopedSettingsBody("d1", "customer.example", map[string]string{}, presUnknown, scopedExtras{})
 	tile := statCardIn(t, unknown, "Presentation")
 	if strings.Contains(tile, ">Default<") || strings.Contains(tile, ">Custom<") {
 		t.Errorf("a settings read that failed is reported as a definite state: %s", tile)
@@ -424,10 +424,10 @@ func TestThePresentationTileDoesNotInventAnAnswerWhenTheReadFailed(t *testing.T)
 	}
 	// And the honest states must still be distinguishable, or "unknown" has just
 	// been made the answer to everything.
-	if !strings.Contains(statCardIn(t, scopedSettingsBody("d", "h", nil, presDefault, false), "Presentation"), ">Default<") {
+	if !strings.Contains(statCardIn(t, scopedSettingsBody("d", "h", nil, presDefault, scopedExtras{}), "Presentation"), ">Default<") {
 		t.Error("a site genuinely on the product default no longer says so")
 	}
-	if !strings.Contains(statCardIn(t, scopedSettingsBody("d", "h", nil, presCustom, false), "Presentation"), ">Custom<") {
+	if !strings.Contains(statCardIn(t, scopedSettingsBody("d", "h", nil, presCustom, scopedExtras{}), "Presentation"), ">Custom<") {
 		t.Error("a site genuinely carrying its own presentation no longer says so")
 	}
 }
@@ -453,7 +453,7 @@ func TestEveryConvertedPageIsCSPSafe(t *testing.T) {
 		{"Content", scopedContentPage(d, []dbpkg.Article{
 			{Title: "Hello", Slug: "hello", Status: "published", UpdatedAt: time.Now()}})},
 		{"Settings", scopedSettingsBody("d1", "customer.example",
-			map[string]string{settings.KeySiteName: "Customer Ltd"}, presCustom, false)},
+			map[string]string{settings.KeySiteName: "Customer Ltd"}, presCustom, scopedExtras{})},
 	} {
 		assertCSPSafe(t, c.name, c.page)
 	}
@@ -481,7 +481,7 @@ func TestHostileCustomerContentReachesThePanelEscaped(t *testing.T) {
 	}{
 		{"the site name an operator typed into Settings",
 			scopedSettingsBody("d1", "customer.example",
-				map[string]string{settings.KeySiteName: payload}, presDefault, false), "site name"},
+				map[string]string{settings.KeySiteName: payload}, presDefault, scopedExtras{}), "site name"},
 		{"a page path recorded by the analytics collector",
 			siteAnalyticsPage(t, "d1", "/"+payload), "path"},
 		{"an article title",

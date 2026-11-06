@@ -145,7 +145,7 @@ func TestEveryPerSitePageIsCheckedForInstallWideLinks(t *testing.T) {
 			{Title: "Live one", Slug: "live-one", Status: "published", UpdatedAt: time.Unix(1, 0).UTC()},
 		})},
 		{"the SEO page", scopedSEOBody(d.ID, "https://"+d.Host, map[string]string{"canonical": "https://" + d.Host})},
-		{"the settings page", scopedSettingsBody(d.ID, d.Host, map[string]string{}, presUnknown, false)},
+		{"the settings page", scopedSettingsBody(d.ID, d.Host, map[string]string{}, presUnknown, scopedExtras{})},
 		{"the website page", scopedWebsitePage(d, "", bizsite.Content{}, false, customsite.Manifest{}, false)},
 		{"the analytics page", siteAnalyticsPage(t, d.ID, "/")},
 	} {

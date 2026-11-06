@@ -24,6 +24,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - **A hosted site's own mark.** Its settings page gains Site mark, to
   upload or remove the site's tab icon and menu logo, with the install's
   editor.
+- **A hosted site's own theme.** Its settings page gains Theme: Halcyon's
+  layout and reading choices (home and archive layout, article layout,
+  reading face, text size, appearance, and which reading tools show) for
+  that site alone, drawn on every one of its pages. Until a choice is
+  changed the site is laid out as the install's own site is, and "Same as
+  your site" puts it back.
 
 ### Fixed
 
@@ -39,6 +45,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   chrome and call the site by its own address, not the install's.
 - A hosted site with no mark of its own shows the product's in its tab
   and menu, not the operator's.
+- A hosted site's settings, saved, show on its pages at once: its cached
+  pages were served as they were until they aged out.
 
 ## [3.18.29] — 2026-11-06
 

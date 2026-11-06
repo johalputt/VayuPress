@@ -5,6 +5,8 @@ package render
 import (
 	"strings"
 	"testing"
+
+	"github.com/johalputt/vayupress/internal/theme"
 )
 
 // A hosted site's topic, topics, tag and search pages are drawn in its own
@@ -54,6 +56,34 @@ func TestAMemberPageIsInItsSitesChrome(t *testing.T) {
 		out := HalcyonMemberPageFor(&SiteSettings{Name: "Notes Site"}, page, kind)
 		if !strings.Contains(out, "Notes Site") || strings.Contains(out, "The Install") {
 			t.Errorf("member page %v is not in the site's chrome", kind)
+		}
+	}
+}
+
+// A site with Halcyon options of its own is drawn with them on every Halcyon
+// page; one without is drawn with the install's.
+func TestASitesOwnHalcyonOptionsDrawItsPages(t *testing.T) {
+	withHalcyon(t, map[string]string{"face": "serif"})
+	own := theme.ResolveHalcyon(map[string]string{"face": "sans"})
+	for name, render := range map[string]func(s *SiteSettings) (string, error){
+		"home": func(s *SiteSettings) (string, error) {
+			return RenderHomePage(HomeInput{Settings: *s, Domain: "example.com"})
+		},
+		"topic": func(s *SiteSettings) (string, error) {
+			return RenderTopicPage(TopicInput{Settings: s, Domain: "example.com", Tag: "go", Total: 40})
+		},
+		"search": func(s *SiteSettings) (string, error) { return RenderSearchPage(SearchInput{Settings: s, Query: "x"}) },
+		"member": func(s *SiteSettings) (string, error) {
+			return HalcyonMemberPageFor(s, `<!DOCTYPE html><html lang="en"><head></head><body></body></html>`, MemberSite), nil
+		},
+	} {
+		mine, err := render(&SiteSettings{Name: "N", Halcyon: &own})
+		if err != nil {
+			t.Fatal(err)
+		}
+		theirs, _ := render(&SiteSettings{Name: "N"})
+		if !strings.Contains(mine, `data-face="sans"`) || !strings.Contains(theirs, `data-face="serif"`) {
+			t.Errorf("%s: the site's own options are not what it is drawn with", name)
 		}
 	}
 }

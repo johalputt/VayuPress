@@ -36,6 +36,7 @@ import (
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/seo"
 	"github.com/johalputt/vayupress/internal/tagrules"
+	"github.com/johalputt/vayupress/internal/theme"
 	"github.com/microcosm-cc/bluemonday"
 )
 
@@ -255,6 +256,8 @@ var AuthorByIDFn func(id string) (name, slug, avatar string)
 // SiteSettings holds operator-configurable values that are injected into every
 // public page render. The zero value is safe and falls back to Pico defaults.
 type SiteSettings struct {
+	// Halcyon is a hosted site's own Halcyon options; nil is the install's.
+	Halcyon     *theme.HalcyonConfig
 	Name        string // site brand name
 	Tagline     string // hero headline
 	Description string // meta description

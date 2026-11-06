@@ -8,10 +8,14 @@ import (
 	"html"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/domain"
+	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/users"
 )
@@ -74,7 +78,7 @@ func TestThePublishingSectionShowsTheSitesOwnChoices(t *testing.T) {
 		settings.KeyFeatureComments:   "off",
 		settings.KeyMembershipButtons: "true",
 		settings.KeyThemeCustomCSS:    "h1{color:red}",
-	}, presCustom, false)
+	}, presCustom, scopedExtras{})
 	for _, want := range []string{
 		`data-scoped-key="` + settings.KeyMembershipButtons + `" data-on="true" data-off="false" checked>`,
 		`data-scoped-key="` + settings.KeyFeatureComments + `" data-on="on" data-off="off">`,
@@ -129,7 +133,7 @@ func TestAHostedSitesMenuAndFooterAreItsOwn(t *testing.T) {
 // The page draws both editors writing this site's keys and runs the one
 // editor script the install's Settings page runs.
 func TestTheMenuAndFooterEditorsAreOnTheSitesPage(t *testing.T) {
-	page := scopedSettingsBody("d1", "notes.example.com", map[string]string{}, presDefault, false)
+	page := scopedSettingsBody("d1", "notes.example.com", map[string]string{}, presDefault, scopedExtras{})
 	for _, want := range []string{
 		`id="nav-json-input" data-scoped-key="` + settings.KeyNavItems + `"`,
 		`id="footer-json-input" data-scoped-key="` + settings.KeyFooterConfig + `"`,
@@ -141,5 +145,27 @@ func TestTheMenuAndFooterEditorsAreOnTheSitesPage(t *testing.T) {
 	}
 	if !strings.Contains(scopedSettingsScript("n"), linkEditorsScript) || !strings.Contains(settingsPageScript, linkEditorsScript) {
 		t.Error("the site's page and the install's Settings page do not run the same editor script")
+	}
+}
+
+// A save marks the cached pages stale, so the site is drawn with what was
+// saved on its next visit rather than when its cache ages out.
+func TestASitesSaveRedrawsItsCachedPages(t *testing.T) {
+	a, _, blog := hostedBlogApp(t)
+	page := filepath.Join(t.TempDir(), "index.html")
+	if err := os.WriteFile(page, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-time.Minute)
+	_ = os.Chtimes(page, old, old)
+	if rec := scopedSave(a, blog, `{"settings":{"`+settings.KeySiteTagline+`":"New words"}}`); rec.Code != http.StatusOK {
+		t.Fatalf("save: %d", rec.Code)
+	}
+	fi, err := os.Stat(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if render.CacheEntryFresh(fi) {
+		t.Error("a page cached before the save is still served after it")
 	}
 }

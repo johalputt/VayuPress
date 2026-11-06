@@ -11,6 +11,7 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/reqclass"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/theme"
 )
 
 // middleware_domain.go — VayuDomains host resolution (Stage 1).
@@ -198,6 +199,7 @@ func siteSettingsFromValues(v map[string]string) render.SiteSettings {
 		OGImage:         render.OGImagePath(v[settings.KeyThemeOGImage]),
 		ShowHero:        v[settings.KeyHomeHero] == "true",
 		CommentsEnabled: v[settings.KeyFeatureComments] != "off",
+		Halcyon:         theme.SiteHalcyon(v[settings.KeyThemeHalcyonOptions]),
 	}
 }
 
