@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.30] — 2026-11-06
+
+Every hosted website and blog is its own site: its own publishing choices, stylesheet, menu, footer, mark and Halcyon layout, and every page in its own name; and a mailbox's holder can make it private from the administrator.
+
 ### Added
 
 - **Private mailbox.** A mailbox's holder can make it private from their own
