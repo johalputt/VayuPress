@@ -171,7 +171,8 @@ func (a *App) handleOSScopedSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	body := scopedSettingsBody(d.ID, d.Host, values, pres) + scopedSettingsScript(nonce)
+	own := a.siteHasOwnMark(r.Context(), d.ID)
+	body := scopedSettingsBody(d.ID, d.Host, values, pres, own) + scopedSettingsScript(nonce)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Settings · "+d.Host, "optimize", cfg, htmpl.HTML(body)))
 }
 
@@ -197,7 +198,8 @@ const (
 	presCustom
 )
 
-func scopedSettingsBody(domainID, host string, values map[string]string, pres presentationState) string {
+// own is whether the site has a mark of its own.
+func scopedSettingsBody(domainID, host string, values map[string]string, pres presentationState, own bool) string {
 	var b strings.Builder
 
 	b.WriteString(`<div id="scoped-ctx" data-id="` + esc(domainID) + `" hidden></div>` +
@@ -333,6 +335,16 @@ func scopedSettingsBody(domainID, host string, values map[string]string, pres pr
 			`</textarea><span class="field-hint">`+esc(css.Hint)+`</span></label>`+
 			`<div class="vm-row"><button type="button" class="btn btn--primary btn--sm" data-scoped-save>Save</button></div></div>`))
 
+	// The site's mark, uploaded to its own scope with the install's editor. With
+	// none, nothing is drawn: its route answers 404, never another site's mark.
+	markChip := `<span class="mon-chip mon-chip--off">Default</span>`
+	if own {
+		markChip = `<span class="mon-chip mon-chip--on">Own</span>`
+	}
+	base := "/os/d/" + domainID
+	b.WriteString(monAcc(saIcon("image"), "Site mark", "This site's tab icon and the logo in its menu", markChip, false,
+		`<div class="card">`+string(siteMarkHTML(base+"/branding/mark", "", base+"/api/branding/favicon", own))+`</div>`))
+
 	// Menu and footer, with the install's own editors writing this site's keys.
 	nav, foot := values[settings.KeyNavItems], values[settings.KeyFooterConfig]
 	linkChip := `<span class="mon-chip mon-chip--off">Not set</span>`
@@ -382,7 +394,7 @@ var ID=node?node.getAttribute('data-id'):'';
 if(!ID)return;
 var st=document.getElementById('scoped-status');
 function refresh(){}
-` + linkEditorsScript + `
+` + linkEditorsScript + siteMarkScript + `
 // Every section's Save button saves the page: querySelector wired only the
 // first, so the Colour section's button did nothing.
 function errText(j){return j&&((j.error&&j.error.message)||j.message);}

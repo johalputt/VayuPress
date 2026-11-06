@@ -21,6 +21,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   footer, with the same editors as the install's Settings, saved to that
   site alone. Until it sets a menu, a hosted site links to its home and its
   feed, not to the console.
+- **A hosted site's own mark.** Its settings page gains Site mark, to
+  upload or remove the site's tab icon and menu logo, with the install's
+  editor.
 
 ### Fixed
 
@@ -34,6 +37,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   serve.
 - A hosted site's sign-in, sign-up, account and pricing pages are in its
   chrome and call the site by its own address, not the install's.
+- A hosted site with no mark of its own shows the product's in its tab
+  and menu, not the operator's.
 
 ## [3.18.29] — 2026-11-06
 

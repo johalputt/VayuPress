@@ -74,7 +74,7 @@ func TestThePublishingSectionShowsTheSitesOwnChoices(t *testing.T) {
 		settings.KeyFeatureComments:   "off",
 		settings.KeyMembershipButtons: "true",
 		settings.KeyThemeCustomCSS:    "h1{color:red}",
-	}, presCustom)
+	}, presCustom, false)
 	for _, want := range []string{
 		`data-scoped-key="` + settings.KeyMembershipButtons + `" data-on="true" data-off="false" checked>`,
 		`data-scoped-key="` + settings.KeyFeatureComments + `" data-on="on" data-off="off">`,
@@ -129,7 +129,7 @@ func TestAHostedSitesMenuAndFooterAreItsOwn(t *testing.T) {
 // The page draws both editors writing this site's keys and runs the one
 // editor script the install's Settings page runs.
 func TestTheMenuAndFooterEditorsAreOnTheSitesPage(t *testing.T) {
-	page := scopedSettingsBody("d1", "notes.example.com", map[string]string{}, presDefault)
+	page := scopedSettingsBody("d1", "notes.example.com", map[string]string{}, presDefault, false)
 	for _, want := range []string{
 		`id="nav-json-input" data-scoped-key="` + settings.KeyNavItems + `"`,
 		`id="footer-json-input" data-scoped-key="` + settings.KeyFooterConfig + `"`,

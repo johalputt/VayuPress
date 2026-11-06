@@ -1869,11 +1869,9 @@ test("a connector is disconnected from its sheet", async ({ page }) => {
   await expect(page.locator(".settings-row", { hasText: "VayuMCP (read-only)" })).toHaveCount(before - 1);
 });
 
-// A hosted site's menu is edited on its own settings page, with the
-// install's editor, and kept for that site; the page passes the design lint.
-test("a hosted site's menu is edited and saved on its own settings page", async ({ page }) => {
-  await openConsole(page);
-  const host = `menu-${Date.now()}.example.com`;
+// Adds a hosted site from the console's own session; returns its id.
+async function addSite(page, prefix) {
+  const host = `${prefix}-${Date.now()}.example.com`;
   const made = await page.evaluate(async (host) => {
     const m = document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);
     const r = await fetch("/os/api/domains", {
@@ -1884,7 +1882,14 @@ test("a hosted site's menu is edited and saved on its own settings page", async 
     return { status: r.status, j: await r.json() };
   }, host);
   expect(made.status).toBe(200);
-  await page.goto(`/os/d/${made.j.id}/settings`);
+  return made.j.id;
+}
+
+// A hosted site's menu is edited on its own settings page, with the
+// install's editor, and kept for that site; the page passes the design lint.
+test("a hosted site's menu is edited and saved on its own settings page", async ({ page }) => {
+  await openConsole(page);
+  await page.goto(`/os/d/${await addSite(page, "menu")}/settings`);
   const section = page.locator("details.mon-acc", { hasText: "Menu and footer" });
   await section.locator("summary").click();
   const rows = section.locator("#nav-editor [data-nav-row]");
@@ -1899,4 +1904,28 @@ test("a hosted site's menu is edited and saved on its own settings page", async 
   await page.locator("details.mon-acc", { hasText: "Menu and footer" }).locator("summary").click();
   await expect(page.locator("#nav-editor [data-nav-label]").last()).toHaveValue("About");
   expect(await page.evaluate(lintPage)).toEqual([]);
+});
+
+// A hosted site's mark is uploaded and removed on its own settings page; with
+// none, no preview is drawn, since its route answers 404.
+test("a hosted site's mark is uploaded and removed on its own settings page", async ({ page }) => {
+  await openConsole(page);
+  const id = await addSite(page, "mark");
+  await page.goto(`/os/d/${id}/settings`);
+  const section = page.locator("details.mon-acc", { hasText: "Site mark" });
+  await section.locator("summary").click();
+  const img = section.locator("#brand-favicon-img");
+  await expect(img).toBeHidden();
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+  await section.locator("#brand-favicon-file").setInputFiles({ name: "mark.png", mimeType: "image/png", buffer: png });
+  await section.getByRole("button", { name: "Upload" }).click();
+  await expect(section.locator("#brand-favicon-state")).toHaveText("Your own mark, stored in the database.");
+  await expect(img).toBeVisible();
+  await expect(img).toHaveAttribute("src", new RegExp(`^/os/d/${id}/branding/mark\\?t=`));
+  expect((await page.request.get(`/os/d/${id}/branding/mark`)).status()).toBe(200);
+
+  await section.getByRole("button", { name: "Use the default" }).click();
+  await expect(section.locator("#brand-favicon-state")).toHaveText("Using the default mark.");
+  await expect(img).toBeHidden();
+  expect((await page.request.get(`/os/d/${id}/branding/mark`)).status()).toBe(404);
 });

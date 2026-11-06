@@ -355,12 +355,29 @@ func footerEditorHTML(footerJSON, keyAttr string) ui.HTML {
 }
 
 func settingsSiteMark(ctx context.Context, a *App) ui.HTML {
-	state := "Using the default mark."
-	if a.savedSetting(ctx, settings.KeyBrandFavicon) != "" {
-		state = "Your own mark, stored in the database."
+	// The install's /favicon.ico answers the product's mark when none is
+	// uploaded, so its preview always has something to show.
+	return siteMarkHTML("/favicon.ico", "/favicon.ico", "/os/api/branding/favicon", a.savedSetting(ctx, settings.KeyBrandFavicon) != "")
+}
+
+// siteMarkHTML is the mark editor: the mark served at src, uploaded to post.
+// defaultSrc shows when there is no own mark; blank, the preview is hidden
+// then, for a route that answers 404 rather than another site's mark.
+func siteMarkHTML(src, defaultSrc, post string, own bool) ui.HTML {
+	state, show := "Using the default mark.", defaultSrc
+	if own {
+		state, show = "Your own mark, stored in the database.", src
 	}
+	// No src at all when there is nothing to show: a hidden image still loads.
+	shown := ` hidden`
+	if show != "" {
+		shown = ` src="` + html.EscapeString(show) + `?t=` + strconv.FormatInt(time.Now().Unix(), 10) + `"`
+	}
+	img := `<img id="brand-favicon-img" class="settings-mark__img"` + shown +
+		` data-mark-src="` + html.EscapeString(src) + `" data-mark-default="` + html.EscapeString(defaultSrc) + `" data-mark-post="` + html.EscapeString(post) +
+		`" alt="Current site mark" width="40" height="40">`
 	return ui.Rows(ui.Row{Label: "Site mark", Hint: "The browser tab icon and the logo in the public menu. PNG or ICO, square, up to 256 KB. Applies at once.",
-		Control: ui.HTML(`<div class="settings-mark"><img id="brand-favicon-img" class="settings-mark__img" src="/favicon.ico?t=` + strconv.FormatInt(time.Now().Unix(), 10) + `" alt="Current site mark" width="40" height="40">` +
+		Control: ui.HTML(`<div class="settings-mark">` + img +
 			`<span class="settings-mark__state" id="brand-favicon-state">` + html.EscapeString(state) + `</span>` +
 			`<input type="file" id="brand-favicon-file" class="settings-mark__file" accept="image/png,image/x-icon,.png,.ico" aria-label="Choose a mark">` +
 			`<button type="button" class="btn btn--sm" id="brand-favicon-upload">Upload</button>` +
@@ -494,34 +511,7 @@ if(discardBtn)discardBtn.addEventListener('click',function(){
 window.addEventListener('beforeunload',function(e){if(changed().length){e.preventDefault();e.returnValue='';}});
 // A search result lands on its row: show which one.
 if(location.hash){var t=document.querySelector(location.hash);var tr=t&&rowOf(t);if(tr){tr.classList.add('is-found');t.focus({preventScroll:false});}}
-// Site mark. The endpoint and the preview follow the page's scope, taken from
-// the image the server rendered: a hard-coded /os/api/branding/favicon made a
-// hosted domain's save change the install-wide mark.
-var favFile=document.getElementById('brand-favicon-file');
-var favUp=document.getElementById('brand-favicon-upload');
-var favRm=document.getElementById('brand-favicon-remove');
-var favImg=document.getElementById('brand-favicon-img');
-var favState=document.getElementById('brand-favicon-state');
-var favBase=(favImg&&favImg.getAttribute('src')||'/favicon.ico').split('?')[0];
-var favPost=favBase==='/favicon.ico'?'/os/api/branding/favicon':favBase.replace('/branding/mark','/api/branding/favicon');
-function favSend(fd,btn,done){
-  btn.disabled=true;
-  fetch(favPost,{method:'POST',headers:{'X-CSRF-Token':csrf()},body:fd})
-    .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
-    .then(function(res){btn.disabled=false;if(res.ok){if(favImg)favImg.src=favBase+'?t='+Date.now();done();}else{vpToast(res.d.error||res.d.detail||'The mark could not be changed','error');}})
-    .catch(function(e){btn.disabled=false;vpToast('The mark could not be changed: '+e,'error');});
-}
-if(favUp)favUp.addEventListener('click',function(){
-  var f=favFile&&favFile.files&&favFile.files[0];
-  if(!f){vpToast('Choose a PNG or ICO first','warn');return;}
-  var fd=new FormData();fd.append('favicon',f);
-  favSend(fd,favUp,function(){if(favState)favState.textContent='Your own mark, stored in the database.';vpToast('Mark updated','ok');});
-});
-if(favRm)favRm.addEventListener('click',function(){
-  var fd=new FormData();fd.append('remove','1');
-  favSend(fd,favRm,function(){if(favState)favState.textContent='Using the default mark.';vpToast('Default mark restored','ok');});
-});
-` + linkEditorsScript + `refresh();`
+` + linkEditorsScript + siteMarkScript + `refresh();`
 
 // linkEditorsScript draws the public menu and footer editors from their
 // hidden inputs and keeps those inputs in step, calling refresh() after each
@@ -626,4 +616,35 @@ if(footerInput){
   var addLegal=document.getElementById('footer-add-legal');
   if(addLegal)addLegal.addEventListener('click',function(){fLegal.appendChild(linkRow('','',fHint,function(){footerSync();},fAttrs));footerSync();});
 }
+`
+
+// siteMarkScript uploads and removes the mark siteMarkHTML draws, at the
+// address the page gives it: a hard-coded /os/api/branding/favicon made a
+// hosted site's upload change the install's mark. The install's Settings and
+// a hosted site's settings page both run it.
+const siteMarkScript = `var favFile=document.getElementById('brand-favicon-file');
+var favUp=document.getElementById('brand-favicon-upload');
+var favRm=document.getElementById('brand-favicon-remove');
+var favImg=document.getElementById('brand-favicon-img');
+var favState=document.getElementById('brand-favicon-state');
+var favBase=favImg?favImg.getAttribute('data-mark-src'):'';
+var favDefault=favImg?favImg.getAttribute('data-mark-default'):'';
+var favPost=favImg?favImg.getAttribute('data-mark-post'):'';
+function favSend(fd,btn,done){
+  btn.disabled=true;
+  fetch(favPost,{method:'POST',headers:{'X-CSRF-Token':csrf()},body:fd})
+    .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
+    .then(function(res){btn.disabled=false;if(res.ok){done();}else{var e=res.d&&res.d.error;vpToast((e&&e.message)||e||res.d.detail||'The mark could not be changed','error');}})
+    .catch(function(e){btn.disabled=false;vpToast('The mark could not be changed: '+e,'error');});
+}
+if(favUp)favUp.addEventListener('click',function(){
+  var f=favFile&&favFile.files&&favFile.files[0];
+  if(!f){vpToast('Choose a PNG or ICO first','warn');return;}
+  var fd=new FormData();fd.append('favicon',f);
+  favSend(fd,favUp,function(){if(favImg){favImg.hidden=false;favImg.src=favBase+'?t='+Date.now();}if(favState)favState.textContent='Your own mark, stored in the database.';vpToast('Mark updated','ok');});
+});
+if(favRm)favRm.addEventListener('click',function(){
+  var fd=new FormData();fd.append('remove','1');
+  favSend(fd,favRm,function(){if(favImg){if(favDefault)favImg.src=favDefault+'?t='+Date.now();else favImg.hidden=true;}if(favState)favState.textContent='Using the default mark.';vpToast('Default mark restored','ok');});
+});
 `

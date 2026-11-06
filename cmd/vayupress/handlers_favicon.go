@@ -206,15 +206,16 @@ func (a *App) serveFavicon(fallback []byte, size int) http.HandlerFunc {
 			return
 		}
 		// The same reasoning one step further out: a hosted domain that has its
-		// own mark wears it. Only when it has none does the primary's stand in —
-		// that fallback is left alone deliberately, because removing it would
-		// blank the tab icon on every domain that has never uploaded one.
+		// own mark wears it, and one that has none wears the product's, as its
+		// card in the console does. The primary's mark stood in for it, so a
+		// client's site showed the operator's logo in its tab and its menu.
 		if a.siteSettings != nil {
-			if b, ct, ok := a.brandMark(r.Context(), settings.ForDomain(a.contentScope(r))); ok {
-				serve(w, r, b, ct)
-				return
-			}
-			if b, ct, ok := a.brandMark(r.Context(), settings.ForPrimary()); ok {
+			if scope := a.contentScope(r); scope != "" {
+				if b, ct, ok := a.brandMark(r.Context(), settings.ForDomain(scope)); ok {
+					serve(w, r, b, ct)
+					return
+				}
+			} else if b, ct, ok := a.brandMark(r.Context(), settings.ForPrimary()); ok {
 				serve(w, r, b, ct)
 				return
 			}
