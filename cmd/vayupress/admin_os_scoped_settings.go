@@ -55,18 +55,60 @@ var scopedSettingKeys = []struct {
 var scopedColourKeys = []struct {
 	Key, Label, Hint string
 }{
+	{settings.KeyThemePrimaryLight, "Main colour (light)", "Hex. Headings and the site's mark in the light theme."},
+	{settings.KeyThemePrimaryDark, "Main colour (dark)", "Hex. The same, for the dark theme."},
 	{settings.KeyThemeAccentLight, "Accent (light)", "Hex like #2563eb. Links and buttons in the light theme."},
 	{settings.KeyThemeAccentDark, "Accent (dark)", "Hex like #60a5fa. The same, for the dark theme."},
 	{settings.KeyHeadThemeColor, "Browser theme colour", "Hex. Tints the browser chrome on mobile."},
 }
 
-// scopedEditableKeys is every key this page may write — identity and colour.
+// scopedSwitches are this site's own publishing choices, each a switch with
+// the two values the renderer reads (siteSettingsFromValues). They were the
+// install's for every hosted site: no page offered them per site.
+var scopedSwitches = []struct {
+	Key, Label, Hint, On, Off string
+}{
+	{settings.KeyMembershipButtons, "Sign in and Subscribe buttons", "Readers can make an account and subscribe on this site.", "true", "false"},
+	{settings.KeyFeatureComments, "Comments", "Readers can comment on this site's posts.", "on", "off"},
+	{settings.KeyHomeHero, "Home hero", "The large opening block on this site's home page.", "true", "false"},
+	{settings.KeyNoFollowLinks, "Nofollow on links to other sites", "Search engines are asked not to follow this site's outbound links.", "true", "false"},
+}
+
+// scopedTexts are this site's longer writing: the author box and its own
+// stylesheet, sanitised where it is drawn (render.sanitizeCustomCSS).
+var scopedTexts = []struct {
+	Key, Label, Hint string
+	Rows             int
+}{
+	{settings.KeyAuthorBio, "Author bio", "Shown in the author box under this site's posts.", 3},
+	{settings.KeyThemeCustomCSS, "Stylesheet", "Added to every page of this site. Never loaded in the console.", 8},
+}
+
+// scopedEditableKeys is every key this page may write.
 // The save allowlist reads from here so a field added to either group is
 // editable without a second edit somewhere else.
 func scopedEditableKeys() []struct{ Key, Label, Hint string } {
-	out := make([]struct{ Key, Label, Hint string }, 0, len(scopedSettingKeys)+len(scopedColourKeys))
+	out := make([]struct{ Key, Label, Hint string }, 0, len(scopedSettingKeys)+len(scopedColourKeys)+len(scopedSwitches)+len(scopedTexts))
 	out = append(out, scopedSettingKeys...)
-	return append(out, scopedColourKeys...)
+	out = append(out, scopedColourKeys...)
+	for _, f := range scopedSwitches {
+		out = append(out, struct{ Key, Label, Hint string }{f.Key, f.Label, f.Hint})
+	}
+	for _, f := range scopedTexts {
+		out = append(out, struct{ Key, Label, Hint string }{f.Key, f.Label, f.Hint})
+	}
+	return out
+}
+
+// scopedSwitchValue is v when it is one of key's two values, and ok=false for
+// anything else; a key that is not a switch passes as given.
+func scopedSwitchValue(key, v string) (string, bool) {
+	for _, f := range scopedSwitches {
+		if f.Key == key {
+			return v, v == f.On || v == f.Off
+		}
+	}
+	return v, true
 }
 
 // handleOSScopedSettings renders one domain's own settings.
@@ -235,6 +277,39 @@ func scopedSettingsBody(domainID, host string, values map[string]string, pres pr
 	b.WriteString(monAcc(saIcon("palette"), "Colour", "This site's own accents and browser tint",
 		colourChip, false, colour.String()))
 
+	// Publishing: what readers can do on this site, and its author box.
+	var pub strings.Builder
+	pub.WriteString(`<div class="card"><div class="form-grid">`)
+	onCount := 0
+	for _, f := range scopedSwitches {
+		checked := ""
+		if values[f.Key] == f.On {
+			checked = " checked"
+			onCount++
+		}
+		pub.WriteString(`<label class="field--check"><input type="checkbox" data-scoped-key="` + esc(f.Key) + `" data-on="` + esc(f.On) +
+			`" data-off="` + esc(f.Off) + `"` + checked + `><span class="field-label">` + esc(f.Label) + `</span><span class="field-hint">` + esc(f.Hint) + `</span></label>`)
+	}
+	bio := scopedTexts[0]
+	pub.WriteString(`<label class="field"><span class="field-label">` + esc(bio.Label) + `</span>` +
+		`<textarea class="input" rows="` + strconv.Itoa(bio.Rows) + `" data-scoped-key="` + esc(bio.Key) + `">` + esc(values[bio.Key]) +
+		`</textarea><span class="field-hint">` + esc(bio.Hint) + `</span></label>`)
+	pub.WriteString(`</div><div class="vm-row"><button type="button" class="btn btn--primary btn--sm" data-scoped-save>Save</button></div></div>`)
+	b.WriteString(monAcc(saIcon("audience"), "Publishing", "What readers can do on this site, and its author box",
+		`<span class="mon-chip mon-chip--`+map[bool]string{true: "on", false: "off"}[onCount > 0]+`">`+strconv.Itoa(onCount)+` of `+strconv.Itoa(len(scopedSwitches))+` on</span>`,
+		false, pub.String()))
+
+	css := scopedTexts[1]
+	cssChip := `<span class="mon-chip mon-chip--off">None</span>`
+	if strings.TrimSpace(values[css.Key]) != "" {
+		cssChip = `<span class="mon-chip mon-chip--on">Set</span>`
+	}
+	b.WriteString(monAcc(saIcon("type"), "Stylesheet", "This site's own CSS, on its pages only", cssChip, false,
+		`<div class="card"><label class="field"><span class="field-label">`+esc(css.Label)+`</span>`+
+			`<textarea class="input mono" rows="`+strconv.Itoa(css.Rows)+`" spellcheck="false" data-scoped-key="`+esc(css.Key)+`">`+esc(values[css.Key])+
+			`</textarea><span class="field-hint">`+esc(css.Hint)+`</span></label>`+
+			`<div class="vm-row"><button type="button" class="btn btn--primary btn--sm" data-scoped-save>Save</button></div></div>`))
+
 	styleChip := `<span class="mon-chip mon-chip--off">Not known</span>`
 	switch pres {
 	case presDefault:
@@ -266,21 +341,23 @@ var node=document.getElementById('scoped-ctx');
 var ID=node?node.getAttribute('data-id'):'';
 if(!ID)return;
 var st=document.getElementById('scoped-status');
-var btn=document.querySelector('[data-scoped-save]');
-if(btn)btn.addEventListener('click',function(){
+// Every section's Save button saves the page: querySelector wired only the
+// first, so the Colour section's button did nothing.
+function errText(j){return j&&((j.error&&j.error.message)||j.message);}
+document.querySelectorAll('[data-scoped-save]').forEach(function(btn){btn.addEventListener('click',function(){
   var payload={};
   document.querySelectorAll('[data-scoped-key]').forEach(function(el){
-    payload[el.getAttribute('data-scoped-key')]=el.value;
+    payload[el.getAttribute('data-scoped-key')]=el.type==='checkbox'?(el.checked?el.getAttribute('data-on'):el.getAttribute('data-off')):el.value;
   });
   btn.disabled=true; if(st)st.textContent='Saving…';
   fetch('/os/d/'+encodeURIComponent(ID)+'/api/settings',{method:'POST',
     headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},
-    body:JSON.stringify({settings:payload})})
+    body:JSON.stringify({domain_id:ID,settings:payload})})
     .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
     .then(function(res){btn.disabled=false;
-      if(st)st.textContent=res.ok?'Saved ✓':((res.j&&res.j.message)||'Could not save');})
+      if(st)st.textContent=res.ok?'Saved ✓':(errText(res.j)||'Could not save');})
     .catch(function(e){btn.disabled=false; if(st)st.textContent='Error: '+e;});
-});
+});});
 // The copy action is wired independently of the save button. Chaining it behind
 // an early return on [data-scoped-save] is how one missing control silently
 // takes the other one with it.
@@ -293,7 +370,7 @@ if(cpy)cpy.addEventListener('click',function(){
     .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
     .then(function(res){cpy.disabled=false;
       if(!cst)return;
-      if(!res.ok){cst.textContent=(res.j&&res.j.message)||'Could not copy';return;}
+      if(!res.ok){cst.textContent=errText(res.j)||'Could not copy';return;}
       var n=(res.j&&typeof res.j.copied==='number')?res.j.copied:0;
       cst.textContent=n?(n+' setting'+(n===1?'':'s')+' copied — reload to see them'):'Nothing to copy: your own site is still on the defaults';})
     .catch(function(e){cpy.disabled=false; if(cst)cst.textContent='Error: '+e;});
@@ -322,7 +399,8 @@ func (a *App) handleOSScopedSettingsSave(w http.ResponseWriter, r *http.Request)
 		DomainID string            `json:"domain_id"`
 		Settings map[string]string `json:"settings"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8*1024)).Decode(&body); err != nil {
+	// Room for a site's own stylesheet; the store caps what it must.
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256*1024)).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "invalid JSON", "")
 		return
 	}
@@ -341,9 +419,15 @@ func (a *App) handleOSScopedSettingsSave(w http.ResponseWriter, r *http.Request)
 	}
 	kv := map[string]string{}
 	for k, v := range body.Settings {
-		if allowed[k] {
-			kv[k] = strings.TrimSpace(v)
+		if !allowed[k] {
+			continue
 		}
+		val, ok := scopedSwitchValue(k, strings.TrimSpace(v))
+		if !ok {
+			writeAPIError(w, r, http.StatusBadRequest, "bad-value", "a switch was sent a value it does not take; nothing was saved", "")
+			return
+		}
+		kv[k] = val
 	}
 	if len(kv) == 0 {
 		writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})

@@ -52,7 +52,7 @@ func TestTheColourKeysAreOnTheSaveAllowlist(t *testing.T) {
 	}
 	// The allowlist must still be an ALLOWLIST — a client-facing surface built on
 	// this endpoint later must not be able to write any of the ~327 keys.
-	if allowed[settings.KeyFeatureComments] || allowed["site.robots"] {
+	if allowed[settings.KeyPageCache] || allowed["site.robots"] {
 		t.Error("the save allowlist has widened beyond the fields this page owns")
 	}
 	// And the save must read from the combined set, or a colour edit is dropped.

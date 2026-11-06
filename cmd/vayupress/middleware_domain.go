@@ -135,6 +135,17 @@ func (a *App) brandForRequest(r *http.Request) (render.SiteSettings, bool) {
 			if n := strings.TrimSpace(s.Name); n == "" || n == settings.Defaults[settings.KeySiteName] {
 				s.Name = d.Host
 			}
+			// Nor does it speak in the product's sample words or carry the
+			// product author's by-line: unset, these read as blank, which
+			// every template already leaves out.
+			for _, f := range []struct {
+				v   *string
+				key string
+			}{{&s.Tagline, settings.KeySiteTagline}, {&s.Description, settings.KeySiteDescription}, {&s.Author, settings.KeySiteAuthor}} {
+				if *f.v == settings.Defaults[f.key] {
+					*f.v = ""
+				}
+			}
 			s.BlogBase = a.blogBaseFor(r)
 			return s, true
 		}

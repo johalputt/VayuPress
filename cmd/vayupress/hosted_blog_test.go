@@ -74,6 +74,9 @@ func TestAnUnnamedHostedSiteIsCalledByItsAddress(t *testing.T) {
 	if !ok || s.Name != "notes.example.com" {
 		t.Errorf("an unnamed site is called %q (%v), want its address", s.Name, ok)
 	}
+	if s.Tagline != "" || s.Description != "" || s.Author != "" {
+		t.Errorf("an unset site speaks in the product's sample words: %q / %q / by %q", s.Tagline, s.Description, s.Author)
+	}
 	rec := httptest.NewRecorder()
 	a.handleNotFound(rec, requestFor("/no-such-post", blog))
 	if rec.Code != http.StatusNotFound {

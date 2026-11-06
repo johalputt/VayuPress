@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **A hosted site's own publishing choices.** A site's settings page gains
+  Publishing (Sign in and Subscribe buttons, comments, the home hero,
+  nofollow on outbound links, the author bio) and Stylesheet (the site's own
+  CSS), and its Colour section gains the main colour for each scheme. They
+  are saved to that site alone and are what its pages are drawn with; they
+  were the install's for every site. A switch takes only its two values,
+  and a refused value saves nothing.
+
+### Fixed
+
+- A hosted site that has not set a tagline, description or author no longer
+  shows the product's sample tagline and description or the product
+  author's by-line; they are left out until the site sets its own.
+
 ## [3.18.29] — 2026-11-06
 
 Mail suggests searches as you type, saves the vacation reply as it is written and gains a keyboard button and quick settings; a website with its blog at /blog serves it, in its own name; and Write for this site works.
