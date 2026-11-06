@@ -172,6 +172,8 @@ var ID=node?node.getAttribute('data-id'):'';
 if(!ID)return;
 var st=document.getElementById('scoped-content-status');
 function say(t){if(st)st.textContent=t;}
+// The server answers a refusal as {"error":{"message":...}}.
+function errText(j){return j&&((j.error&&j.error.message)||j.message);}
 function move(slug,target,btn){
   if(btn)btn.disabled=true; say('Moving…');
   fetch('/os/d/'+encodeURIComponent(ID)+'/api/content/move',{method:'POST',
@@ -180,7 +182,7 @@ function move(slug,target,btn){
     .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
     .then(function(res){
       if(res.ok){say('Moved ✓ — reloading');window.location.reload();return;}
-      if(btn)btn.disabled=false; say((res.j&&res.j.message)||'Could not move that post');})
+      if(btn)btn.disabled=false; say(errText(res.j)||'Could not move that post');})
     .catch(function(e){if(btn)btn.disabled=false; say('Error: '+e);});
 }
 var mk=document.querySelector('[data-scoped-new]');
@@ -191,7 +193,7 @@ if(mk)mk.addEventListener('click',function(){
     .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
     .then(function(res){
       if(res.ok&&res.j&&res.j.slug){window.location='/os/editor/'+encodeURIComponent(res.j.slug);return;}
-      mk.disabled=false; say((res.j&&res.j.message)||'Could not create a draft');})
+      mk.disabled=false; say(errText(res.j)||'Could not create a draft');})
     .catch(function(e){mk.disabled=false; say('Error: '+e);});
 });
 var add=document.querySelector('[data-scoped-assign]');
@@ -250,6 +252,13 @@ func (a *App) handleOSScopedContentNew(w http.ResponseWriter, r *http.Request) {
 	// UPDATE — and a failed follow-up can no longer leave it published.
 	if _, err := a.articles.CreateDraft(r.Context(), title, slug, " ", nil); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "create-failed", err.Error(), "")
+		return
+	}
+	// The draft is written by the post queue, a moment after it is queued:
+	// given to the site at once, it was not there yet, and every "Write for
+	// this site" failed. The YouTube poster waits the same way.
+	if err := awaitArticle(r.Context(), slug); err != nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "create-pending", err.Error(), "")
 		return
 	}
 	if err := a.articles.SetDomain(r.Context(), slug, d.ID); err != nil {

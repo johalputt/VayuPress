@@ -38,6 +38,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   marked only the button pressed, so a second switch on the page showed the
   old scheme.
 - **Storage counts one post as one**, not "1 posts", while pages refresh.
+- **Write for this site makes the site's draft.** On a hosted site's Posts &
+  pages, the draft was given to the site before the post queue had written
+  it, so every press failed with "Could not create a draft"; it now waits
+  for the draft. The page also shows the server's own reason when a move or
+  a draft is refused, which it had replaced with a generic line.
 - **A search for a word such as "in" or "from" looks for it.** A word that
   is also a search term's name, typed without its colon, was dropped from
   the search unseen.
