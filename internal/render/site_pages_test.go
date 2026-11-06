@@ -42,3 +42,18 @@ func TestASitesListingPagesAreInItsOwnName(t *testing.T) {
 	withHalcyon(t, nil)
 	check("Halcyon")
 }
+
+// A member page on a hosted site is drawn in that site's chrome.
+func TestAMemberPageIsInItsSitesChrome(t *testing.T) {
+	prev := GetActiveSettings()
+	SetActiveSettings(SiteSettings{Name: "The Install"})
+	t.Cleanup(func() { SetActiveSettings(prev) })
+	withHalcyon(t, nil)
+	page := `<!DOCTYPE html><html lang="en"><head></head><body></body></html>`
+	for _, kind := range []MemberPage{MemberTask, MemberSite} {
+		out := HalcyonMemberPageFor(&SiteSettings{Name: "Notes Site"}, page, kind)
+		if !strings.Contains(out, "Notes Site") || strings.Contains(out, "The Install") {
+			t.Errorf("member page %v is not in the site's chrome", kind)
+		}
+	}
+}

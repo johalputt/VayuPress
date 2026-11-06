@@ -249,13 +249,13 @@ func (a *App) handleMemberAccount(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Robots-Tag", "noindex")
 	w.Header().Set("Cache-Control", "no-store")
 	f := a.accountFactsFor(r, m)
-	_, _ = w.Write([]byte(render.HalcyonMemberPage(a.accountPage(r, f), render.MemberSite)))
+	_, _ = w.Write([]byte(render.HalcyonMemberPageFor(a.siteFor(r), a.accountPage(r, f), render.MemberSite)))
 }
 
 func (a *App) accountPage(r *http.Request, f accountFacts) string {
 	ctx := r.Context()
 	m := f.m
-	brand := html.EscapeString(config.Cfg.Domain)
+	brand := html.EscapeString(a.activeHost(r))
 	nonce := render.CSPNonce(r)
 	picURL := "/api/v1/members/avatar/" + m.ID + "?v=" + avatarVer(m.AvatarChoice, m.Gender)
 	since := config.FormatSite(m.CreatedAt, "2 January 2006")
@@ -309,7 +309,7 @@ func (a *App) accountPage(r *http.Request, f accountFacts) string {
 		`<label class="acct-field" for="acct-del">Type <b>` + esc(m.Email) + `</b> to confirm</label>` +
 		`<div class="acct-edit"><input class="acct-input" id="acct-del" type="text" name="confirm" autocomplete="off" spellcheck="false" required>` +
 		`<button class="acct-btn acct-btn--danger" type="submit">Delete my account</button></div></form>`
-	secs = append(secs, acctSection("profile", "Profile", "How you appear on "+config.Cfg.Domain,
+	secs = append(secs, acctSection("profile", "Profile", "How you appear on "+a.activeHost(r),
 		acctRow("picture", "Picture", `<span class="acct-inl"><img class="acct-av" src="`+picURL+`" alt="" width="36" height="36"><span>`+
 			acctValue(pictureLabel(m.AvatarChoice), "Or a photo of your own")+`</span></span>`, acctOpen("picture", "Change", ""), picker),
 		acctRow("name", "Name", acctValue(m.DisplayName(), nameNote), acctOpen("name", "Edit", ""), nameForm),
@@ -335,7 +335,7 @@ func (a *App) accountPage(r *http.Request, f accountFacts) string {
 	} else {
 		note := planPrice(f.sub)
 		if f.sub == nil {
-			note = "Given to you by " + config.Cfg.Domain
+			note = "Given to you by " + a.activeHost(r)
 		}
 		planRows = append(planRows, acctRow("", "Plan", acctValue(f.tierName, note), acctLink("/pricing", "Change plan", ""), ""))
 		if rn, ok := renewalFor(f.sub, f.stripe, time.Now()); ok {
@@ -429,7 +429,7 @@ func (a *App) accountPage(r *http.Request, f accountFacts) string {
 		return `<label class="acct-switch"><input type="checkbox" role="switch" name="` + name + `" value="1" form="acct-form"` + checked +
 			` data-acct-switch><span class="acct-switch__track" aria-hidden="true"></span><span class="acct-sr">` + label + `</span></label>`
 	}
-	secs = append(secs, acctSection("emails", "Emails from "+config.Cfg.Domain, "Saved as you change them",
+	secs = append(secs, acctSection("emails", "Emails from "+a.activeHost(r), "Saved as you change them",
 		acctRow("", "Replies", acctValue("When someone replies to your comment", ""), sw("reply_notify", "Email me replies to my comments", m.ReplyNotify), ""),
 		acctRow("", "Newsletter", acctValue("New posts and the members’ newsletter", ""), sw("newsletter", "Send me the newsletter", m.NewsletterOptIn), ""),
 	)+`<p class="acct-nojs"><button class="acct-btn" type="submit" form="acct-form">Save email choices</button></p>`)

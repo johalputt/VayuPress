@@ -719,7 +719,7 @@ func (a *App) handlePublicAuthor(w http.ResponseWriter, r *http.Request) {
   <p class="au-foot"><a class="su-link" href="/">← Back to ` + brand + `</a></p>
 </main>
 </body></html>`
-	_, _ = w.Write([]byte(render.HalcyonMemberPage(page, render.MemberSite)))
+	_, _ = w.Write([]byte(render.HalcyonMemberPageFor(a.siteFor(r), page, render.MemberSite)))
 }
 
 // installAuthorResolver wires render.AuthorInfoFn so the public article byline

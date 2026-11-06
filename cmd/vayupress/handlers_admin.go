@@ -957,7 +957,7 @@ func (a *App) renderPaywall(r *http.Request, art dbpkg.Article, level string) st
 		}
 	}
 
-	return render.HalcyonMemberPage(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">`+
+	return render.HalcyonMemberPageFor(a.siteFor(r), `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">`+
 		`<meta name="viewport" content="width=device-width, initial-scale=1">`+
 		`<title>`+esc(art.Title)+`</title>`+
 		`<link rel="stylesheet" href="/theme.css"><link rel="stylesheet" href="/static/css/article.css?v=`+assetVer("css/article.css")+`">`+

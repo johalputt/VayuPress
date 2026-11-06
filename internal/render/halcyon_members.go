@@ -52,15 +52,21 @@ var memberPictographs = strings.NewReplacer(
 // HalcyonMemberPage returns page in Halcyon's design when Halcyon is the
 // active theme, and page unchanged otherwise.
 func HalcyonMemberPage(page string, kind MemberPage) string {
+	return HalcyonMemberPageFor(nil, page, kind)
+}
+
+// HalcyonMemberPageFor is HalcyonMemberPage in one site's chrome; nil is the
+// install's own.
+func HalcyonMemberPageFor(site *SiteSettings, page string, kind MemberPage) string {
 	cfg, ok := Halcyon()
 	if !ok {
 		return page
 	}
-	return halcyonMemberPage(page, kind, cfg)
+	return halcyonMemberPage(site, page, kind, cfg)
 }
 
-func halcyonMemberPage(page string, kind MemberPage, cfg theme.HalcyonConfig) string {
-	c := halcyonChrome(getActiveSettings(), cfg, "member")
+func halcyonMemberPage(site *SiteSettings, page string, kind MemberPage, cfg theme.HalcyonConfig) string {
+	c := halcyonChrome(siteOr(site), cfg, "member")
 	// The config's values are its options' own literals (theme.ResolveHalcyon),
 	// and are escaped here anyway: this tag is assembled as a string, outside
 	// html/template, so nothing an option ever holds can leave its attribute.

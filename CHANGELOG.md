@@ -32,6 +32,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   menu and footer; they read the install's. Its author page lists only its
   own posts: it listed every site's, linking to posts its address does not
   serve.
+- A hosted site's sign-in, sign-up, account and pricing pages are in its
+  chrome and call the site by its own address, not the install's.
 
 ## [3.18.29] — 2026-11-06
 

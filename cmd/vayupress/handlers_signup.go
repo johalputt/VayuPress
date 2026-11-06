@@ -16,7 +16,6 @@ import (
 	"html"
 	"net/http"
 
-	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/render"
 )
 
@@ -31,7 +30,7 @@ func (a *App) handleMemberSignup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Robots-Tag", "index, follow")
 
-	brand := html.EscapeString(config.Cfg.Domain)
+	brand := html.EscapeString(a.activeHost(r))
 	nonce := render.CSPNonce(r)
 
 	// A success/notice banner driven by query flags from the POST redirect.
@@ -112,5 +111,5 @@ if(f){f.addEventListener('submit',function(){var b=f.querySelector('.su-btn');if
 
 	// The global middleware already sets a strict CSP carrying this request's
 	// nonce, so the inline bootstrap script above is permitted.
-	_, _ = w.Write([]byte(render.HalcyonMemberPage(page, render.MemberTask)))
+	_, _ = w.Write([]byte(render.HalcyonMemberPageFor(a.siteFor(r), page, render.MemberTask)))
 }

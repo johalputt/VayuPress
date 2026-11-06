@@ -108,3 +108,14 @@ func TestAHostedSitesSearchAndAppAreInItsName(t *testing.T) {
 		t.Errorf("the site's app manifest: %s", body)
 	}
 }
+
+// A hosted site's sign-in page calls the site by its own address, not the
+// install's.
+func TestAHostedSitesSignInIsInItsName(t *testing.T) {
+	a, _, blog := hostedBlogApp(t)
+	rec := httptest.NewRecorder()
+	a.handleMemberSigninPage(rec, requestFor("/signin", blog))
+	if page := rec.Body.String(); !strings.Contains(page, "notes.example.com") {
+		t.Errorf("the site's sign-in page does not name the site:\n%.600s", page)
+	}
+}

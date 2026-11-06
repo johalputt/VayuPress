@@ -739,7 +739,7 @@ func renderHalcyonPreviewPage(page string, cfg theme.HalcyonConfig, p HalcyonPre
 	case "search":
 		return renderHalcyonSearch(SearchInput{Query: p.Query, Hits: p.Hits}, cfg)
 	case "signin":
-		return halcyonMemberPage(p.SignIn, MemberTask, cfg), nil
+		return halcyonMemberPage(nil, p.SignIn, MemberTask, cfg), nil
 	}
 	return renderHalcyonHome(p.Home, cfg)
 }

@@ -29,7 +29,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/members"
 	"github.com/johalputt/vayupress/internal/render"
 )
@@ -47,13 +46,13 @@ func (a *App) handleMemberSigninPage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Robots-Tag", "index, follow")
-	_, _ = w.Write([]byte(render.HalcyonMemberPage(a.memberSigninPage(r), render.MemberTask)))
+	_, _ = w.Write([]byte(render.HalcyonMemberPageFor(a.siteFor(r), a.memberSigninPage(r), render.MemberTask)))
 }
 
 // memberSigninPage builds the sign-in page as every theme but Halcyon shows
 // it; Theme Studio's preview dresses the same page in the options being edited.
 func (a *App) memberSigninPage(r *http.Request) string {
-	brand := html.EscapeString(config.Cfg.Domain)
+	brand := html.EscapeString(a.activeHost(r))
 	nonce := render.CSPNonce(r)
 	notice := ""
 	if r.URL.Query().Get("check_email") == "1" {
@@ -209,7 +208,7 @@ func (a *App) handlePricingPage(w http.ResponseWriter, r *http.Request) {
 	// know who is reading.
 	w.Header().Set("Vary", "Cookie")
 
-	brand := html.EscapeString(config.Cfg.Domain)
+	brand := html.EscapeString(a.activeHost(r))
 	nonce := render.CSPNonce(r)
 
 	var tiers []members.Tier
@@ -472,7 +471,7 @@ for(var k=0;k<btns.length;k++){
 })();
 </script>
 </body></html>`
-	_, _ = w.Write([]byte(render.HalcyonMemberPage(page, render.MemberSite)))
+	_, _ = w.Write([]byte(render.HalcyonMemberPageFor(a.siteFor(r), page, render.MemberSite)))
 }
 
 // effectiveMonthlyCents is what a tier costs per month however it is billed, so
