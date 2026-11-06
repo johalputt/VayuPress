@@ -300,6 +300,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			// at that domain's own /favicon.ico; this exists because the panel is
 			// served from a DIFFERENT origin and cannot ask another host for it.
 			dr.Get("/branding/mark", a.handleOSScopedBrandMark)
+			// This site's share image: the same upload as the install's, scoped by
+			// the path, and its read side for the console, as for the mark.
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/branding/og", a.handleOGUpload)
+			dr.Get("/branding/og", a.handleOSScopedOGImage)
 			dr.Get("/seo", a.handleOSScopedSEO)
 			// This site's own outside services; the same page and save as the
 			// primary's, scoped by the path.

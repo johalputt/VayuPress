@@ -8,6 +8,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **A hosted site's own share image**, uploaded and removed on its settings
+  page: the picture shown when a link to the site is shared.
+
+### Fixed
+
+- A hosted site's links were shared with the install's picture
+  (`/theme-assets/og` served the install's for every host, and the upload
+  always wrote the install's); each site now has its own, or none.
+
 ## [3.18.30] — 2026-11-06
 
 Every hosted website and blog is its own site: its own publishing choices, stylesheet, menu, footer, mark and Halcyon layout, and every page in its own name; and a mailbox's holder can make it private from the administrator.

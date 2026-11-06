@@ -180,7 +180,7 @@ func (a *App) handleOGUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.FormValue("remove") == "1" {
-		if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{
+		if err := a.siteSettings.SetMany(r.Context(), osScope(r), map[string]string{
 			settings.KeyThemeOGImage:     "",
 			settings.KeyThemeOGImageType: "",
 		}); err != nil {
@@ -218,7 +218,7 @@ func (a *App) handleOGUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{
+	if err := a.siteSettings.SetMany(r.Context(), osScope(r), map[string]string{
 		settings.KeyThemeOGImage:     base64.StdEncoding.EncodeToString(raw),
 		settings.KeyThemeOGImageType: mime,
 	}); err != nil {
@@ -229,14 +229,29 @@ func (a *App) handleOGUpload(w http.ResponseWriter, r *http.Request) {
 	ok("share image updated")
 }
 
-// serveOGImage serves the operator's uploaded social/share image (same-origin).
+// serveOGImage serves the share image of the site a request is for: a hosted
+// site's own, never the install's, which it served for every host.
 // Returns 404 when none is set so the templates simply omit the og:image tag.
 func (a *App) serveOGImage(w http.ResponseWriter, r *http.Request) {
-	if a.siteSettings == nil {
+	sc := settings.ForPrimary()
+	if scope := a.contentScope(r); scope != "" {
+		sc = settings.ForDomain(scope)
+	}
+	a.serveOGImageFor(w, r, sc)
+}
+
+// handleOSScopedOGImage is a hosted site's share image for its console page,
+// which is served from another origin than the site.
+func (a *App) handleOSScopedOGImage(w http.ResponseWriter, r *http.Request) {
+	a.serveOGImageFor(w, r, osScope(r))
+}
+
+func (a *App) serveOGImageFor(w http.ResponseWriter, r *http.Request, sc settings.Scope) {
+	if a.siteSettings == nil || !sc.Valid() {
 		http.NotFound(w, r)
 		return
 	}
-	enc := a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyThemeOGImage)
+	enc := a.siteSettings.Get(r.Context(), sc, settings.KeyThemeOGImage)
 	if enc == "" {
 		http.NotFound(w, r)
 		return
@@ -246,7 +261,7 @@ func (a *App) serveOGImage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	ct := a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyThemeOGImageType)
+	ct := a.siteSettings.Get(r.Context(), sc, settings.KeyThemeOGImageType)
 	if ct == "" {
 		ct = "image/jpeg"
 	}

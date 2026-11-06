@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
@@ -184,7 +185,8 @@ func (a *App) handleOSScopedSettings(w http.ResponseWriter, r *http.Request) {
 
 	own := a.siteHasOwnMark(r.Context(), d.ID)
 	inst, _ := theme.Load(r.Context(), dbpkg.DB)
-	body := scopedSettingsBody(d.ID, d.Host, values, pres, scopedExtras{OwnMark: own, Install: inst}) + scopedSettingsScript(nonce)
+	ownShare := a.siteSettings.Get(r.Context(), sc, settings.KeyThemeOGImage) != ""
+	body := scopedSettingsBody(d.ID, d.Host, values, pres, scopedExtras{OwnMark: own, OwnShare: ownShare, Install: inst}) + scopedSettingsScript(nonce)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Settings · "+d.Host, "optimize", cfg, htmpl.HTML(body)))
 }
 
@@ -212,7 +214,8 @@ const (
 
 // scopedExtras are what the page shows beside the site's own values.
 type scopedExtras struct {
-	OwnMark bool // the site has a mark of its own
+	OwnMark  bool // the site has a mark of its own
+	OwnShare bool // the site has a share image of its own
 	// Install is the install's theme; its Halcyon options are what a site
 	// that has chosen none is shown with.
 	Install theme.Tokens
@@ -405,6 +408,21 @@ func scopedSettingsBody(domainID, host string, values map[string]string, pres pr
 	b.WriteString(monAcc(saIcon("image"), "Site mark", "This site's tab icon and the logo in its menu", markChip, false,
 		`<div class="card">`+string(siteMarkHTML(base+"/branding/mark", "", base+"/api/branding/favicon", own))+`</div>`))
 
+	// The picture shown when a link to this site is shared. With none, links to
+	// it carry no picture: never the install's, which every host was given.
+	shareChip, shareImg := `<span class="mon-chip mon-chip--off">None</span>`, `<img id="scoped-og-img" class="settings-mark__img" alt="Current share image" width="64" height="34" hidden>`
+	if extra.OwnShare {
+		shareChip = `<span class="mon-chip mon-chip--on">Set</span>`
+		shareImg = `<img id="scoped-og-img" class="settings-mark__img" alt="Current share image" width="64" height="34" src="` + base + `/branding/og?t=` + strconv.FormatInt(time.Now().Unix(), 10) + `">`
+	}
+	b.WriteString(monAcc(saIcon("image"), "Share image", "The picture shown when a link to this site is shared", shareChip, false,
+		`<div class="card"><div class="settings-mark">`+shareImg+
+			`<input type="file" id="scoped-og-file" class="settings-mark__file" accept="image/png,image/jpeg,image/webp" aria-label="Choose a share image">`+
+			`<button type="button" class="btn btn--sm" id="scoped-og-upload">Upload</button>`+
+			`<button type="button" class="btn btn--ghost btn--sm" id="scoped-og-remove">Remove</button>`+
+			`<span id="scoped-og-status" class="settings-mark__status" role="status" aria-live="polite"></span></div>`+
+			`<p class="text-sm muted">PNG, JPEG or WebP, up to 1.5 MB; 1200 by 630 suits most places a link is shared.</p></div>`))
+
 	// Menu and footer, with the install's own editors writing this site's keys.
 	nav, foot := values[settings.KeyNavItems], values[settings.KeyFooterConfig]
 	linkChip := `<span class="mon-chip mon-chip--off">Not set</span>`
@@ -455,6 +473,26 @@ if(!ID)return;
 var st=document.getElementById('scoped-status');
 function refresh(){}
 ` + linkEditorsScript + siteMarkScript + `
+var ogImg=document.getElementById('scoped-og-img'),ogFile=document.getElementById('scoped-og-file'),ogSt=document.getElementById('scoped-og-status');
+function ogSend(fd,btn,done){
+  btn.disabled=true;
+  fetch('/os/d/'+encodeURIComponent(ID)+'/api/branding/og',{method:'POST',headers:{'X-CSRF-Token':csrf()},body:fd})
+    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+    .then(function(res){btn.disabled=false;if(res.ok){done();}else if(ogSt){ogSt.textContent=(res.j&&(res.j.error&&res.j.error.message||res.j.error))||'Not changed';}})
+    .catch(function(e){btn.disabled=false;if(ogSt)ogSt.textContent='Error: '+e;});
+}
+var ogUp=document.getElementById('scoped-og-upload'),ogRm=document.getElementById('scoped-og-remove');
+if(ogUp)ogUp.addEventListener('click',function(){
+  var f=ogFile&&ogFile.files&&ogFile.files[0];
+  if(!f){if(ogSt)ogSt.textContent='Choose an image first';return;}
+  var fd=new FormData();fd.append('image',f);
+  ogSend(fd,ogUp,function(){if(ogImg){ogImg.hidden=false;ogImg.src='/os/d/'+encodeURIComponent(ID)+'/branding/og?t='+Date.now();}if(ogSt)ogSt.textContent='Share image updated';});
+});
+if(ogRm)ogRm.addEventListener('click',function(){
+  var fd=new FormData();fd.append('remove','1');
+  ogSend(fd,ogRm,function(){if(ogImg){ogImg.hidden=true;ogImg.removeAttribute('src');}if(ogSt)ogSt.textContent='Share image removed';});
+});
+
 // The Theme section's choices are written to its one key only once one is
 // changed (or cleared): saved untouched, a site laid out as your own site
 // keeps following your own site rather than freezing a copy of it.

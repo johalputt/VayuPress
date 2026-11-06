@@ -1960,3 +1960,26 @@ test("a hosted site's theme is chosen on its own settings page", async ({ page }
   await page.reload();
   await expect((await open()).locator(".mon-chip")).toHaveText("As your site");
 });
+
+// A hosted site's share image is uploaded and removed on its own settings
+// page; with none, no preview is drawn.
+test("a hosted site's share image is uploaded and removed on its own settings page", async ({ page }) => {
+  await openConsole(page);
+  const id = await addSite(page, "share");
+  await page.goto(`/os/d/${id}/settings`);
+  const section = page.locator("details.mon-acc", { hasText: "Share image" });
+  await section.locator("summary").click();
+  const img = section.locator("#scoped-og-img");
+  await expect(img).toBeHidden();
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+  await section.locator("#scoped-og-file").setInputFiles({ name: "share.png", mimeType: "image/png", buffer: png });
+  await section.getByRole("button", { name: "Upload" }).click();
+  await expect(section.locator("#scoped-og-status")).toHaveText("Share image updated");
+  await expect(img).toBeVisible();
+  expect((await page.request.get(`/os/d/${id}/branding/og`)).status()).toBe(200);
+
+  await section.getByRole("button", { name: "Remove" }).click();
+  await expect(section.locator("#scoped-og-status")).toHaveText("Share image removed");
+  await expect(img).toBeHidden();
+  expect((await page.request.get(`/os/d/${id}/branding/og`)).status()).toBe(404);
+});
