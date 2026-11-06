@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.29] — 2026-11-06
+
+Mail suggests searches as you type, saves the vacation reply as it is written and gains a keyboard button and quick settings; a website with its blog at /blog serves it, in its own name; and Write for this site works.
+
 ### Added
 
 - **Search suggestions in Mail.** Typing in Mail's search shows, under the
