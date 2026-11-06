@@ -18,8 +18,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   browser's recent searches. Arrow keys move through them; Enter or a click
   takes one.
 
+- **The vacation reply saves as it is written** on Mail's Settings, as the
+  name and forwarding do, with Undo; its section stays open through each
+  save.
+
 ### Fixed
 
+- **Typing goes on through a setting's save.** A save on Mail's Settings
+  redraws the settings and lands after focus has moved on, so the field
+  being typed in next was replaced, with what had been typed; the field, its
+  words and its caret are now put back.
 - **A search for a word such as "in" or "from" looks for it.** A word that
   is also a search term's name, typed without its colon, was dropped from
   the search unseen.

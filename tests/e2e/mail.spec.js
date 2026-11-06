@@ -1376,6 +1376,36 @@ test("Settings finds a setting, and saves as it changes with Undo", async ({ pag
   await expect(page.locator("[data-mx-saved]")).toBeHidden();
 });
 
+// The vacation reply saves as it is written, like the one-value settings: a
+// field left saves, and the redraw that brings back what was saved keeps the
+// next field's words and focus, and the section stays open. Undo puts the
+// reply back as it was drawn.
+test("the vacation reply saves as it is written, and typing goes on through the save", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/os/vayumail/accounts/settings?user=ankush%40mail.test");
+  const form = page.locator('form.vm-ooo-form[data-mx-autosave]');
+  await expect(form).toBeVisible();
+  await expect(form.locator('button[type="submit"]')).toBeHidden();
+  const subject = form.locator('input[name="subject"]');
+  const was = await subject.inputValue();
+  const saved = page.waitForResponse((r) => r.url().includes("/os/vayumail/autoreply/action") && r.request().method() === "POST");
+  await subject.fill("Away this week");
+  const body = page.locator('form.vm-ooo-form textarea[name="body"]');
+  await body.click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" Back on Monday.");
+  await saved;
+  await expect(page.locator("[data-mx-saved]")).toBeVisible();
+  await expect(page.locator("details.vm-ooo:has(form.vm-ooo-form[data-mx-autosave])")).toHaveAttribute("open", "");
+  await expect(page.locator('form.vm-ooo-form input[name="subject"]')).toHaveValue("Away this week");
+  await expect(page.locator('form.vm-ooo-form textarea[name="body"]')).toBeFocused();
+  await expect(page.locator('form.vm-ooo-form textarea[name="body"]')).toHaveValue(/Back on Monday\.$/);
+  const undone = page.waitForResponse((r) => r.url().includes("/os/vayumail/autoreply/action") && r.request().method() === "POST");
+  await page.locator("[data-mx-undo]").click();
+  await undone;
+  await expect(page.locator('form.vm-ooo-form input[name="subject"]')).toHaveValue(was);
+});
+
 // On a phone the list is worked by the thumb: Compose is a round button over
 // the list (gone on a message's screen), and a row swiped right past a third
 // of its width is archived. The spec puts the message back where it was.

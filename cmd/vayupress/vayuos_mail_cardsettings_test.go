@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"github.com/johalputt/vayupress/internal/auth"
+	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -243,5 +244,26 @@ func TestTheAdministratorsOwnMailboxHasTheirPasskeys(t *testing.T) {
 	}
 	if other := page("erin@example.com"); strings.Contains(other, "data-passkey") {
 		t.Error("another person's mailbox offers the administrator a passkey")
+	}
+}
+
+// On the Settings page the vacation reply saves as it changes and is drawn
+// open, since every save redraws the page; the accounts list, which shares
+// the builder, keeps its Save button and its folded section.
+func TestTheVacationReplySavesAsItChangesOnSettings(t *testing.T) {
+	a := appWithMailAccounts(t)
+	admin := &users.User{ID: "admin1", Email: "boss@example.com", Role: users.RoleAdmin}
+	rec := httptest.NewRecorder()
+	a.handleVayuOSMailboxSettings(rec, withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/accounts/settings?user=dana@example.com", nil), admin))
+	page := rec.Body.String()
+	if !strings.Contains(page, `<form data-mx-autosave class="vm-ooo-form"`) {
+		t.Error("the vacation reply does not save as it changes on Settings")
+	}
+	if !strings.Contains(page, `<details open class="vm-ooo vm-acct__sub">`) {
+		t.Error("the vacation reply is drawn folded, and folds shut at every save")
+	}
+	card := a.vayuCardVacation(context.Background(), vmail.Account{Email: "dana@example.com"})
+	if strings.Contains(card, "data-mx-autosave") || strings.Contains(card, "<details open") {
+		t.Error("the accounts list's vacation card lost its Save button or its folded section")
 	}
 }

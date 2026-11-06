@@ -2377,9 +2377,9 @@
 
   // ── Settings: find a setting, and save as it changes ──────────────────────
   // The field over the sections hides every setting whose name and words do
-  // not hold what is typed, and a section left with none. A one-value
-  // setting (data-mx-autosave) saves when it changes, with "Saved. Undo" for
-  // ten seconds; Undo sends the value the page was drawn with.
+  // not hold what is typed, and a section left with none. A setting marked
+  // data-mx-autosave saves when one of its fields changes, with "Saved.
+  // Undo" for ten seconds; Undo sends the values the page was drawn with.
   (function () {
     document.addEventListener('input', function (e) {
       var find = e.target && e.target.closest ? e.target.closest('[data-mx-set-find]') : null;
@@ -2420,6 +2420,38 @@
       saved.hidden = false;
       clearTimeout(timer);
       timer = setTimeout(function () { saved.hidden = true; }, 10000);
+    });
+    // A save redraws the settings, and it lands after focus has moved on:
+    // the field being typed in was replaced, with what had been typed since.
+    // The field in hand, its words and its caret are put back after the
+    // redraw. A field is found again by its form's address, which forms on
+    // the page share (two post to the aliases action), its place among
+    // those forms, and its name.
+    var held = null;
+    document.body.addEventListener('htmx:beforeSwap', function (e) {
+      held = null;
+      var into = e.detail && e.detail.target;
+      var el = document.activeElement;
+      if (!into || into.id !== 'vm-mbox-settings' || !el || !el.name || !into.contains(el)) return;
+      var form = el.closest('form[hx-post]');
+      if (!form) return;
+      var post = form.getAttribute('hx-post');
+      var same = Array.prototype.slice.call(into.querySelectorAll('form[hx-post]')).filter(function (f) { return f.getAttribute('hx-post') === post; });
+      held = { post: post, at: same.indexOf(form), name: el.name, value: el.value, typed: el.value !== el.defaultValue,
+        caret: typeof el.selectionStart === 'number' ? el.selectionStart : null };
+    });
+    document.body.addEventListener('htmx:afterSwap', function (e) {
+      var into = e.detail && e.detail.target;
+      if (!held || !into || into.id !== 'vm-mbox-settings') return;
+      var h = held;
+      held = null;
+      var same = Array.prototype.slice.call(into.querySelectorAll('form[hx-post]')).filter(function (f) { return f.getAttribute('hx-post') === h.post; });
+      var form = same[h.at];
+      var el = form && form.querySelector('[name="' + h.name.replace(/["\\]/g, '') + '"]');
+      if (!el) return;
+      if (h.typed && el.type !== 'checkbox' && el.type !== 'radio') el.value = h.value;
+      el.focus({ preventScroll: true });
+      if (h.caret !== null && typeof el.setSelectionRange === 'function') { try { el.setSelectionRange(h.caret, h.caret); } catch (err) { /* a date field has no caret */ } }
     });
     document.addEventListener('click', function (e) {
       if (!e.target.closest || !e.target.closest('[data-mx-undo]') || !undo || !window.htmx) return;

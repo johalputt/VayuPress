@@ -62,7 +62,7 @@ func (a *App) mailboxSettingsSections(ctx context.Context, email string, forHold
 	}
 	b.WriteString(mailSettingGroup("addresses", "Addresses", addresses...))
 	b.WriteString(mailSettingGroup("rules", "Rules and replies",
-		mailSetting{Name: "Vacation reply", Find: "autoresponder out of office away", HTML: a.vayuCardVacation(ctx, ac), Bare: true},
+		mailSetting{Name: "Vacation reply", Find: "autoresponder out of office away", HTML: autosaveForm(openSection(a.vayuCardVacation(ctx, ac))), Bare: true},
 		mailSetting{Name: "Filters", Find: "rules sort move", HTML: a.vayuCardFilters(ctx, ac), Bare: true}))
 	privacy := []mailSetting{
 		{Name: "Sign-in attempts", Find: "sign-in name login security", HTML: a.vayuCardSignins(ctx, ac), Bare: true},
@@ -447,6 +447,13 @@ func mailSettingGroup(id, title string, items ...mailSetting) string {
 // the accounts list, which shares the builder, keeps the button.
 func autosaveForm(form string) string {
 	return strings.Replace(form, "<form ", "<form data-mx-autosave ", 1)
+}
+
+// openSection draws a setting's collapsible section open: on the Settings
+// page it is what the person came for, and every save redraws the page's
+// settings, which folded a closed-by-default section shut under them.
+func openSection(card string) string {
+	return strings.Replace(card, "<details ", "<details open ", 1)
 }
 
 // mailSettingsLayout is the Settings page: the sections listed on the left
