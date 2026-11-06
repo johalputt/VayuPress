@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.28] — 2026-11-06
+
+An administrator adds a passkey from Mail, and every direct dependency is at its latest release, brotli past its advisory.
+
 ### Fixed
 
 - **An administrator can add a passkey from Mail.** Mail › Settings opens an
