@@ -186,6 +186,7 @@ type hChrome struct {
 	Cfg            theme.HalcyonConfig
 	Kind           string // home, topic, topics, article, search, notfound, author
 	SiteName       string
+	Home           string // where the site's name links: its blog's base, "/" or "/blog"
 	About          string
 	Nav            []hLink
 	ShowMembership bool
@@ -218,7 +219,7 @@ func halcyonChrome(s SiteSettings, cfg theme.HalcyonConfig, kind string) hChrome
 		name = "VayuPress"
 	}
 	c := hChrome{
-		Cfg: cfg, Kind: kind, SiteName: name,
+		Cfg: cfg, Kind: kind, Home: s.blogBase(), SiteName: name,
 		About:          firstNonEmptyStr(s.Tagline, s.Description),
 		Nav:            halcyonNav(s.NavJSON),
 		ShowMembership: s.ShowMembership,

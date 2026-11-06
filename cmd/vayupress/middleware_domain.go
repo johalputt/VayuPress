@@ -128,7 +128,15 @@ func (a *App) brandForRequest(r *http.Request) (render.SiteSettings, bool) {
 	// than like the studio's blog.
 	if sc := settings.ForDomain(d.ID); sc.Valid() && a.siteSettings != nil {
 		if vals, err := a.siteSettings.GetAll(r.Context(), sc); err == nil {
-			return siteSettingsFromValues(vals), true
+			s := siteSettingsFromValues(vals)
+			// A site that has not named itself is called by its own address,
+			// not by the product's name (an unset key reads as its default)
+			// nor the install's domain (the renderer's fallback).
+			if n := strings.TrimSpace(s.Name); n == "" || n == settings.Defaults[settings.KeySiteName] {
+				s.Name = d.Host
+			}
+			s.BlogBase = a.blogBaseFor(r)
+			return s, true
 		}
 	}
 
@@ -141,6 +149,7 @@ func (a *App) brandForRequest(r *http.Request) (render.SiteSettings, bool) {
 	}
 	s := render.GetActiveSettings()
 	applyBrand(&s, b)
+	s.BlogBase = a.blogBaseFor(r)
 	return s, true
 }
 

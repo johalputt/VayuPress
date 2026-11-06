@@ -102,8 +102,8 @@ func halcyonMemberPage(page string, kind MemberPage, cfg theme.HalcyonConfig) st
 			bottom = strings.TrimSuffix(strings.TrimSpace(b.String()), "</body></html>")
 		}
 	} else {
-		top = `<header class="h-focus"><a class="h-name" href="` + template.HTMLEscapeString(BlogBase()) + `">` +
-			template.HTMLEscapeString(c.SiteName) + `</a><a class="h-back" href="` + template.HTMLEscapeString(BlogBase()) +
+		top = `<header class="h-focus"><a class="h-name" href="` + template.HTMLEscapeString(c.Home) + `">` +
+			template.HTMLEscapeString(c.SiteName) + `</a><a class="h-back" href="` + template.HTMLEscapeString(c.Home) +
 			`">Back to the site</a></header>`
 	}
 	if loc := bodyOpenRe.FindStringIndex(page); loc != nil {

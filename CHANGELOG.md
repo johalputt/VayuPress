@@ -38,6 +38,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   marked only the button pressed, so a second switch on the page showed the
   old scheme.
 - **Storage counts one post as one**, not "1 posts", while pages refresh.
+- **A website with its blog at /blog serves its blog.** Where a site's blog
+  lives was one value for the whole install, the install's own: on a
+  hosted site serving its website at "/" and its blog at /blog, /blog was
+  taken for a post called "blog" and answered Not found. Each site's blog
+  now lives where its own mode puts it, with its pages and links under it.
+- **A hosted site's pages are in its own name.** Its Not found page was
+  drawn with the install's name, menus and footer; its post cards named the
+  install's author; and a site that had not named itself was called by the
+  install's domain or the product's name. Each now uses the site's own
+  settings, and an unnamed site is called by its address.
 - **Write for this site makes the site's draft.** On a hosted site's Posts &
   pages, the draft was given to the site before the post queue had written
   it, so every press failed with "Could not create a draft"; it now waits

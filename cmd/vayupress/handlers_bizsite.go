@@ -405,6 +405,22 @@ func (a *App) handleOSWebsiteSave(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok", "template": tpl.Key, "mode": body.Mode})
 }
 
+// blogBaseFor is where the blog of the site this request is for lives: the
+// base its own website mode gives. The install keeps one base of its own
+// (render.BlogBase, from its mode), and a hosted site serving its website at
+// "/" and its blog at /blog was read with that one, so its /blog was taken
+// for a post called "blog" and answered Not found.
+//
+// The install's own pages keep render.BlogBase, which is kept in step with
+// its mode at boot and on every save.
+func (a *App) blogBaseFor(r *http.Request) string {
+	if d, ok := activeDomain(r); !ok || d.IsPrimary || !a.multiDomain(r) {
+		return render.BlogBase()
+	}
+	mode, _, _ := a.bizSettings(r)
+	return blogBaseForMode(strings.TrimSpace(mode))
+}
+
 // blogBaseForMode maps a site mode to the blog's URL base path: "/blog" for the
 // business_subpath mode (website at "/", blog under /blog), "/" otherwise.
 func blogBaseForMode(mode string) string {

@@ -304,6 +304,11 @@ type SiteSettings struct {
 	// CommentsEnabled mirrors the feature.comments flag so the article template
 	// can render (or omit) the public comment widget.
 	CommentsEnabled bool
+	// BlogBase is where this site's blog lives, "/" or "/blog". Empty is the
+	// install's own (BlogBase): a hosted site serving its website at "/" and
+	// its blog at /blog was read with the install's base, so /blog was taken
+	// for a post called "blog" and answered Not found.
+	BlogBase string
 }
 
 // OGImagePath maps a stored OG-image setting value to the public URL the
@@ -1979,10 +1984,17 @@ func BlogBase() string {
 	return "/"
 }
 
-// blogPageURL builds the URL for page n of the blog index under the active base:
+// blogBase is where s's blog lives: its own base, else the install's.
+func (s SiteSettings) blogBase() string {
+	if s.BlogBase != "" {
+		return s.BlogBase
+	}
+	return BlogBase()
+}
+
+// blogPageURL builds the URL for page n of the blog index under base:
 // page 1 is the base itself ("/" or "/blog"); deeper pages append /page/N.
-func blogPageURL(n int) string {
-	base := BlogBase()
+func blogPageURL(base string, n int) string {
 	if n <= 1 {
 		return base
 	}
@@ -2128,14 +2140,14 @@ func RenderHomeWithSettings(s SiteSettings, domain, version string, articles []H
 	// Canonical + pager URLs are built under the active blog base so they are
 	// correct whether the blog lives at "/" (blog / subdomain modes) or at
 	// "/blog" (business_subpath mode). Page 1 lives at the base itself.
-	canonical := blogPageURL(page)
+	canonical := blogPageURL(s.blogBase(), page)
 	hasPrev, hasNext := page > 1, page < totalPages
 	prevURL, nextURL := "", ""
 	if hasPrev {
-		prevURL = blogPageURL(page - 1)
+		prevURL = blogPageURL(s.blogBase(), page-1)
 	}
 	if hasNext {
-		nextURL = blogPageURL(page + 1)
+		nextURL = blogPageURL(s.blogBase(), page+1)
 	}
 	// The structured-data graph. Built from the same values the page renders, so
 	// it cannot describe a different site than the one on screen — and only the
@@ -2315,11 +2327,16 @@ func RenderSearch(domain, version, query string, hits []SearchHit) (string, erro
 
 // Render404 renders the branded not-found page.
 func Render404(domain, version string) string {
+	return Render404For(getActiveSettings(), domain, version)
+}
+
+// Render404For is the Not found page drawn with a site's own settings: a
+// hosted site's was the install's, its name, menus and footer.
+func Render404For(s SiteSettings, domain, version string) string {
 	if cfg, ok := Halcyon(); ok {
-		return renderHalcyon404(cfg)
+		return renderHalcyon404(cfg, s)
 	}
 	var buf strings.Builder
-	s := getActiveSettings()
 	_ = notFoundTmpl.Execute(&buf, homePage{
 		Domain:              domain,
 		Origin:              seo.Origin(domain),

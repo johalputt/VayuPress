@@ -128,8 +128,8 @@ const halcyonShared = `
 {{template "bar" .}}{{end}}
 
 {{define "bar"}}<header class="h-bar" data-h-bar><div class="h-wrap h-bar-in">
-{{if eq .Kind "article"}}<a class="h-ib h-only-phone" href="{{blogBase}}" aria-label="Back to {{.SiteName}}">{{icon "back"}}</a>{{end}}
-{{if and (eq .Kind "home") (ne .Composition "index")}}<h1 class="h-name-h"><a class="h-name" href="{{blogBase}}" data-vp-brand><img class="h-logo" src="/static/brand-48.png" alt="" width="28" height="28">{{.SiteName}}</a></h1>{{else}}<a class="h-name" href="{{blogBase}}" data-vp-brand><img class="h-logo" src="/static/brand-48.png" alt="" width="28" height="28">{{.SiteName}}</a>{{end}}
+{{if eq .Kind "article"}}<a class="h-ib h-only-phone" href="{{.Home}}" aria-label="Back to {{.SiteName}}">{{icon "back"}}</a>{{end}}
+{{if and (eq .Kind "home") (ne .Composition "index")}}<h1 class="h-name-h"><a class="h-name" href="{{.Home}}" data-vp-brand><img class="h-logo" src="/static/brand-48.png" alt="" width="28" height="28">{{.SiteName}}</a></h1>{{else}}<a class="h-name" href="{{.Home}}" data-vp-brand><img class="h-logo" src="/static/brand-48.png" alt="" width="28" height="28">{{.SiteName}}</a>{{end}}
 {{if .Nav}}<nav class="h-links" aria-label="Primary">{{range .Nav}}<a href="{{.Href}}"{{if .External}} rel="noopener noreferrer"{{end}}>{{.Label}}</a>{{end}}</nav>{{end}}
 <div class="h-tools">
 {{if .ShowSearch}}<form class="h-search" method="get" action="/search" role="search" data-vayu-search><button class="h-ib" type="submit" aria-label="Search">{{icon "search"}}</button></form>{{end}}
@@ -142,14 +142,14 @@ const halcyonShared = `
 
 {{define "end"}}<footer class="h-foot"><div class="h-wrap">
 <div class="h-foot-row">
-<div class="h-foot-about"><a class="h-name" href="{{blogBase}}">{{.SiteName}}</a>{{if .About}}<p>{{.About}}</p>{{end}}{{if .Social}}<ul class="h-social">{{range .Social}}<li><a href="{{.Href}}"{{if .External}} rel="noopener noreferrer"{{end}}>{{.Label}}</a></li>{{end}}</ul>{{end}}</div>
+<div class="h-foot-about"><a class="h-name" href="{{.Home}}">{{.SiteName}}</a>{{if .About}}<p>{{.About}}</p>{{end}}{{if .Social}}<ul class="h-social">{{range .Social}}<li><a href="{{.Href}}"{{if .External}} rel="noopener noreferrer"{{end}}>{{.Label}}</a></li>{{end}}</ul>{{end}}</div>
 {{range .FooterCols}}<div class="h-foot-col">{{if .Title}}<h2 class="h-label">{{.Title}}</h2>{{end}}<ul>{{range .Links}}<li><a href="{{.Href}}"{{if .External}} rel="noopener noreferrer"{{end}}>{{.Label}}</a></li>{{end}}</ul></div>{{end}}
 </div>
 <div class="h-foot-base"><span>{{.Copyright}}</span>{{if .Legal}}<nav class="h-legal" aria-label="Legal">{{range .Legal}}<a href="{{.Href}}"{{if .External}} rel="noopener noreferrer"{{end}}>{{.Label}}</a>{{end}}</nav>{{end}}<span class="h-pub">Published with <a href="https://vayupress.com" rel="noopener noreferrer">VayuPress</a></span><span class="h-js-only">{{template "schemes" .}}</span></div>
 </div></footer>
 <div class="h-scrim" data-h-scrim hidden></div>
 <div class="h-bsheet" id="h-menu" role="dialog" aria-modal="true" aria-label="Menu" hidden><div class="h-grab" aria-hidden="true"></div>
-<a class="h-it" href="{{blogBase}}">Home</a>{{range .Nav}}<a class="h-it" href="{{.Href}}"{{if .External}} rel="noopener noreferrer"{{end}}>{{.Label}}</a>{{end}}{{if .ShowMembership}}<a class="h-it" href="/members" data-vp-signin>Sign in</a>{{end}}
+<a class="h-it" href="{{.Home}}">Home</a>{{range .Nav}}<a class="h-it" href="{{.Href}}"{{if .External}} rel="noopener noreferrer"{{end}}>{{.Label}}</a>{{end}}{{if .ShowMembership}}<a class="h-it" href="/members" data-vp-signin>Sign in</a>{{end}}
 <div class="h-div" aria-hidden="true"></div><p class="h-label">Appearance</p>{{template "schemes" .}}
 {{if .ShowMembership}}<a class="h-btn h-btn-ink h-btn-wide" href="/signup" data-vp-signup>Subscribe</a>{{end}}
 </div>
@@ -246,7 +246,7 @@ const halcyonTopicsTmpl = `{{template "start" .}}<div class="h-page"><main id="m
 const halcyonNotFoundTmpl = `{{template "start" .}}<div class="h-page"><main id="main-content" class="h-wrap h-narrow h-lost">
 <p class="h-eyebrow">Not found</p><h1>There is nothing at this address.</h1>
 <p>The page may have moved, or the link may be mistyped.</p>
-<p class="h-lost-links"><a class="h-btn h-btn-ink" href="{{blogBase}}">Go to {{.SiteName}}</a>{{if .ShowSearch}}<a class="h-btn h-btn-line" href="/search">Search the site</a>{{end}}</p>
+<p class="h-lost-links"><a class="h-btn h-btn-ink" href="{{.Home}}">Go to {{.SiteName}}</a>{{if .ShowSearch}}<a class="h-btn h-btn-line" href="/search">Search the site</a>{{end}}</p>
 </main></div>{{template "end" .}}`
 
 // halcyonPages are Halcyon's page templates by name. The parsed set and the
@@ -340,7 +340,7 @@ func renderHalcyonHome(in HomeInput, cfg theme.HalcyonConfig) (string, error) {
 	page, totalPages := max(in.Page, 1), max(in.TotalPages, 1)
 	c := halcyonChrome(in.Settings, cfg, "home")
 	origin := seo.Origin(in.Domain)
-	canonical := blogPageURL(page)
+	canonical := blogPageURL(in.Settings.blogBase(), page)
 	c.PageTitle = c.SiteName
 	if t := strings.TrimSpace(in.Settings.Tagline); t != "" {
 		c.PageTitle += " — " + t
@@ -348,11 +348,11 @@ func renderHalcyonHome(in HomeInput, cfg theme.HalcyonConfig) (string, error) {
 	c.Description = firstNonEmptyStr(in.Settings.Description, in.Settings.Tagline, c.SiteName)
 	c.Canonical = origin + canonical
 	if page > 1 {
-		c.PrevURL = blogPageURL(page - 1)
+		c.PrevURL = blogPageURL(in.Settings.blogBase(), page-1)
 		c.PageTitle = c.SiteName + " — page " + strconv.Itoa(page)
 	}
 	if page < totalPages {
-		c.NextURL = blogPageURL(page + 1)
+		c.NextURL = blogPageURL(in.Settings.blogBase(), page+1)
 	}
 	c.JSONLD = homeJSONLD(in, origin, canonical)
 	c.Scripts = halcyonScripts(cfg.MostRead || cfg.Pinned)
@@ -575,8 +575,8 @@ func renderHalcyonSearch(in SearchInput, cfg theme.HalcyonConfig) (string, error
 	return executeHalcyon("search", v)
 }
 
-func renderHalcyon404(cfg theme.HalcyonConfig) string {
-	c := halcyonChrome(getActiveSettings(), cfg, "notfound")
+func renderHalcyon404(cfg theme.HalcyonConfig, s SiteSettings) string {
+	c := halcyonChrome(s, cfg, "notfound")
 	c.PageTitle = "Not found — " + c.SiteName
 	c.Robots = "noindex"
 	c.Scripts = halcyonScripts(false)

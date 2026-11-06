@@ -237,7 +237,7 @@ func (a *App) handleHomePaged(w http.ResponseWriter, r *http.Request) {
 	}
 	// business_subpath mode: the blog and its pagination live under /blog, so
 	// /page/N is not canonical — redirect it to the /blog equivalent.
-	if render.BlogBase() == "/blog" {
+	if a.blogBaseFor(r) == "/blog" {
 		if n == 1 {
 			http.Redirect(w, r, "/blog", http.StatusMovedPermanently)
 		} else {
@@ -257,7 +257,7 @@ func (a *App) handleHomePaged(w http.ResponseWriter, r *http.Request) {
 // is just a normal slug, so it is served as an article (preserving any post
 // actually slugged "blog").
 func (a *App) handleBlogIndex(w http.ResponseWriter, r *http.Request) {
-	if render.BlogBase() != "/blog" {
+	if a.blogBaseFor(r) != "/blog" {
 		if rctx := chi.RouteContext(r.Context()); rctx != nil {
 			rctx.URLParams.Add("slug", "blog")
 		}
@@ -270,7 +270,7 @@ func (a *App) handleBlogIndex(w http.ResponseWriter, r *http.Request) {
 // handleBlogPaged serves /blog/page/N in business_subpath mode (page 1 redirects
 // to /blog); in other modes /blog/* is not a blog surface, so it 404s.
 func (a *App) handleBlogPaged(w http.ResponseWriter, r *http.Request) {
-	if render.BlogBase() != "/blog" {
+	if a.blogBaseFor(r) != "/blog" {
 		a.handleNotFound(w, r)
 		return
 	}
@@ -504,6 +504,14 @@ func (a *App) handleNotFound(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusNotFound)
+	if s, ok := a.brandForRequest(r); ok {
+		host := config.Cfg.Domain
+		if d, ok := activeDomain(r); ok {
+			host = d.Host
+		}
+		fmt.Fprint(w, render.Render404For(s, host, Version))
+		return
+	}
 	fmt.Fprint(w, render.Render404(config.Cfg.Domain, Version))
 }
 
@@ -2125,10 +2133,6 @@ func (a *App) homeInput(r *http.Request, page, total, totalPages int, domClause 
 		_ = rows.Close()
 	}
 	articles := listingCards(r.Context(), ids)
-	author := render.GetActiveSettings().Author
-	for i := range articles {
-		articles[i].Author = author
-	}
 
 	// Per-domain branding: a secondary domain with its own brand renders from its
 	// branded settings; the primary and single-domain installs take the original
@@ -2136,6 +2140,10 @@ func (a *App) homeInput(r *http.Request, page, total, totalPages int, domClause 
 	s, branded := a.brandForRequest(r)
 	if !branded {
 		s = render.GetActiveSettings()
+	}
+	// The site's own author: a hosted site's cards named the install's.
+	for i := range articles {
+		articles[i].Author = s.Author
 	}
 	in := render.HomeInput{Settings: s, Domain: config.Cfg.Domain, Version: Version, Articles: articles,
 		Total: total, Page: page, TotalPages: totalPages}
