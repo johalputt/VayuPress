@@ -322,9 +322,13 @@ func saHomeInstall(cfg *osSettings, snap *adminMetricsSnapshot, m mode.Mode) str
 			jobs = osGroupInt(snap.PendingJobs) + ` waiting`
 		}
 		row("Background work", jobs)
+		// Always a row, so the section is one height whether or not a request
+		// has been timed yet: its picture changed with the timing alone.
+		p95 := `Not measured yet`
 		if snap.HTTPP95 > 0 {
-			row("Response time", ``+strconv.FormatInt(snap.HTTPP95, 10)+` ms at the 95th percentile`)
+			p95 = strconv.FormatInt(snap.HTTPP95, 10) + ` ms at the 95th percentile`
 		}
+		row("Response time", p95)
 		if snap.QuotaBytes > 0 {
 			pct := snap.StoragePct
 			free := snap.QuotaBytes - snap.StorageBytes

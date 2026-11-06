@@ -47,6 +47,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   and menu, not the operator's.
 - A hosted site's settings, saved, show on its pages at once: its cached
   pages were served as they were until they aged out.
+- Home's "This install" shows Response time before a request has been
+  timed ("Not measured yet"), so the section is one height from the first
+  visit.
 
 ## [3.18.29] — 2026-11-06
 
