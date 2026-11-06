@@ -162,14 +162,9 @@ var tagPageTmpl = template.Must(template.New("tagpage").Funcs(tagFuncs).Parse(`<
 </main>
 </div>{{.PostCardMediaJSLink}}</body></html>`))
 
-// RenderTagIndex renders the public topic-index page listing every tag with its
-// post count. tags should already be sorted by the caller (count desc, name asc).
-func RenderTagIndex(domain, version string, tags []TagInfo, totalPosts int) (string, error) {
-	return RenderTagIndexFor(nil, domain, version, tags, totalPosts)
-}
-
-// RenderTagIndexFor is RenderTagIndex for one site's settings; nil is the
-// install's own.
+// RenderTagIndexFor renders the public topic-index page listing every tag with
+// its post count, in one site's settings (nil is the install's own). tags
+// should already be sorted by the caller (count desc, name asc).
 func RenderTagIndexFor(site *SiteSettings, domain, version string, tags []TagInfo, totalPosts int) (string, error) {
 	s := siteOr(site)
 	if cfg, ok := Halcyon(); ok {
@@ -211,16 +206,11 @@ func tagURL(tag string) string {
 // links still count and nothing a visitor has bookmarked breaks.
 const thinTagPosts = 3
 
-// RenderTagPage renders a single tag's listing page from the published articles
-// carrying that tag. totalCount is the number of matching posts; broad is a tag
-// on so large a part of the site that its page lists the site, not a topic,
-// and is kept out of search like a thin one.
-func RenderTagPage(domain, version, tag string, articles []HomeArticle, totalCount int, broad bool) (string, error) {
-	return RenderTagPageFor(nil, domain, version, tag, articles, totalCount, broad)
-}
-
-// RenderTagPageFor is RenderTagPage for one site's settings; nil is the
-// install's own.
+// RenderTagPageFor renders a single tag's listing page from the published
+// articles carrying that tag, in one site's settings (nil is the install's
+// own). totalCount is the number of matching posts; broad is a tag on so
+// large a part of the site that its page lists the site, not a topic, and is
+// kept out of search like a thin one.
 func RenderTagPageFor(site *SiteSettings, domain, version, tag string, articles []HomeArticle, totalCount int, broad bool) (string, error) {
 	if cfg, ok := Halcyon(); ok {
 		return renderHalcyonTopic(TopicInput{Settings: site, Domain: domain, Version: version, Tag: tag, Articles: articles, Total: totalCount, Broad: broad}, cfg)

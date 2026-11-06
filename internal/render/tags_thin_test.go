@@ -20,7 +20,7 @@ import (
 func TestAThinTagPageIsNotIndexed(t *testing.T) {
 	const noindex = `<meta name="robots" content="noindex,follow">`
 	for n, want := range map[int]bool{1: true, thinTagPosts - 1: true, thinTagPosts: false, 40: false} {
-		page, err := RenderTagPage("example.com", "1.0.0", "go", nil, n, false)
+		page, err := RenderTagPageFor(nil, "example.com", "1.0.0", "go", nil, n, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -33,7 +33,7 @@ func TestAThinTagPageIsNotIndexed(t *testing.T) {
 // A broad tag's page is kept out of search however many posts it lists: it
 // says nothing about any one of them.
 func TestABroadTagPageIsNotIndexed(t *testing.T) {
-	page, err := RenderTagPage("example.com", "1.0.0", "tutorial", nil, 40, true)
+	page, err := RenderTagPageFor(nil, "example.com", "1.0.0", "tutorial", nil, 40, true)
 	if err != nil {
 		t.Fatal(err)
 	}

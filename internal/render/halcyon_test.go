@@ -488,7 +488,7 @@ func TestHalcyonLinksATagByItsKey(t *testing.T) {
 // The shared tag page's entry point carries the broad flag into Halcyon too.
 func TestABroadTagPageIsNotIndexedInHalcyon(t *testing.T) {
 	withHalcyon(t, nil)
-	page, err := RenderTagPage("example.com", "1.0.0", "tutorial", nil, 40, true)
+	page, err := RenderTagPageFor(nil, "example.com", "1.0.0", "tutorial", nil, 40, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -746,7 +746,7 @@ func TestHalcyonPagesCarryTheirLinkPreview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	topics, err := RenderTagIndex("example.com", "1", []TagInfo{{Name: "go", Count: 40}}, 40)
+	topics, err := RenderTagIndexFor(nil, "example.com", "1", []TagInfo{{Name: "go", Count: 40}}, 40)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -828,7 +828,7 @@ func TestABodyClassIsNoStyledClass(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	topics, _ := RenderTagIndex("example.com", "1", []TagInfo{{Name: "go", Count: 4}}, 4)
+	topics, _ := RenderTagIndexFor(nil, "example.com", "1", []TagInfo{{Name: "go", Count: 4}}, 4)
 	search, _ := RenderSearchPage(SearchInput{Domain: "example.com", Query: "x"})
 	home, _ := RenderHomePage(HomeInput{Domain: "example.com", Page: 1, TotalPages: 1})
 	topic, _ := RenderTopicPage(TopicInput{Domain: "example.com", Tag: "go", Total: 4})

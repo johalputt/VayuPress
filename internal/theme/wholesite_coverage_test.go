@@ -119,7 +119,7 @@ func renderFullArticle(t *testing.T) string {
 		t.Fatalf("render article: %v", err)
 	}
 
-	search, err := render.RenderSearch("example.com", "0", "q", []render.SearchHit{
+	search, err := render.RenderSearchFor(nil, "example.com", "0", "q", []render.SearchHit{
 		{Title: "One", Slug: "one", CreatedAt: now, Tags: []string{"a"}},
 	})
 	if err != nil {

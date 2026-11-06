@@ -2307,15 +2307,10 @@ var searchTmpl = template.Must(template.New("search").Funcs(homeFuncs).Parse(`<!
 </main>
 </div></body></html>`))
 
-// RenderSearch renders the public search results page for query, listing hits.
-// Results pages are marked noindex (thin, query-dependent) but follow links so
-// the linked posts are still discoverable.
-func RenderSearch(domain, version, query string, hits []SearchHit) (string, error) {
-	return RenderSearchFor(nil, domain, version, query, hits)
-}
-
-// RenderSearchFor is RenderSearch for one site's settings; nil is the
-// install's own.
+// RenderSearchFor renders the public search results page for query, listing
+// hits, in one site's settings (nil is the install's own). Results pages are
+// marked noindex (thin, query-dependent) but follow links so the linked posts
+// are still discoverable.
 func RenderSearchFor(site *SiteSettings, domain, version, query string, hits []SearchHit) (string, error) {
 	if cfg, ok := Halcyon(); ok {
 		return renderHalcyonSearch(SearchInput{Settings: site, Domain: domain, Version: version, Query: query, Hits: hits}, cfg)

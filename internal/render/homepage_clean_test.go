@@ -150,7 +150,7 @@ func TestRenderSearch(t *testing.T) {
 	t.Cleanup(func() { SetActiveSettings(SiteSettings{}) })
 
 	hits := []SearchHit{{Title: "Hello World", Slug: "hello-world"}}
-	out, err := RenderSearch("example.com", "1.0.0", "hello", hits)
+	out, err := RenderSearchFor(nil, "example.com", "1.0.0", "hello", hits)
 	if err != nil {
 		t.Fatalf("RenderSearch: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestRenderSearch(t *testing.T) {
 		}
 	}
 
-	empty, err := RenderSearch("example.com", "1.0.0", "zzz", nil)
+	empty, err := RenderSearchFor(nil, "example.com", "1.0.0", "zzz", nil)
 	if err != nil {
 		t.Fatalf("RenderSearch empty: %v", err)
 	}
