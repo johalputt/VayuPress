@@ -291,18 +291,13 @@ jobs:
 
       - name: Package the self-hosted marketing site
         if: steps.exists.outputs.skip != 'true'
-        # docs/site/ is published to GitHub Pages, where a page may load whatever
-        # it likes from wherever it likes. A VayuPress install serves every
-        # response under script-src/style-src/font-src 'self', so those same files
-        # uploaded unchanged render as unstyled text with every control dead.
-        #
-        # The build script repoints the three third-party subresources at the
-        # first-party copies the binary already serves, and refuses to produce a
-        # bundle if any off-origin subresource survives. Attaching the result
-        # here means an operator downloads one file instead of running a
-        # toolchain, which is the whole point of shipping it.
+        # vayupress.com as an install builds it when it follows this repository
+        # (internal/docsite): every page, decision and release note from docs/,
+        # drawn by the binary's own templates under script-src/style-src/
+        # font-src 'self'. Attaching the bundle lets an operator upload the
+        # site to any install without a toolchain.
         run: |
-          bash scripts/build-selfhosted-site.sh dist/selfhosted-site
+          go run ./cmd/vayudocs -repo . -commit "${GITHUB_SHA}" -zip dist/selfhosted-site.zip
           test -f dist/selfhosted-site.zip || { echo "FAIL: the site bundle was not produced"; exit 1; }
           # The NAME matters, not just the file. Every VayuPress binary already
           # installed in the world picks its update by alphabetical order (see the

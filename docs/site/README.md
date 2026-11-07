@@ -1,62 +1,33 @@
-# VayuPress marketing site
+# vayupress.com
 
-Source for the site served at https://vayupress.com.
-
-It is **no longer published to GitHub Pages.** vayupress.com is served from a
-VayuPress install, as an uploaded custom website, and this folder is the source
-that bundle is built from. `.github/workflows/deploy-site.yml` and the `CNAME`
-that carried the Pages custom domain are both gone.
-
-## Structure
+The words of the site served at https://vayupress.com. The install that
+serves it follows this repository and builds the site from it on every
+change to main (`internal/docsite`); `cmd/vayudocs` builds the same site
+locally, and each release attaches it as `vayupress-selfhosted-site.zip`.
+The words live here; the design (templates, stylesheet, script) ships with
+the binary, so a new look is a release and a new sentence is a commit.
 
 ```
 docs/site/
-├── index.html            # the home page (Tailwind + Alpine from their CDNs; rewritten below)
-├── about.html, vayuweb.html, webx.html
-├── sponsors/index.html
-├── vayumail/privacy/index.html
-├── .well-known/
-│   └── security.txt      # RFC 9116 contact — see "The expiry date is live" below
-└── assets/
-    ├── style.css, app.js
-    ├── logo-dark.png, mark-dark.png, favicon-{32,180,512}.png
-    └── vayuweb-*.png     # VayuWeb's marks and favicons
+├── nav.json        # the docs sidebar: its headings, and the guides under each
+├── home/           # the home page's sections, in file-name order
+├── pages/          # the site's own pages: About, Sponsors, VayuWeb, VayuMail privacy
+├── img/            # the console pictures the home page shows
+└── public/         # served as it is, at the site's root
+    ├── .well-known/security.txt   # RFC 9116; its Expires date is checked in CI
+    ├── <key>.txt                  # the IndexNow key
+    ├── webx.html                  # the old WebX address, sent on to VayuWeb
+    └── assets/logo-dark.png       # the brand's mark, which the console's is cut from
 ```
 
-The gallery images live in `docs/screenshots/`, outside this folder.
-`scripts/build-selfhosted-site.sh` copies them into the bundle; nothing else
-does, which is why 31 broken images once shipped in every upload.
+A section or a page is Markdown with a front matter block (`kicker:`, and
+for a page `path:`, `title:` and `description:`). Either may write
+`{decisions}` and `{releases}` and gets the build's own counts. Every guide
+in `docs/` and every decision in `docs/adr/` is published without being
+listed here.
 
-## Building the bundle
+Build it locally:
 
-```bash
-bash scripts/build-selfhosted-site.sh          # → dist/selfhosted-site/
 ```
-
-The script rewrites the CDN tags in `index.html` to same-origin assets, because
-an install refuses off-origin subresources, `<style>` blocks and inline scripts.
-**Do not hand-edit those CDN tags in the source** — the script regex-matches
-them.
-
-`tag-release.yml` runs the same script and attaches the zip to every release.
-
-## The expiry date is live
-
-`.well-known/security.txt` carries an RFC 9116 `Expires` field. It used to be
-stamped at publish time by the daily Pages workflow, so the committed value was
-a placeholder that never mattered. It matters now: the file ships verbatim in
-the bundle, and nothing rewrites it.
-
-`scripts/check-security-txt.py` runs in CI and fails once the file is within 45
-days of expiring. When it fires, push the date out. An expired security.txt is
-worse than none — scanners report it as the finding it exists to prevent.
-
-## Deploy
-
-VayuOS → the domain → Website → upload `dist/selfhosted-site/` as a zip.
-
-The bundle needs the per-domain **eval opt-in** (VayuOS → the domain → Website →
-"Allow this site to use eval"): `index.html` drives its behaviour through ~250
-Alpine expression strings, which Alpine's standard build compiles with
-`new Function()`. Without the opt-in the layout and typography are correct and
-the animations are inert.
+go run ./cmd/vayudocs -repo . -commit "$(git rev-parse HEAD)" -out dist/site
+```

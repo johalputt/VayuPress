@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -233,7 +234,15 @@ func TestSparseHoursAreOmittedFromTheRate(t *testing.T) {
 // reading "Admin-sovereignty lane survives a volumetric flood" directly beneath a
 // blurb saying the shield cannot absorb one.
 func TestNoCopyClaimsVolumetricAbsorption(t *testing.T) {
-	for _, f := range []string{"../../README.md", "../../docs/site/assets/app.js"} {
+	files := []string{"../../README.md"}
+	for _, g := range []string{"../../docs/site/home/*.md", "../../docs/site/pages/*.md"} {
+		m, _ := filepath.Glob(g)
+		files = append(files, m...)
+	}
+	if len(files) < 3 {
+		t.Fatalf("found %d files of copy; this guard has stopped reading the site", len(files))
+	}
+	for _, f := range files {
 		b, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatalf("read %s: %v", f, err)

@@ -8,6 +8,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+
+- **vayupress.com is built from the repository, not by hand.** The old
+  hand-made site in `docs/site` (its HTML, Tailwind and Alpine from CDNs,
+  and the scripts that rewrote it for a strict policy) is retired: the site
+  is the one an install builds by following the repository, and each
+  release attaches that build as `vayupress-selfhosted-site.zip`.
+  `security.txt`, the IndexNow key and the brand logo now live in
+  `docs/site/public`, and the checks that read the old site's copy read
+  the new one's.
+
 ### Added
 
 - **vayupress.com's home page carries the whole story, and both worlds.**

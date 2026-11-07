@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail the build before docs/site/.well-known/security.txt goes stale.
+"""Fail the build before docs/site/public/.well-known/security.txt goes stale.
 
 RFC 9116 requires an `Expires` field, and a security.txt past its expiry is
 reported as stale by the scanners that read it — so an expired file is worse
@@ -8,9 +8,9 @@ than none: it becomes the finding it was meant to prevent.
 The date used to be stamped at publish time by `.github/workflows/deploy-site.yml`,
 which ran daily, so the committed value never mattered. vayupress.com is now
 served from a VayuPress install rather than GitHub Pages, that workflow is gone,
-and the file ships verbatim inside the self-hosted bundle
-(`scripts/build-selfhosted-site.sh` copies the whole `docs/site/` tree). The date
-in the file is now the date that gets served.
+and the file ships verbatim inside the site's bundle (internal/docsite copies
+`docs/site/public/` to the bundle's root as it is). The date in the file is the
+date that gets served.
 
 Nothing refreshes it any more, so something has to notice. This runs in CI and
 fails while there is still time to act, rather than after the file has expired.
@@ -23,7 +23,7 @@ import pathlib
 import re
 import sys
 
-FILE = pathlib.Path("docs/site/.well-known/security.txt")
+FILE = pathlib.Path("docs/site/public/.well-known/security.txt")
 # Long enough that a fix is never urgent, short enough that the warning is not
 # so early it gets ignored.
 DEFAULT_LEAD_DAYS = 45

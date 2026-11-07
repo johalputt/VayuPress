@@ -154,12 +154,12 @@ func TestASiteWithNoUploadStillShowsTheLogoInsideItsOwnBundle(t *testing.T) {
 	isolateBundleRoot(t)
 	ctx := context.Background()
 
-	// Shaped like the bundles this project ACTUALLY builds, which is the whole
-	// point. The first version of this test put favicon.png at the bundle root
-	// and passed, while the marketing site — built by scripts/build-selfhosted-
-	// site.sh from docs/site/ — declares assets/favicon-32.png and has nothing at
-	// its root at all. The fixture was more convenient than reality, so it proved
-	// a convention no real bundle follows.
+	// Shaped like the bundles this project has actually built, which is the
+	// whole point. The first version of this test put favicon.png at the bundle
+	// root and passed, while the hand-made marketing site declared
+	// assets/favicon-32.png and had nothing at its root at all. The fixture was
+	// more convenient than reality, so it proved a convention no real bundle
+	// followed.
 	bundled := seedSiteWithMark(t, a, "bundled.example", nil)
 	deployBundleWithFiles(t, bundled.ID, map[string]string{
 		"index.html": `<!doctype html><html><head>` +

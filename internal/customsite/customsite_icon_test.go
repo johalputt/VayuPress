@@ -8,27 +8,21 @@ import (
 	"testing"
 )
 
-// Driven against docs/site — the tree scripts/build-selfhosted-site.sh turns
-// into the marketing site's bundle — because assuming the convention is exactly
-// what went wrong. That site declares assets/favicon-32.png and carries nothing
-// at its root, so a root-only lookup reported it as having no icon while every
-// one of its pages referenced one.
+// Shaped as the hand-made marketing site was, because assuming the
+// convention is exactly what went wrong: it declared assets/favicon-32.png in
+// its pages and carried nothing at its root, so a root-only lookup reported it
+// as having no icon while every one of its pages referenced one.
 func TestTheRealMarketingBundleDeclaresAnIconWeCanFind(t *testing.T) {
-	src := filepath.Join("..", "..", "docs", "site")
-	if _, err := os.Stat(filepath.Join(src, "index.html")); err != nil {
-		t.Skip("docs/site not present")
-	}
 	base := t.TempDir()
 	current := filepath.Join(base, "current")
 	if err := os.MkdirAll(filepath.Join(current, "assets"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"index.html", "assets/favicon-32.png"} {
-		b, err := os.ReadFile(filepath.Join(src, f))
-		if err != nil {
-			t.Fatalf("read %s from the real site source: %v", f, err)
-		}
-		if err := os.WriteFile(filepath.Join(current, f), b, 0o644); err != nil {
+	for f, body := range map[string]string{
+		"index.html":            `<!doctype html><html><head><link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png" /></head><body>x</body></html>`,
+		"assets/favicon-32.png": "\x89PNG\r\n\x1a\nicon",
+	} {
+		if err := os.WriteFile(filepath.Join(current, f), []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}

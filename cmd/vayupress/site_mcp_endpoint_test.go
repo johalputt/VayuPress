@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -31,28 +32,41 @@ import (
 // "mcp.<domain>" everywhere: a DNS-record table is a list of hostnames, and
 // "mcp.example.com" is exactly right there.
 func TestSiteAdvertisesPathEndpointNotBareSubdomain(t *testing.T) {
-	b, err := os.ReadFile("../../docs/site/assets/app.js")
-	if err != nil {
-		t.Fatalf("read site app.js: %v", err)
-	}
-	src := string(b)
-
-	// Every host: field on the site that mentions mcp must carry the path.
-	hostRe := regexp.MustCompile(`host:'([^']*mcp[^']*)'`)
-	found := 0
-	for _, m := range hostRe.FindAllStringSubmatch(src, -1) {
-		got := m[1]
-		found++
-		if !strings.Contains(got, "/mcp") {
-			t.Errorf("site advertises %q as the VayuMCP address; the endpoint is always a /mcp path "+
-				"(and the mcp. subdomain is optional, shipped off)", got)
+	// What vayupress.com says: its sections and pages (docs/site) and the
+	// words its templates draw (internal/docsite).
+	var files []string
+	for _, g := range []string{"../../docs/site/home/*.md", "../../docs/site/pages/*.md", "../../internal/docsite/templates/*.html", "../../internal/docsite/build.go"} {
+		m, err := filepath.Glob(g)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if strings.HasPrefix(got, "mcp.") {
-			t.Errorf("site leads with the optional dedicated host %q; the default is <your-domain>/mcp", got)
-		}
+		files = append(files, m...)
 	}
-	if found == 0 {
-		t.Fatal("no VayuMCP host: field found on the site — this guard has stopped guarding anything")
+	if len(files) < 4 {
+		t.Fatalf("found %d files of the site's copy; this guard has stopped reading the site", len(files))
+	}
+	// An address on mcp.<something>, and whether /mcp follows it.
+	addr := regexp.MustCompile(`\bmcp\.[a-z0-9<>-]+(?:\.[a-z0-9<>-]+)+(/mcp)?`)
+	bare := func(body string) []string {
+		var out []string
+		for _, m := range addr.FindAllStringSubmatch(body, -1) {
+			if m[1] == "" {
+				out = append(out, m[0])
+			}
+		}
+		return out
+	}
+	if got := bare("reach it at mcp.yourdomain.com today"); len(got) != 1 {
+		t.Fatalf("the matcher misses a bare subdomain (%v); this guard would pass anything", got)
+	}
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, got := range bare(string(b)) {
+			t.Errorf("%s names %q as VayuMCP's address; the endpoint is always a /mcp path, and the mcp. subdomain is optional, shipped off", f, got)
+		}
 	}
 }
 
