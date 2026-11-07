@@ -1,0 +1,11 @@
+{
+  "groups": [
+    {"group": "Start", "docs": ["INSTALLATION", "SETUP", "UPGRADING", "MIGRATION", "GHOST-MIGRATION", "TROUBLESHOOTING"]},
+    {"group": "Run it", "docs": ["OPERATIONS", "operations/backup-restore", "operations/disaster-recovery", "operations/wal-corruption-recovery", "MAIL-RECOVERY", "EMAILS", "update-mirror", "operations/vayuflow-automations", "operations/vayuveil-observation-posture", "VAYUTALK-ONION-FEDERATION"]},
+    {"group": "Connect", "docs": ["compatibility/mcp", "compatibility/claude-code", "compatibility/buzz", "compatibility/vayuapi", "API-REFERENCE", "compatibility/api-contracts", "compatibility/stability-matrix", "compatibility/vcb", "plugins/README", "plugins/SPEC"]},
+    {"group": "How it is built", "docs": ["ARCHITECTURE", "ADMIN-UI", "architecture/bounded-contexts", "architecture/system-modes", "QUALITY-GATES", "BENCHMARKS", "DEVELOPMENT", "CI-GOVERNANCE"]},
+    {"group": "Security", "docs": ["SECURITY", "THREAT-MODEL", "security/trust-model", "security/attack-surfaces", "security/sandbox-boundaries", "security/federation-threats", "security/incident-response", "SECURITY-AUDIT-2026-07-VAYUMAIL-VAYUTALK", "CRA-READINESS"]},
+    {"group": "The project", "docs": ["RELEASES", "release/release-gate", "release/v1.0.0", "CONTINUITY", "LICENSING", "MAINTAINERS", "SUSTAINABILITY", "ETHICAL-REVIEW-PROCESS", "governance/event-retention", "governance/operational-ontology", "ROADMAP-v1.9", "UX-AUDIT-2026-08-VAYUMAIL-VAYUTALK"]}
+  ],
+  "hide": ["rfc-template"]
+}
