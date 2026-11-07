@@ -36,6 +36,14 @@ type storedKey struct {
 	CreatedAt    time.Time `json:"created_at"`
 	ExpiresAt    time.Time `json:"expires_at"`
 	Revoked      bool      `json:"revoked"`
+
+	// Holder marks a key its mailbox's holder keeps (holder.go): the private
+	// key above is locked with their password, and RecoveryCT holds the same
+	// key locked with their recovery code. Both stay sealed under the
+	// install's key as well, so the file reads as every other key file does.
+	Holder        bool   `json:"holder,omitempty"`
+	RecoveryNonce string `json:"recovery_nonce,omitempty"`
+	RecoveryCT    string `json:"recovery_ct,omitempty"`
 }
 
 // keyStore persists encrypted keypairs to a directory and maintains in-memory
@@ -56,6 +64,7 @@ type keyStore struct {
 	emailCreated map[string]time.Time // email  → the active key's CreatedAt (for the tiebreak)
 	fileByID     map[string]string    // userID → key file base name
 	archByID     map[string][]string  // userID → archive file base names
+	holder       map[string]bool      // userID → its holder keeps the key (holder.go)
 }
 
 // preferEmailLocked applies the deterministic oldest-key-wins tiebreak for the
@@ -95,6 +104,7 @@ func newKeyStore(dir string, masterSecret, kekSecret []byte, kekFilePath string)
 		emailCreated: make(map[string]time.Time),
 		fileByID:     make(map[string]string),
 		archByID:     make(map[string][]string),
+		holder:       make(map[string]bool),
 	}
 	// The LEGACY at-rest key: sha256("…v1\0" || API_KEY). This exact value seals
 	// every key written before M8, so migration sets the DEK to it and nothing
@@ -214,6 +224,7 @@ func (k *keyStore) save(rec storedKey, privArmor []byte) error {
 		k.preferEmailLocked(email, rec.UserID, rec.CreatedAt, rec.Revoked)
 	}
 	k.fileByID[rec.UserID] = base
+	k.setHolderLocked(rec.UserID, rec.Holder)
 	k.mu.Unlock()
 	return nil
 }
@@ -307,6 +318,7 @@ func (k *keyStore) reindex() error {
 	var keys []keyEntry
 	archByID := make(map[string][]string)
 	fileByID := make(map[string]string)
+	holder := make(map[string]bool)
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || !strings.HasSuffix(name, ".json") {
@@ -330,6 +342,9 @@ func (k *keyStore) reindex() error {
 			continue
 		}
 		fileByID[rec.UserID] = name // load() finds every file, revoked or not
+		if rec.Holder {
+			holder[rec.UserID] = true
+		}
 		keys = append(keys, keyEntry{rec: rec, name: name})
 	}
 	k.mu.Lock()
@@ -337,6 +352,7 @@ func (k *keyStore) reindex() error {
 	k.emailCreated = make(map[string]time.Time)
 	k.fileByID = fileByID
 	k.archByID = archByID
+	k.holder = holder
 	for _, ke := range keys {
 		// A revoked key is never the active key for its address, and never
 		// re-activates on restart.

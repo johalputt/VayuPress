@@ -29,6 +29,7 @@ type Engine struct {
 
 	mu       sync.RWMutex
 	unlocked map[string]*openpgp.Entity // userID → unlocked private entity
+	held     map[string]heldRing        // userID → a holder's key, unlocked for a while (holder.go)
 
 	wkdClient *http.Client
 }
@@ -42,6 +43,7 @@ func NewEngine(cfg *Config) *Engine {
 	return &Engine{
 		cfg:      *cfg,
 		unlocked: make(map[string]*openpgp.Entity),
+		held:     make(map[string]heldRing),
 		// WKD discovery fetches an attacker-influenced recipient domain, so it must
 		// go through the SSRF-hardened dialer (resolve-and-pin, refuse private/
 		// reserved IPs, never honour a proxy) — not a default client that would
@@ -212,6 +214,9 @@ func (e *Engine) RotateKeypair(userID string) (*Keypair, error) {
 	if e.ks == nil {
 		return nil, errors.New("vayupgp: engine not started")
 	}
+	if e.ks.isHolder(userID) {
+		return nil, ErrHolderKey
+	}
 	rec, priv, err := e.ks.load(userID)
 	if err != nil {
 		return nil, err
@@ -280,6 +285,12 @@ func (e *Engine) GetKeyStatus(userID string) (*KeyStatus, error) {
 
 // entity returns the unlocked private entity for a user, loading + caching it.
 func (e *Engine) entity(userID string) (*openpgp.Entity, error) {
+	if ring, ok := e.heldRing(userID); ok {
+		return ring[0], nil
+	}
+	if e.ks.isHolder(userID) {
+		return nil, ErrHolderLocked
+	}
 	e.mu.RLock()
 	ent, ok := e.unlocked[userID]
 	e.mu.RUnlock()
@@ -303,6 +314,9 @@ func (e *Engine) entity(userID string) (*openpgp.Entity, error) {
 // decryptionRing returns the user's current key plus any archived keys so that
 // rotation does not break decryption of historical messages.
 func (e *Engine) decryptionRing(userID string) (openpgp.EntityList, error) {
+	if ring, ok := e.heldRing(userID); ok {
+		return ring, nil
+	}
 	cur, err := e.entity(userID)
 	if err != nil {
 		return nil, err
