@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.32] — 2026-11-07
+
+Plugins run confined and load from where they are installed; posts without a card image get one from Pixabay; every public post has a Markdown copy for agents; each hosted blog's trending and pinned lists are its own; and vayupress.com is built from the repository, with all ten products and a Tor Space switch.
+
 ### Changed
 
 - **vayupress.com is built from the repository, not by hand.** The old
