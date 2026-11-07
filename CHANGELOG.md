@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.31] — 2026-11-07
+
+Every hosted website and blog has its own ads: its own slots, publisher ID, ads.txt, disclosure and member ads, with impressions and clicks counted per site; a hosted site shows none of the install's ads until it sets up its own.
+
 ### Added
 
 - **A hosted site's own Advertising page** (its console's Advertising): its
