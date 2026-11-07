@@ -62,6 +62,10 @@ is the same on every install.
   - backs up the database to `/var/cache/vayupress/update-backups/`, if
     *Back up the database first* is ticked;
   - swaps the binary atomically, keeping the old one as `<binary>.bak`;
+  - runs the new binary's migrations (`vayupress schema apply`) while the
+    old version keeps serving, so a migration that reads every post holds
+    writes back for its length instead of closing the site. If they fail,
+    `<binary>.bak` is put back and the Update page shows why;
   - re-execs the process, flushing the WAL first.
   On an install with socket activation, visitors wait during the restart
   instead of getting an error. The page shows how long a restart takes on
@@ -121,7 +125,8 @@ what it downloads.
 ## Migrations
 
 Migrations are numbered SQL files compiled into the binary and applied at
-start. Each applied migration's SHA-256 is recorded. A binary that finds a
+start, or ahead of it with `vayupress schema apply`, which applies them and
+exits. Each applied migration's SHA-256 is recorded. A binary that finds a
 recorded migration changed refuses to start rather than run on a schema it
 does not recognise (ADR-0034).
 

@@ -634,10 +634,12 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if body.Restart {
-		update.ScheduleRestartExec(realPath, 1500*time.Millisecond, restartCleanup)
+		// The new binary's migrations run first, while this version keeps
+		// serving; the switch follows (update_schema.go).
+		go a.activateUpdate(realPath, newVersion, histID)
 		writeJSON(w, r, http.StatusOK, map[string]interface{}{
-			"status": "updated-restarting", "version": newVersion,
-			"note": "Update installed. The service is re-launching to activate v" + newVersion + ".",
+			"status": "updated-restarting", "version": newVersion, "history": histID,
+			"note": "Update installed. The database is prepared for " + newVersion + " while this version keeps serving, then the service re-launches to activate it.",
 		})
 		return
 	}

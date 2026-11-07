@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **An update no longer closes the site while the database is migrated.**
+  The server applies pending migrations before it opens its port, and the
+  updater switched to the new binary at once, so 3.18.32's migration 133,
+  which rebuilds an index over every post, answered 502 for 5 min 43 s on a
+  site of 235k posts. The updater now runs the new binary's migrations first
+  (`vayupress schema apply`, new), while the running version keeps serving,
+  and switches once they are done. Writes wait behind a long migration
+  instead. A migration that fails puts the previous binary back and the
+  Update page says why, where before the next restart would have met it
+  with the port closed. This takes effect from updates started by this
+  release on; an update started by an earlier one still migrates after the
+  switch.
+
 ### Changed
 
 - **The binary no longer carries vayupress.com.** Its design (templates,

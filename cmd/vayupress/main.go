@@ -698,6 +698,26 @@ func main() {
 		os.Exit(0)
 	}
 
+	// schema subcommand: apply the database migrations this binary carries, then
+	// exit. The in-app updater runs it from the NEW binary while the old one keeps
+	// serving (admin_os_update.go), so a migration that reads every post (133
+	// rebuilt an index for 5 min 43 s over 235k posts) holds writes back for that
+	// time instead of closing the site: before, the server applied it after the
+	// swap and before it opened its port, and every request was a 502.
+	if len(os.Args) > 1 && os.Args[1] == "schema" {
+		if len(os.Args) != 3 || os.Args[2] != "apply" {
+			fmt.Fprintln(os.Stderr, "usage: vayupress schema apply")
+			os.Exit(2)
+		}
+		config.Load()
+		if err := dbpkg.Init(); err != nil {
+			fmt.Fprintln(os.Stderr, "schema:", err)
+			os.Exit(1)
+		}
+		fmt.Println("schema: up to date")
+		os.Exit(0)
+	}
+
 	// migrate subcommand: import Markdown folders into the VayuPress database.
 	if len(os.Args) > 1 && os.Args[1] == "migrate" {
 		config.Load()
