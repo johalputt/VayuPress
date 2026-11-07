@@ -452,6 +452,10 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// Stating that rather than asserting parity, because the parity claim is what
 	// hid the device-register gap through a whole audit section.
 	r.Post("/api/v1/members/vayumail-privkey", a.handleMemberVayuMailPrivKey)
+	// VayuMail-Mobile export: the holder's whole mailbox as a zip of mbox files,
+	// signed in as the private-key sync is (vayuMailAppSignIn, MAIL-SYNC scope),
+	// one export per mailbox at a time.
+	r.Post("/api/v1/members/vayumail-export", a.handleMemberVayuMailExport)
 	// VayuMail-Mobile device approval (ADR-0129): a new device registers with
 	// the mailbox password and receives a pending device credential; it polls
 	// its approval status until the operator approves it in the web console.

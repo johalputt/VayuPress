@@ -599,54 +599,10 @@ func (a *App) handleMemberVayuMailPrivKey(w http.ResponseWriter, r *http.Request
 		writeAPIError(w, r, http.StatusServiceUnavailable, "vayupgp-disabled", "PGP is not available", "")
 		return
 	}
-	if !a.vayuMailLoginEnabled() {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "vayumail-disabled", "VayuMail sign-in is not available", "")
+	emailAddr, ok := a.vayuMailAppSignIn(w, r)
+	if !ok {
 		return
 	}
-	var body struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16*1024)).Decode(&body); err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
-		return
-	}
-	emailAddr, signinCtx := a.signinResolve(r.Context(), body.Email)
-	if emailAddr == "" || body.Password == "" {
-		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "Email and password are required", "")
-		return
-	}
-
-	// Authenticate exactly as the mail protocol servers do: the shared
-	// brute-force throttle first (a mailbox under attack accrues a growing delay
-	// before every attempt), then the canonical credential check that accepts the
-	// mailbox password OR a device app password. On failure the throttle records
-	// it and we return a uniform 401 — identical for an unknown mailbox and a
-	// wrong password, so the endpoint cannot enumerate which addresses exist.
-	bridge := &vayuMailBridge{app: a}
-	clientIP := auth.ClientIP(r)
-	if a.signinRefused(emailAddr, clientIP) {
-		writeAPIError(w, r, http.StatusForbidden, "signin-refused", signinRefusedMessage, "")
-		return
-	}
-	if locked, until := auth.CheckAccountLockout(emailAddr); locked {
-		a.signinRecord(emailAddr, signin.DoorWeb, signin.StagePaused, clientIP)
-		w.Header().Set("Retry-After", strconv.Itoa(int(time.Until(until).Seconds())+1))
-		writeAPIError(w, r, http.StatusTooManyRequests, "account-locked", loginLockoutMessage(until), "")
-		return
-	}
-	if d := mailAuthThrottle.Delay(emailAddr); d > 0 {
-		time.Sleep(d)
-	}
-	if !bridge.verifyCredential(signinCtx, emailAddr, body.Password) {
-		mailAuthThrottle.Fail(emailAddr)
-		auth.RecordAccountFailure(emailAddr, clientIP)
-		a.signinRecord(emailAddr, signin.DoorWeb, signin.StagePassword, clientIP)
-		writeAPIError(w, r, http.StatusUnauthorized, "invalid-credentials", "That email and password don't match", "")
-		return
-	}
-	mailAuthThrottle.Success(emailAddr)
-	auth.RecordAccountSuccess(emailAddr)
 
 	// Credentials good. Load the caller's armored private key; if this mailbox
 	// pre-dates auto-keygen and has none yet, mint one idempotently first so a key
@@ -674,6 +630,64 @@ func (a *App) handleMemberVayuMailPrivKey(w http.ResponseWriter, r *http.Request
 		"email":               emailAddr,
 		"armored_private_key": armored,
 	})
+}
+
+// vayuMailAppSignIn authenticates a request from the VayuMail app: a JSON body
+// of email and password, checked exactly as the mail protocol servers check
+// it (MAIL-SYNC scope: with device approval on, the default, only an approved
+// device credential passes). It writes the refusal itself and reports whether
+// the caller may go on. Every app endpoint that hands out mail content signs
+// in through here, so they cannot drift apart.
+func (a *App) vayuMailAppSignIn(w http.ResponseWriter, r *http.Request) (string, bool) {
+	if !a.vayuMailLoginEnabled() {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "vayumail-disabled", "VayuMail sign-in is not available", "")
+		return "", false
+	}
+	var body struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16*1024)).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return "", false
+	}
+	emailAddr, signinCtx := a.signinResolve(r.Context(), body.Email)
+	if emailAddr == "" || body.Password == "" {
+		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "Email and password are required", "")
+		return "", false
+	}
+
+	// Authenticate exactly as the mail protocol servers do: the shared
+	// brute-force throttle first (a mailbox under attack accrues a growing delay
+	// before every attempt), then the canonical credential check that accepts the
+	// mailbox password OR a device app password. On failure the throttle records
+	// it and we return a uniform 401 — identical for an unknown mailbox and a
+	// wrong password, so the endpoint cannot enumerate which addresses exist.
+	bridge := &vayuMailBridge{app: a}
+	clientIP := auth.ClientIP(r)
+	if a.signinRefused(emailAddr, clientIP) {
+		writeAPIError(w, r, http.StatusForbidden, "signin-refused", signinRefusedMessage, "")
+		return "", false
+	}
+	if locked, until := auth.CheckAccountLockout(emailAddr); locked {
+		a.signinRecord(emailAddr, signin.DoorWeb, signin.StagePaused, clientIP)
+		w.Header().Set("Retry-After", strconv.Itoa(int(time.Until(until).Seconds())+1))
+		writeAPIError(w, r, http.StatusTooManyRequests, "account-locked", loginLockoutMessage(until), "")
+		return "", false
+	}
+	if d := mailAuthThrottle.Delay(emailAddr); d > 0 {
+		time.Sleep(d)
+	}
+	if !bridge.verifyCredential(signinCtx, emailAddr, body.Password) {
+		mailAuthThrottle.Fail(emailAddr)
+		auth.RecordAccountFailure(emailAddr, clientIP)
+		a.signinRecord(emailAddr, signin.DoorWeb, signin.StagePassword, clientIP)
+		writeAPIError(w, r, http.StatusUnauthorized, "invalid-credentials", "That email and password don't match", "")
+		return "", false
+	}
+	mailAuthThrottle.Success(emailAddr)
+	auth.RecordAccountSuccess(emailAddr)
+	return emailAddr, true
 }
 
 // handleMemberPortalJS serves the VayuPortal widget script. Same-origin static

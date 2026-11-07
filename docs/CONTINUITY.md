@@ -89,6 +89,11 @@ zip of mbox files, streamed as it is written, so a large mailbox does not
 need memory to match. Thunderbird, Apple Mail and most archivers open mbox
 files directly.
 
+The VayuMail app makes the same archive: `POST
+/api/v1/members/vayumail-export` with the app's own sign-in (the device
+credential, as the private-key sync takes it), one export per mailbox at a
+time, and only ever the caller's own mailbox.
+
 The holder can download their own mailbox. Once it is handed over, the
 operator cannot (`mailReader`, ADR-0152), and an operator's download of a
 mailbox they still administer is written to that mailbox's access record

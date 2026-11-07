@@ -8,6 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **The VayuMail app can download the whole mailbox.** `POST
+  /api/v1/members/vayumail-export` sends the holder the same zip of mbox
+  files as Download all mail in the console, signed in as the app signs in
+  for its private key (the device credential, never the bare mailbox
+  password while device approval is on), one export per mailbox at a time,
+  and only ever the caller's own mailbox. The app's sign-in is now one
+  function both endpoints share.
+
 ### Changed
 
 - **vayupress.com's words and design are no longer in this repository.**

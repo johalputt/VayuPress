@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/logging"
+	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
 // handleVayuOSMailDownload streams the mailbox the request may read
@@ -41,6 +42,13 @@ func (a *App) handleVayuOSMailDownload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	a.streamMailArchive(w, r, rd, addr)
+}
+
+// streamMailArchive writes rd's whole mailbox to w as a zip of mbox files,
+// one per folder, named for addr and the day. The console's Download all mail
+// and the app's export both send it.
+func (a *App) streamMailArchive(w http.ResponseWriter, r *http.Request, rd vmail.Reader, addr string) {
 	name := strings.NewReplacer("@", "-at-", "/", "-").Replace(addr) + "-mail-" + time.Now().UTC().Format("2006-01-02") + ".zip"
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
