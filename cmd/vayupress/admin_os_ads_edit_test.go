@@ -17,7 +17,7 @@ import (
 
 func putAd(a *App, id, body string) *httptest.ResponseRecorder {
 	r := chi.NewRouter()
-	r.Put("/os/api/ads/{id}", a.handleOSAdUpdate)
+	r.Put("/os/api/ads/{aid}", a.handleOSAdUpdate)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/os/api/ads/"+id, strings.NewReader(body)))
 	return rec

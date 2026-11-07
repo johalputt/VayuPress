@@ -65,6 +65,8 @@ var scopedTools = []scopedTool{
 		Desc: "Head directives, tokens, sitemap and robots"},
 	{Key: "analytics", Path: "/os/d/%s/analytics", Icon: "trend", Title: "Visitors", Live: true,
 		Desc: "This site's own traffic, counted server-side"},
+	{Key: "ads", Path: "/os/d/%s/ads", Icon: "megaphone", Title: "Advertising", Live: true,
+		Desc: "This site's own ad slots, AdSense and disclosure"},
 	{Key: "services", Path: "/os/d/%s/services", Icon: "shield", Title: "Outside services", Live: true,
 		Desc: "What this site's pages may load from elsewhere"},
 	{Key: "shield", Path: "/os/d/%s/shield", Icon: "shield", Title: "Security", Live: true,
@@ -378,6 +380,16 @@ func (a *App) scopedToolChips(r *http.Request, d domain.Domain, posts int) map[s
 				c["analytics"] = scopedToolChip{On: true, Text: strconv.Itoa(ov.TotalPageviews) + " views"}
 			} else {
 				c["analytics"] = scopedToolChip{Text: "no visits yet"}
+			}
+		}
+	}
+	if a.ads != nil {
+		if slots, err := a.ads.List(ctx, d.ID); err == nil {
+			switch {
+			case !a.adsEnabled(ctx, adScope(d.ID)):
+				c["ads"] = scopedToolChip{Text: "off"}
+			default:
+				c["ads"] = scopedToolChip{On: true, Text: strconv.Itoa(len(slots)) + " slot" + plural(len(slots))}
 			}
 		}
 	}

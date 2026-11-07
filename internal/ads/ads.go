@@ -333,6 +333,29 @@ func (s *Store) EnabledByPlacement(ctx context.Context, site, placement string) 
 	return s.query(ctx, `SELECT `+slotCols+` FROM ad_slots WHERE domain_id=? AND placement=? AND enabled=1 ORDER BY sort ASC, created_at ASC`, site, placement)
 }
 
+// CopyOwnSlots copies from's own slots (not members' ads) onto to, each a new
+// slot of to's, and returns how many. A copy, not a link: editing from's
+// slots later leaves to's as they are.
+func (s *Store) CopyOwnSlots(ctx context.Context, from, to string) (int, error) {
+	if from == to {
+		return 0, fmt.Errorf("a site cannot copy its own ads onto itself")
+	}
+	list, err := s.query(ctx, `SELECT `+slotCols+` FROM ad_slots WHERE domain_id=? AND owner_email='' ORDER BY placement ASC, sort ASC, created_at ASC`, from)
+	if err != nil {
+		return 0, err
+	}
+	for _, sl := range list {
+		if _, err := s.Create(ctx, to, SlotInput{
+			Name: sl.Name, Placement: sl.Placement, Kind: sl.Kind, ImageURL: sl.ImageURL, LinkURL: sl.LinkURL,
+			AltText: sl.AltText, HTML: sl.HTML, Sort: sl.Sort, Enabled: sl.Enabled, ShowOn: sl.ShowOn,
+			ShowPaths: strings.Join(sl.ShowPaths, "\n"),
+		}); err != nil {
+			return 0, err
+		}
+	}
+	return len(list), nil
+}
+
 // ── Member self-serve ads ("advertise here") ──────────────────────────────────
 
 // MemberAdInput carries a member-submitted image ad. Only the image kind is
@@ -558,6 +581,10 @@ func renderSlot(sl *Slot, cfg RenderConfig) string {
 	}
 	return ""
 }
+
+// ValidPublisherID reports whether c is an AdSense publisher id ("ca-pub-"
+// and digits), the one rule the renderer and the settings save share.
+func ValidPublisherID(c string) bool { return adsenseClient(c) != "" }
 
 // adsenseClient trims and validates a publisher id, returning "" if it does not
 // look like a "ca-pub-…" id so a malformed value never reaches the page.

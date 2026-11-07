@@ -63,7 +63,7 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 	// Off with nothing saved is a fresh install's Advertising: a setup page. Off
 	// with slots or paid submissions waiting is a choice the operator made, and
 	// the page keeps showing what is there.
-	if !adsOn && a.ads != nil && len(slots) == 0 && len(pendingAds) == 0 {
+	if site == "" && !adsOn && a.ads != nil && len(slots) == 0 && len(pendingAds) == 0 {
 		writeOSHTML(w, r, adminOSLayout(nonce, "Advertising", "ads", cfg, htmpl.HTML(adsSetup())))
 		return
 	}
@@ -71,7 +71,14 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 
 	state := ui.State("ok", "Showing ads")
 	lead := `<button type="button" class="btn btn--primary btn--sm" data-sheet="ad-new">Add an ad slot</button>`
-	if !adsOn {
+	if site != "" {
+		// A hosted site's own Advertising: its switch is in its settings below,
+		// and the install's ads can be copied onto it once.
+		if !adsOn {
+			state = ui.State("neutral", "Advertising is off on this site")
+		}
+		lead += ` <button type="button" class="btn btn--sm" data-ads-copy>Copy my ads to this site</button>`
+	} else if !adsOn {
 		state = ui.State("neutral", "Advertising is off")
 		lead = `<button type="button" class="btn btn--primary btn--sm" data-action="module-on" data-module="ads">Turn on Advertising</button> ` +
 			`<button type="button" class="btn btn--sm" data-sheet="ad-new">Add an ad slot</button>`
@@ -103,28 +110,40 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 			`" data-prefix="`+html.EscapeString(pre)+`" data-enabled="`+strconv.FormatBool(sl.Enabled)+`" data-sort="`+strconv.Itoa(sl.Sort)+`">Save the slot</button></div>`))
 	}
 
-	page := ui.SettingsPage("Advertising", state, "Your own ad slots and your members' ads, served from this site with no ad network.",
+	settingsSection := ui.Section("Pricing, networks and pages", "", ui.Rows(
+		ui.Row{Label: "Price of a member ad", Hint: "Charged once per submission, in minor units: 500 is " + priceLabel(a.payCurrency(ctx), 500) + ".", ID: "ad-price",
+			Control: field("ad-price", settings.KeyAdSlotPriceCents, "text", "Price of a member ad", strconv.Itoa(adPrice))},
+		ui.Row{Label: "AdSense publisher ID", Hint: adsense + " Pages that show a unit let Google's ad origins through their CSP.", ID: "ad-adsense-client",
+			Control: field("ad-adsense-client", settings.KeyAdsenseClient, "text", "AdSense publisher ID", adsenseClient)},
+		ui.Row{Label: "Affiliate disclosure", Hint: "Shown above every post while the Affiliate module is on.", ID: "ad-disclosure",
+			Control: field("ad-disclosure", settings.KeyAffiliateDisclosure, "textarea", "Affiliate disclosure", disclosure)},
+		ui.Row{Label: "Never show ads on", Hint: "These pages and posts show no ad, whatever their slots say. One address a line, \"/\" for the home page.", ID: "ad-never",
+			Control: field("ad-never", settings.KeyAdsNever, "textarea", "Never show ads on", never)},
+	))
+	if site != "" {
+		settingsSection = ui.Section("This site's ads", "Its switches, its AdSense publisher ID and its pages", ui.HTML(siteAdSettingsForm(adsOn, googleOn, a.affiliateEnabled(ctx, sc), adsenseClient, disclosure, never)))
+	}
+	page := ui.SettingsPage("Advertising", state, "Ad slots and members' ads for this site alone, served from it with no ad network.",
 		ui.HTML(`<div class="page-lead">`+lead+`</div>`),
 		ui.Section("Member ads", "Paid submissions wait for your approval", ui.HTML(memberAdReviewTable(pendingAds))),
 		ui.Section("Ad slots", "Each fills one placement", ui.HTML(adsSlotsTable(slots))),
-		ui.Section("Pricing, networks and pages", "", ui.Rows(
-			ui.Row{Label: "Price of a member ad", Hint: "Charged once per submission, in minor units: 500 is " + priceLabel(a.payCurrency(ctx), 500) + ".", ID: "ad-price",
-				Control: field("ad-price", settings.KeyAdSlotPriceCents, "text", "Price of a member ad", strconv.Itoa(adPrice))},
-			ui.Row{Label: "AdSense publisher ID", Hint: adsense + " Pages that show a unit let Google's ad origins through their CSP.", ID: "ad-adsense-client",
-				Control: field("ad-adsense-client", settings.KeyAdsenseClient, "text", "AdSense publisher ID", adsenseClient)},
-			ui.Row{Label: "Affiliate disclosure", Hint: "Shown above every post while the Affiliate module is on.", ID: "ad-disclosure",
-				Control: field("ad-disclosure", settings.KeyAffiliateDisclosure, "textarea", "Affiliate disclosure", disclosure)},
-			ui.Row{Label: "Never show ads on", Hint: "These pages and posts show no ad, whatever their slots say. One address a line, \"/\" for the home page.", ID: "ad-never",
-				Control: field("ad-never", settings.KeyAdsNever, "textarea", "Never show ads on", never)},
-		)),
+		settingsSection,
 		ui.Sheet("ad-new", "Add an ad slot", ui.HTML(newSlot)),
 		editSheets,
 		ui.SaveBar(),
 	)
+	// The page's calls go to its own site's address: an absolute /os/api/ads
+	// on a hosted site's page edited the install's slots.
+	apiBase := "/os/api/ads"
+	if site != "" {
+		apiBase = "/os/d/" + site + "/api/ads"
+	}
 	body := string(page) + `
 <div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
+<div id="ads-ctx" data-base="` + html.EscapeString(apiBase) + `" hidden></div>
 <script nonce="` + nonce + `">
 (function(){'use strict';
+var BASE=document.getElementById('ads-ctx').getAttribute('data-base');
 function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
 var msg=document.getElementById('action-msg');
 function show(t,e){if(!msg)return;msg.textContent=t;msg.classList.toggle('is-error',!!e);msg.classList.add('visible');}
@@ -134,7 +153,7 @@ if(createBtn)createBtn.addEventListener('click',function(){
   var payload={name:val('ad-name'),placement:val('ad-placement'),kind:val('ad-kind'),image_url:val('ad-image'),link_url:val('ad-link'),alt_text:val('ad-alt'),html:val('ad-html'),show_on:val('ad-show-on'),show_paths:val('ad-show-paths'),enabled:true};
   if(!payload.name.trim()){show('Give the slot a name',true);return;}
   createBtn.disabled=true;show('Creating…',false);
-  jfetch('POST','/os/api/ads',payload).then(function(res){createBtn.disabled=false;if(res.ok){location.reload();}else{show(res.d.detail||res.d.title||'Error',true);}}).catch(function(e){createBtn.disabled=false;show('Error: '+e,true);});
+  jfetch('POST',BASE,payload).then(function(res){createBtn.disabled=false;if(res.ok){location.reload();}else{show(res.d.detail||res.d.title||'Error',true);}}).catch(function(e){createBtn.disabled=false;show('Error: '+e,true);});
 });
 function val(id){var el=document.getElementById(id);return el?el.value:'';}
 document.querySelectorAll('[data-ad-save]').forEach(function(b){
@@ -143,22 +162,36 @@ document.querySelectorAll('[data-ad-save]').forEach(function(b){
     var payload={name:val(p+'-name'),placement:val(p+'-placement'),kind:val(p+'-kind'),image_url:val(p+'-image'),link_url:val(p+'-link'),alt_text:val(p+'-alt'),html:val(p+'-html'),show_on:val(p+'-show-on'),show_paths:val(p+'-show-paths'),enabled:b.getAttribute('data-enabled')==='true',sort:parseInt(b.getAttribute('data-sort'),10)||0};
     if(!payload.name.trim()){show('Give the slot a name',true);return;}
     b.disabled=true;show('Saving…',false);
-    jfetch('PUT','/os/api/ads/'+encodeURIComponent(b.getAttribute('data-ad-save')),payload).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show(res.d.detail||(res.d.error&&res.d.error.message)||'Error',true);}}).catch(function(e){b.disabled=false;show('Error: '+e,true);});
+    jfetch('PUT',BASE+'/'+encodeURIComponent(b.getAttribute('data-ad-save')),payload).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show(res.d.detail||(res.d.error&&res.d.error.message)||'Error',true);}}).catch(function(e){b.disabled=false;show('Error: '+e,true);});
   });
 });
 document.querySelectorAll('[data-ad-action]').forEach(function(b){
   b.addEventListener('click',function(){
     var act=b.getAttribute('data-ad-action');var id=b.getAttribute('data-id');
-    if(act==='delete'){vpConfirm({title:'Delete this ad slot?',confirm:'Delete'},function(){b.disabled=true;jfetch('DELETE','/os/api/ads/'+encodeURIComponent(id)).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show(res.d.detail||'Error',true);}});});}
-    else if(act==='toggle'){b.disabled=true;jfetch('POST','/os/api/ads/'+encodeURIComponent(id)+'/toggle',{enabled:b.getAttribute('data-to')==='1'}).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show(res.d.detail||'Error',true);}});}
+    if(act==='delete'){vpConfirm({title:'Delete this ad slot?',confirm:'Delete'},function(){b.disabled=true;jfetch('DELETE',BASE+'/'+encodeURIComponent(id)).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show(res.d.detail||'Error',true);}});});}
+    else if(act==='toggle'){b.disabled=true;jfetch('POST',BASE+'/'+encodeURIComponent(id)+'/toggle',{enabled:b.getAttribute('data-to')==='1'}).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show(res.d.detail||'Error',true);}});}
   });
+});
+var copyBtn=document.querySelector('[data-ads-copy]');
+if(copyBtn)copyBtn.addEventListener('click',function(){
+  vpConfirm({title:'Copy your ads to this site?',message:'Your own ad slots, AdSense publisher ID, disclosure and switches are copied onto this site. It is a copy: changing yours later leaves this site as it is.',confirm:'Copy'},function(){
+    copyBtn.disabled=true;
+    jfetch('POST',BASE+'/copy').then(function(res){if(res.ok){location.reload();}else{copyBtn.disabled=false;show((res.d.error&&res.d.error.message)||'Error',true);}});
+  });
+});
+var setBtn=document.querySelector('[data-site-ads-save]');
+if(setBtn)setBtn.addEventListener('click',function(){
+  var p={};
+  document.querySelectorAll('[data-site-ad-key]').forEach(function(el){p[el.getAttribute('data-site-ad-key')]=el.type==='checkbox'?(el.checked?'on':'off'):el.value;});
+  setBtn.disabled=true;show('Saving…',false);
+  jfetch('POST',BASE+'/settings',{settings:p}).then(function(res){setBtn.disabled=false;if(res.ok){location.reload();}else{show((res.d.error&&res.d.error.message)||'Error',true);}}).catch(function(e){setBtn.disabled=false;show('Error: '+e,true);});
 });
 document.querySelectorAll('[data-adreview-action]').forEach(function(b){
   b.addEventListener('click',function(){
     var act=b.getAttribute('data-adreview-action');var id=b.getAttribute('data-id');
     var go=function(){
       b.disabled=true;
-      jfetch('POST','/os/api/ads/'+encodeURIComponent(id)+'/'+act).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show(res.d.detail||(res.d.error&&res.d.error.message)||'Error',true);}});
+      jfetch('POST',BASE+'/'+encodeURIComponent(id)+'/'+act).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show(res.d.detail||(res.d.error&&res.d.error.message)||'Error',true);}});
     };
     if(act==='reject'){vpConfirm({title:'Reject this member ad?',message:'It will not be published.',confirm:'Reject'},go);}else{go();}
   });
@@ -201,7 +234,7 @@ func (a *App) handleOSAdReviewApprove(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-disabled", "Advertising not initialised", "")
 		return
 	}
-	if err := a.ads.ApproveMemberAd(r.Context(), adConsoleSite(r), chi.URLParam(r, "id")); err != nil {
+	if err := a.ads.ApproveMemberAd(r.Context(), adConsoleSite(r), chi.URLParam(r, "aid")); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "approve-failed", err.Error(), "")
 		return
 	}
@@ -215,7 +248,7 @@ func (a *App) handleOSAdReviewReject(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-disabled", "Advertising not initialised", "")
 		return
 	}
-	if err := a.ads.RejectMemberAd(r.Context(), adConsoleSite(r), chi.URLParam(r, "id")); err != nil {
+	if err := a.ads.RejectMemberAd(r.Context(), adConsoleSite(r), chi.URLParam(r, "aid")); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "reject-failed", err.Error(), "")
 		return
 	}
@@ -325,7 +358,7 @@ func (a *App) handleOSAdUpdate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
 		return
 	}
-	id := chi.URLParam(r, "id")
+	id := chi.URLParam(r, "aid")
 	if err := a.ads.Update(r.Context(), adConsoleSite(r), id, ads.SlotInput{
 		Name: body.Name, Placement: body.Placement, Kind: body.Kind,
 		ImageURL: body.ImageURL, LinkURL: body.LinkURL, AltText: body.AltText,
@@ -400,7 +433,7 @@ func (a *App) handleOSAdToggle(w http.ResponseWriter, r *http.Request) {
 		Enabled bool `json:"enabled"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
-	if err := a.ads.SetEnabled(r.Context(), adConsoleSite(r), chi.URLParam(r, "id"), body.Enabled); err != nil {
+	if err := a.ads.SetEnabled(r.Context(), adConsoleSite(r), chi.URLParam(r, "aid"), body.Enabled); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "ads-error", err.Error(), "")
 		return
 	}
@@ -413,7 +446,7 @@ func (a *App) handleOSAdDelete(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-error", "ads not initialised", "")
 		return
 	}
-	if err := a.ads.Delete(r.Context(), adConsoleSite(r), chi.URLParam(r, "id")); err != nil {
+	if err := a.ads.Delete(r.Context(), adConsoleSite(r), chi.URLParam(r, "aid")); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "ads-error", err.Error(), "")
 		return
 	}

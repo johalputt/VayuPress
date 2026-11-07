@@ -10,6 +10,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **A hosted site's own Advertising page** (its console's Advertising): its
+  slots, its members' ads to approve, and its own switches (Advertising,
+  Google AdSense, affiliate disclosure), AdSense publisher ID, disclosure
+  and pages that show no ad. "Copy my ads to this site" copies the
+  install's own slots and ads settings onto a site once, as a copy.
+
 - **A hosted site's own share image**, uploaded and removed on its settings
   page: the picture shown when a link to the site is shared.
 

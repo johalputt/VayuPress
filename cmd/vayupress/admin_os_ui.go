@@ -305,6 +305,18 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/branding/og", a.handleOGUpload)
 			dr.Get("/branding/og", a.handleOSScopedOGImage)
 			dr.Get("/seo", a.handleOSScopedSEO)
+			// This site's own Advertising: the install's page and slot handlers,
+			// scoped by the path (adConsoleSite), and its own settings and copy.
+			dr.Get("/ads", a.handleOSAds)
+			dr.Get("/api/ads", a.handleOSAdsList)
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/ads", a.handleOSAdCreate)
+			dr.With(auth.CSRFTokenMiddleware).Put("/api/ads/{aid}", a.handleOSAdUpdate)
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/ads/{aid}/toggle", a.handleOSAdToggle)
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/ads/{aid}/approve", a.handleOSAdReviewApprove)
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/ads/{aid}/reject", a.handleOSAdReviewReject)
+			dr.With(auth.CSRFTokenMiddleware).Delete("/api/ads/{aid}", a.handleOSAdDelete)
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/ads/settings", a.handleOSSiteAdSettingsSave)
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/ads/copy", a.handleOSSiteAdsCopy)
 			// This site's own outside services; the same page and save as the
 			// primary's, scoped by the path.
 			dr.Get("/services", a.handleOSServices)
@@ -523,11 +535,11 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/ads", a.handleOSAds)
 		pr.Get("/os/api/ads", a.handleOSAdsList)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/ads", a.handleOSAdCreate)
-		pr.With(auth.CSRFTokenMiddleware).Put("/os/api/ads/{id}", a.handleOSAdUpdate)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/ads/{id}/toggle", a.handleOSAdToggle)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/ads/{id}/approve", a.handleOSAdReviewApprove)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/ads/{id}/reject", a.handleOSAdReviewReject)
-		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/ads/{id}", a.handleOSAdDelete)
+		pr.With(auth.CSRFTokenMiddleware).Put("/os/api/ads/{aid}", a.handleOSAdUpdate)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/ads/{aid}/toggle", a.handleOSAdToggle)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/ads/{aid}/approve", a.handleOSAdReviewApprove)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/ads/{aid}/reject", a.handleOSAdReviewReject)
+		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/ads/{aid}", a.handleOSAdDelete)
 
 		// Update & Backup — one-click signature-verified self-update plus full
 		// site (database + settings) export/import. Writes are CSRF-protected and

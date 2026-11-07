@@ -1983,3 +1983,27 @@ test("a hosted site's share image is uploaded and removed on its own settings pa
   await expect(img).toBeHidden();
   expect((await page.request.get(`/os/d/${id}/branding/og`)).status()).toBe(404);
 });
+
+// A hosted site has its own Advertising: its switch and publisher ID are
+// saved to it, a slot added there is its own, and the page passes the lint.
+test("a hosted site's ads are set up on its own Advertising page", async ({ page }) => {
+  await openConsole(page);
+  const id = await addSite(page, "ads");
+  await page.goto(`/os/d/${id}/ads`);
+  await page.locator(`[data-site-ad-key="feature.ads"]`).check();
+  await page.locator(`[data-site-ad-key="ads.adsense_client"]`).fill("ca-pub-1234567890123456");
+  await page.locator("[data-site-ads-save]").click();
+  await expect(page.locator(`[data-site-ad-key="feature.ads"]`)).toBeChecked();
+  await expect(page.locator(`[data-site-ad-key="ads.adsense_client"]`)).toHaveValue("ca-pub-1234567890123456");
+
+  await page.locator(`[data-sheet="ad-new"]`).first().click();
+  const sheet = page.locator("dialog.sa-sheet[open]");
+  await sheet.locator("#ad-name").fill("Site banner");
+  await sheet.locator("#ad-image").fill("/media/site-banner.png");
+  await Promise.all([page.waitForEvent("load"), sheet.locator("#ad-create-btn").click()]);
+  await expect(page.locator("table", { hasText: "Site banner" })).toHaveCount(1);
+  expect(await page.evaluate(lintPage)).toEqual([]);
+
+  const mine = await (await page.request.get("/os/api/ads")).json();
+  expect((mine.slots || []).map((s) => s.name)).not.toContain("Site banner");
+});
