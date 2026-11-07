@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.33] — 2026-11-07
+
+An update keeps the site serving while the new version prepares the database, and puts the previous binary back if it cannot; the binary no longer carries vayupress.com, whose design now lives in the repository; and the boot log no longer reports visitor addresses broken before anyone has visited.
+
 ### Fixed
 
 - **The boot log no longer reports "Real visitor IP" failed on a proxied
