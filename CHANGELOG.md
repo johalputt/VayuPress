@@ -8,6 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+
+- **vayupress.com's words and design are no longer in this repository.**
+  `docs/site` (the site's pages, home sections, pictures, theme, product
+  list and public files) is the project's own website, not part of what
+  an install runs, and is kept with the site. The docs-site engine still
+  renders any repository's `docs/site` when a domain follows it; its tests
+  draw with a fixture theme in `internal/docsite/testdata`. The CI check of
+  the site's `security.txt` expiry left with the file.
+
 ## [3.18.33] — 2026-11-07
 
 An update keeps the site serving while the new version prepares the database, and puts the previous binary back if it cannot; the binary no longer carries vayupress.com, whose design now lives in the repository; and the boot log no longer reports visitor addresses broken before anyone has visited.

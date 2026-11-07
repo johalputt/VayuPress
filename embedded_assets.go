@@ -40,7 +40,7 @@ var DocsADRFS embed.FS
 // binary and updates atomically with a self-update, exactly like StaticFS and
 // DocsADRFS. The Architecture Decision Records live in DocsADRFS already and are
 // intentionally NOT re-embedded here; the docs handler unions the two. The
-// image-heavy folders (docs/screenshots, docs/assets, docs/site) are excluded to
+// image-heavy folders (docs/screenshots, docs/assets) are excluded to
 // keep the binary lean — /docs renders markdown, not the README screenshots.
 // Members are rooted at "docs/" (e.g. "docs/OPERATIONS.md", "docs/security/trust-model.md").
 //

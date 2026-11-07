@@ -235,7 +235,7 @@ func TestSparseHoursAreOmittedFromTheRate(t *testing.T) {
 // blurb saying the shield cannot absorb one.
 func TestNoCopyClaimsVolumetricAbsorption(t *testing.T) {
 	files := []string{"../../README.md"}
-	for _, g := range []string{"../../docs/site/home/*.md", "../../docs/site/pages/*.md"} {
+	for _, g := range []string{"../../docs/*.md"} {
 		m, _ := filepath.Glob(g)
 		files = append(files, m...)
 	}

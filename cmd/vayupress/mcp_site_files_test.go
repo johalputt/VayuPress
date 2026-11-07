@@ -122,17 +122,18 @@ type fakeForge struct {
 	files  map[string]string
 }
 
-// withDocsTheme adds this repository's docs/site/theme to files: a docs site
-// is drawn by the design its repository keeps, and the binary carries none.
+// withDocsTheme adds a design to files, at docs/site/theme where a repository
+// keeps its own: a docs site is drawn by its repository's design, and the
+// binary carries none. The design is the docs-site engine's test fixture.
 func withDocsTheme(t *testing.T, files map[string]string) map[string]string {
 	t.Helper()
-	repo := os.DirFS("../..")
-	err := fs.WalkDir(repo, "docs/site/theme", func(p string, d fs.DirEntry, err error) error {
+	fixture := os.DirFS("../../internal/docsite/testdata")
+	err := fs.WalkDir(fixture, "theme", func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
-		b, err := fs.ReadFile(repo, p)
-		files[p] = string(b)
+		b, err := fs.ReadFile(fixture, p)
+		files["docs/site/"+p] = string(b)
 		return err
 	})
 	if err != nil {

@@ -5,12 +5,9 @@ package docsite
 import (
 	"archive/zip"
 	"bytes"
-	"encoding/json"
 	"errors"
 	"io/fs"
 	"os"
-	"path"
-	"regexp"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -40,23 +37,25 @@ func fixture() fstest.MapFS {
 	}
 }
 
-// withTheme gives repo this repository's own design and product list, which
-// a build needs: the binary carries no design of its own.
+// withTheme gives repo a design and a product list, which a build needs: the
+// binary carries no design of its own.
 func withTheme(t *testing.T, repo fstest.MapFS) fstest.MapFS {
 	t.Helper()
-	real := os.DirFS("../..")
-	err := fs.WalkDir(real, themeDir, func(p string, d fs.DirEntry, err error) error {
+	// The engine ships no design, so its tests draw with a fixture one
+	// (testdata/theme), laid into the repository where a real one keeps it.
+	fixture := os.DirFS("testdata")
+	err := fs.WalkDir(fixture, "theme", func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
-		data, err := fs.ReadFile(real, p)
-		repo[p] = &fstest.MapFile{Data: data}
+		data, err := fs.ReadFile(fixture, p)
+		repo[siteDir+"/"+p] = &fstest.MapFile{Data: data}
 		return err
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data, err := fs.ReadFile(real, productsFile); err == nil {
+	if data, err := fs.ReadFile(fixture, "products.json"); err == nil {
 		repo[productsFile] = &fstest.MapFile{Data: data}
 	}
 	return repo
@@ -223,59 +222,6 @@ func TestTheBundleDeploysAndPacksTheSameEveryTime(t *testing.T) {
 	assets, _ := fs.Sub(vayupress.StaticFS, "static")
 	if _, err := Build(Input{Repo: repo, Synced: synced, Assets: assets}); err == nil || !strings.Contains(err.Error(), "notes.md") {
 		t.Errorf("a file the deploy would refuse was let through: %v", err)
-	}
-}
-
-// The real repository, built as the install builds it: every address a page
-// names is in the bundle, every asset is the site's own, and search finds a
-// decision by its title. A nav.json slug that no longer exists, a template
-// that links a page nobody renders, a stylesheet from somewhere else: each
-// fails here, by name.
-func TestTheRealSiteHasNoBrokenLinkAndNothingFromElsewhere(t *testing.T) {
-	if testing.Short() {
-		t.Skip("builds the whole site")
-	}
-	b := build(t, os.DirFS("../.."))
-	ref := regexp.MustCompile(`(?:href|src|srcset)="(/[^"#?]*)`)
-	asset := regexp.MustCompile(`<(?:script|link)[^>]+(?:src|href)="([^"]+)"`)
-	var broken []string
-	for name, data := range b {
-		if !strings.HasSuffix(name, ".html") {
-			continue
-		}
-		for _, m := range ref.FindAllStringSubmatch(string(data), -1) {
-			target := strings.TrimPrefix(m[1], "/")
-			if target == "" || strings.HasSuffix(target, "/") {
-				target += "index.html"
-			}
-			if _, ok := b[target]; !ok {
-				broken = append(broken, name+" → "+m[1])
-			}
-		}
-		for _, m := range asset.FindAllStringSubmatch(string(data), -1) {
-			if !strings.HasPrefix(m[1], "/") {
-				broken = append(broken, name+" loads "+m[1]+" from elsewhere")
-			}
-		}
-	}
-	if len(broken) > 0 {
-		if len(broken) > 20 {
-			broken = append(broken[:20], "…")
-		}
-		t.Errorf("%d broken:\n%s", len(broken), strings.Join(broken, "\n"))
-	}
-	var index []struct{ T, U, K string }
-	if err := json.Unmarshal(b["search.json"], &index); err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, e := range index {
-		if e.K == "Decision" && strings.Contains(e.T, "ADR-0164") && path.Clean(e.U) == "/docs/adr/ADR-0164-outside-services-in-a-sites-csp" {
-			found = true
-		}
-	}
-	if !found {
-		t.Error("search does not find ADR-0164 by its title")
 	}
 }
 

@@ -28,7 +28,7 @@ func saEdition() string {
 }
 
 // saMark draws the VayuPress mark as the brand's own image, not a redrawing:
-// the mark cut from docs/site/public/assets/logo-dark.png (the white logo, above its
+// the mark cut from cmd/vayupress/testdata/logo-dark.png (the white logo, above its
 // wordmark) with every pixel kept, and its black twin (the same alpha, black)
 // for the light schemes. Both are in the page; the scheme's --mark-white and
 // --mark-black tokens show one, so every scheme variant follows without its

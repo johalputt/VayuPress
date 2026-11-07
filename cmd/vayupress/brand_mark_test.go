@@ -14,11 +14,11 @@ import (
 )
 
 // The console's mark is the brand's own image, not a redrawing. The white file
-// is the mark cut from docs/site/public/assets/logo-dark.png with every pixel kept;
+// is the mark cut from cmd/vayupress/testdata/logo-dark.png with every pixel kept;
 // the black one is the same alpha in black. The cut holds the whole mark, and
 // the console draws these two files and nothing else.
 func TestTheConsoleMarkIsTheBrandImage(t *testing.T) {
-	f, err := os.Open("../../docs/site/public/assets/logo-dark.png")
+	f, err := os.Open("testdata/logo-dark.png")
 	if err != nil {
 		t.Fatal(err)
 	}

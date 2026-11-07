@@ -91,7 +91,7 @@ downstream commercial user will ask for, since that is the binding constraint ei
 | Documented change history | **Have** | [`CHANGELOG.md`](../CHANGELOG.md), maintained per release |
 | Defined support period | **Have** | [`SECURITY.md`](../SECURITY.md) — the current series in full support, earlier ones critical-only to a stated end date, and an explicit statement that the CRA's five-year default is *not* met, with the reasons it is not claimed |
 | SBOM published with releases | **Have** | `tag-release.yml` generates a CycloneDX SBOM per release, cosign-signs it, and attaches both to the GitHub Release |
-| Machine-readable security contact | **Have** | [`docs/site/.well-known/security.txt`](site/.well-known/security.txt), RFC 9116, with a committed `Expires` (2027-08-08) that `scripts/check-security-txt.py` fails CI on within 45 days of expiry |
+| Machine-readable security contact | **Have** | https://vayupress.com/.well-known/security.txt, RFC 9116, served by the project's site (kept and renewed outside this repository) with an `Expires` of 2027-08-08 |
 | **Vulnerability reporting route to ENISA/CSIRT** | **Gap, conditional** | Only applies if in scope, which on the assessment above it is not. No process exists for the 24-hour early-warning / 72-hour notification path that would apply from September 2026 |
 
 ---
