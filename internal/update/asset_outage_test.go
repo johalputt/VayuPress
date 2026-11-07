@@ -347,7 +347,10 @@ func selectBinaryAssetPreFix(assets []Asset, goos, goarch string) *Asset {
 }
 
 // currentReleaseLayout is what tag-release.yml attaches, sorted the way the
-// GitHub API returns it. Keep it in step with the `files:` block.
+// GitHub API returns it. Keep it in step with the `files:` block. The site
+// bundle releases up to v3.18.32 attached stays in it: the one attachment
+// that was not a sidecar and sorted beside the binary, so the selector is
+// still proved against a neighbour it must not pick.
 func currentReleaseLayout() []Asset {
 	names := []string{
 		"vayupress",

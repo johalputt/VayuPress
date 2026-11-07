@@ -79,7 +79,6 @@ The assets of every release:
 | `vayupress.sig` | The Ed25519 signature |
 | `vayupress-vX.Y.Z.sbom.json` (+ `.cosign.bundle`) | The SBOM |
 | `vayuprovision-helpers.tar.gz`, `vayushield-agent.tar.gz` (+ `.sha256`, `.cosign.bundle`) | The root helper scripts and the shield agent |
-| `vayupress-selfhosted-site.zip` (+ `.sha256`) | The project site |
 
 What an install checks before it runs any of this is in
 [UPGRADING.md](UPGRADING.md#what-every-release-must-prove).

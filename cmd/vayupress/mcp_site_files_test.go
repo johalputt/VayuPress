@@ -8,8 +8,10 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -118,6 +120,25 @@ type fakeForge struct {
 	mu     sync.Mutex
 	commit string
 	files  map[string]string
+}
+
+// withDocsTheme adds this repository's docs/site/theme to files: a docs site
+// is drawn by the design its repository keeps, and the binary carries none.
+func withDocsTheme(t *testing.T, files map[string]string) map[string]string {
+	t.Helper()
+	repo := os.DirFS("../..")
+	err := fs.WalkDir(repo, "docs/site/theme", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := fs.ReadFile(repo, p)
+		files[p] = string(b)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
 }
 
 func (f *fakeForge) set(commit string, files map[string]string) {
@@ -253,10 +274,10 @@ func TestTheDocsSitesFindEachOtherOnTheInstall(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := &fakeForge{}
-	f.set(strings.Repeat("3", 40), map[string]string{
+	f.set(strings.Repeat("3", 40), withDocsTheme(t, map[string]string{
 		"CHANGELOG.md":         "# Changelog\n\n## [3.17.85] — 2026-09-27\n\nA fix.\n",
 		"docs/INSTALLATION.md": "# Installation\n\nRun one command.\n",
-	})
+	}))
 	f.serve(t, a)
 
 	j, _ := runTool(t, a, "follow_repository", `{"host":"mirror.example","repo":"o/r","site":"updates"}`)

@@ -62,11 +62,14 @@ What gets built depends on the follow:
   rendered by `internal/docsite`. This is the product site, or with
   `site: "updates"` the release mirror's page.
 
-A docs site is drawn with the repository's own design when the repository
-keeps one in `docs/site/theme/` (its templates, stylesheet and scripts), so a
-new look is a push, not a release. The theme replaces the built-in design
-whole. A theme that lacks a file is refused with the file's name; the build
-never draws half of one design and half of the other.
+A docs site is drawn with the design the repository keeps in
+`docs/site/theme/` (its templates, stylesheet and scripts), so a new look is
+a push, not a release. The binary carries no design of its own: one
+project's site belongs to that project's repository, not to every install
+that runs the binary, so a repository with no theme is refused with that
+reason. A theme that lacks a file is refused with the file's name. The ten
+products on the home page are the repository's too
+(`docs/site/products.json`).
 
 The two docs sites find each other on the install itself:
 

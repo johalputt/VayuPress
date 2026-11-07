@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package docsite renders a repository's documentation into a static website:
-// its guides, its decision records, its changelog and a few pages of its own,
-// in the design vayupress.com was drawn in. An install that follows a
-// repository builds one on every change to the branch it follows and deploys it
-// as that domain's bundle, so nothing on the site is copied there by hand.
+// its guides, its decision records, its changelog and a few pages of its own.
+// An install that follows a repository builds one on every change to the
+// branch it follows and deploys it as that domain's bundle, so nothing on the
+// site is copied there by hand.
 //
-// What is written lives in the repository and arrives with the sync: every
-// document, decision, release note, page and picture. How it is drawn (the
-// templates, the stylesheet, the script) lives here and ships with the binary,
-// tested with it, so a change of design is a release and a change of words is
-// a commit.
+// Everything about the site lives in the repository and arrives with the
+// sync: every document, decision, release note, page and picture, and the
+// design it is drawn in (docs/site/theme: templates, stylesheet, script).
+// The binary holds only the engine. It ships to every install, and one
+// project's site is not every install's to carry.
 package docsite
 
 import (

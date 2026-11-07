@@ -62,7 +62,7 @@ func TestPublishedChecksumsNameTheFileTheyCover(t *testing.T) {
 	}
 	for _, asset := range []string{
 		"vayupress", "vayuprovision-helpers.tar.gz",
-		"vayupress-selfhosted-site.zip", "vayushield-agent.tar.gz",
+		"vayushield-agent.tar.gz",
 	} {
 		want := "(cd dist && sha256sum " + asset + " > " + asset + ".sha256)"
 		if !strings.Contains(wf, want) {

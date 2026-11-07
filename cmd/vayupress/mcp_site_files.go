@@ -208,8 +208,9 @@ func (a *App) registerSiteFileTools(srv *mcp.Server) {
 		Description: "Build a hosted domain's website from a public GitHub repository, and rebuild it whenever the " +
 			"branch moves (the install looks every five minutes; sync_site publishes at once). With dir, that folder " +
 			"of the repository is the site, served as it is. Without dir, the repository's docs/ and CHANGELOG.md " +
-			"are rendered as a documentation site (VayuPress's own: site \"updates\" renders the release mirror's " +
-			"page instead). Use this for a site of any size: push it, then call sync_site. An empty repo stops " +
+			"are rendered as a documentation site, drawn by the design the repository keeps in docs/site/theme " +
+			"(templates and assets; a repository without one is refused); site \"updates\" renders the release " +
+			"mirror's page instead. Use this for a site of any size: push it, then call sync_site. An empty repo stops " +
 			"following and leaves the live site as it is.",
 		InputSchema: objSchema([]string{"host", "repo"}, map[string]any{
 			"host":   strProp("The hosted domain, exactly as list_sites reports it."),

@@ -289,25 +289,6 @@ jobs:
             --bundle dist/vayuprovision-helpers.tar.gz.cosign.bundle \
             || echo "cosign signing skipped/failed — the root worker will refuse this bundle, which is the intended behaviour"
 
-      - name: Package the self-hosted marketing site
-        if: steps.exists.outputs.skip != 'true'
-        # vayupress.com as an install builds it when it follows this repository
-        # (internal/docsite): every page, decision and release note from docs/,
-        # drawn by the binary's own templates under script-src/style-src/
-        # font-src 'self'. Attaching the bundle lets an operator upload the
-        # site to any install without a toolchain.
-        run: |
-          go run ./cmd/vayudocs -repo . -commit "${GITHUB_SHA}" -zip dist/selfhosted-site.zip
-          test -f dist/selfhosted-site.zip || { echo "FAIL: the site bundle was not produced"; exit 1; }
-          # The NAME matters, not just the file. Every VayuPress binary already
-          # installed in the world picks its update by alphabetical order (see the
-          # asset-order gate below), so an attachment sorting before "vayupress"
-          # is installed INSTEAD of the binary. Shipping this as
-          # `selfhosted-site.zip` took a production site down; the vayupress-
-          # prefix keeps it behind the binary for every one of those installs.
-          mv dist/selfhosted-site.zip dist/vayupress-selfhosted-site.zip
-          (cd dist && sha256sum vayupress-selfhosted-site.zip > vayupress-selfhosted-site.zip.sha256)
-
       - name: Package the VayuShield helper agent
         if: steps.exists.outputs.skip != 'true'
         # The Tier 2/3 reconcile agent runs as ROOT and therefore cannot take its
@@ -454,7 +435,7 @@ jobs:
           sidecar='\.(sha256|sha512|sha1|md5|sig|asc|pem|pub|cert|crt|bundle|sbom|spdx|json|cdx|txt|md|sum)$'
           # -type f, and this is not a detail: dist/ also holds the staging
           # DIRECTORIES the bundles are built from (dist/agent, dist/provision,
-          # dist/selfhosted-site). None of them is uploaded, and `agent` and
+          # and dist/provision). Neither is uploaded, and `agent` and
           # `provision` both sort before `vayupress` — a gate that listed them
           # would fail every release forever, which is a worse outage than the one
           # it guards against. The first draft of this gate did exactly that.
@@ -470,7 +451,7 @@ jobs:
             echo "operator restored the backup by hand. This has happened once already."
             echo
             echo "Fix: rename the attachment so it sorts after the binary — the convention is"
-            echo "a 'vayupress-' prefix (e.g. vayupress-selfhosted-site.zip)."
+            echo "a 'vayupress-' prefix (e.g. vayupress-<name>.zip)."
             exit 1
           fi
           echo "OK: 'vayupress' is first — no attachment can be mistaken for the binary."
@@ -501,5 +482,3 @@ jobs:
             dist/vayuprovision-helpers.tar.gz
             dist/vayuprovision-helpers.tar.gz.sha256
             dist/vayuprovision-helpers.tar.gz.cosign.bundle
-            dist/vayupress-selfhosted-site.zip
-            dist/vayupress-selfhosted-site.zip.sha256

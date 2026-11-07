@@ -5,7 +5,6 @@ package docsite
 import (
 	"bytes"
 	"crypto/sha256"
-	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -21,28 +20,24 @@ import (
 	"github.com/johalputt/vayupress/internal/customsite"
 )
 
-//go:embed templates/*.html assets/site.css assets/site.js assets/updates.js
-var design embed.FS
-
-// themeDir is where a repository keeps a design of its own.
+// themeDir is where a repository keeps its site's design: templates/*.html,
+// assets/site.css, assets/site.js and, for the mirror's page,
+// assets/updates.js.
 const themeDir = siteDir + "/theme"
 
-// theme is the design a build draws with: the repository's own when it has
-// one, else the one compiled in. A repository's theme replaces the built-in
-// design whole (templates/*.html, assets/site.css, assets/site.js and, for the
-// mirror's page, assets/updates.js) rather than file by file, so what renders
-// is never half of one design and half of another, and a file it lacks is an
-// error naming that file rather than a silent fall back.
-//
-// This is what lets the design change with a push, like the words: a new look
-// for the site is a commit the install builds, not a release of the binary.
-func theme(repo fs.FS) fs.FS {
-	if _, err := fs.Stat(repo, themeDir); err == nil {
-		if sub, err := fs.Sub(repo, themeDir); err == nil {
-			return sub
-		}
+// errNoTheme is a repository with no design of its own. The binary carries
+// none: a site's look belongs to the repository it is built from, so one
+// project's site is never drawn on every install that runs the binary.
+var errNoTheme = errors.New("docsite: the repository has no " + themeDir + " to draw its site with")
+
+// theme is the design a build draws with: the repository's own, whole. A file
+// it lacks is an error naming that file (nameAsset, the template parse),
+// never a fall back to another design.
+func theme(repo fs.FS) (fs.FS, error) {
+	if fi, err := fs.Stat(repo, themeDir); err != nil || !fi.IsDir() {
+		return nil, errNoTheme
 	}
-	return design
+	return fs.Sub(repo, themeDir)
 }
 
 // view is what every template reads: the site, and the page being drawn.
@@ -113,6 +108,12 @@ func Build(in Input) (Bundle, error) {
 	if in.Repo == nil {
 		return nil, errors.New("docsite: no repository to build from")
 	}
+	// The design first: a repository without one is refused before its
+	// documents are read.
+	th, err := theme(in.Repo)
+	if err != nil {
+		return nil, err
+	}
 	b := Bundle{}
 	l := &linker{repo: in.Repo, source: in.Source, commit: in.Commit, docs: map[string]bool{}, files: map[string]bool{}}
 	docs, err := loadDocs(in.Repo, l)
@@ -148,7 +149,9 @@ func Build(in Input) (Bundle, error) {
 		s.Latest = &s.Releases[0]
 	}
 	pages := loadPages(in.Repo, l, strings.NewReplacer("{releases}", num(len(s.Releases)), "{decisions}", num(len(s.ADRs))))
-	s.Products = products(bySlug)
+	if s.Products, err = products(in.Repo, bySlug); err != nil {
+		return nil, err
+	}
 	s.Sections = loadSections(in.Repo, l, strings.NewReplacer("{releases}", num(len(s.Releases)), "{decisions}", num(len(s.ADRs))))
 	s.Feed = feed(in, s.ADRs, s.Releases)
 	s.Searchable = len(docs) + len(s.Releases) + len(pages)
@@ -158,7 +161,6 @@ func Build(in Input) (Bundle, error) {
 	}
 
 	// Assets first: every page names them by their content.
-	th := theme(in.Repo)
 	css, js, err := assets(b, in, th)
 	if err != nil {
 		return nil, err
@@ -321,30 +323,36 @@ func owners(adrs []*doc) []owner {
 	return out
 }
 
-// products are the ten things the home page names, each with the decision
-// that defines it. A decision the repository no longer has is left off rather
-// than linked to nothing.
-func products(bySlug map[string]*doc) []product {
-	find := func(num string) *doc {
+// productsFile lists what the home page names, in the repository:
+// [{"name", "text", "icon", "adr"}], each with the decision that defines it.
+const productsFile = siteDir + "/products.json"
+
+// products reads the repository's product list. A decision the repository no
+// longer has is left off rather than linked to nothing; a repository with no
+// list names no products.
+func products(repo fs.FS, bySlug map[string]*doc) ([]product, error) {
+	raw, err := fs.ReadFile(repo, productsFile)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var list []struct{ Name, Text, Icon, ADR string }
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return nil, fmt.Errorf("docsite: %s: %w", productsFile, err)
+	}
+	out := make([]product, 0, len(list))
+	for _, p := range list {
+		var adr *doc
 		for _, d := range bySlug {
-			if d.ADR != nil && d.ADR.Num == num {
-				return d
+			if p.ADR != "" && d.ADR != nil && d.ADR.Num == p.ADR {
+				adr = d
 			}
 		}
-		return nil
+		out = append(out, product{Name: p.Name, Text: p.Text, Icon: p.Icon, ADR: adr})
 	}
-	return []product{
-		{"Websites", "A site is a document of pages and sections, drafted, previewed and published.", "site", find("ADR-0161")},
-		{"Blog", "Markdown in, a fast static page out, cached and paced so a crawl never takes it down.", "doc", find("ADR-0001")},
-		{"VayuMail", "Your own mail server, with the records it needs checked for you, and any mail app.", "mail", find("ADR-0096")},
-		{"VayuTalk", "Private chat on your own domain, shared by a link, with nothing in between.", "talk", find("ADR-0131")},
-		{"Tor Space", "An onion address for the same site, with its own world in the console.", "tor", find("ADR-0143")},
-		{"VayuShield", "Bots, floods and scrapers turned away before they cost a query, every verdict explained.", "shield", find("ADR-0111")},
-		{"VayuAnalytics", "Visitors counted on the server, with no cookie and no address kept, every figure explained.", "chart", find("ADR-0097")},
-		{"VayuAPI", "Keys that can do exactly what they are given, section by section, and nothing else.", "key", find("ADR-0134")},
-		{"VayuMCP", "Connect an AI client to your site in one click, with the same scoped permissions.", "chip", find("ADR-0139")},
-		{"VayuOS", "One console for all of it, one per site, installable on any screen.", "os", find("ADR-0154")},
-	}
+	return out, nil
 }
 
 // feed is the home page's "Live from main": what the syncs brought in, with

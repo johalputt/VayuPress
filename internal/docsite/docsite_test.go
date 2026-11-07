@@ -6,6 +6,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"os"
 	"path"
@@ -39,8 +40,35 @@ func fixture() fstest.MapFS {
 	}
 }
 
+// withTheme gives repo this repository's own design and product list, which
+// a build needs: the binary carries no design of its own.
+func withTheme(t *testing.T, repo fstest.MapFS) fstest.MapFS {
+	t.Helper()
+	real := os.DirFS("../..")
+	err := fs.WalkDir(real, themeDir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := fs.ReadFile(real, p)
+		repo[p] = &fstest.MapFile{Data: data}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data, err := fs.ReadFile(real, productsFile); err == nil {
+		repo[productsFile] = &fstest.MapFile{Data: data}
+	}
+	return repo
+}
+
 func build(t *testing.T, repo fs.FS) Bundle {
 	t.Helper()
+	if m, ok := repo.(fstest.MapFS); ok {
+		if _, has := m[themeDir+"/templates/layout.html"]; !has {
+			withTheme(t, m)
+		}
+	}
 	assets, _ := fs.Sub(vayupress.StaticFS, "static")
 	b, err := Build(Input{Repo: repo, Commit: "0123456789abcdef", Source: "https://github.com/o/r", Synced: synced, Assets: assets,
 		Install: Install{Host: "johal.in", Posts: 234615, Sites: 13}})
@@ -190,7 +218,7 @@ func TestTheBundleDeploysAndPacksTheSameEveryTime(t *testing.T) {
 	if _, err := zip.NewReader(bytes.NewReader(one), int64(len(one))); err != nil {
 		t.Fatal(err)
 	}
-	repo := fixture()
+	repo := withTheme(t, fixture())
 	repo["docs/site/public/notes.md"] = &fstest.MapFile{Data: []byte("x")}
 	assets, _ := fs.Sub(vayupress.StaticFS, "static")
 	if _, err := Build(Input{Repo: repo, Synced: synced, Assets: assets}); err == nil || !strings.Contains(err.Error(), "notes.md") {
@@ -255,23 +283,14 @@ func TestTheRealSiteHasNoBrokenLinkAndNothingFromElsewhere(t *testing.T) {
 // in, so a new look is a push. It replaces the design whole: one it is missing
 // a file of is an error naming the file, not half of each.
 func TestARepositoryThemeDrawsTheSite(t *testing.T) {
-	repo := fixture()
-	err := fs.WalkDir(design, ".", func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
-		data, err := design.ReadFile(p)
+	repo := withTheme(t, fixture())
+	for p, f := range repo {
 		switch p {
-		case "templates/layout.html":
-			data = []byte(strings.Replace(string(data), "<body>", `<body data-theme="from-the-repository">`, 1))
-		case "assets/site.css":
-			data = append(data, "\n/* the repository's */\n"...)
+		case themeDir + "/templates/layout.html":
+			f.Data = []byte(strings.Replace(string(f.Data), "<body>", `<body data-theme="from-the-repository">`, 1))
+		case themeDir + "/assets/site.css":
+			f.Data = append(f.Data, "\n/* the repository's */\n"...)
 		}
-		repo[themeDir+"/"+p] = &fstest.MapFile{Data: data}
-		return err
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 	b := build(t, repo)
 	if !strings.Contains(string(b["index.html"]), `data-theme="from-the-repository"`) {
@@ -335,5 +354,56 @@ func TestHomeNamesEveryProductAndOffersBothWorlds(t *testing.T) {
 	}
 	if !strings.Contains(home, `data-world="clearnet" aria-pressed="true"`) || !strings.Contains(home, `data-world="tor" aria-pressed="false"`) {
 		t.Error("Home has no world switch with Clearnet pressed")
+	}
+}
+
+// TestARepositoryWithNoDesignIsRefused — the binary carries no site design:
+// one project's site must not be what every install draws. A repository with
+// no docs/site/theme is refused with the reason, and builds nothing.
+func TestARepositoryWithNoDesignIsRefused(t *testing.T) {
+	assets, _ := fs.Sub(vayupress.StaticFS, "static")
+	b, err := Build(Input{Repo: fixture(), Commit: "0123456789abcdef", Source: "https://github.com/o/r", Synced: synced, Assets: assets})
+	if !errors.Is(err, errNoTheme) || b != nil {
+		t.Fatalf("a repository with no theme gave %d files and %v; want errNoTheme", len(b), err)
+	}
+}
+
+// TestProductsAreTheRepositorysOwn — the home page names the products the
+// repository lists, and a repository that lists none names none.
+func TestProductsAreTheRepositorysOwn(t *testing.T) {
+	repo := withTheme(t, fixture())
+	repo[productsFile] = &fstest.MapFile{Data: []byte(`[{"name":"Only this","text":"t","icon":"site","adr":"ADR-0002"}]`)}
+	home := file(t, build(t, repo), "index.html")
+	if !strings.Contains(home, "<h3>Only this</h3>") || strings.Contains(home, "<h3>VayuMail</h3>") {
+		t.Error("the home page does not name exactly the repository's own products")
+	}
+	if !strings.Contains(home, "ADR-0002") {
+		t.Error("a product's decision is not linked")
+	}
+	delete(repo, productsFile)
+	if home := file(t, build(t, repo), "index.html"); strings.Contains(home, `<div class="product">`) {
+		t.Error("a repository with no product list still names products")
+	}
+}
+
+// TestTheEngineEmbedsNoSite — the package ships in every install's binary,
+// so it holds no design and no site's files: nothing in it is embedded.
+// One project's site belongs to its repository (docs/site/theme).
+func TestTheEngineEmbedsNoSite(t *testing.T) {
+	files, err := fs.Glob(os.DirFS("."), "*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(src), "//go:embed") {
+			t.Errorf("%s embeds files into the binary; a site's design belongs to its repository", f)
+		}
 	}
 }

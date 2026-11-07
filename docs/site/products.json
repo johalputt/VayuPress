@@ -1,0 +1,62 @@
+[
+  {
+    "name": "Websites",
+    "text": "A site is a document of pages and sections, drafted, previewed and published.",
+    "icon": "site",
+    "adr": "ADR-0161"
+  },
+  {
+    "name": "Blog",
+    "text": "Markdown in, a fast static page out, cached and paced so a crawl never takes it down.",
+    "icon": "doc",
+    "adr": "ADR-0001"
+  },
+  {
+    "name": "VayuMail",
+    "text": "Your own mail server, with the records it needs checked for you, and any mail app.",
+    "icon": "mail",
+    "adr": "ADR-0096"
+  },
+  {
+    "name": "VayuTalk",
+    "text": "Private chat on your own domain, shared by a link, with nothing in between.",
+    "icon": "talk",
+    "adr": "ADR-0131"
+  },
+  {
+    "name": "Tor Space",
+    "text": "An onion address for the same site, with its own world in the console.",
+    "icon": "tor",
+    "adr": "ADR-0143"
+  },
+  {
+    "name": "VayuShield",
+    "text": "Bots, floods and scrapers turned away before they cost a query, every verdict explained.",
+    "icon": "shield",
+    "adr": "ADR-0111"
+  },
+  {
+    "name": "VayuAnalytics",
+    "text": "Visitors counted on the server, with no cookie and no address kept, every figure explained.",
+    "icon": "chart",
+    "adr": "ADR-0097"
+  },
+  {
+    "name": "VayuAPI",
+    "text": "Keys that can do exactly what they are given, section by section, and nothing else.",
+    "icon": "key",
+    "adr": "ADR-0134"
+  },
+  {
+    "name": "VayuMCP",
+    "text": "Connect an AI client to your site in one click, with the same scoped permissions.",
+    "icon": "chip",
+    "adr": "ADR-0139"
+  },
+  {
+    "name": "VayuOS",
+    "text": "One console for all of it, one per site, installable on any screen.",
+    "icon": "os",
+    "adr": "ADR-0154"
+  }
+]

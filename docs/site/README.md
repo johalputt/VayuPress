@@ -2,13 +2,16 @@
 
 The words of the site served at https://vayupress.com. The install that
 serves it follows this repository and builds the site from it on every
-change to main (`internal/docsite`); `cmd/vayudocs` builds the same site
-locally, and each release attaches it as `vayupress-selfhosted-site.zip`.
-The words live here; the design (templates, stylesheet, script) ships with
-the binary, so a new look is a release and a new sentence is a commit.
+change to main (`internal/docsite`), and `cmd/vayudocs` builds the same site
+locally. Both the words and the design (`theme/`: templates, stylesheet,
+script) live here, so a new look and a new sentence are each a commit. The
+binary carries only the engine: it ships to every install, and this site
+is not theirs.
 
 ```
 docs/site/
+├── theme/          # the design: templates/*.html, assets/site.css, site.js, updates.js
+├── products.json   # the home page's products: name, one line, icon, its decision
 ├── nav.json        # the docs sidebar: its headings, and the guides under each
 ├── home/           # the home page's sections, in file-name order
 ├── pages/          # the site's own pages: About, Sponsors, VayuWeb, VayuMail privacy

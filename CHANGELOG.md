@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+
+- **The binary no longer carries vayupress.com.** Its design (templates,
+  stylesheet, script) and its list of products were built into every
+  install, though only the install that serves vayupress.com draws it.
+  They now live in the repository, in `docs/site/theme` and
+  `docs/site/products.json`, and arrive with the sync like the words do.
+  A domain that follows a repository without a folder is drawn with that
+  repository's own theme; a repository with none is refused with the
+  reason, rather than drawn as VayuPress's site. Releases no longer attach
+  `vayupress-selfhosted-site.zip`.
+
 ## [3.18.32] — 2026-11-07
 
 Plugins run confined and load from where they are installed; posts without a card image get one from Pixabay; every public post has a Markdown copy for agents; each hosted blog's trending and pinned lists are its own; and vayupress.com is built from the repository, with all ten products and a Tor Space switch.

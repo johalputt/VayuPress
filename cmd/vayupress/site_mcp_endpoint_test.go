@@ -35,7 +35,7 @@ func TestSiteAdvertisesPathEndpointNotBareSubdomain(t *testing.T) {
 	// What vayupress.com says: its sections and pages (docs/site) and the
 	// words its templates draw (internal/docsite).
 	var files []string
-	for _, g := range []string{"../../docs/site/home/*.md", "../../docs/site/pages/*.md", "../../internal/docsite/templates/*.html", "../../internal/docsite/build.go"} {
+	for _, g := range []string{"../../docs/site/home/*.md", "../../docs/site/pages/*.md", "../../docs/site/theme/templates/*.html", "../../internal/docsite/build.go"} {
 		m, err := filepath.Glob(g)
 		if err != nil {
 			t.Fatal(err)
