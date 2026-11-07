@@ -233,6 +233,13 @@ const (
 	// featured posts (see the editor "Feature this post" toggle), capped at 4.
 	KeyFeatureTrending = "feature.trending"
 
+	// KeyFeaturePostImages turns on card images from Pixabay: a paced
+	// background job gives each published post with no card image the
+	// Pixabay picture its HTML carries, or the first Pixabay finds for its
+	// title, copied into the media library (cmd/vayupress/post_images.go).
+	// Default OFF, and it needs the Pixabay key on API Keys.
+	KeyFeaturePostImages = "feature.post_images"
+
 	// Monetization feature flags. Unlike the engagement flags above these
 	// default OFF: a site only starts taking payments or showing advertising
 	// once the operator explicitly switches the module on from Tools & Plugins,
@@ -503,6 +510,7 @@ const (
 // FeatureKeys is the set of operator-toggleable feature flags. Each maps to a
 // public surface whose request handler consults FeatureEnabled before acting.
 var FeatureKeys = map[string]bool{
+	KeyFeaturePostImages:  true,
 	KeyFeatureComments:    true,
 	KeyFeatureNewsletter:  true,
 	KeyFeatureWebmentions: true,
@@ -555,6 +563,8 @@ var RobotsOptions = map[string]bool{
 // editor round-trips it. Anything else is configuration, credentials, network
 // policy or measurements about this specific machine.
 var NotPortable = map[string]bool{
+	// A bundle never turns on background downloads on the install it is applied to.
+	KeyFeaturePostImages:          true,
 	KeyAdsNever:                   true,
 	KeyAPIRatePerMin:              true,
 	KeyNoFollowLinks:              true,
@@ -685,8 +695,9 @@ var NotPortable = map[string]bool{
 
 // AllKeys is the canonical set of settings keys accepted by Set/SetMany.
 var AllKeys = map[string]bool{
-	KeyAdsNever:      true,
-	KeyAPIRatePerMin: true,
+	KeyFeaturePostImages: true,
+	KeyAdsNever:          true,
+	KeyAPIRatePerMin:     true,
 	// A hosted site's own VayuShield settings (vayushield/site_policy.go).
 	KeyShieldSitePoW:                true,
 	KeyShieldSiteJS:                 true,
@@ -841,6 +852,7 @@ var AllKeys = map[string]bool{
 
 // Defaults are returned when no DB value exists for a key.
 var Defaults = map[string]string{
+	KeyFeaturePostImages:       "off",
 	KeyNoFollowLinks:           "false",
 	KeyPageCache:               "true",
 	KeyAnalyticsCities:         "false",

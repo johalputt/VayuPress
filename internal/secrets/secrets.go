@@ -98,6 +98,9 @@ const (
 	// (internal/youtube). Without one, channels are followed from their
 	// public feeds.
 	ProviderYouTube = "youtube"
+	// ProviderPixabay stores the operator's Pixabay API key, with which posts
+	// that have no card image get one (internal/pixabay).
+	ProviderPixabay = "pixabay"
 	ProviderCustom  = "custom"
 )
 
@@ -118,6 +121,7 @@ var KnownProviders = map[string]bool{
 	ProviderBTCPay:         true,
 	ProviderBTCPayWebhook:  true,
 	ProviderYouTube:        true,
+	ProviderPixabay:        true,
 	ProviderCustom:         true,
 }
 

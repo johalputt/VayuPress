@@ -80,6 +80,12 @@ func (a *App) toolRegistry() []toolModule {
 			ready:   func(a *App) bool { return a.analytics != nil },
 		},
 		{
+			ID: "post-images", Name: "Card images from Pixabay", Category: "Content", Icon: "image",
+			Desc:    a.postImagesSummary(context.Background()),
+			FlagKey: settings.KeyFeaturePostImages,
+			ready:   func(a *App) bool { return a.pixabayKey(context.Background()) != "" },
+		},
+		{
 			ID: "collections", Name: "Collections", Category: "Content", Icon: "book",
 			Desc:  "Group posts into ordered series and reading lists.",
 			ready: func(a *App) bool { return a.collectionStore != nil },

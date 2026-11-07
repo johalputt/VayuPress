@@ -78,6 +78,13 @@ var knownProviders = []providerMeta{
 		SecretPH:    "AIza...",
 	},
 	{
+		Provider:    secrets.ProviderPixabay,
+		Title:       "Pixabay",
+		Desc:        "Gives posts with no card image one from Pixabay: the picture a post already links to, or the first photo found for its title, copied into the media library in the background. Switch it on under Tools and plugins. The key is kept sealed and only ever sent to Pixabay; readers fetch nothing from Pixabay.",
+		SecretLabel: "API key",
+		SecretPH:    "From pixabay.com/api/docs",
+	},
+	{
 		Provider:     secrets.ProviderOllama,
 		Title:        "Local AI (Ollama)",
 		Desc:         "Connect a self-hosted model runtime so AI features run on infrastructure you control. No data leaves your server.",

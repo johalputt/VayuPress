@@ -959,6 +959,8 @@ func main() {
 	a.payments = payments.New(dbpkg.DB)
 	a.ads = ads.New(dbpkg.DB)
 	a.startAdCounts()
+	// Card images from Pixabay, in the background, when switched on.
+	a.startPostImages(context.Background())
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()

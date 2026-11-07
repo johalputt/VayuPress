@@ -10,6 +10,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Card images from Pixabay.** With a Pixabay key on API Keys and "Card
+  images from Pixabay" on in Tools and plugins, posts with no card image
+  get one in the background: the Pixabay picture a post already shows,
+  while its address still answers, or else the first photo Pixabay finds
+  for the post's title (safe search on). Each picture is copied into the
+  media library, since Pixabay's image addresses are not for linking to,
+  so readers fetch nothing from Pixabay. The job takes the server's pace,
+  stays inside Pixabay's rate limit, never runs on a request, and tries each
+  post once (migration 134). The Tools row says how many posts it has given
+  a picture since the server started, and the last failure.
+
 - **Installed plugins are loaded.** The plugin runtime was built and nothing
   loaded a plugin into it, so Tools and plugins always said none were
   installed. A plugin is now a directory in the plugins directory
