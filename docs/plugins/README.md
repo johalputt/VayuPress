@@ -62,19 +62,45 @@ privilege the plugin needs — every field defaults to "denied".
 | `AllowNetwork` | Permit outbound network | `false` |
 | `Timeout` | Max duration per invocation | `DefaultPluginTimeout` |
 
-### Registering
+### Installing
 
-```go
-m := sandbox.Manifest{
-    Name:       "wordcount",
-    Executable: "/opt/vayupress/plugins/wordcount",
-    Timeout:    2 * time.Second,
-}
-// poolSize worker processes; hook is the event the plugin subscribes to.
-plugins.RegisterSubprocess(reg, m, "article.create", 2)
+A plugin is a directory in the plugins directory (`PLUGINS_DIR`, by default
+`/var/lib/vayupress/plugins`) holding its binary and a `plugin.json`:
+
+```sh
+CGO_ENABLED=0 go build -o /var/lib/vayupress/plugins/wordcount/wordcount ./docs/plugins/examples/wordcount
+sha256sum /var/lib/vayupress/plugins/wordcount/wordcount
 ```
 
-Plugins only fire when `VAYU_PLUGINS_ENABLED=true`.
+```json
+{
+  "vcb": 1,
+  "name": "wordcount",
+  "version": "1.0.0",
+  "description": "Counts the words of each new post.",
+  "license": "Apache-2.0",
+  "hooks": ["article.create"],
+  "executable": "wordcount",
+  "executable_sha256": "<the digest sha256sum printed>"
+}
+```
+
+The server loads every plugin there when it starts with
+`VAYU_PLUGINS_ENABLED=true`. Before one starts it must pass all of:
+
+- the checks `vayu-compat check --files` runs (`tools/vayu-compat`), with the binary's hash compared
+  to `executable_sha256`;
+- `executable_sha256` present (the sandbox checks it again before every
+  start, so a binary changed after review does not run);
+- at least one hook;
+- the plugins directory, the plugin's directory, its `plugin.json` and its
+  binary owned by root or by the server's own user, not writable by any
+  group or other user, and none of them a symbolic link: whoever can write
+  them runs code as the server.
+
+A plugin that fails is not started, and Tools and plugins says why. Build
+plugins static (`CGO_ENABLED=0` for Go): a plugin that declares no path may
+not open files, so a dynamically linked one cannot load its libraries.
 
 ## Examples
 
@@ -89,7 +115,7 @@ Plugins only fire when `VAYU_PLUGINS_ENABLED=true`.
 Build an example:
 
 ```sh
-go build -o /opt/vayupress/plugins/wordcount ./docs/plugins/examples/wordcount
+CGO_ENABLED=0 go build -o wordcount ./docs/plugins/examples/wordcount
 ```
 
 ## Security model

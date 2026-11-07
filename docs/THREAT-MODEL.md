@@ -193,7 +193,7 @@ YouTube's three hosts for a followed channel (`www.youtube.com`,
 | Writes outside the data directories | `ProtectSystem=full`, `ReadWritePaths` limited to data, log, cache, static and backup | `vayupress.service` |
 | Port scanning | `ufw`: 22, 80, 443 and mail ports | `scripts/deploy-vayupress.sh` |
 | Brute force on nginx | fail2ban jails `nginx-http-auth`, `nginx-limit-req` | `/etc/fail2ban/jail.d/vayupress.conf` |
-| Plugin escape | Namespaces, cgroups, run as a set user, the binary's hash checked, FDs closed, minimal env; the seccomp filter, `NoNewPrivs` and the capability drop are written but not yet applied to the plugin process (RR-08) | `internal/sandbox` (ADR-0057) |
+| Plugin escape | Namespaces, cgroups, run as a set user, the binary's hash checked, FDs closed, minimal env, and a seccomp filter, `NoNewPrivs` and no capabilities applied in the child before `exec` | `internal/sandbox` (ADR-0057, ADR-0176) |
 | Certificate expiry | certbot's renewal timer | certbot |
 
 ---
@@ -209,7 +209,7 @@ YouTube's three hosts for a followed channel (`www.youtube.com`,
 | RR-05 | Mutual TLS for plugin IPC | Low | Security Lead | Plugins are local subprocesses; revisit when the plugin SDK is external |
 | RR-06 | IndexNow trusts the configured key and host | Low | Operator | Submissions are suppressed in read-only, quarantined and maintenance modes and journalled; the key is operator-supplied and not rotated automatically |
 | RR-07 | Both Spaces share one machine | Medium | Operator | Spaces separate identity and content, not the host; the console states this (ADR-0143) |
-| RR-08 | A plugin runs without its seccomp filter and capability drop | Medium | Security Lead | Both are written in `internal/sandbox` and need a step in the child between fork and exec; until then a plugin is held by its namespaces, cgroups, user and hash, and only a plugin the operator installed runs |
+| RR-08 | A plugin ran without its seccomp filter and capability drop | Medium | — (closed, 3.18.32) | Closed: the host's child step applies both, with `NoNewPrivs`, before it execs the plugin, and a plugin it cannot confine does not start (`internal/sandbox/helper_linux.go`, ADR-0176) |
 
 ---
 
@@ -221,3 +221,4 @@ YouTube's three hosts for a followed channel (`www.youtube.com`,
 | 2026-06-14 | @johalputt | Added the federation HTTP-signature gap and RR-06 (IndexNow) after a code audit |
 | 2026-10-16 | @johalputt | v2.0, rewritten against the code: the isso comment server, the `vayupress` user, `/data` paths, the cron integrity check and federation are gone; entry points, assets, outbound connections and mitigations now name their mechanisms; RR-02 (read-only does not refuse post writes), RR-04 and RR-07 added |
 | 2026-10-31 | @johalputt | Sign-in attacks (spraying, a known password, a public address, phishing, open sessions), forged mail verdicts, link warnings, outside models, sealed mail, mail trackers, YouTube following; the plugin sandbox row corrected to what is applied, and RR-08 |
+| 2026-11-07 | @johalputt | RR-08 closed: the plugin's seccomp filter, `NoNewPrivs` and capability drop are applied in its child step |

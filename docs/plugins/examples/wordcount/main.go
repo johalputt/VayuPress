@@ -10,17 +10,11 @@
 //
 // Build:
 //
-//	go build -o wordcount ./docs/plugins/examples/wordcount
+//	CGO_ENABLED=0 go build -o wordcount ./docs/plugins/examples/wordcount
 //
-// Register (host side, e.g. in your plugin wiring):
-//
-//	m := sandbox.Manifest{
-//	    Name:       "wordcount",
-//	    Executable: "/opt/vayupress/plugins/wordcount",
-//	    Timeout:    2 * time.Second,
-//	    // No AllowedReadPaths / AllowedWritePaths / AllowNetwork: fully isolated.
-//	}
-//	plugins.RegisterSubprocess(reg, m, "article.create", 2)
+// Install: a directory wordcount/ in the plugins directory holding the binary
+// and a plugin.json that names it, pins its SHA-256 and subscribes it to
+// "article.create" (docs/plugins/README.md).
 package main
 
 import (

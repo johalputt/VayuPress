@@ -8,6 +8,8 @@ import (
 	"log"
 	"os"
 	"testing"
+
+	"github.com/johalputt/vayupress/internal/sandbox"
 )
 
 // TestMain drops info-level log lines for the whole package. Each test database
@@ -16,6 +18,9 @@ import (
 // reached the line naming the failing test. Warnings and errors still print:
 // they are what explains a failure.
 func TestMain(m *testing.M) {
+	// A plugin started by a test runs this test binary as its child step,
+	// as the server runs itself (main).
+	sandbox.RunHelperIfAsked()
 	log.SetOutput(dropInfo{os.Stderr})
 	os.Exit(m.Run())
 }

@@ -86,13 +86,18 @@ func (p *SubprocessPlugin) start() error {
 		}
 	}
 
-	// P28: Set up filesystem confinement (tmpfs scratch, mount namespace).
-	p.confinement = SetupConfinement(p.manifest)
+	// The scratch directory a confined plugin's tmpfs goes on; the helper
+	// mounts it inside the plugin's own mount namespace.
+	conf, err := SetupConfinement(p.manifest)
+	if err != nil {
+		return err
+	}
+	p.confinement = conf
 
 	// P28: Close stray inherited FDs before exec — CLOEXEC all extras.
 	CloseExtraFDs(nil)
 
-	cmd := exec.Command(p.manifest.Executable, p.manifest.Args...)
+	cmd := pluginCommand(p.manifest, p.confinement, true)
 	// Minimal, sanitised environment — parent env is NOT inherited.
 	cmd.Env = PrepareExecEnv(p.manifest, p.confinement.ScratchDir())
 
@@ -110,7 +115,6 @@ func (p *SubprocessPlugin) start() error {
 	cmd.Stderr = nil
 
 	applyProcAttr(cmd)
-	applyRunAs(cmd, p.manifest.RunAs)
 	// P27 namespaces + P28 mount namespace.
 	nsFlags := namespaceCloneflags(p.manifest) | MountNamespaceFlags(p.manifest)
 	applyNamespaceFlags(cmd, nsFlags)
@@ -135,7 +139,9 @@ func (p *SubprocessPlugin) start() error {
 				Component: "sandbox",
 				Msg:       fmt.Sprintf("sandbox: namespace flags rejected (EPERM) for %s — retrying without namespaces (operator-accepted)", p.manifest.Name),
 			})
-			cmd2 := exec.Command(p.manifest.Executable, p.manifest.Args...)
+			// No mount namespace, so the helper mounts nothing: a mount here
+			// would land in the host's own tree.
+			cmd2 := pluginCommand(p.manifest, p.confinement, false)
 			cmd2.Env = cmd.Env
 			stdinPipe2, err2 := cmd2.StdinPipe()
 			if err2 != nil {
@@ -147,7 +153,6 @@ func (p *SubprocessPlugin) start() error {
 			}
 			cmd2.Stderr = nil
 			applyProcAttr(cmd2)
-			applyRunAs(cmd2, p.manifest.RunAs)
 			// Cloneflags intentionally left zero — no namespace isolation.
 			if err2 := cmd2.Start(); err2 != nil {
 				return fmt.Errorf("sandbox: start %s: %w", p.manifest.Executable, err2)

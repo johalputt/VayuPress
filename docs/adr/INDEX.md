@@ -9,6 +9,7 @@
 
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
+| [ADR-0176](ADR-0176-a-plugin-confines-itself-before-exec.md) | A plugin is confined in its own child step before exec: the host starts itself, mounts only in the plugin's namespace, empties its capabilities, sets NoNewPrivs and the manifest's seccomp filter, then execs; a plugin it cannot confine does not start | Accepted | Security | 2026-11-07 |
 | [ADR-0175](ADR-0175-a-youtube-channel-as-a-blog.md) | A YouTube channel as a blog: every video a post through the editor's paths; public feeds first, the Data API for the back catalogue and premieres; only built addresses on three hosts are fetched; each video posted once (migration 129) | Accepted | Core | 2026-10-31 |
 | [ADR-0174](ADR-0174-the-inbox-sorts-itself-from-headers.md) | The Inbox sorts itself into Primary, Updates, Newsletters, Receipts and Social from headers and subject alone, in the listing cache; Follow-ups and Unsubscribe views | Accepted | Core | 2026-10-31 |
 | [ADR-0173](ADR-0173-model-help-with-server-side-cautions.md) | Model help in Mail: off until turned on; local only at loopback; to a model outside, personal details masked and encrypted or confidential messages never sent; the holder's own mailbox only | Accepted | Core | 2026-10-31 |

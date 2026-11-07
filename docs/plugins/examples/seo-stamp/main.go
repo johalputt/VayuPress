@@ -20,18 +20,11 @@
 //
 // Build:
 //
-//	go build -o seo-stamp ./docs/plugins/examples/seo-stamp
+//	CGO_ENABLED=0 go build -o seo-stamp ./docs/plugins/examples/seo-stamp
 //
-// Register (host side):
-//
-//	m := sandbox.Manifest{
-//	    Name:             "seo-stamp",
-//	    Executable:       "/opt/vayupress/plugins/seo-stamp",
-//	    Args:             []string{"/opt/vayupress/etc/vayupress-theme.json"},
-//	    AllowedReadPaths: []string{"/opt/vayupress/etc/"},
-//	    Timeout:          2 * time.Second,
-//	}
-//	plugins.RegisterSubprocess(reg, m, "article.create", 2)
+// Install: a directory seo-stamp/ in the plugins directory holding the binary
+// and a plugin.json that names it, pins its SHA-256 and subscribes it to
+// "article.create" (docs/plugins/README.md).
 package main
 
 import (

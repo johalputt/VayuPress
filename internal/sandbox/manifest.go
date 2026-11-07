@@ -77,22 +77,17 @@ type Manifest struct {
 	// If zero, defaults to 1 MiB.
 	MaxMessageBytes int64
 
-	// SeccompProfile is reserved for future BPF seccomp profile path.
-	// Currently used for logging intent; actual enforcement is via NoNewPrivs.
-	SeccompProfile string
-
-	// RunAs is an optional "uid:gid" string. If set on Linux, the subprocess is
-	// launched under the given numeric uid/gid via SysProcAttr.Credential.
+	// RunAs is an optional "uid:gid" string. On Linux the plugin's child
+	// step takes that identity (groups cleared) before it drops its
+	// capabilities and execs the plugin; a malformed value stops the plugin
+	// from starting.
 	RunAs string
 
-	// ConfineMounts enables CLONE_NEWNS + private tmpfs scratch directory.
-	// The plugin gets a read-only view of allowed paths and a writable tmpfs.
+	// ConfineMounts gives the plugin its own mount namespace (CLONE_NEWNS)
+	// with a private 64 MiB tmpfs at $PLUGIN_SCRATCH and the /proc and /sys
+	// entries in maskedPaths covered. Paths are not hidden from it: what it
+	// may read is decided by its RunAs identity.
 	ConfineMounts bool
-
-	// DropCaps instructs the sandbox to drop all Linux capabilities before exec.
-	// Requires ConfineMounts (needs the child-setup path). Default true when
-	// running as root; ignored on non-Linux.
-	DropCaps bool
 }
 
 // ResourceLimits declares cgroup v2 resource ceilings for a sandboxed plugin.

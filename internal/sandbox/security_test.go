@@ -3,6 +3,7 @@
 package sandbox
 
 import (
+	"os"
 	"testing"
 )
 
@@ -30,11 +31,20 @@ func TestManifestDefaultsAreSafe(t *testing.T) {
 // TestPluginConfinementCleanupIsIdempotent verifies Cleanup can be called
 // multiple times without panic or error — important for deferred cleanup paths.
 func TestPluginConfinementCleanupIsIdempotent(t *testing.T) {
-	c := &PluginConfinement{}
+	c, err := SetupConfinement(Manifest{Name: "idem", ConfineMounts: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := c.ScratchDir()
 	// Must not panic.
 	c.Cleanup()
 	c.Cleanup()
 	c.Cleanup()
+	if dir != "" {
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Errorf("the scratch directory %s outlived Cleanup", dir)
+		}
+	}
 }
 
 // TestPluginConfinementNilSafe verifies nil receiver methods don't panic.

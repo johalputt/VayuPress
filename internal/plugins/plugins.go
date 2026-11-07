@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -217,10 +218,10 @@ var (
 	spEntries []*subprocessEntry
 )
 
-// RegisterSubprocess registers a sandboxed subprocess plugin and wires it into
-// the registry so its hooks fire via the subprocess IPC protocol (ADR-0056).
-// poolSize controls how many worker processes to launch.
-func RegisterSubprocess(reg *Registry, m sandbox.Manifest, hookEvent string, poolSize int) error {
+// RegisterSubprocess starts a sandboxed subprocess plugin (ADR-0056) and
+// subscribes it to hooks: one pool of poolSize processes serves every hook
+// it names, each invocation carrying the hook's name.
+func RegisterSubprocess(reg *Registry, m sandbox.Manifest, hooks []string, poolSize int) error {
 	pool, err := sandbox.NewPool(m, poolSize)
 	if err != nil {
 		return fmt.Errorf("plugins.RegisterSubprocess %s: %w", m.Name, err)
@@ -229,10 +230,12 @@ func RegisterSubprocess(reg *Registry, m sandbox.Manifest, hookEvent string, poo
 	spEntries = append(spEntries, &subprocessEntry{manifest: m, pool: pool})
 	spMu.Unlock()
 
-	reg.Register(hookEvent, func(ctx context.Context, payload map[string]interface{}) error {
-		return pool.Invoke(ctx, hookEvent, payload)
-	})
-	logging.LogInfo("plugins", fmt.Sprintf("subprocess plugin registered: name=%s hook=%s workers=%d", m.Name, hookEvent, poolSize))
+	for _, hook := range hooks {
+		reg.Register(hook, func(ctx context.Context, payload map[string]interface{}) error {
+			return pool.Invoke(ctx, hook, payload)
+		})
+	}
+	logging.LogInfo("plugins", fmt.Sprintf("subprocess plugin registered: name=%s hooks=%s workers=%d", m.Name, strings.Join(hooks, ","), poolSize))
 	return nil
 }
 

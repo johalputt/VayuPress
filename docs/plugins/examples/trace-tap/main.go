@@ -20,17 +20,11 @@
 //
 // Build:
 //
-//	go build -o trace-tap ./docs/plugins/examples/trace-tap
+//	CGO_ENABLED=0 go build -o trace-tap ./docs/plugins/examples/trace-tap
 //
-// Register (host side):
-//
-//	m := sandbox.Manifest{
-//	    Name:       "trace-tap",
-//	    Executable: "/opt/vayupress/plugins/trace-tap",
-//	    Timeout:    2 * time.Second,
-//	    // Fully isolated: no AllowedReadPaths / AllowedWritePaths / AllowNetwork.
-//	}
-//	plugins.RegisterSubprocess(reg, m, "article.create", 2)
+// Install: a directory trace-tap/ in the plugins directory holding the binary
+// and a plugin.json that names it, pins its SHA-256 and subscribes it to
+// "article.create" (docs/plugins/README.md).
 package main
 
 import (

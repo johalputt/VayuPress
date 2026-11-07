@@ -8,6 +8,36 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Installed plugins are loaded.** The plugin runtime was built and nothing
+  loaded a plugin into it, so Tools and plugins always said none were
+  installed. A plugin is now a directory in the plugins directory
+  (`PLUGINS_DIR`, by default `/var/lib/vayupress/plugins`) holding its
+  `plugin.json` and binary, loaded when the server starts with
+  `VAYU_PLUGINS_ENABLED=true`. One that fails a check is not started, and
+  the page says why: the manifest's own checks, a binary pinned by its
+  SHA-256, at least one hook, and files that nobody but the server or root
+  can change. Each plugin runs one sandboxed process serving all its hooks.
+
+### Security
+
+- **A plugin now runs under its seccomp filter, `NoNewPrivs` and no
+  capabilities.** All three were written and never applied: every plugin
+  ran with the host's privilege inside its namespaces. The host now starts
+  itself as the plugin's child step, which confines itself and then execs
+  the plugin; a plugin it cannot confine does not start, and says why. The
+  filter allows what a static program needs, plus file calls for a plugin
+  that declares paths and socket calls for one that declares the network.
+  Run against the example plugins, the filter as written would have stopped
+  every Go plugin before `main` (x86-64's `arch_prctl`) or at its first file
+  (`eventfd2`); both are allowed. The capability drop used x86-64's call
+  numbers on every architecture, so on arm64 it called something else. And
+  a plugin with its own mount tree no longer changes the host's: the mounts
+  are made in the plugin's namespace, not the server's (ADR-0176).
+  `DropCaps` and `SeccompProfile` are gone from the manifest; plugins are
+  built static.
+
 ### Fixed
 
 - **A hosted blog's Trending & pinned lists are its own.** Every hosted

@@ -10,65 +10,7 @@ import (
 	"runtime"
 	"syscall"
 	"unsafe"
-
-	"github.com/johalputt/vayupress/internal/logging"
 )
-
-// MountConfinement holds paths created for a plugin's mount namespace.
-type MountConfinement struct {
-	scratchDir string // tmpfs writable scratch, removed on cleanup
-}
-
-// setupMountNamespace configures the mount namespace for the sandboxed process.
-// Must be called from within the child after CLONE_NEWNS is active (i.e. via
-// a helper that runs after fork). In our model we perform bind-mount prep in
-// the parent and pass the scratch dir path to the child via env; the kernel's
-// copy-on-write namespace semantics keep the host tree unaffected.
-//
-// For each plugin we:
-//  1. Create a per-invocation tmpfs scratch directory for writable access.
-//  2. Bind-mount allowed read paths as read-only.
-//  3. Return a cleanup func that unmounts and removes the scratch dir.
-func setupMountConfinement(m Manifest) (*MountConfinement, error) {
-	scratch, err := os.MkdirTemp("", fmt.Sprintf("vp-plugin-%s-*", m.Name))
-	if err != nil {
-		return nil, fmt.Errorf("sandbox: tmpfs scratch: %w", err)
-	}
-
-	// Mount a private tmpfs on the scratch dir so plugin writes stay in memory.
-	if err := syscall.Mount("tmpfs", scratch, "tmpfs", syscall.MS_NOEXEC|syscall.MS_NOSUID|syscall.MS_NODEV, "size=64m"); err != nil {
-		os.RemoveAll(scratch) //nolint:errcheck
-		// Non-fatal — caller logs and continues without tmpfs.
-		return &MountConfinement{scratchDir: scratch}, fmt.Errorf("sandbox: mount tmpfs: %w", err)
-	}
-
-	return &MountConfinement{scratchDir: scratch}, nil
-}
-
-// Cleanup unmounts and removes the scratch directory.
-func (mc *MountConfinement) Cleanup() {
-	if mc == nil || mc.scratchDir == "" {
-		return
-	}
-	_ = syscall.Unmount(mc.scratchDir, syscall.MNT_DETACH)
-	_ = os.RemoveAll(mc.scratchDir)
-}
-
-// ScratchDir returns the path to the writable tmpfs scratch directory.
-func (mc *MountConfinement) ScratchDir() string {
-	if mc == nil {
-		return ""
-	}
-	return mc.scratchDir
-}
-
-// applyMountPropagation marks the mount point private so bind-mounts inside
-// the child namespace do not propagate back to the host.
-// Safe to call even when CLONE_NEWNS is not active (becomes a no-op).
-func applyMountPropagation() {
-	// MS_PRIVATE | MS_REC on "/" prevents mount/unmount events from propagating.
-	_ = syscall.Mount("", "/", "", syscall.MS_PRIVATE|syscall.MS_REC, "")
-}
 
 // maskedPaths is the set of /proc entries that must be masked to prevent
 // information leakage from the plugin process.
@@ -81,23 +23,6 @@ var maskedPaths = []string{
 	"/proc/sched_debug",
 	"/proc/scsi",
 	"/sys/firmware",
-}
-
-// applyProcMask bind-mounts /dev/null over sensitive /proc entries.
-// Best-effort — failures are logged but do not abort sandbox startup.
-func applyProcMask() {
-	for _, path := range maskedPaths {
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			continue
-		}
-		if err := syscall.Mount("/dev/null", path, "", syscall.MS_BIND, ""); err != nil {
-			logging.LogJSON(logging.LogFields{
-				Level:     "warn",
-				Component: "sandbox",
-				Msg:       fmt.Sprintf("sandbox: mask %s: %v", path, err),
-			})
-		}
-	}
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -188,6 +113,10 @@ var portableSyscalls = []uint32{
 	// left a sandboxed Go plugin's netpoller taking EPERM on the one
 	// architecture this product ships.
 	syscall.SYS_EPOLL_PWAIT,
+	// The netpoller wakes itself through an eventfd (Go 1.21 on), and a
+	// refused eventfd2 is a fatal runtime error: without it a plugin died the
+	// first time it opened a file, which is what starts the netpoller.
+	syscall.SYS_EVENTFD2,
 	syscall.SYS_PIPE2,
 	syscall.SYS_PPOLL,
 	// Time
@@ -195,12 +124,79 @@ var portableSyscalls = []uint32{
 	syscall.SYS_GETTIMEOFDAY,
 }
 
-// allowedSyscalls returns the full allowlist for this architecture.
-func allowedSyscalls() []uint32 {
-	out := make([]uint32, 0, len(portableSyscalls)+len(statSyscalls)+len(legacyPollSyscalls))
+// startSyscalls are what the helper and any plugin need to begin: execve,
+// which the helper calls after the filter is installed, and the call that
+// sets thread-local storage where the architecture has one (tlsSyscalls).
+// Allowing execve does not open the filter: a filter, NoNewPrivs and the
+// dropped capabilities are all kept across exec, so whatever a plugin runs
+// runs under the same three (TestTheFilterOutlivesExec).
+var startSyscalls = []uint32{syscall.SYS_EXECVE}
+
+// fileSyscalls are a plugin's file calls, for a plugin that declares paths
+// to read or write, or the network (whose resolver and TLS read files). They
+// are the spellings every supported ABI shares; a stat by name is not among
+// them (its number differs per ABI), so such a plugin opens and fstats.
+// Which paths it reaches is the job of its RunAs identity and mount tree;
+// the filter decides only which kinds of call it may make.
+var fileSyscalls = []uint32{
+	syscall.SYS_OPENAT,
+	syscall.SYS_LSEEK,
+	syscall.SYS_PREAD64,
+	syscall.SYS_GETDENTS64,
+	syscall.SYS_READLINKAT,
+}
+
+// writeSyscalls are added for a plugin that declares paths to write.
+var writeSyscalls = []uint32{
+	syscall.SYS_MKDIRAT,
+	syscall.SYS_UNLINKAT,
+	syscall.SYS_FTRUNCATE,
+	syscall.SYS_FSYNC,
+}
+
+// syscallClass is which groups of calls beyond the base a plugin's filter
+// allows, from what its manifest declares.
+type syscallClass uint8
+
+const (
+	classFiles syscallClass = 1 << iota
+	classWrite
+	classNetwork
+)
+
+// syscallClassOf is the groups m declares.
+func syscallClassOf(m Manifest) syscallClass {
+	var c syscallClass
+	if len(m.AllowedReadPaths) > 0 || len(m.AllowedWritePaths) > 0 || m.AllowNetwork {
+		c |= classFiles
+	}
+	if len(m.AllowedWritePaths) > 0 {
+		c |= classWrite
+	}
+	if m.AllowNetwork {
+		c |= classNetwork
+	}
+	return c
+}
+
+// allowedSyscalls returns the allowlist for class on this architecture.
+func allowedSyscalls(class syscallClass) []uint32 {
+	out := make([]uint32, 0, 64)
 	out = append(out, portableSyscalls...)
 	out = append(out, statSyscalls...)
-	return append(out, legacyPollSyscalls...)
+	out = append(out, legacyPollSyscalls...)
+	out = append(out, startSyscalls...)
+	out = append(out, tlsSyscalls...)
+	if class&classFiles != 0 {
+		out = append(out, fileSyscalls...)
+	}
+	if class&classWrite != 0 {
+		out = append(out, writeSyscalls...)
+	}
+	if class&classNetwork != 0 {
+		out = append(out, networkSyscalls...)
+	}
+	return out
 }
 
 // errSeccompUnsupportedArch reports that no filter can be built here. It is
@@ -209,8 +205,8 @@ func allowedSyscalls() []uint32 {
 var errSeccompUnsupportedArch = fmt.Errorf("sandbox: seccomp unsupported on linux/%s", runtime.GOARCH)
 
 // buildSeccompFilter constructs a BPF program that allows only the syscalls in
-// allowedSyscalls and returns EPERM for all others.
-func buildSeccompFilter() ([]bpfInstruction, error) {
+// allowedSyscalls(class) and returns EPERM for all others.
+func buildSeccompFilter(class syscallClass) ([]bpfInstruction, error) {
 	// Layout: load arch, validate, load syscall number, compare each allowed,
 	// default deny with ERRNO(EPERM).
 	const (
@@ -238,7 +234,7 @@ func buildSeccompFilter() ([]bpfInstruction, error) {
 		{bpfLD | bpfW | bpfABS, 0, 0, nrOffset},
 	}
 
-	for _, nr := range allowedSyscalls() {
+	for _, nr := range allowedSyscalls(class) {
 		// jeq nr, allow, next
 		insns = append(insns, bpfInstruction{bpfJMP | bpfJEQ | bpfK, 0, 1, nr})
 		insns = append(insns, bpfInstruction{bpfRET | bpfK, 0, 0, seccompActAllow})
@@ -248,15 +244,13 @@ func buildSeccompFilter() ([]bpfInstruction, error) {
 	return insns, nil
 }
 
-// ApplySeccompFilter installs the BPF syscall filter on the calling thread via
-// prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER). Must be called after
-// prctl(PR_SET_NO_NEW_PRIVS, 1) — Linux requires no-new-privs before loading
-// a seccomp filter without CAP_SYS_ADMIN.
-//
-// This is called from the child side of the sandbox setup (via a pre-exec
-// helper or directly in a single-threaded moment before execve).
-func ApplySeccompFilter() error {
-	insns, err := buildSeccompFilter()
+// applySeccompFilter sets NoNewPrivs and installs the filter for class on
+// the calling thread via prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER). Linux
+// requires no-new-privs before a filter is loaded without CAP_SYS_ADMIN, and
+// both are kept across execve. Called by the helper just before it execs
+// the plugin (helper_linux.go).
+func applySeccompFilter(class syscallClass) error {
+	insns, err := buildSeccompFilter(class)
 	if err != nil {
 		return err
 	}
@@ -294,20 +288,20 @@ type capData struct {
 	inheritable uint32
 }
 
-const (
-	linuxCapV3 = 0x20080522
-	sysCAPSET  = 126 // capset(2)
-	sysCAPGET  = 125 // capget(2)
-)
+// linuxCapV3 is _LINUX_CAPABILITY_VERSION_3. The call numbers come from the
+// syscall package, per architecture: they were written as x86-64's 125 and
+// 126, and 126 on arm64 is another call, so the drop "succeeded" there and
+// dropped nothing.
+const linuxCapV3 = 0x20080522
 
-// DropCapabilities drops all Linux capabilities from the calling process/thread.
-// After this call the process has no elevated privileges whatsoever.
-// Must be called from the child process before execve.
+// DropCapabilities empties the calling thread's effective, permitted and
+// inheritable capabilities. With NoNewPrivs set after it, an exec cannot
+// grant any back, not even to uid 0. Called by the helper before execve.
 func DropCapabilities() error {
 	hdr := capHeader{version: linuxCapV3, pid: 0}
 	// Two capdata structs for v3 (covers caps 0-63).
 	data := [2]capData{}
-	_, _, errno := syscall.RawSyscall(sysCAPSET,
+	_, _, errno := syscall.RawSyscall(syscall.SYS_CAPSET,
 		uintptr(unsafe.Pointer(&hdr)),
 		uintptr(unsafe.Pointer(&data[0])),
 		0)
@@ -353,52 +347,42 @@ func CloseExtraFDs(keepFDs []int) {
 // Confinement wiring — called from subprocess.go
 // ──────────────────────────────────────────────────────────────────────────────
 
-// PluginConfinement bundles all P28 confinement state for a single plugin instance.
+// PluginConfinement is the parent's half of a plugin's confinement: the
+// scratch directory the helper mounts a tmpfs on inside the plugin's own
+// mount namespace (confineMounts). The parent mounts nothing.
 type PluginConfinement struct {
-	mount *MountConfinement
+	scratchDir string
 }
 
-// SetupConfinement prepares filesystem confinement for a plugin before cmd.Start().
-// Returns a PluginConfinement whose Cleanup() must be deferred.
-func SetupConfinement(m Manifest) *PluginConfinement {
-	c := &PluginConfinement{}
-
+// SetupConfinement makes the scratch directory for a plugin that confines
+// its mounts. Cleanup removes it.
+func SetupConfinement(m Manifest) (*PluginConfinement, error) {
 	if !m.ConfineMounts {
-		return c
+		return &PluginConfinement{}, nil
 	}
-
-	// Mark mount propagation private so child namespace changes don't bleed out.
-	applyMountPropagation()
-
-	mc, err := setupMountConfinement(m)
+	dir, err := os.MkdirTemp("", fmt.Sprintf("vp-plugin-%s-*", m.Name))
 	if err != nil {
-		logging.LogJSON(logging.LogFields{
-			Level:     "warn",
-			Component: "sandbox",
-			Msg:       fmt.Sprintf("sandbox: mount confinement for %s: %v (degraded)", m.Name, err),
-		})
-	} else {
-		// Mask sensitive /proc entries in the new scratch environment.
-		applyProcMask()
+		return nil, fmt.Errorf("sandbox: scratch directory: %w", err)
 	}
-	c.mount = mc
-	return c
+	return &PluginConfinement{scratchDir: dir}, nil
 }
 
-// ScratchDir returns the tmpfs scratch directory path for the plugin.
+// ScratchDir returns the plugin's scratch directory, or "".
 func (c *PluginConfinement) ScratchDir() string {
-	if c == nil || c.mount == nil {
+	if c == nil {
 		return ""
 	}
-	return c.mount.ScratchDir()
+	return c.scratchDir
 }
 
-// Cleanup releases all confinement resources.
+// Cleanup removes the scratch directory. The tmpfs on it lived in the
+// plugin's mount namespace and went with the plugin.
 func (c *PluginConfinement) Cleanup() {
-	if c == nil {
+	if c == nil || c.scratchDir == "" {
 		return
 	}
-	c.mount.Cleanup()
+	_ = os.RemoveAll(c.scratchDir)
+	c.scratchDir = ""
 }
 
 // PrepareExecEnv sets seccomp-safe environment variables and closes extra FDs

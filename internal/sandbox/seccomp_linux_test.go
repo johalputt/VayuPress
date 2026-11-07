@@ -17,7 +17,7 @@ import (
 // ── Child-process probe ───────────────────────────────────────────────────────
 //
 // TestSeccompFilterActuallyEnforces re-execs this binary with vpSeccompChildEnv
-// set. Everything after ApplySeccompFilter runs on a filtered thread, so the
+// set. Everything after applySeccompFilter runs on a filtered thread, so the
 // probe uses only RawSyscall — no allocation, no fmt, no Go exit path, nothing
 // that could itself trip the filter and make a working filter look broken.
 
@@ -27,13 +27,16 @@ const vpSeccompChildEnv = "VP_SECCOMP_CHILD_PROBE"
 // failure names which invariant broke rather than just "non-zero".
 const (
 	probeOK              = 0
-	probeFilterRefused   = 3 // ApplySeccompFilter returned an error
+	probeFilterRefused   = 3 // applySeccompFilter returned an error
 	probeAllowedDenied   = 4 // an allowed syscall did not go through
 	probeDeniedSucceeded = 5 // a syscall outside the allowlist was not blocked
 	probeDeniedWrongErr  = 6 // blocked, but not with EPERM
 )
 
 func TestMain(m *testing.M) {
+	// The plugin tests start this test binary as the sandbox's child step,
+	// as the host starts itself (helper_linux.go).
+	RunHelperIfAsked()
 	if os.Getenv(vpSeccompChildEnv) != "" {
 		seccompProbeChild()
 	}
@@ -46,7 +49,7 @@ func seccompProbeChild() {
 	// goroutine must not be migrated off it after the filter is installed.
 	runtime.LockOSThread()
 
-	if err := ApplySeccompFilter(); err != nil {
+	if err := applySeccompFilter(0); err != nil {
 		rawExit(probeFilterRefused)
 	}
 
@@ -167,7 +170,7 @@ func TestAuditArchTableMatchesTheKernelDerivation(t *testing.T) {
 	for arch, expect := range want {
 		got, ok := seccompAuditArch[arch]
 		if !ok {
-			t.Errorf("linux/%s has no audit arch; ApplySeccompFilter would refuse there", arch)
+			t.Errorf("linux/%s has no audit arch; applySeccompFilter would refuse there", arch)
 			continue
 		}
 		if got != expect {
@@ -185,7 +188,7 @@ func TestAuditArchTableMatchesTheKernelDerivation(t *testing.T) {
 // hardcoded AUDIT_ARCH_X86_64 everywhere, so on any other architecture the
 // guard fell through to SECCOMP_RET_KILL_PROCESS on the first syscall.
 func TestFilterGuardsTheArchItWasBuiltFor(t *testing.T) {
-	insns, err := buildSeccompFilter()
+	insns, err := buildSeccompFilter(0)
 	if err != nil {
 		t.Fatalf("buildSeccompFilter on linux/%s: %v", runtime.GOARCH, err)
 	}
@@ -234,7 +237,7 @@ func TestUnsupportedArchRefusesInsteadOfFiltering(t *testing.T) {
 		}
 	}()
 
-	insns, err := buildSeccompFilter()
+	insns, err := buildSeccompFilter(0)
 	if err == nil {
 		t.Fatalf("built a %d-instruction filter for an architecture with no audit arch; "+
 			"it would kill on the first syscall", len(insns))
@@ -277,26 +280,32 @@ func TestPluginCanStatItsOwnDescriptors(t *testing.T) {
 }
 
 // TestAllowlistStaysMinimal guards the direction of travel: the list exists to
-// be small, and a syscall that opens files, opens sockets or starts processes
-// defeats the confinement whatever else the sandbox does.
+// be small. A plugin that declares no path and no network opens no file; and
+// whatever a plugin declares, no class carries a call that would undo the
+// confinement (trace another process, mount, change the filter, change root,
+// signal outside its group).
 func TestAllowlistStaysMinimal(t *testing.T) {
 	// Only syscalls every supported ABI spells the same way. socket(2) is the
 	// obvious omission — 386 has no SYS_SOCKET, it multiplexes through
 	// socketcall(2), which arm64 and riscv64 in turn do not have. Naming
 	// either one here would make this test compile on some architectures and
 	// not others, which is the exact defect the surrounding work exists to fix.
+	if allowsSyscall(syscall.SYS_OPENAT) {
+		t.Error("openat is allowed to a plugin that declares no path and no network")
+	}
 	forbidden := map[string]uintptr{
-		"execve": syscall.SYS_EXECVE,
-		"openat": syscall.SYS_OPENAT,
 		"ptrace": syscall.SYS_PTRACE,
 		"mount":  syscall.SYS_MOUNT,
 		"prctl":  syscall.SYS_PRCTL,
 		"chroot": syscall.SYS_CHROOT,
 		"kill":   syscall.SYS_KILL,
 	}
+	all := classFiles | classWrite | classNetwork
 	for name, nr := range forbidden {
-		if allowsSyscall(nr) {
-			t.Errorf("%s is on the allowlist; it defeats the sandbox", name)
+		for _, nr2 := range allowedSyscalls(all) {
+			if nr2 == uint32(nr) {
+				t.Errorf("%s is on the allowlist of a plugin that declares everything; it defeats the sandbox", name)
+			}
 		}
 	}
 }
@@ -306,7 +315,7 @@ func TestAllowlistStaysMinimal(t *testing.T) {
 // architecture-specific entry was also added to the portable list.
 func TestAllowlistHasNoDuplicates(t *testing.T) {
 	seen := map[uint32]bool{}
-	for _, nr := range allowedSyscalls() {
+	for _, nr := range allowedSyscalls(classFiles | classWrite | classNetwork) {
 		if seen[nr] {
 			t.Errorf("syscall %d appears twice in the allowlist", nr)
 		}
@@ -315,7 +324,7 @@ func TestAllowlistHasNoDuplicates(t *testing.T) {
 }
 
 func allowsSyscall(nr uintptr) bool {
-	for _, allowed := range allowedSyscalls() {
+	for _, allowed := range allowedSyscalls(0) {
 		if allowed == uint32(nr) {
 			return true
 		}

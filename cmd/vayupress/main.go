@@ -67,6 +67,7 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/resource"
 	"github.com/johalputt/vayupress/internal/safefetch"
+	"github.com/johalputt/vayupress/internal/sandbox"
 	"github.com/johalputt/vayupress/internal/scheduler"
 	"github.com/johalputt/vayupress/internal/search"
 	"github.com/johalputt/vayupress/internal/secrets"
@@ -542,6 +543,11 @@ func secretKEKFilePath() string {
 }
 
 func main() {
+	// A plugin's child step: this binary started by the plugin sandbox to
+	// confine itself and exec the plugin (internal/sandbox/helper_linux.go).
+	// It runs before anything else is set up, and does not return.
+	sandbox.RunHelperIfAsked()
+
 	log.SetFlags(0)
 
 	// obfs4 pluggable-transport mode: tor execs this same binary as its bridge
@@ -750,9 +756,7 @@ func main() {
 	// (We no longer write bootstrap stub ADRs here — they produced duplicate ADR
 	// numbers alongside the canonical files and polluted the registry.)
 
-	if os.Getenv("VAYU_PLUGINS_ENABLED") == "true" {
-		a.pluginManager.Start(plugins.DefaultPoolSize, plugins.DefaultQueueDepth)
-	}
+	a.startPlugins()
 
 	// Pending database restore (staged by a VayuOS backup import). This MUST run
 	// before the database is opened: it atomically swaps a validated snapshot

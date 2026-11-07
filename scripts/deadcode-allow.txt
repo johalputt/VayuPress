@@ -7,9 +7,6 @@
 # always welcome; refresh with:  scripts/deadcode-gate.sh --update
 #
 # Known groups, so a reader knows why each is still here:
-#  - internal/sandbox, plugins.RegisterSubprocess, vcb.Load*Manifest: the
-#    out-of-process plugin runtime. It is built and tested, but no production
-#    path loads a plugin into it yet.
 #  - internal/vayushield: Solve (the reference proof-of-work solver; clients
 #    solve in JS) and calibrate.BiasedForTest are test-suite entry points;
 #    fingerprint.NewStore/FromClientHello capture only when TLS terminates
@@ -30,7 +27,6 @@ internal/lifecycle/lifecycle.go: unreachable func: Manager.Stop
 internal/mode/journal.go: unreachable func: Journal.History
 internal/mode/mode.go: unreachable func: AllowedFrom
 internal/payments/payments.go: unreachable func: Gateways
-internal/plugins/plugins.go: unreachable func: RegisterSubprocess
 internal/provenance/confidence.go: unreachable func: All
 internal/provenance/confidence.go: unreachable func: Confidence.AtLeast
 internal/provenance/confidence.go: unreachable func: Parse
@@ -38,45 +34,7 @@ internal/render/csp.go: unreachable func: AllowedFrameOrigin
 internal/render/render.go: unreachable func: AdminCSSLink
 internal/render/render.go: unreachable func: WaitForPurges
 internal/resource/resource.go: unreachable func: Watchdog.Watch
-internal/sandbox/capability_enforcer.go: unreachable func: EnforceCapabilities
-internal/sandbox/cgroup_linux.go: unreachable func: enableControllersUpward
-internal/sandbox/cgroup_linux.go: unreachable func: setupCgroup
-internal/sandbox/cgroup_linux.go: unreachable func: writeControl
-internal/sandbox/confinement_linux.go: unreachable func: ApplySeccompFilter
-internal/sandbox/confinement_linux.go: unreachable func: CloseExtraFDs
-internal/sandbox/confinement_linux.go: unreachable func: DropCapabilities
-internal/sandbox/confinement_linux.go: unreachable func: MountConfinement.ScratchDir
-internal/sandbox/confinement_linux.go: unreachable func: MountNamespaceFlags
-internal/sandbox/confinement_linux.go: unreachable func: PluginConfinement.ScratchDir
-internal/sandbox/confinement_linux.go: unreachable func: PrepareExecEnv
-internal/sandbox/confinement_linux.go: unreachable func: SetupConfinement
-internal/sandbox/confinement_linux.go: unreachable func: allowedSyscalls
-internal/sandbox/confinement_linux.go: unreachable func: applyMountPropagation
-internal/sandbox/confinement_linux.go: unreachable func: applyProcMask
-internal/sandbox/confinement_linux.go: unreachable func: buildSeccompFilter
-internal/sandbox/confinement_linux.go: unreachable func: setupMountConfinement
-internal/sandbox/ipc.go: unreachable func: marshalRequest
-internal/sandbox/ipc.go: unreachable func: unmarshalResponse
-internal/sandbox/manifest.go: unreachable func: Manifest.effectiveMaxMessageBytes
-internal/sandbox/manifest.go: unreachable func: Manifest.effectiveMaxRestarts
-internal/sandbox/manifest.go: unreachable func: Manifest.effectiveTimeout
-internal/sandbox/manifest.go: unreachable func: verifyExecutableHash
-internal/sandbox/namespace_linux.go: unreachable func: namespaceCloneflags
-internal/sandbox/path_hardening.go: unreachable func: ResolveAndCheckPath
-internal/sandbox/pool.go: unreachable func: NewPool
-internal/sandbox/pool.go: unreachable func: Pool.Invoke
-internal/sandbox/seccomp_arch_linux.go: unreachable func: auditArch
-internal/sandbox/subprocess.go: unreachable func: NewSubprocessPlugin
-internal/sandbox/subprocess.go: unreachable func: SubprocessPlugin.Invoke
 internal/sandbox/subprocess.go: unreachable func: SubprocessPlugin.Telemetry
-internal/sandbox/subprocess.go: unreachable func: SubprocessPlugin.handleCrash
-internal/sandbox/subprocess.go: unreachable func: SubprocessPlugin.restart
-internal/sandbox/subprocess.go: unreachable func: SubprocessPlugin.start
-internal/sandbox/subprocess.go: unreachable func: allowNoNamespaceSandbox
-internal/sandbox/subprocess.go: unreachable func: isEPERM
-internal/sandbox/subprocess_linux.go: unreachable func: applyNamespaceFlags
-internal/sandbox/subprocess_linux.go: unreachable func: applyProcAttr
-internal/sandbox/subprocess_linux.go: unreachable func: applyRunAs
 internal/sandbox/watchdog.go: unreachable func: PluginTelemetry.snapshot
 internal/seo/sitemap.go: unreachable func: GenerateSitemap
 internal/theme/compiler.go: unreachable func: CompileVPOnly
@@ -92,7 +50,6 @@ internal/trace/store.go: unreachable func: Store.SaveSpan
 internal/trace/store.go: unreachable func: Store.ensureSchema
 internal/trace/store.go: unreachable func: attrsJSON
 internal/trace/store.go: unreachable func: parseStatus
-internal/trace/trace.go: unreachable func: CausationID
 internal/vayuflow/cron.go: unreachable func: Schedule.String
 internal/vayuflow/runner.go: unreachable func: ImplementedActions
 internal/vayushield/calibrate/calibrate.go: unreachable func: BiasedForTest
@@ -101,6 +58,4 @@ internal/vayushield/fingerprint/capture.go: unreachable func: FromClientHello
 internal/vayushield/fingerprint/capture.go: unreachable func: NewStore
 internal/vayushield/vayushield.go: unreachable func: VerdictFrom
 internal/vcb/apiperms.go: unreachable func: ParseCapability
-internal/vcb/manifest.go: unreachable func: LoadPluginManifest
-internal/vcb/manifest.go: unreachable func: readBounded
 internal/vcb/theme_manifest.go: unreachable func: LoadThemeManifest

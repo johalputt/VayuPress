@@ -21,9 +21,11 @@ import (
 	"html"
 	htmpl "html/template"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
+	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/plugins"
 	"github.com/johalputt/vayupress/internal/render"
@@ -235,14 +237,38 @@ func (a *App) handleOSTools(w http.ResponseWriter, r *http.Request) {
 	writeOSHTML(w, r, adminOSLayout(nonce, "Tools and plugins", "tools", cfg, htmpl.HTML(body)))
 }
 
-// pluginRegistryHTML renders the live sandboxed-plugin registry: every
-// subprocess plugin registered via plugins.RegisterSubprocess, with its runtime
-// health (process state, invocation count, crash/quarantine status). Empty when
-// no out-of-process plugins are installed, with a pointer to the interface spec.
+// pluginsDir is where installed plugins live, one directory each.
+func pluginsDir() string { return config.EnvOr("PLUGINS_DIR", "/var/lib/vayupress/plugins") }
+
+// startPlugins starts the hook workers and loads the plugins installed on
+// this machine, each checked before it starts (internal/plugins/loader.go),
+// when the install runs plugins at all (VAYU_PLUGINS_ENABLED=true).
+func (a *App) startPlugins() {
+	if os.Getenv("VAYU_PLUGINS_ENABLED") != "true" {
+		return
+	}
+	a.pluginManager.Start(plugins.DefaultPoolSize, plugins.DefaultQueueDepth)
+	plugins.LoadDir(a.pluginRegistry, pluginsDir(), Version)
+}
+
+// pluginRegistryHTML renders the installed plugins: each one loaded, with its
+// runtime health (process state, invocations, crashes, quarantine), and each
+// one refused, with the reason. Plugins are off unless the install was started
+// with VAYU_PLUGINS_ENABLED=true, and the page says so.
 func pluginRegistryHTML() string {
+	if os.Getenv("VAYU_PLUGINS_ENABLED") != "true" {
+		return `<p class="muted text-sm">Plugins are off on this install. They run when the server is started with <code>VAYU_PLUGINS_ENABLED=true</code>; each one is a directory in <code>` + html.EscapeString(pluginsDir()) +
+			`</code> holding its <code>plugin.json</code> and binary (<code>docs/plugins/README.md</code>). A plugin runs as its own process: its own namespaces, cgroup limits, a syscall filter, no capabilities, and a path and network allowlist.</p>`
+	}
 	stats := plugins.SubprocessStats()
-	if len(stats) == 0 {
-		return `<p class="muted text-sm">None installed. A sandboxed plugin runs as its own process (its own namespaces, cgroup limits, a path and network allowlist) and speaks the JSON protocol in <code>docs/plugins/SPEC.md</code>.</p>`
+	var refused []plugins.LoadResult
+	for _, r := range plugins.LoadResults() {
+		if r.Err != nil {
+			refused = append(refused, r)
+		}
+	}
+	if len(stats) == 0 && len(refused) == 0 {
+		return `<p class="muted text-sm">None installed in <code>` + html.EscapeString(pluginsDir()) + `</code>. A plugin is a directory there holding its <code>plugin.json</code> and binary, loaded when the server starts (<code>docs/plugins/README.md</code>).</p>`
 	}
 	var rows strings.Builder
 	for _, s := range stats {
@@ -260,6 +286,10 @@ func pluginRegistryHTML() string {
 		rows.WriteString(`<tr><td class="row-title">` + html.EscapeString(s.Name) + `</td><td class="muted text-sm">` + pid +
 			`</td><td class="muted text-sm">` + strconv.FormatInt(s.Invocations, 10) + `</td><td class="muted text-sm">` + strconv.Itoa(s.Crashes) +
 			`</td><td>` + string(state) + `</td></tr>`)
+	}
+	for _, r := range refused {
+		rows.WriteString(`<tr><td class="row-title">` + html.EscapeString(r.Name) + `<div class="muted text-sm">` + html.EscapeString(r.Err.Error()) +
+			`</div></td><td class="muted text-sm">—</td><td class="muted text-sm">—</td><td class="muted text-sm">—</td><td>` + string(ui.State("warn", "Not loaded")) + `</td></tr>`)
 	}
 	return `<div class="table-wrap"><table class="table"><thead><tr><th>Plugin</th><th>PID</th><th>Invocations</th><th>Crashes</th><th>State</th></tr></thead><tbody>` +
 		rows.String() + `</tbody></table></div>`

@@ -10,17 +10,11 @@
 //
 // Build:
 //
-//	go build -o webhook-notify ./docs/plugins/examples/webhook-notify
+//	CGO_ENABLED=0 go build -o webhook-notify ./docs/plugins/examples/webhook-notify
 //
-// Register (host side):
-//
-//	m := sandbox.Manifest{
-//	    Name:         "webhook-notify",
-//	    Executable:   "/opt/vayupress/plugins/webhook-notify",
-//	    AllowNetwork: true,
-//	    Timeout:      5 * time.Second,
-//	}
-//	plugins.RegisterSubprocess(reg, m, "article.create", 1)
+// Install: a directory webhook-notify/ in the plugins directory holding the binary
+// and a plugin.json that names it, pins its SHA-256 and subscribes it to
+// "article.create" (docs/plugins/README.md).
 //
 // Configure the destination with the WEBHOOK_URL environment variable.
 package main

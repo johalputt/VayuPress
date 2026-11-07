@@ -19,7 +19,7 @@ VayuPress supports two plugin kinds. This spec is normative for both, but §4–
 | Kind | Runs as | Isolation | Use when |
 |------|---------|-----------|----------|
 | **In-process hook** | A Go `HookFunc` compiled into the host | None (same address space) | First-party, trusted extensions |
-| **Out-of-process (sandboxed)** | A separate executable launched by the host | PID/IPC/network namespaces, optional mount namespace, cgroup v2 limits, optional `RunAs`, path/network allowlists (a seccomp filter and capability drop are written but not yet applied; §3) | Third-party or untrusted code (the default for installable plugins) |
+| **Out-of-process (sandboxed)** | A separate executable launched by the host | PID/IPC/network namespaces, optional mount namespace, cgroup v2 limits, optional `RunAs`, a seccomp syscall filter, `NoNewPrivs` and no capabilities (§3), path/network allowlists | Third-party or untrusted code (the default for installable plugins) |
 
 Out-of-process plugins **MAY** be written in any language; they only have to
 speak the IPC protocol in §4.
@@ -47,9 +47,8 @@ registers with the host. Unlisted capabilities are **denied by default**.
 | `IsolateIPC` | bool | no | `true` from `plugin.json`, `false` in a Go literal | Run in a private IPC namespace. |
 | `ExecutableHash` | string | no | `""` | Expected SHA-256 hex; verified before exec when set. |
 | `MaxMessageBytes` | int64 | no | `1 MiB` | Max size of one stdout message. |
-| `RunAs` | string | no | `""` | `"uid:gid"` to drop to on Linux. |
-| `ConfineMounts` | bool | no | `false` | Private mount ns + tmpfs scratch; read-only view of allowed paths. |
-| `DropCaps` | bool | no | `false` | Declared, **not yet enforced**: no capability is dropped today. |
+| `RunAs` | string | no | `""` | `"uid:gid"` the plugin runs as on Linux (groups cleared). A malformed value stops it starting. |
+| `ConfineMounts` | bool | no | `false` | Private mount namespace, a 64 MiB tmpfs at `$PLUGIN_SCRATCH`, and the sensitive `/proc` and `/sys` entries covered. Paths are not hidden; `RunAs` decides what it can read. |
 
 The host **MUST** reject a manifest with an empty `Name` or `Executable`. When
 `ExecutableHash` is set the host **MUST** verify the on-disk binary's SHA-256
@@ -69,12 +68,22 @@ operation.
   the host to reject the invocation with a capability error.
 - **Network.** When `AllowNetwork` is `false`, the host denies invocations whose
   payload implies network access, and (on Linux) the sandbox prevents it.
-- **Privilege.** Not yet enforced. The capability drop, `NoNewPrivs` and the
-  seccomp filter exist in `internal/sandbox/confinement_linux.go` but nothing
-  applies them to the plugin process; they need a step that runs in the child
-  between fork and `exec`. Until then a plugin's privilege is its `RunAs`
-  identity (or the host's) inside its namespaces, and a host that runs plugins
-  should set `RunAs` to an unprivileged `uid:gid`.
+- **Privilege.** On Linux every plugin starts with no capabilities (its
+  bounding set empty too), `NoNewPrivs` set, and a seccomp filter, all
+  applied by the host's child step between fork and `exec` and all kept
+  across any `exec` the plugin makes (`internal/sandbox/helper_linux.go`).
+  If any of them cannot be applied the plugin does not start, and its first
+  invocation fails with the reason.
+- **System calls.** The filter allows what a static program needs to read
+  its stdin, write its stdout and run its threads. A plugin that declares
+  paths also gets the file calls (`openat`, `lseek`, `pread64`,
+  `getdents64`, `readlinkat`), and the directory and truncate calls when it
+  declares paths to write; one that declares the network gets the socket
+  calls and the file calls its resolver and TLS need. Any other call fails
+  with `EPERM`. The filter decides which kinds of call a plugin makes, not
+  which paths: that is its `RunAs` identity and mount tree. A dynamically
+  linked plugin that declares no path cannot load its libraries, so build
+  plugins static (`CGO_ENABLED=0` for Go).
 
 The granted set is echoed to the plugin in each request's `capabilities` object
 (§4.1) so a well-behaved plugin **MAY** self-check before acting.
@@ -165,8 +174,15 @@ way, added to the `internal/vcb/hooks.go` catalogue, and documented here.
 
 ## 6. Lifecycle & failure handling
 
-1. **Start.** The host verifies `ExecutableHash` (if set), applies namespaces
-   and `RunAs`, `exec`s the binary, then places it in its cgroup.
+0. **Load.** At start-up, with `VAYU_PLUGINS_ENABLED=true`, the host reads each
+   directory in its plugins directory and starts the plugin only if its
+   `plugin.json` passes validation, pins `executable_sha256`, names a hook, and
+   its files can be changed by no one but the server or root
+   (`docs/plugins/README.md`).
+1. **Start.** The host verifies `ExecutableHash` (if set) and starts its child
+   step in the plugin's namespaces, which applies the mounts, `RunAs`, the
+   capability drop, `NoNewPrivs` and the filter, then `exec`s the binary; the
+   host places it in its cgroup.
 2. **Invoke.** Per event, the host enforces capabilities, writes a request, and
    waits up to `Timeout` for a response.
 3. **Timeout.** Exceeding `Timeout` is treated as a crash.

@@ -6,11 +6,7 @@ package sandbox
 
 import (
 	"os/exec"
-	"strconv"
-	"strings"
 	"syscall"
-
-	"github.com/johalputt/vayupress/internal/logging"
 )
 
 func applyProcAttr(cmd *exec.Cmd) {
@@ -31,28 +27,17 @@ func applyNamespaceFlags(cmd *exec.Cmd, flags uintptr) {
 	cmd.SysProcAttr.Cloneflags |= flags
 }
 
-// applyRunAs parses a "uid:gid" string and sets SysProcAttr.Credential.
-// It is a no-op if runas is empty or malformed (logs a warning on malformed input).
-func applyRunAs(cmd *exec.Cmd, runas string) {
-	if runas == "" {
-		return
+// pluginCommand starts m's plugin through the helper (helper_linux.go),
+// which confines the child and then execs the plugin. RunAs is applied
+// there too, after the mounts that need the host's privilege. ownMounts
+// says the child has its own mount namespace, the only place the helper may
+// mount.
+func pluginCommand(m Manifest, c *PluginConfinement, ownMounts bool) *exec.Cmd {
+	spec := helperSpec{
+		confine:  m.ConfineMounts && ownMounts,
+		scratch:  c.ScratchDir(),
+		runAs:    m.RunAs,
+		syscalls: syscallClassOf(m),
 	}
-	parts := strings.SplitN(runas, ":", 2)
-	if len(parts) != 2 {
-		logging.LogJSON(logging.LogFields{Level: "warn", Component: "sandbox", Msg: "RunAs: invalid format (expected uid:gid): " + runas})
-		return
-	}
-	uid, errU := strconv.ParseUint(parts[0], 10, 32)
-	gid, errG := strconv.ParseUint(parts[1], 10, 32)
-	if errU != nil || errG != nil {
-		logging.LogJSON(logging.LogFields{Level: "warn", Component: "sandbox", Msg: "RunAs: non-numeric uid/gid: " + runas})
-		return
-	}
-	if cmd.SysProcAttr == nil {
-		cmd.SysProcAttr = &syscall.SysProcAttr{}
-	}
-	cmd.SysProcAttr.Credential = &syscall.Credential{
-		Uid: uint32(uid),
-		Gid: uint32(gid),
-	}
+	return exec.Command(helperSelf, helperArgv(spec, m.Executable, m.Args)...)
 }
