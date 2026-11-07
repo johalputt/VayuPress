@@ -34,7 +34,7 @@ func newHomeAdsApp(t *testing.T) (*App, context.Context) {
 	if _, err := db.Exec(`CREATE TABLE site_settings (scope TEXT NOT NULL DEFAULT '', key TEXT NOT NULL, value TEXT NOT NULL DEFAULT '', updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(scope,key))`); err != nil {
 		t.Fatalf("settings schema: %v", err)
 	}
-	if _, err := db.Exec(`CREATE TABLE ad_slots(id TEXT PRIMARY KEY,name TEXT NOT NULL,placement TEXT NOT NULL DEFAULT 'below_post',kind TEXT NOT NULL DEFAULT 'image',image_url TEXT NOT NULL DEFAULT '',link_url TEXT NOT NULL DEFAULT '',alt_text TEXT NOT NULL DEFAULT '',html TEXT NOT NULL DEFAULT '',enabled INTEGER NOT NULL DEFAULT 1,sort INTEGER NOT NULL DEFAULT 0,owner_email TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'approved',order_ref TEXT NOT NULL DEFAULT '',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,show_on TEXT NOT NULL DEFAULT '',show_paths TEXT NOT NULL DEFAULT '')`); err != nil {
+	if _, err := db.Exec(`CREATE TABLE ad_slots(id TEXT PRIMARY KEY,name TEXT NOT NULL,placement TEXT NOT NULL DEFAULT 'below_post',kind TEXT NOT NULL DEFAULT 'image',image_url TEXT NOT NULL DEFAULT '',link_url TEXT NOT NULL DEFAULT '',alt_text TEXT NOT NULL DEFAULT '',html TEXT NOT NULL DEFAULT '',enabled INTEGER NOT NULL DEFAULT 1,sort INTEGER NOT NULL DEFAULT 0,owner_email TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'approved',order_ref TEXT NOT NULL DEFAULT '',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,show_on TEXT NOT NULL DEFAULT '',show_paths TEXT NOT NULL DEFAULT '',domain_id TEXT NOT NULL DEFAULT '')`); err != nil {
 		t.Fatalf("ads schema: %v", err)
 	}
 	a := &App{
@@ -67,10 +67,10 @@ func TestInjectHomeAdsPlacesHeaderAndFooter(t *testing.T) {
 	if err := a.siteSettings.SetMany(ctx, settings.ForPrimary(), map[string]string{settings.KeyFeatureAds: "on"}); err != nil {
 		t.Fatalf("enable ads: %v", err)
 	}
-	if _, err := a.ads.Create(ctx, ads.SlotInput{Name: "Top", Placement: ads.PlacementHeader, Kind: ads.KindImage, ImageURL: "/media/top.png", AltText: "Top", Enabled: true}); err != nil {
+	if _, err := a.ads.Create(ctx, "", ads.SlotInput{Name: "Top", Placement: ads.PlacementHeader, Kind: ads.KindImage, ImageURL: "/media/top.png", AltText: "Top", Enabled: true}); err != nil {
 		t.Fatalf("create header slot: %v", err)
 	}
-	if _, err := a.ads.Create(ctx, ads.SlotInput{Name: "Bottom", Placement: ads.PlacementFooter, Kind: ads.KindImage, ImageURL: "/media/bottom.png", AltText: "Bottom", Enabled: true}); err != nil {
+	if _, err := a.ads.Create(ctx, "", ads.SlotInput{Name: "Bottom", Placement: ads.PlacementFooter, Kind: ads.KindImage, ImageURL: "/media/bottom.png", AltText: "Bottom", Enabled: true}); err != nil {
 		t.Fatalf("create footer slot: %v", err)
 	}
 
@@ -108,7 +108,7 @@ func TestInjectHomeAdsAdSenseWidensAndLoads(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("enable ads: %v", err)
 	}
-	if _, err := a.ads.Create(ctx, ads.SlotInput{Name: "Top", Placement: ads.PlacementHeader, Kind: ads.KindAdSense, HTML: "1234567890", Enabled: true}); err != nil {
+	if _, err := a.ads.Create(ctx, "", ads.SlotInput{Name: "Top", Placement: ads.PlacementHeader, Kind: ads.KindAdSense, HTML: "1234567890", Enabled: true}); err != nil {
 		t.Fatalf("create adsense slot: %v", err)
 	}
 
@@ -136,7 +136,7 @@ func TestAdsFollowThePageTheyAreOn(t *testing.T) {
 		{Name: "Pages", Placement: ads.PlacementHeader, Kind: ads.KindImage, ImageURL: "/media/pages.png", Enabled: true, ShowOn: ads.ShowPages},
 		{Name: "Everywhere", Placement: ads.PlacementHeader, Kind: ads.KindImage, ImageURL: "/media/all.png", Enabled: true},
 	} {
-		if _, err := a.ads.Create(ctx, in); err != nil {
+		if _, err := a.ads.Create(ctx, "", in); err != nil {
 			t.Fatal(err)
 		}
 	}

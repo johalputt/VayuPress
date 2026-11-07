@@ -31,7 +31,7 @@ func TestAPlacedAdCanBeEdited(t *testing.T) {
 	openMigratedDB(t)
 	a := &App{ads: ads.New(dbpkg.DB)}
 	ctx := context.Background()
-	slot, err := a.ads.Create(ctx, ads.SlotInput{Name: "Banner", Placement: ads.PlacementBelowPost, Kind: ads.KindImage,
+	slot, err := a.ads.Create(ctx, "", ads.SlotInput{Name: "Banner", Placement: ads.PlacementBelowPost, Kind: ads.KindImage,
 		ImageURL: "/media/old.png", LinkURL: "https://old.example", Enabled: true})
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +40,7 @@ func TestAPlacedAdCanBeEdited(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("edit = %d %s", rec.Code, rec.Body.String())
 	}
-	got, _ := a.ads.GetByID(ctx, slot.ID)
+	got, _ := a.ads.GetByID(ctx, "", slot.ID)
 	if got.Name != "Banner, autumn" || got.Placement != ads.PlacementAbovePost || got.ImageURL != "/media/new.png" || got.LinkURL != "https://new.example" || got.AltText != "Sponsored" {
 		t.Errorf("the edit did not land: %+v", got)
 	}
@@ -52,14 +52,14 @@ func TestAPlacedAdCanBeEdited(t *testing.T) {
 	if rec := putAd(a, member.ID, `{"name":"Member ad","placement":"sidebar","kind":"image","image_url":"/media/m2.png","enabled":true}`); rec.Code != http.StatusOK {
 		t.Fatalf("member edit = %d %s", rec.Code, rec.Body.String())
 	}
-	if m, _ := a.ads.GetByID(ctx, member.ID); m.Status != ads.StatusPendingPayment || m.ImageURL != "/media/m2.png" {
+	if m, _ := a.ads.GetByID(ctx, "", member.ID); m.Status != ads.StatusPendingPayment || m.ImageURL != "/media/m2.png" {
 		t.Errorf("a member ad after an edit: status %q image %q, want %q and the new image", m.Status, m.ImageURL, ads.StatusPendingPayment)
 	}
 
 	if rec := putAd(a, slot.ID, `{"name":"Banner","placement":"nowhere","kind":"image","enabled":true}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("an edit to an unknown placement = %d, want 400", rec.Code)
 	}
-	if got, _ := a.ads.GetByID(ctx, slot.ID); got.Placement != ads.PlacementAbovePost {
+	if got, _ := a.ads.GetByID(ctx, "", slot.ID); got.Placement != ads.PlacementAbovePost {
 		t.Errorf("a refused edit changed the slot: placement %q", got.Placement)
 	}
 }

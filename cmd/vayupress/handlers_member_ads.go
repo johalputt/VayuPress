@@ -72,7 +72,8 @@ func (a *App) handleMemberAdsStatus(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusUnauthorized, "members-only", "Please sign in", "")
 		return
 	}
-	available := a.ads != nil && a.payments != nil && a.adsEnabled(r.Context()) && a.paymentsEnabled(r.Context())
+	// A member buys an ad on the site they are reading, with that site's ads.
+	available := a.ads != nil && a.payments != nil && a.adsEnabled(r.Context(), adScope(a.contentScope(r))) && a.paymentsEnabled(r.Context())
 	out := map[string]interface{}{
 		"available": available,
 		"price":     priceLabel(a.payCurrency(r.Context()), a.adSlotPriceCents(r.Context())),
@@ -99,7 +100,8 @@ func (a *App) handleMemberAdSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	if a.ads == nil || a.payments == nil || !a.adsEnabled(ctx) || !a.paymentsEnabled(ctx) {
+	site := a.contentScope(r)
+	if a.ads == nil || a.payments == nil || !a.adsEnabled(ctx, adScope(site)) || !a.paymentsEnabled(ctx) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-unavailable", "Advertising is not available right now.", "")
 		return
 	}
@@ -138,7 +140,7 @@ func (a *App) handleMemberAdSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, aerr := a.ads.CreateMemberAd(ctx, ads.MemberAdInput{
-		OwnerEmail: m.Email, Placement: in.Placement, ImageURL: in.ImageURL,
+		Site: site, OwnerEmail: m.Email, Placement: in.Placement, ImageURL: in.ImageURL,
 		LinkURL: in.LinkURL, AltText: in.Alt, OrderRef: order.Reference,
 	}); aerr != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "ad-failed", aerr.Error(), "")

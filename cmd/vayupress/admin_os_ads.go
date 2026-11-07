@@ -27,26 +27,38 @@ import (
 	"github.com/johalputt/vayupress/internal/ui"
 )
 
-// handleOSAds renders the Advertising console.
+// adConsoleSite is the site a console Ads request acts on: the hosted site in
+// its address (/os/d/{id}/…), or "" for the install's own. Taken from the
+// path, never the body, as every per-site page does.
+func adConsoleSite(r *http.Request) string {
+	if d, ok := osScopedDomain(r); ok {
+		return d.ID
+	}
+	return ""
+}
+
+// handleOSAds renders the Advertising console for one site.
 func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 	ctx := r.Context()
+	site := adConsoleSite(r)
+	sc := adScope(site)
 
-	adsOn := a.adsEnabled(ctx)
-	googleOn := a.siteSettings != nil && a.siteSettings.FeatureEnabled(ctx, settings.ForPrimary(), settings.KeyFeatureGoogleAds)
-	adsenseClient := a.adsenseClient(ctx)
+	adsOn := a.adsEnabled(ctx, sc)
+	googleOn := a.siteSettings != nil && a.siteSettings.FeatureEnabled(ctx, sc, settings.KeyFeatureGoogleAds)
+	adsenseClient := a.adsenseClient(ctx, sc)
 	disclosure, never := "", ""
 	if a.siteSettings != nil {
-		disclosure = a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyAffiliateDisclosure)
-		never = a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyAdsNever)
+		disclosure = a.siteSettings.Get(ctx, sc, settings.KeyAffiliateDisclosure)
+		never = a.siteSettings.Get(ctx, sc, settings.KeyAdsNever)
 	}
 
 	var slots []ads.Slot
 	var pendingAds []ads.Slot
 	if a.ads != nil {
-		slots, _ = a.ads.List(ctx)
-		pendingAds, _ = a.ads.ListByStatus(ctx, ads.StatusPendingReview)
+		slots, _ = a.ads.List(ctx, site)
+		pendingAds, _ = a.ads.ListByStatus(ctx, site, ads.StatusPendingReview)
 	}
 	// Off with nothing saved is a fresh install's Advertising: a setup page. Off
 	// with slots or paid submissions waiting is a choice the operator made, and
@@ -189,7 +201,7 @@ func (a *App) handleOSAdReviewApprove(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-disabled", "Advertising not initialised", "")
 		return
 	}
-	if err := a.ads.ApproveMemberAd(r.Context(), chi.URLParam(r, "id")); err != nil {
+	if err := a.ads.ApproveMemberAd(r.Context(), adConsoleSite(r), chi.URLParam(r, "id")); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "approve-failed", err.Error(), "")
 		return
 	}
@@ -203,7 +215,7 @@ func (a *App) handleOSAdReviewReject(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-disabled", "Advertising not initialised", "")
 		return
 	}
-	if err := a.ads.RejectMemberAd(r.Context(), chi.URLParam(r, "id")); err != nil {
+	if err := a.ads.RejectMemberAd(r.Context(), adConsoleSite(r), chi.URLParam(r, "id")); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "reject-failed", err.Error(), "")
 		return
 	}
@@ -314,7 +326,7 @@ func (a *App) handleOSAdUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	if err := a.ads.Update(r.Context(), id, ads.SlotInput{
+	if err := a.ads.Update(r.Context(), adConsoleSite(r), id, ads.SlotInput{
 		Name: body.Name, Placement: body.Placement, Kind: body.Kind,
 		ImageURL: body.ImageURL, LinkURL: body.LinkURL, AltText: body.AltText,
 		HTML: body.HTML, Sort: body.Sort, Enabled: body.Enabled,
@@ -335,7 +347,7 @@ func (a *App) handleOSAdsList(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-error", "ads not initialised", "")
 		return
 	}
-	list, err := a.ads.List(r.Context())
+	list, err := a.ads.List(r.Context(), adConsoleSite(r))
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
 		return
@@ -365,7 +377,7 @@ func (a *App) handleOSAdCreate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
 		return
 	}
-	slot, err := a.ads.Create(r.Context(), ads.SlotInput{
+	slot, err := a.ads.Create(r.Context(), adConsoleSite(r), ads.SlotInput{
 		Name: body.Name, Placement: body.Placement, Kind: body.Kind,
 		ImageURL: body.ImageURL, LinkURL: body.LinkURL, AltText: body.AltText,
 		HTML: body.HTML, Sort: body.Sort, Enabled: body.Enabled,
@@ -388,7 +400,7 @@ func (a *App) handleOSAdToggle(w http.ResponseWriter, r *http.Request) {
 		Enabled bool `json:"enabled"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
-	if err := a.ads.SetEnabled(r.Context(), chi.URLParam(r, "id"), body.Enabled); err != nil {
+	if err := a.ads.SetEnabled(r.Context(), adConsoleSite(r), chi.URLParam(r, "id"), body.Enabled); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "ads-error", err.Error(), "")
 		return
 	}
@@ -401,7 +413,7 @@ func (a *App) handleOSAdDelete(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-error", "ads not initialised", "")
 		return
 	}
-	if err := a.ads.Delete(r.Context(), chi.URLParam(r, "id")); err != nil {
+	if err := a.ads.Delete(r.Context(), adConsoleSite(r), chi.URLParam(r, "id")); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "ads-error", err.Error(), "")
 		return
 	}

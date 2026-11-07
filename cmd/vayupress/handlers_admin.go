@@ -398,7 +398,7 @@ func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
 	// applied per request and must not be disk-cached; self-hosted image/HTML ads
 	// carry no per-request state and cache with the page as before.
 	nonce := render.CSPNonce(r)
-	html, usesAdSense := a.injectHomeAds(r.Context(), nonce, html, ads.Page{Path: "/"})
+	html, usesAdSense := a.injectHomeAds(r.Context(), nonce, html, ads.Page{Site: a.contentScope(r), Path: "/"})
 	if useCache && !usesAdSense {
 		render.CacheWrite(homeRel, html) //nolint:errcheck
 	}
@@ -691,7 +691,7 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 	// Pages that render a Google AdSense unit must not be disk-cached (they need
 	// the widened ad CSP applied per request) and are served no-store.
 	nonce := render.CSPNonce(r)
-	htmlOut, usesAdSense := a.injectArticleAds(r.Context(), nonce, htmlOut, ads.Page{Path: "/" + art.Slug, Post: !ov.IsPage, IsPage: ov.IsPage})
+	htmlOut, usesAdSense := a.injectArticleAds(r.Context(), nonce, htmlOut, ads.Page{Site: a.contentScope(r), Path: "/" + art.Slug, Post: !ov.IsPage, IsPage: ov.IsPage})
 	// Detect click-to-load video facades in the rendered body and narrowly
 	// extend frame-src for this page only (admin/non-embed pages stay locked).
 	embedOrigins := render.FrameOriginsInHTML(art.Content)
@@ -743,8 +743,9 @@ func setAdCSP(w http.ResponseWriter, r *http.Request, frameOrigins []string) {
 // disk cache). When neither the Ads nor Affiliate module is enabled it is a
 // no-op and returns the input unchanged.
 func (a *App) injectArticleAds(ctx context.Context, nonce, htmlOut string, page ads.Page) (string, bool) {
-	adsOn := a.adsEnabled(ctx)
-	affOn := a.affiliateEnabled(ctx)
+	sc := adScope(page.Site)
+	adsOn := a.adsEnabled(ctx, sc)
+	affOn := a.affiliateEnabled(ctx, sc)
 	if !adsOn && !affOn || a.ads == nil {
 		if !affOn {
 			return htmlOut, false
@@ -752,17 +753,17 @@ func (a *App) injectArticleAds(ctx context.Context, nonce, htmlOut string, page 
 	}
 
 	cfg := ads.RenderConfig{
-		GoogleAdsEnabled: a.googleAdsEnabled(ctx),
-		AdsenseClient:    a.adsenseClient(ctx),
+		GoogleAdsEnabled: a.googleAdsEnabled(ctx, sc),
+		AdsenseClient:    a.adsenseClient(ctx, sc),
 		Nonce:            nonce,
 		Sanitize:         a.policy.Sanitize,
 	}
 
 	var header, above, below, footer string
 	usesAdSense := false
-	if adsOn && a.ads != nil && !a.adsNeverOn(ctx, page) {
+	if adsOn && a.ads != nil && !a.adsNeverOn(ctx, sc, page) {
 		renderPlacement := func(placement string) string {
-			slots, err := a.ads.EnabledByPlacement(ctx, placement)
+			slots, err := a.ads.EnabledByPlacement(ctx, page.Site, placement)
 			slots = ads.ShowingOn(slots, page)
 			if err != nil || len(slots) == 0 {
 				return ""
@@ -784,7 +785,7 @@ func (a *App) injectArticleAds(ctx context.Context, nonce, htmlOut string, page 
 	// Affiliate disclosure renders above the article body, before any above-post
 	// ad, when the module is enabled and disclosure text is set.
 	if affOn && a.siteSettings != nil {
-		if txt := strings.TrimSpace(a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyAffiliateDisclosure)); txt != "" {
+		if txt := strings.TrimSpace(a.siteSettings.Get(ctx, sc, settings.KeyAffiliateDisclosure)); txt != "" {
 			above = `<div class="vp-affiliate-disclosure" role="note">` + html.EscapeString(txt) + `</div>` + above
 		}
 	}
@@ -810,11 +811,11 @@ func (a *App) injectArticleAds(ctx context.Context, nonce, htmlOut string, page 
 
 // adsNeverOn reports whether page is on the list of pages and posts that
 // show no ad (settings.KeyAdsNever), whatever their slots say.
-func (a *App) adsNeverOn(ctx context.Context, page ads.Page) bool {
+func (a *App) adsNeverOn(ctx context.Context, sc settings.Scope, page ads.Page) bool {
 	if a.siteSettings == nil {
 		return false
 	}
-	return ads.HasPath(ads.Paths(a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyAdsNever)), page.Path)
+	return ads.HasPath(ads.Paths(a.siteSettings.Get(ctx, sc, settings.KeyAdsNever)), page.Path)
 }
 
 // sidebarAdAnchor is where a page that has a side column takes the sidebar
@@ -841,18 +842,19 @@ func fillSidebarAds(htmlOut, slots string) string {
 // whether an AdSense unit was emitted (so the caller widens the CSP + skips the
 // disk cache). A no-op returning the input unchanged when Ads is off.
 func (a *App) injectHomeAds(ctx context.Context, nonce, htmlOut string, page ads.Page) (string, bool) {
-	if a.ads == nil || !a.adsEnabled(ctx) || a.adsNeverOn(ctx, page) {
+	sc := adScope(page.Site)
+	if a.ads == nil || !a.adsEnabled(ctx, sc) || a.adsNeverOn(ctx, sc, page) {
 		return htmlOut, false
 	}
 	cfg := ads.RenderConfig{
-		GoogleAdsEnabled: a.googleAdsEnabled(ctx),
-		AdsenseClient:    a.adsenseClient(ctx),
+		GoogleAdsEnabled: a.googleAdsEnabled(ctx, sc),
+		AdsenseClient:    a.adsenseClient(ctx, sc),
 		Nonce:            nonce,
 		Sanitize:         a.policy.Sanitize,
 	}
 	usesAdSense := false
 	renderPlacement := func(placement string) string {
-		slots, err := a.ads.EnabledByPlacement(ctx, placement)
+		slots, err := a.ads.EnabledByPlacement(ctx, page.Site, placement)
 		slots = ads.ShowingOn(slots, page)
 		if err != nil || len(slots) == 0 {
 			return ""

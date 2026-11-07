@@ -87,7 +87,7 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
 	}
 	adsWaiting := 0
 	if a.ads != nil {
-		if pending, err := a.ads.ListByStatus(ctx, ads.StatusPendingReview); err == nil {
+		if pending, err := a.ads.ListByStatus(ctx, "", ads.StatusPendingReview); err == nil {
 			adsWaiting = len(pending)
 		}
 	}

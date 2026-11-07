@@ -18,7 +18,7 @@ func newTestStore(t *testing.T) *Store {
 		t.Fatalf("open db: %v", err)
 	}
 	t.Cleanup(func() { db.Close() })
-	_, err = db.Exec(`CREATE TABLE ad_slots(id TEXT PRIMARY KEY,name TEXT NOT NULL,placement TEXT NOT NULL DEFAULT 'below_post',kind TEXT NOT NULL DEFAULT 'image',image_url TEXT NOT NULL DEFAULT '',link_url TEXT NOT NULL DEFAULT '',alt_text TEXT NOT NULL DEFAULT '',html TEXT NOT NULL DEFAULT '',enabled INTEGER NOT NULL DEFAULT 1,sort INTEGER NOT NULL DEFAULT 0,owner_email TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'approved',order_ref TEXT NOT NULL DEFAULT '',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,show_on TEXT NOT NULL DEFAULT '',show_paths TEXT NOT NULL DEFAULT '')`)
+	_, err = db.Exec(`CREATE TABLE ad_slots(id TEXT PRIMARY KEY,name TEXT NOT NULL,placement TEXT NOT NULL DEFAULT 'below_post',kind TEXT NOT NULL DEFAULT 'image',image_url TEXT NOT NULL DEFAULT '',link_url TEXT NOT NULL DEFAULT '',alt_text TEXT NOT NULL DEFAULT '',html TEXT NOT NULL DEFAULT '',enabled INTEGER NOT NULL DEFAULT 1,sort INTEGER NOT NULL DEFAULT 0,owner_email TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'approved',order_ref TEXT NOT NULL DEFAULT '',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,show_on TEXT NOT NULL DEFAULT '',show_paths TEXT NOT NULL DEFAULT '',domain_id TEXT NOT NULL DEFAULT '')`)
 	if err != nil {
 		t.Fatalf("schema: %v", err)
 	}
@@ -28,18 +28,18 @@ func newTestStore(t *testing.T) *Store {
 func TestSlotCRUDAndPlacement(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	sl, err := s.Create(ctx, SlotInput{Name: "Banner", Placement: PlacementBelowPost, Kind: KindImage, ImageURL: "/media/ad.png", LinkURL: "https://sponsor.example", AltText: "Sponsor", Enabled: true})
+	sl, err := s.Create(ctx, "", SlotInput{Name: "Banner", Placement: PlacementBelowPost, Kind: KindImage, ImageURL: "/media/ad.png", LinkURL: "https://sponsor.example", AltText: "Sponsor", Enabled: true})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	got, err := s.EnabledByPlacement(ctx, PlacementBelowPost)
+	got, err := s.EnabledByPlacement(ctx, "", PlacementBelowPost)
 	if err != nil || len(got) != 1 {
 		t.Fatalf("placement query: %v len=%d", err, len(got))
 	}
-	if err := s.SetEnabled(ctx, sl.ID, false); err != nil {
+	if err := s.SetEnabled(ctx, "", sl.ID, false); err != nil {
 		t.Fatalf("disable: %v", err)
 	}
-	got, _ = s.EnabledByPlacement(ctx, PlacementBelowPost)
+	got, _ = s.EnabledByPlacement(ctx, "", PlacementBelowPost)
 	if len(got) != 0 {
 		t.Errorf("disabled slot should not be returned, got %d", len(got))
 	}
@@ -56,24 +56,24 @@ func TestMemberAdLifecycle(t *testing.T) {
 		t.Fatalf("bad member ad: %+v", ad)
 	}
 	// Not rendered while pending.
-	if got, _ := s.EnabledByPlacement(ctx, PlacementFooter); len(got) != 0 {
+	if got, _ := s.EnabledByPlacement(ctx, "", PlacementFooter); len(got) != 0 {
 		t.Error("a pending member ad must not render")
 	}
 	// Payment moves it into the moderation queue.
 	if err := s.MarkAdPaidByOrder(ctx, "VP-AD-1"); err != nil {
 		t.Fatalf("mark paid: %v", err)
 	}
-	if q, _ := s.ListByStatus(ctx, StatusPendingReview); len(q) != 1 {
+	if q, _ := s.ListByStatus(ctx, "", StatusPendingReview); len(q) != 1 {
 		t.Errorf("expected 1 ad awaiting review, got %d", len(q))
 	}
-	if got, _ := s.EnabledByPlacement(ctx, PlacementFooter); len(got) != 0 {
+	if got, _ := s.EnabledByPlacement(ctx, "", PlacementFooter); len(got) != 0 {
 		t.Error("a paid-but-unreviewed ad must not render yet")
 	}
 	// Approval publishes it.
-	if err := s.ApproveMemberAd(ctx, ad.ID); err != nil {
+	if err := s.ApproveMemberAd(ctx, "", ad.ID); err != nil {
 		t.Fatalf("approve: %v", err)
 	}
-	if got, _ := s.EnabledByPlacement(ctx, PlacementFooter); len(got) != 1 {
+	if got, _ := s.EnabledByPlacement(ctx, "", PlacementFooter); len(got) != 1 {
 		t.Errorf("an approved member ad must render, got %d", len(got))
 	}
 	// A member sees their own ad; an unsafe image URL is refused.
@@ -88,10 +88,10 @@ func TestMemberAdLifecycle(t *testing.T) {
 func TestCreateValidation(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	if _, err := s.Create(ctx, SlotInput{Name: "x", Placement: "nowhere", Kind: KindImage}); err == nil {
+	if _, err := s.Create(ctx, "", SlotInput{Name: "x", Placement: "nowhere", Kind: KindImage}); err == nil {
 		t.Error("expected invalid placement error")
 	}
-	if _, err := s.Create(ctx, SlotInput{Name: "x", Placement: PlacementHeader, Kind: "flash"}); err == nil {
+	if _, err := s.Create(ctx, "", SlotInput{Name: "x", Placement: PlacementHeader, Kind: "flash"}); err == nil {
 		t.Error("expected invalid kind error")
 	}
 }
@@ -139,5 +139,39 @@ func TestAdSenseGating(t *testing.T) {
 	}
 	if loader := AdSenseLoader("abc", "ca-pub-123"); !strings.Contains(loader, "googlesyndication.com") {
 		t.Errorf("loader missing, got %q", loader)
+	}
+}
+
+// A slot belongs to one site: another site, or the install's own, neither
+// draws it nor can change it by naming its id.
+func TestASlotBelongsToOneSite(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	sl, err := s.Create(ctx, "site-a", SlotInput{Name: "A's banner", Placement: PlacementHeader, Kind: KindImage, ImageURL: "/a.png", Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, site := range []string{"", "site-b"} {
+		if got, _ := s.EnabledByPlacement(ctx, site, PlacementHeader); len(got) != 0 {
+			t.Errorf("site %q draws site-a's slot", site)
+		}
+		if got, _ := s.List(ctx, site); len(got) != 0 {
+			t.Errorf("site %q lists site-a's slot", site)
+		}
+		if err := s.SetEnabled(ctx, site, sl.ID, false); err == nil {
+			t.Errorf("site %q switched site-a's slot off", site)
+		}
+		if err := s.Update(ctx, site, sl.ID, SlotInput{Name: "taken", Placement: PlacementHeader, Kind: KindImage}); err == nil {
+			t.Errorf("site %q edited site-a's slot", site)
+		}
+		if err := s.Delete(ctx, site, sl.ID); err == nil {
+			t.Errorf("site %q deleted site-a's slot", site)
+		}
+		if err := s.ApproveMemberAd(ctx, site, sl.ID); err == nil {
+			t.Errorf("site %q approved site-a's ad", site)
+		}
+	}
+	if got, _ := s.EnabledByPlacement(ctx, "site-a", PlacementHeader); len(got) != 1 || got[0].Name != "A's banner" || got[0].Site != "site-a" {
+		t.Errorf("site-a's own slot after the others tried: %+v", got)
 	}
 }

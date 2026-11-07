@@ -52,9 +52,20 @@ func (a *App) paymentsEnabled(ctx context.Context) bool {
 		a.siteSettings.FeatureEnabled(ctx, settings.ForPrimary(), settings.KeyFeaturePayments)
 }
 
-// adsEnabled reports whether the Advertising module is on.
-func (a *App) adsEnabled(ctx context.Context) bool {
-	return a.siteSettings != nil && a.ads != nil && a.siteSettings.FeatureEnabled(ctx, settings.ForPrimary(), settings.KeyFeatureAds)
+// adScope is the settings scope of an ads site: the install's own for "",
+// else the hosted site's. Every ads setting is the site's own (its modules,
+// AdSense ID, disclosure, the pages that show none); a hosted site that has
+// set none shows no ads, never the install's.
+func adScope(site string) settings.Scope {
+	if site == "" {
+		return settings.ForPrimary()
+	}
+	return settings.ForDomain(site)
+}
+
+// adsEnabled reports whether the site's Advertising module is on.
+func (a *App) adsEnabled(ctx context.Context, sc settings.Scope) bool {
+	return a.siteSettings != nil && a.ads != nil && a.siteSettings.FeatureEnabled(ctx, sc, settings.KeyFeatureAds)
 }
 
 // googleAdsEnabled reports whether the Google AdSense module is on AND a
@@ -65,29 +76,30 @@ func (a *App) adsEnabled(ctx context.Context) bool {
 // page load and deanonymise them — so a Tor Space emits no AdSense loader or unit
 // regardless of settings (audit M6). Self-hosted / house ads are unaffected. This
 // is the injection-side chokepoint; applyOnionCSP is the CSP backstop.
-func (a *App) googleAdsEnabled(ctx context.Context) bool {
+func (a *App) googleAdsEnabled(ctx context.Context, sc settings.Scope) bool {
 	if config.Cfg.OnionMode {
 		return false
 	}
-	return a.siteSettings != nil && a.siteSettings.FeatureEnabled(ctx, settings.ForPrimary(), settings.KeyFeatureGoogleAds) && a.adsenseClient(ctx) != ""
+	return a.siteSettings != nil && a.siteSettings.FeatureEnabled(ctx, sc, settings.KeyFeatureGoogleAds) && a.adsenseClient(ctx, sc) != ""
 }
 
-// affiliateEnabled reports whether the affiliate-disclosure banner is on.
-func (a *App) affiliateEnabled(ctx context.Context) bool {
-	return a.siteSettings != nil && a.siteSettings.FeatureEnabled(ctx, settings.ForPrimary(), settings.KeyFeatureAffiliate)
+// affiliateEnabled reports whether the site's affiliate-disclosure banner is on.
+func (a *App) affiliateEnabled(ctx context.Context, sc settings.Scope) bool {
+	return a.siteSettings != nil && a.siteSettings.FeatureEnabled(ctx, sc, settings.KeyFeatureAffiliate)
 }
 
-// adsenseClient returns the configured AdSense publisher id (may be "").
-func (a *App) adsenseClient(ctx context.Context) string {
+// adsenseClient returns the site's AdSense publisher id (may be "").
+func (a *App) adsenseClient(ctx context.Context, sc settings.Scope) string {
 	if a.siteSettings == nil {
 		return ""
 	}
-	return strings.TrimSpace(a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyAdsenseClient))
+	return strings.TrimSpace(a.siteSettings.Get(ctx, sc, settings.KeyAdsenseClient))
 }
 
-// adsenseConfigured is the no-context helper used by the Tools registry.
+// adsenseConfigured is the no-context helper used by the Tools registry, for
+// the install's own site.
 func (a *App) adsenseConfigured() bool {
-	return a.adsenseClient(context.Background()) != ""
+	return a.adsenseClient(context.Background(), settings.ForPrimary()) != ""
 }
 
 // payCurrency returns the configured checkout currency (defaults to USD).

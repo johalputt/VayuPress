@@ -15,6 +15,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **A hosted site no longer shows the install's ads.** Every hosted site
+  showed the install's ad slots, its Google AdSense publisher ID and its
+  affiliate disclosure. Each site now has its own: its own slots, its own
+  Advertising, Google ads and Affiliate switches, AdSense publisher ID,
+  disclosure and pages that show no ad. A hosted site that has set up none
+  shows no ads. An ad a member buys belongs to the site it was bought on.
+  The install's own site keeps everything it had.
 - A hosted site's links were shared with the install's picture
   (`/theme-assets/og` served the install's for every host, and the upload
   always wrote the install's); each site now has its own, or none.

@@ -90,9 +90,11 @@ func ValidShowOn(v string) bool {
 	return v == ShowEverywhere || v == ShowPosts || v == ShowPages || v == ShowChosen
 }
 
-// Page is the page an ad is asked to show on: its address, and whether it
-// is a post or a page. The home page is "/", neither.
+// Page is the page an ad is asked to show on: the site it belongs to ("" for
+// the install's own), its address, and whether it is a post or a page. The
+// home page is "/", neither.
 type Page struct {
+	Site   string
 	Path   string
 	Post   bool
 	IsPage bool
@@ -177,6 +179,7 @@ func ValidKind(k string) bool {
 // Slot is one advertising placement creative.
 type Slot struct {
 	ID         string    `json:"id"`
+	Site       string    `json:"site"` // the hosted site's id, or "" for the install's own site
 	Name       string    `json:"name"`
 	Placement  string    `json:"placement"`
 	Kind       string    `json:"kind"`
@@ -209,7 +212,7 @@ type Store struct{ db *sql.DB }
 // New creates a Store backed by db.
 func New(db *sql.DB) *Store { return &Store{db: db} }
 
-const slotCols = `id,name,placement,kind,image_url,link_url,alt_text,html,enabled,sort,show_on,show_paths,owner_email,status,order_ref,created_at,updated_at`
+const slotCols = `id,domain_id,name,placement,kind,image_url,link_url,alt_text,html,enabled,sort,show_on,show_paths,owner_email,status,order_ref,created_at,updated_at`
 
 // SlotInput carries the editable fields of a slot.
 type SlotInput struct {
@@ -249,8 +252,12 @@ func (in SlotInput) check() (name, paths string, err error) {
 	return name, strings.Join(list, "\n"), nil
 }
 
-// Create inserts a new slot and returns it.
-func (s *Store) Create(ctx context.Context, in SlotInput) (*Slot, error) {
+// A site is "" for the install's own site or a hosted site's id. Every read
+// takes one and every change by id is confined to it, so one site's console
+// cannot reach another's slot by naming its id.
+
+// Create inserts a new slot for site and returns it.
+func (s *Store) Create(ctx context.Context, site string, in SlotInput) (*Slot, error) {
 	name, paths, err := in.check()
 	if err != nil {
 		return nil, err
@@ -258,24 +265,24 @@ func (s *Store) Create(ctx context.Context, in SlotInput) (*Slot, error) {
 	id := "ad_" + randHex(8)
 	en := boolToInt(in.Enabled)
 	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO ad_slots(id,name,placement,kind,image_url,link_url,alt_text,html,enabled,sort,show_on,show_paths) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-		id, name, in.Placement, in.Kind, strings.TrimSpace(in.ImageURL), strings.TrimSpace(in.LinkURL),
+		`INSERT INTO ad_slots(id,domain_id,name,placement,kind,image_url,link_url,alt_text,html,enabled,sort,show_on,show_paths) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		id, site, name, in.Placement, in.Kind, strings.TrimSpace(in.ImageURL), strings.TrimSpace(in.LinkURL),
 		strings.TrimSpace(in.AltText), in.HTML, en, in.Sort, in.ShowOn, paths); err != nil {
 		return nil, fmt.Errorf("create slot: %w", err)
 	}
-	return s.GetByID(ctx, id)
+	return s.GetByID(ctx, site, id)
 }
 
-// Update edits an existing slot's fields by id.
-func (s *Store) Update(ctx context.Context, id string, in SlotInput) error {
+// Update edits one of site's slots by id.
+func (s *Store) Update(ctx context.Context, site, id string, in SlotInput) error {
 	name, paths, err := in.check()
 	if err != nil {
 		return err
 	}
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE ad_slots SET name=?,placement=?,kind=?,image_url=?,link_url=?,alt_text=?,html=?,enabled=?,sort=?,show_on=?,show_paths=?,updated_at=? WHERE id=?`,
+		`UPDATE ad_slots SET name=?,placement=?,kind=?,image_url=?,link_url=?,alt_text=?,html=?,enabled=?,sort=?,show_on=?,show_paths=?,updated_at=? WHERE id=? AND domain_id=?`,
 		name, in.Placement, in.Kind, strings.TrimSpace(in.ImageURL), strings.TrimSpace(in.LinkURL),
-		strings.TrimSpace(in.AltText), in.HTML, boolToInt(in.Enabled), in.Sort, in.ShowOn, paths, time.Now().UTC(), id)
+		strings.TrimSpace(in.AltText), in.HTML, boolToInt(in.Enabled), in.Sort, in.ShowOn, paths, time.Now().UTC(), id, site)
 	if err != nil {
 		return err
 	}
@@ -285,9 +292,9 @@ func (s *Store) Update(ctx context.Context, id string, in SlotInput) error {
 	return nil
 }
 
-// SetEnabled toggles a slot's enabled flag.
-func (s *Store) SetEnabled(ctx context.Context, id string, enabled bool) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE ad_slots SET enabled=?,updated_at=? WHERE id=?`, boolToInt(enabled), time.Now().UTC(), id)
+// SetEnabled toggles one of site's slots.
+func (s *Store) SetEnabled(ctx context.Context, site, id string, enabled bool) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE ad_slots SET enabled=?,updated_at=? WHERE id=? AND domain_id=?`, boolToInt(enabled), time.Now().UTC(), id, site)
 	if err != nil {
 		return err
 	}
@@ -297,9 +304,9 @@ func (s *Store) SetEnabled(ctx context.Context, id string, enabled bool) error {
 	return nil
 }
 
-// Delete removes a slot.
-func (s *Store) Delete(ctx context.Context, id string) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM ad_slots WHERE id=?`, id)
+// Delete removes one of site's slots.
+func (s *Store) Delete(ctx context.Context, site, id string) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM ad_slots WHERE id=? AND domain_id=?`, id, site)
 	if err != nil {
 		return err
 	}
@@ -309,21 +316,21 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// GetByID returns one slot.
-func (s *Store) GetByID(ctx context.Context, id string) (*Slot, error) {
-	return scanSlot(s.db.QueryRowContext(ctx, `SELECT `+slotCols+` FROM ad_slots WHERE id=?`, id))
+// GetByID returns one of site's slots.
+func (s *Store) GetByID(ctx context.Context, site, id string) (*Slot, error) {
+	return scanSlot(s.db.QueryRowContext(ctx, `SELECT `+slotCols+` FROM ad_slots WHERE id=? AND domain_id=?`, id, site))
 }
 
-// List returns every slot ordered for the admin console.
-func (s *Store) List(ctx context.Context) ([]Slot, error) {
-	return s.query(ctx, `SELECT `+slotCols+` FROM ad_slots ORDER BY placement ASC, sort ASC, created_at ASC`)
+// List returns site's slots ordered for the admin console.
+func (s *Store) List(ctx context.Context, site string) ([]Slot, error) {
+	return s.query(ctx, `SELECT `+slotCols+` FROM ad_slots WHERE domain_id=? ORDER BY placement ASC, sort ASC, created_at ASC`, site)
 }
 
 // EnabledByPlacement returns the enabled slots for a placement, render-ordered.
 // A member-submitted ad only becomes enabled when the operator approves it, so
 // pending/rejected member ads never render.
-func (s *Store) EnabledByPlacement(ctx context.Context, placement string) ([]Slot, error) {
-	return s.query(ctx, `SELECT `+slotCols+` FROM ad_slots WHERE placement=? AND enabled=1 ORDER BY sort ASC, created_at ASC`, placement)
+func (s *Store) EnabledByPlacement(ctx context.Context, site, placement string) ([]Slot, error) {
+	return s.query(ctx, `SELECT `+slotCols+` FROM ad_slots WHERE domain_id=? AND placement=? AND enabled=1 ORDER BY sort ASC, created_at ASC`, site, placement)
 }
 
 // ── Member self-serve ads ("advertise here") ──────────────────────────────────
@@ -331,6 +338,7 @@ func (s *Store) EnabledByPlacement(ctx context.Context, placement string) ([]Slo
 // MemberAdInput carries a member-submitted image ad. Only the image kind is
 // accepted from members (no member-authored HTML ever reaches the page).
 type MemberAdInput struct {
+	Site       string // the site it was bought on ("" = the install's own)
 	OwnerEmail string
 	Placement  string
 	ImageURL   string
@@ -359,11 +367,11 @@ func (s *Store) CreateMemberAd(ctx context.Context, in MemberAdInput) (*Slot, er
 	}
 	id := "ad_" + randHex(8)
 	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO ad_slots(id,name,placement,kind,image_url,link_url,alt_text,html,enabled,sort,owner_email,status,order_ref) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		id, "Member ad — "+email, in.Placement, KindImage, img, link, strings.TrimSpace(in.AltText), "", 0, 0, email, StatusPendingPayment, strings.TrimSpace(in.OrderRef)); err != nil {
+		`INSERT INTO ad_slots(id,domain_id,name,placement,kind,image_url,link_url,alt_text,html,enabled,sort,owner_email,status,order_ref) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		id, in.Site, "Member ad — "+email, in.Placement, KindImage, img, link, strings.TrimSpace(in.AltText), "", 0, 0, email, StatusPendingPayment, strings.TrimSpace(in.OrderRef)); err != nil {
 		return nil, fmt.Errorf("create member ad: %w", err)
 	}
-	return s.GetByID(ctx, id)
+	return s.GetByID(ctx, in.Site, id)
 }
 
 // MarkAdPaidByOrder advances a member ad from pending_payment to pending_review
@@ -378,9 +386,10 @@ func (s *Store) MarkAdPaidByOrder(ctx context.Context, orderRef string) error {
 	return err
 }
 
-// ApproveMemberAd publishes a paid, reviewed member ad (status approved, enabled).
-func (s *Store) ApproveMemberAd(ctx context.Context, id string) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE ad_slots SET status=?,enabled=1,updated_at=? WHERE id=?`, StatusApproved, time.Now().UTC(), id)
+// ApproveMemberAd publishes one of site's paid, reviewed member ads (status
+// approved, enabled).
+func (s *Store) ApproveMemberAd(ctx context.Context, site, id string) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE ad_slots SET status=?,enabled=1,updated_at=? WHERE id=? AND domain_id=?`, StatusApproved, time.Now().UTC(), id, site)
 	if err != nil {
 		return err
 	}
@@ -390,9 +399,9 @@ func (s *Store) ApproveMemberAd(ctx context.Context, id string) error {
 	return nil
 }
 
-// RejectMemberAd declines a member ad (status rejected, disabled).
-func (s *Store) RejectMemberAd(ctx context.Context, id string) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE ad_slots SET status=?,enabled=0,updated_at=? WHERE id=?`, StatusRejected, time.Now().UTC(), id)
+// RejectMemberAd declines one of site's member ads (status rejected, disabled).
+func (s *Store) RejectMemberAd(ctx context.Context, site, id string) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE ad_slots SET status=?,enabled=0,updated_at=? WHERE id=? AND domain_id=?`, StatusRejected, time.Now().UTC(), id, site)
 	if err != nil {
 		return err
 	}
@@ -402,10 +411,10 @@ func (s *Store) RejectMemberAd(ctx context.Context, id string) error {
 	return nil
 }
 
-// ListByStatus returns ads in a given lifecycle state (newest first) — the
-// operator moderation queue uses pending_review.
-func (s *Store) ListByStatus(ctx context.Context, status string) ([]Slot, error) {
-	return s.query(ctx, `SELECT `+slotCols+` FROM ad_slots WHERE status=? ORDER BY created_at DESC`, status)
+// ListByStatus returns site's ads in a given lifecycle state (newest first) —
+// the operator moderation queue uses pending_review.
+func (s *Store) ListByStatus(ctx context.Context, site, status string) ([]Slot, error) {
+	return s.query(ctx, `SELECT `+slotCols+` FROM ad_slots WHERE domain_id=? AND status=? ORDER BY created_at DESC`, site, status)
 }
 
 // MemberAds returns a member's submitted ads (newest first).
@@ -435,7 +444,7 @@ func scanSlot(sc interface{ Scan(...interface{}) error }) (*Slot, error) {
 	var sl Slot
 	var enabled int
 	var paths string
-	if err := sc.Scan(&sl.ID, &sl.Name, &sl.Placement, &sl.Kind, &sl.ImageURL, &sl.LinkURL,
+	if err := sc.Scan(&sl.ID, &sl.Site, &sl.Name, &sl.Placement, &sl.Kind, &sl.ImageURL, &sl.LinkURL,
 		&sl.AltText, &sl.HTML, &enabled, &sl.Sort, &sl.ShowOn, &paths, &sl.OwnerEmail, &sl.Status, &sl.OrderRef, &sl.CreatedAt, &sl.UpdatedAt); err != nil {
 		return nil, err
 	}
