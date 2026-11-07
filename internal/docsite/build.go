@@ -74,6 +74,7 @@ type site struct {
 	Latest     *release
 	Feed       []feedRow
 	Products   []product
+	Sections   []section
 	Searchable int
 	Hero       heroShots
 	// Pages is the site's own pages by address, so the footer links only the
@@ -148,6 +149,7 @@ func Build(in Input) (Bundle, error) {
 	}
 	pages := loadPages(in.Repo, l, strings.NewReplacer("{releases}", num(len(s.Releases)), "{decisions}", num(len(s.ADRs))))
 	s.Products = products(bySlug)
+	s.Sections = loadSections(in.Repo, l, strings.NewReplacer("{releases}", num(len(s.Releases)), "{decisions}", num(len(s.ADRs))))
 	s.Feed = feed(in, s.ADRs, s.Releases)
 	s.Searchable = len(docs) + len(s.Releases) + len(pages)
 	s.Pages = map[string]bool{}
@@ -319,7 +321,7 @@ func owners(adrs []*doc) []owner {
 	return out
 }
 
-// products are the six things the home page names, each with the decision
+// products are the ten things the home page names, each with the decision
 // that defines it. A decision the repository no longer has is left off rather
 // than linked to nothing.
 func products(bySlug map[string]*doc) []product {
@@ -338,6 +340,10 @@ func products(bySlug map[string]*doc) []product {
 		{"VayuTalk", "Private chat on your own domain, shared by a link, with nothing in between.", "talk", find("ADR-0131")},
 		{"Tor Space", "An onion address for the same site, with its own world in the console.", "tor", find("ADR-0143")},
 		{"VayuShield", "Bots, floods and scrapers turned away before they cost a query, every verdict explained.", "shield", find("ADR-0111")},
+		{"VayuAnalytics", "Visitors counted on the server, with no cookie and no address kept, every figure explained.", "chart", find("ADR-0097")},
+		{"VayuAPI", "Keys that can do exactly what they are given, section by section, and nothing else.", "key", find("ADR-0134")},
+		{"VayuMCP", "Connect an AI client to your site in one click, with the same scoped permissions.", "chip", find("ADR-0139")},
+		{"VayuOS", "One console for all of it, one per site, installable on any screen.", "os", find("ADR-0154")},
 	}
 }
 

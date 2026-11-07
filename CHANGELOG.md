@@ -10,6 +10,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **vayupress.com's home page carries the whole story, and both worlds.**
+  The site an install builds from a repository (`internal/docsite`) now
+  draws the sections in `docs/site/home` between its products and Still Air,
+  each a band whose sub-points sit as cards; their words live in the
+  repository, so changing one is a commit. Home names all ten products, each
+  with the decision that defines it, and a Clearnet / Tor Space switch
+  changes the page's accent as the console's does, remembered in the
+  reader's own browser. Bands rise into place as they are first seen, only
+  for a reader who has not asked for less motion.
+
 - **Every public post as Markdown, for agents and tools.** `/<post>.md` is a
   post as clean Markdown (title, address, date, topics, then its text) and
   `/index.md` the site's newest posts. Both are made from the post's own

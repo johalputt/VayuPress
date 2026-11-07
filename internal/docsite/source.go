@@ -314,6 +314,47 @@ func loadPages(repo fs.FS, l *linker, figures *strings.Replacer) []page {
 	return out
 }
 
+// section is one band of the home page between its products and Still Air:
+// docs/site/home/<NN-name>.md, in file-name order, with its kicker in a front
+// matter block. The words live in the repository, as a page's do; the band
+// is drawn by the home template.
+type section struct {
+	ID     string // the band's anchor: the file's name without its number
+	Kicker string
+	R      rendered
+}
+
+// loadSections reads the home page's sections. Like a page, a section may
+// name {releases} and {decisions}.
+func loadSections(repo fs.FS, l *linker, figures *strings.Replacer) []section {
+	entries, err := fs.ReadDir(repo, siteDir+"/home")
+	if err != nil {
+		return nil
+	}
+	var out []section
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		src := siteDir + "/home/" + e.Name()
+		raw, err := fs.ReadFile(repo, src)
+		if err != nil {
+			continue
+		}
+		front, body := splitFront(raw)
+		id := strings.TrimSuffix(e.Name(), ".md")
+		if _, rest, ok := strings.Cut(id, "-"); ok {
+			id = rest
+		}
+		r := l.renderDoc(src, []byte(figures.Replace(string(body))))
+		r.Body = cardify(r.Body)
+		out = append(out, section{ID: id, Kicker: front["kicker"], R: r})
+	}
+	// ReadDir gives the files in name order, which is the order the numbers
+	// set.
+	return out
+}
+
 // splitFront separates a "---" front matter block of "key: value" lines.
 func splitFront(raw []byte) (map[string]string, []byte) {
 	front := map[string]string{}

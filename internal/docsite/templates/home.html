@@ -1,7 +1,12 @@
 {{define "home"}}{{template "head" .}}
 <section class="hero">
   {{with .Latest}}<a class="eyebrow" href="/changes/{{.Slug}}/"><span class="dot live" aria-hidden="true"></span><b>{{.Version}}</b> is out<span class="eyebrow-sep" aria-hidden="true">·</span>What changed <span aria-hidden="true">→</span></a>{{end}}
+  <div class="world-switch" role="group" aria-label="Which world to show" data-world-switch>
+    <button type="button" data-world="clearnet" aria-pressed="true">Clearnet</button>
+    <button type="button" data-world="tor" aria-pressed="false">Tor Space</button>
+  </div>
   <h1>Your whole presence.<br><span class="quiet">One binary. One server.</span></h1>
+  <p class="world-note">This is Tor Space: the same suite on an onion address, mail as webmail only, chat anonymous and rotatable, and nothing that crosses into the public world.</p>
   <p class="lede">A website, a blog, mail, private chat and a Tor onion, run from VayuOS Still Air: a console quiet enough to forget, and exact enough to trust.</p>
   <div class="ctas"><a class="btn primary lg" href="/docs/INSTALLATION/">Install on your server</a><a class="btn ghost lg" href="/docs/">Read the docs</a></div>
   <div class="install"><span>One command</span><code data-copy>curl -sSL https://raw.githubusercontent.com/johalputt/vayupress/main/scripts/deploy-vayupress.sh | bash</code></div>
@@ -25,7 +30,7 @@
 
 <section class="band tight" id="products" aria-labelledby="h-products">
   <p class="kicker">What it serves</p>
-  <h2 id="h-products">Six things most people rent separately.</h2>
+  <h2 id="h-products">Everything most people rent separately.</h2>
   <div class="products">
     {{range .Products}}<div class="product">
       <div class="ic" aria-hidden="true">{{template "icon" .Icon}}</div>
@@ -36,6 +41,11 @@
   </div>
 </section>
 
+{{range .Sections}}<section class="band section reveal" id="{{.ID}}">
+  {{with .Kicker}}<p class="kicker">{{.}}</p>{{end}}
+  <div class="section-body">{{.R.Body}}</div>
+</section>
+{{end}}
 <section class="band" id="still-air" aria-labelledby="h-still-air">
   <div class="split">
     <div>
@@ -67,4 +77,4 @@
 </section>
 {{template "foot" .}}{{end}}
 
-{{define "icon"}}<svg viewBox="0 0 20 20">{{if eq . "site"}}<rect x="3" y="4" width="14" height="12" rx="2"/><path d="M3 8h14"/>{{else if eq . "doc"}}<path d="M5 3.5h7l3 3V16.5H5z"/><path d="M8 9h4M8 12h4"/>{{else if eq . "mail"}}<rect x="3" y="5" width="14" height="10" rx="2"/><path d="M3 6l7 5 7-5"/>{{else if eq . "talk"}}<path d="M4 5h12v8H9l-4 3V5z"/>{{else if eq . "tor"}}<circle cx="10" cy="10" r="6.5"/><circle cx="10" cy="10" r="3.5"/><circle cx="10" cy="10" r="0.6"/>{{else if eq . "key"}}<circle cx="7" cy="10" r="3.5"/><path d="M10.5 10H17M14.5 10v3M17 10v2"/>{{else if eq . "hash"}}<path d="M8 3.5 6.5 16.5M13.5 3.5 12 16.5M4 7.5h13M3 12.5h13"/>{{else if eq . "chip"}}<rect x="5" y="5" width="10" height="10" rx="2"/><path d="M8 2.5v2.5M12 2.5v2.5M8 15v2.5M12 15v2.5M2.5 8H5M2.5 12H5M15 8h2.5M15 12h2.5"/>{{else}}<path d="M10 2.5l6 2v5c0 3.8-2.8 6.3-6 7.5-3.2-1.2-6-3.7-6-7.5v-5l6-2z"/>{{end}}</svg>{{end}}
+{{define "icon"}}<svg viewBox="0 0 20 20">{{if eq . "site"}}<rect x="3" y="4" width="14" height="12" rx="2"/><path d="M3 8h14"/>{{else if eq . "doc"}}<path d="M5 3.5h7l3 3V16.5H5z"/><path d="M8 9h4M8 12h4"/>{{else if eq . "mail"}}<rect x="3" y="5" width="14" height="10" rx="2"/><path d="M3 6l7 5 7-5"/>{{else if eq . "talk"}}<path d="M4 5h12v8H9l-4 3V5z"/>{{else if eq . "tor"}}<circle cx="10" cy="10" r="6.5"/><circle cx="10" cy="10" r="3.5"/><circle cx="10" cy="10" r="0.6"/>{{else if eq . "key"}}<circle cx="7" cy="10" r="3.5"/><path d="M10.5 10H17M14.5 10v3M17 10v2"/>{{else if eq . "hash"}}<path d="M8 3.5 6.5 16.5M13.5 3.5 12 16.5M4 7.5h13M3 12.5h13"/>{{else if eq . "chart"}}<path d="M3.5 16.5h13M6.5 13.5v-3M10 13.5V6M13.5 13.5V9"/>{{else if eq . "os"}}<rect x="3.5" y="3.5" width="5.5" height="5.5" rx="1.4"/><rect x="11" y="3.5" width="5.5" height="5.5" rx="1.4"/><rect x="3.5" y="11" width="5.5" height="5.5" rx="1.4"/><rect x="11" y="11" width="5.5" height="5.5" rx="1.4"/>{{else if eq . "chip"}}<rect x="5" y="5" width="10" height="10" rx="2"/><path d="M8 2.5v2.5M12 2.5v2.5M8 15v2.5M12 15v2.5M2.5 8H5M2.5 12H5M15 8h2.5M15 12h2.5"/>{{else}}<path d="M10 2.5l6 2v5c0 3.8-2.8 6.3-6 7.5-3.2-1.2-6-3.7-6-7.5v-5l6-2z"/>{{end}}</svg>{{end}}

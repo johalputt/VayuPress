@@ -293,3 +293,47 @@ func TestARepositoryThemeDrawsTheSite(t *testing.T) {
 		t.Errorf("a theme missing its script = %v; it must be refused by name, not drawn half from the built-in design", err)
 	}
 }
+
+// TestTheHomePageCarriesItsSections — docs/site/home is drawn between the
+// products and Still Air, in the files' numbered order, each with its kicker
+// and figures; a section's h3s become one grid of cards, ended by the next
+// h2; and a line that is only a pictogram is left out. One seed per rule.
+func TestTheHomePageCarriesItsSections(t *testing.T) {
+	repo := fixture()
+	repo["docs/site/home/01-zeta.md"] = &fstest.MapFile{Data: []byte("---\nkicker: Why it exists\n---\n## Own it\n\nIntro with {decisions} decisions.\n\n💳\n\n### Card one\n\nFirst.\n\n### Card two\n\nSecond.\n\n## After the cards\n\nLater.\n")}
+	repo["docs/site/home/02-alpha.md"] = &fstest.MapFile{Data: []byte("---\nkicker: Second\n---\n## The second section\n")}
+	home := file(t, build(t, repo), "index.html")
+	first, second := strings.Index(home, `id="zeta"`), strings.Index(home, `id="alpha"`)
+	if first < 0 || second < 0 || first > second {
+		t.Fatalf("the sections are missing or out of their numbered order (zeta at %d, alpha at %d)", first, second)
+	}
+	if !strings.Contains(home, "Why it exists") || !strings.Contains(home, "Intro with 2 decisions.") {
+		t.Error("a section lost its kicker or its figures")
+	}
+	if !strings.Contains(home, `<div class="cards"><div class="card"><h3`) || strings.Count(home, `<div class="card">`) != 2 {
+		t.Errorf("the section's h3s are not one grid of two cards:\n%s", home[first:second])
+	}
+	if strings.Index(home, "After the cards") < strings.LastIndex(home[:second], `</div></div>`) {
+		t.Error("the next h2 did not end the grid of cards")
+	}
+	if strings.Contains(home, "💳") {
+		t.Error("a pictogram-only line reached the page")
+	}
+	if a, s := strings.Index(home, `id="h-products"`), strings.Index(home, `id="still-air"`); a > first || s < second {
+		t.Error("the sections are not between the products and Still Air")
+	}
+}
+
+// TestHomeNamesEveryProductAndOffersBothWorlds — the ten products, and the
+// switch between Clearnet and Tor Space with Clearnet pressed.
+func TestHomeNamesEveryProductAndOffersBothWorlds(t *testing.T) {
+	home := file(t, build(t, fixture()), "index.html")
+	for _, p := range []string{"Websites", "Blog", "VayuMail", "VayuTalk", "Tor Space", "VayuShield", "VayuAnalytics", "VayuAPI", "VayuMCP", "VayuOS"} {
+		if !strings.Contains(home, "<h3>"+p+"</h3>") {
+			t.Errorf("Home does not name %s", p)
+		}
+	}
+	if !strings.Contains(home, `data-world="clearnet" aria-pressed="true"`) || !strings.Contains(home, `data-world="tor" aria-pressed="false"`) {
+		t.Error("Home has no world switch with Clearnet pressed")
+	}
+}

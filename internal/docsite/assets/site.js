@@ -188,4 +188,40 @@
     }, { rootMargin: "-80px 0px -70% 0px" });
     Object.keys(byId).forEach(function (id) { var h = document.getElementById(id); if (h) seen.observe(h); });
   }
+
+  // The world switch: Clearnet or Tor Space, the accent family only, as the
+  // console's switch. The choice is kept in this browser and nowhere else.
+  var root = document.documentElement;
+  root.classList.add("js");
+  var switcher = document.querySelector("[data-world-switch]");
+  function setWorld(w) {
+    if (w === "tor") root.setAttribute("data-world", "tor"); else root.removeAttribute("data-world");
+    if (switcher) switcher.querySelectorAll("[data-world]").forEach(function (b) {
+      b.setAttribute("aria-pressed", String(b.getAttribute("data-world") === (w === "tor" ? "tor" : "clearnet")));
+    });
+  }
+  var kept = null;
+  try { kept = localStorage.getItem("vp-world"); } catch (e) { kept = null; }
+  setWorld(kept);
+  if (switcher) switcher.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-world]");
+    if (!b) return;
+    var w = b.getAttribute("data-world");
+    setWorld(w);
+    try { localStorage.setItem("vp-world", w); } catch (err) { /* private browsing: the choice lasts the visit */ }
+  });
+
+  // Sections rise into place the first time they are seen; with no observer,
+  // or a reader who asked for less motion, they are simply there.
+  var bands = document.querySelectorAll(".reveal");
+  if (bands.length && "IntersectionObserver" in window && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    var riser = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (en.isIntersecting) { en.target.classList.add("seen"); riser.unobserve(en.target); }
+      });
+    }, { rootMargin: "0px 0px -8% 0px" });
+    bands.forEach(function (b) { riser.observe(b); });
+  } else {
+    bands.forEach(function (b) { b.classList.add("seen"); });
+  }
 })();
