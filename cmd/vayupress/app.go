@@ -241,6 +241,7 @@ type App struct {
 	// only act once the operator enables the corresponding module.
 	payments *payments.Store
 	ads      *ads.Store
+	adCounts *ads.Counter // ad impressions and clicks, written in batches
 
 	// Read-only public GraphQL API (Tier 4).
 	graphql *graphqlapi.Service

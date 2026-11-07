@@ -954,6 +954,7 @@ func main() {
 	// feature flags (feature.payments / feature.ads) in Tools & Plugins.
 	a.payments = payments.New(dbpkg.DB)
 	a.ads = ads.New(dbpkg.DB)
+	a.startAdCounts()
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
@@ -1433,6 +1434,7 @@ func main() {
 		// still in memory when the database closed.
 		a.flushTelemetry(10 * time.Second)
 		a.flushSignins(5 * time.Second)
+		a.flushAdCounts(5 * time.Second)
 
 		// Phase 3: stop plugin pool + subprocess pools + resource watchdog
 		if os.Getenv("VAYU_PLUGINS_ENABLED") == "true" {

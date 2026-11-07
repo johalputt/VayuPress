@@ -19,6 +19,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   and any lines it adds ("More ads.txt lines" on its Advertising page); a
   site with neither has none, and a site serving an uploaded bundle that
   carries its own `ads.txt` serves that file.
+- **Ad impressions and clicks, counted per site.** Each site's Advertising
+  page shows how often each slot was seen and clicked in the last 30 days.
+  They are counted the way page views are: by the cookieless analytics
+  script, under the same Do Not Track, rate-limit and readers-only rules,
+  and only for that site's own switched-on slots. Ad links stay direct.
 
 - **A hosted site's own share image**, uploaded and removed on its settings
   page: the picture shown when a link to the site is shared.

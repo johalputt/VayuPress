@@ -118,6 +118,10 @@ window.VayuPress=window.VayuPress||{};window.VayuPress.track=function(n,d){send(
 	if n := a.clickMapSample(r.Context(), a.contentScope(r)); n > 0 {
 		fmt.Fprint(w, clickMapJS(n))
 	}
+	// Ad impressions and clicks, on a site whose Advertising is on.
+	if a.adsEnabled(r.Context(), adScope(a.contentScope(r))) {
+		fmt.Fprint(w, adEventsJS)
+	}
 }
 
 // ── Legacy privacy-first summary (unchanged) ─────────────────────────────────

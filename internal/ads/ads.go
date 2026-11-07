@@ -504,7 +504,7 @@ func Render(slots []Slot, cfg RenderConfig) string {
 	for i := range slots {
 		unit := renderSlot(&slots[i], cfg)
 		if unit != "" {
-			b.WriteString(`<div class="vp-ad-slot" data-ad-placement="` + html.EscapeString(slots[i].Placement) + `">` + unit + `</div>`)
+			b.WriteString(`<div class="vp-ad-slot" data-ad-placement="` + html.EscapeString(slots[i].Placement) + `" data-ad-id="` + html.EscapeString(slots[i].ID) + `">` + unit + `</div>`)
 		}
 	}
 	if b.Len() == 0 {

@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -57,9 +58,13 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 
 	var slots []ads.Slot
 	var pendingAds []ads.Slot
+	counts := map[string]ads.Counts{}
 	if a.ads != nil {
 		slots, _ = a.ads.List(ctx, site)
 		pendingAds, _ = a.ads.ListByStatus(ctx, site, ads.StatusPendingReview)
+		if c, err := a.ads.Totals(ctx, site, 30, time.Now()); err == nil {
+			counts = c
+		}
 	}
 	// Off with nothing saved is a fresh install's Advertising: a setup page. Off
 	// with slots or paid submissions waiting is a choice the operator made, and
@@ -129,7 +134,7 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 	page := ui.SettingsPage("Advertising", state, "Ad slots and members' ads for this site alone, served from it with no ad network.",
 		ui.HTML(`<div class="page-lead">`+lead+`</div>`),
 		ui.Section("Member ads", "Paid submissions wait for your approval", ui.HTML(memberAdReviewTable(pendingAds))),
-		ui.Section("Ad slots", "Each fills one placement", ui.HTML(adsSlotsTable(slots))),
+		ui.Section("Ad slots", "Each fills one placement", ui.HTML(adsSlotsTable(slots, counts))),
 		settingsSection,
 		ui.Sheet("ad-new", "Add an ad slot", ui.HTML(newSlot)),
 		editSheets,
@@ -258,7 +263,9 @@ func (a *App) handleOSAdReviewReject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "rejected"})
 }
 
-func adsSlotsTable(slots []ads.Slot) string {
+// adsSlotsTable lists slots with how often each was seen and clicked in
+// the last 30 days (counts, by slot id).
+func adsSlotsTable(slots []ads.Slot, counts map[string]ads.Counts) string {
 	if len(slots) == 0 {
 		return `<div class="table-empty">No ad slots yet.</div>`
 	}
@@ -276,6 +283,8 @@ func adsSlotsTable(slots []ads.Slot) string {
   <td>` + html.EscapeString(s.Placement) + `</td>
   <td>` + html.EscapeString(s.Kind) + `</td>
   <td>` + statusPill + `</td>
+  <td class="mono">` + osGroupInt(int(counts[s.ID].Seen)) + `</td>
+  <td class="mono">` + osGroupInt(int(counts[s.ID].Clicks)) + `</td>
   <td class="row-actions">
     <button type="button" class="btn btn--ghost btn--sm" data-sheet="ad-e-` + html.EscapeString(s.ID) + `">Edit</button>
     <button type="button" class="btn btn--ghost btn--sm" data-ad-action="toggle" data-to="` + toggleTo + `" data-id="` + html.EscapeString(s.ID) + `">` + toggleLabel + `</button>
@@ -284,7 +293,7 @@ func adsSlotsTable(slots []ads.Slot) string {
 </tr>`
 	}
 	return `<div class="table-wrap"><table class="table">
-  <thead><tr><th>Name</th><th>Placement</th><th>Kind</th><th>Status</th><th></th></tr></thead>
+  <thead><tr><th>Name</th><th>Placement</th><th>Kind</th><th>Status</th><th>Seen, 30 days</th><th>Clicks</th><th></th></tr></thead>
   <tbody>` + rows + `</tbody>
 </table></div>`
 }
