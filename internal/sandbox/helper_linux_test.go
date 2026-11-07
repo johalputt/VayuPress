@@ -248,3 +248,18 @@ func TestEachDeclarationEarnsItsCalls(t *testing.T) {
 		}
 	}
 }
+
+// TestTheHelperRefusesASyscallClassItDoesNotKnow — the class is parsed at its
+// own width: a value that would wrap (257 is 1 in a byte) or name a class
+// that does not exist stops the plugin instead of widening its filter.
+func TestTheHelperRefusesASyscallClassItDoesNotKnow(t *testing.T) {
+	for v, ok := range map[string]bool{"0": true, "7": true, "8": false, "257": false, "-1": false, "x": false} {
+		spec, _, _, err := parseHelperArgv([]string{"confine=false", "scratch=", "runas=", "syscalls=" + v, "--", "/bin/true"})
+		if ok && (err != nil || spec.syscalls > 7) {
+			t.Errorf("syscalls=%s: refused (%v), want accepted", v, err)
+		}
+		if !ok && err == nil {
+			t.Errorf("syscalls=%s: accepted as class %03b, want refused", v, spec.syscalls)
+		}
+	}
+}

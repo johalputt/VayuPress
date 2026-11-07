@@ -83,8 +83,11 @@ func parseHelperArgv(argv []string) (helperSpec, string, []string, error) {
 		case "runas":
 			spec.runAs = v
 		case "syscalls":
-			n, err := strconv.Atoi(v)
-			if err != nil {
+			// Parsed at the class's own width and checked against the known
+			// classes: a value that wrapped or named an unknown class would
+			// widen the filter without anyone having declared it.
+			n, err := strconv.ParseUint(v, 10, 8)
+			if err != nil || syscallClass(n)&^(classFiles|classWrite|classNetwork) != 0 {
 				return spec, "", nil, fmt.Errorf("malformed syscalls %q", v)
 			}
 			spec.syscalls = syscallClass(n)
