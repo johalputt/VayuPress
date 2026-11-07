@@ -229,12 +229,16 @@ func (a *App) buildMCPServer() *mcp.Server {
 
 	srv.Register(mcp.Tool{
 		Name:        "get_post",
-		Description: "Fetch a single post (including its HTML content) by slug.",
-		InputSchema: objSchema([]string{"slug"}, map[string]any{"slug": strProp("Slug of the post.")}),
-		Visible:     a.mcpVisible(apikeys.SectionPosts, apikeys.ActionRead),
+		Description: "Fetch a single post by slug: with its HTML content (the default, what update_post edits), or with format \"markdown\" as clean Markdown made from the post's own content, for reading.",
+		InputSchema: objSchema([]string{"slug"}, map[string]any{
+			"slug":   strProp("Slug of the post."),
+			"format": strProp("\"html\" (default) or \"markdown\"."),
+		}),
+		Visible: a.mcpVisible(apikeys.SectionPosts, apikeys.ActionRead),
 		Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var in struct {
-				Slug string `json:"slug"`
+				Slug   string `json:"slug"`
+				Format string `json:"format"`
 			}
 			if err := json.Unmarshal(args, &in); err != nil {
 				return "", errBadArgs(err)
@@ -242,6 +246,9 @@ func (a *App) buildMCPServer() *mcp.Server {
 			art, err := a.articles.Get(ctx, in.Slug)
 			if err != nil {
 				return "", err
+			}
+			if in.Format == "markdown" {
+				return mcpPostMarkdown(ctx, art), nil
 			}
 			return jsonStr(art), nil
 		},

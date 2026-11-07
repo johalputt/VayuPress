@@ -2815,6 +2815,7 @@ func CachePurgePost(slug string) {
 	}
 	os.Remove(postFile)
 	os.Remove(filepath.Join(config.Cfg.CacheDir, "posts", slug+".csp"))
+	os.Remove(filepath.Join(config.Cfg.CacheDir, "posts", slug+".md"))
 }
 
 // CachePurge removes the cached file for an article and its associated tag pages.
@@ -2826,6 +2827,7 @@ func CachePurge(slug string, tags []string, generateSitemap, generateRSS, genera
 		}
 		os.Remove(postFile)
 		os.Remove(filepath.Join(config.Cfg.CacheDir, "posts", slug+".csp"))
+		os.Remove(filepath.Join(config.Cfg.CacheDir, "posts", slug+".md"))
 	}
 	os.Remove(filepath.Join(config.Cfg.CacheDir, "home", "index.html"))
 	for _, t := range tags {

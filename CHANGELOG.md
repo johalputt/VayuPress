@@ -10,6 +10,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Every public post as Markdown, for agents and tools.** `/<post>.md` is a
+  post as clean Markdown (title, address, date, topics, then its text) and
+  `/index.md` the site's newest posts. Both are made from the post's own
+  content (an editor post from its blocks, an HTML post from its HTML),
+  never from the page around it, so a theme's style or script never reaches
+  them. Only a published post a signed-out reader may read has one, each on
+  its own site, cached beside its page and purged with it. VayuMCP's
+  `get_post` takes `format: "markdown"` for the same, an article of tens of
+  kilobytes of HTML and style becoming a few of text (ADR-0177).
+
 - **Card images from Pixabay.** With a Pixabay key on API Keys and "Card
   images from Pixabay" on in Tools and plugins, posts with no card image
   get one in the background: the Pixabay picture a post already shows,

@@ -548,6 +548,17 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(key))
 		return
 	}
+	// The Markdown of the site's newest posts, and of a post, for agents
+	// (markdown_pages.go). A slug never holds a dot, so neither can shadow a
+	// post.
+	if slug == "index.md" {
+		a.handleIndexMarkdown(w, r)
+		return
+	}
+	if md, ok := strings.CutSuffix(slug, ".md"); ok {
+		a.handlePostMarkdown(w, r, md)
+		return
+	}
 	if !api.IsValidSlug(slug) {
 		a.handleNotFound(w, r)
 		return
