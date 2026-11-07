@@ -1,7 +1,7 @@
 ---
 kicker: For studios & agencies
 ---
-## Host every client on one box — and hand each owner their own key.
+## Host every client on one box — and hand each owner their own key
 
 One binary already runs a website, mail, analytics and the admin. It now runs them per domain: every registered domain gets its own website, its own certificate, its own branded mailboxes and its own visitor figures — and the person who owns that domain gets a login that reaches their site and nothing else. No second install, no per-client control panel, no new thing to operate.
 
@@ -71,19 +71,19 @@ That outside address is required before a mailbox can be handed over at all. Wit
 
 A business model built on a capability nobody has read the edges of is a business model that meets those edges in front of a client. These are the edges, in the same words the design record uses.
 
-#### Not encryption.
+#### Not encryption
 
 The messages are readable files on a server you operate. Anyone with direct access to that machine, its database or a backup can still read them, and no ledger records that. Only encryption under a key the server does not hold would prevent it — that version is fully designed and deliberately unshipped, on business grounds rather than cryptographic ones: custody, key-loss rates over sixty clients, and no self-service export or import path yet.
 
-#### One process, one box.
+#### One process, one box
 
 Row scoping is not a sandbox. A remote-code-execution bug reaches every client at once, and a hardware failure takes them all down together. Off-box encrypted backups with rehearsed restores are mandatory here, not optional. The DKIM signing key is one key, shared — deliverability is per-domain and correct, the key is not.
 
-#### Metadata and routing stay yours.
+#### Metadata and routing stay yours
 
 Sender, recipient, subject, size and delivery logs remain visible regardless of handover. You own MX and address creation, so future mail can be redirected even where the existing archive cannot be opened. Handover is a bound on reading a mailbox, not on running the mail system.
 
-#### Tamper-evident, not tamper-proof.
+#### Tamper-evident, not tamper-proof
 
 You own the database. Chaining the access record makes an edit *show up*; it does not make one impossible, and the product says so rather than implying otherwise. A record that could be quietly rewritten would be worse than none, because it would be believed.
 

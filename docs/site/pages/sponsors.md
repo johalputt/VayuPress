@@ -4,7 +4,7 @@ title: Sponsor VayuPress
 kicker: Sponsors
 description: Sponsorship keeps VayuPress independent.
 ---
-# One person builds this. Sponsorship keeps it independent.
+# One person builds this. Sponsorship keeps it independent
 
 VayuPress is a single signed binary that replaces a website stack, a mail provider and a chat service — website & blog, VayuMail, VayuTalk, bot protection, analytics, PGP, an API, an MCP server and one-click Tor, self-hosted on hardware you control. No tracking, no phone-home, no venture capital, no plan to ever charge for the core.
 

@@ -1,7 +1,7 @@
 ---
 kicker: Companion tools
 ---
-## Bring your content with you. Leave anytime, too.
+## Bring your content with you. Leave anytime, too
 
 ### Move in
 

@@ -1,7 +1,7 @@
 ---
 kicker: Ship in minutes
 ---
-## One command to a live server.
+## One command to a live server
 
 On a server with a domain pointed at it, one command installs everything:
 

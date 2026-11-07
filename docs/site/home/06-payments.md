@@ -1,7 +1,7 @@
 ---
 kicker: Turn it on · get paid
 ---
-## Your audience, your revenue — and your own payment keys.
+## Your audience, your revenue — and your own payment keys
 
 A complete, redirect-based monetization suite is built in — no payment SDK is ever embedded, so your strict CSP stays intact. Take money through your own Stripe & PayPal keys, and audit every sale from one Monetization control centre in VayuOS.
 

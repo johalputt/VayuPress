@@ -1,7 +1,7 @@
 ---
 kicker: Open source · forever
 ---
-## Built in the open. Owned by you.
+## Built in the open. Owned by you
 
 Apache-2.0 licensed, dependency-light, documented to the decision level — VayuPress is for operators who refuse to rent their stack.
 

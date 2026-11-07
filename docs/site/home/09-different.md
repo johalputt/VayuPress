@@ -1,7 +1,7 @@
 ---
 kicker: How it compares
 ---
-## What makes VayuPress different.
+## What makes VayuPress different
 
 Most platforms bolt sovereignty, observability and governance on as plugins — or sell them as a hosted tier. VayuPress ships them in a single binary, with every byte of behaviour owned by the operator.
 

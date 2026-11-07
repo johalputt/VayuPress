@@ -1,7 +1,7 @@
 ---
 kicker: Two worlds · one binary
 ---
-## A public world and an anonymous one: switchable, and never mixed.
+## A public world and an anonymous one: switchable, and never mixed
 
 One install switch (VAYUOS_MODE) runs VayuPress as a public Clearnet Space or a fully anonymous, web-only Tor Space — each with its own database, its own identity, and nothing crossing between them. Switch between Clearnet and Tor Space at the top of this page to see each.
 

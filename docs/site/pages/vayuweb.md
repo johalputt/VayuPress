@@ -16,7 +16,7 @@ A peer-to-peer naming and hosting protocol. Register a name, publish a site, and
 
 No token · No treasury · No root zone · MIT
 
-## Two chokepoints decide whether anything on the web stays reachable.
+## Two chokepoints decide whether anything on the web stays reachable
 
 Who resolves your name, and who serves your bytes. Both have consolidated into a handful of companies operating under a handful of jurisdictions — and in practice, the same few organisations hold every lever at once.
 
@@ -32,7 +32,7 @@ VayuWeb answers by removing the levers rather than negotiating with whoever hold
 
 Plural by design: 1,270 extensions at launch, of which the constitution names eleven so the founding set survives the loss of its annex (Article 35.1): `.vayu`, `.p2p`, `.free`, `.decent`, `.libre`, `.sov`, `.dao`, `.indie`, `.open`, `.news` and `.blog`.
 
-## What VayuWeb can do that the web cannot.
+## What VayuWeb can do that the web cannot
 
 Nine capabilities, each of which exists because a specific power was removed from the system rather than entrusted to someone. What follows every card is not a feature — it is the thing that becomes structurally impossible.
 
@@ -97,7 +97,7 @@ Fork the protocol, the registry state, or the name itself — and be recognised 
 
 ---
 
-## Deny everything, then allow by name.
+## Deny everything, then allow by name
 
 Every VayuWeb page is served under a policy that starts from `'none'` and enumerates each exception. A directive nobody remembered to add inherits a denial, not a permission.
 
@@ -126,7 +126,7 @@ X-DNS-Prefetch-Control: off
 
 # no report-uri. a reporting endpoint is an
 # outbound channel that fires exactly when
-# something unexpected happens.
+# something unexpected happens
 ```
 
 ### No inline anything
@@ -143,7 +143,7 @@ A browser fingerprint cannot be erased, so VayuWeb starves the channel instead. 
 
 The specification also names the four channels no header closes — WebRTC, top-level navigation, timing side channels and a compromised device — and says exactly what closes each instead. A security document that lists only its wins is a marketing document.
 
-## Four layers, two surfaces, nothing in the middle.
+## Four layers, two surfaces, nothing in the middle
 
 | Layer | Technology | Purpose |
 | --- | --- | --- |
@@ -155,7 +155,7 @@ The specification also names the four channels no header closes — WebRTC, top-
 | Client | Tauri 2.x | Desktop application for people who do not use terminals |
 | Governance | Constitution + VWIP | How the rules change, and what can never change |
 
-## Honest status, not a progress bar.
+## Honest status, not a progress bar
 
 ### Charter: complete
 
@@ -177,7 +177,7 @@ Not write code — there is nothing to write against yet, and code written befor
 
 ---
 
-## A constitution written before the code.
+## A constitution written before the code
 
 A naming system inherits whatever politics it was built with, and retrofitting governance onto shipped infrastructure has never once worked. So the rules come first, in public, where they can be attacked while changing them is still cheap.
 
@@ -187,7 +187,7 @@ The VayuWeb Constitution sets out an operative bill of rights, the registry and 
 
 ---
 
-## Phases, not dates.
+## Phases, not dates
 
 Nothing here is promised by a calendar. Each phase has an acceptance test instead, so it is obvious from the outside whether it is actually done.
 
@@ -225,7 +225,7 @@ Convenience layers, built last on purpose, so that neither ever becomes a requir
 
 ---
 
-## What VayuWeb does not promise.
+## What VayuWeb does not promise
 
 A project that overclaims dies the first time reality tests it. These are stated here as plainly as they are stated in the specifications.
 

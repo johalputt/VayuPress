@@ -1,7 +1,7 @@
 ---
 kicker: One command · the whole stack
 ---
-## Your domain. A website, a blog, encrypted mail — and an app in your pocket.
+## Your domain. A website, a blog, encrypted mail — and an app in your pocket
 
 Point yourdomain.com at one VPS, run one install command, and VayuPress stands up your entire online presence — a business website, a blog, and a sovereign mail server with automatic PGP — each on its own subdomain, each with a free Let's Encrypt certificate issued and renewed for you. Then read and send that mail from the official VayuMail app on Android.
 

@@ -18,19 +18,19 @@ Ankush is also leading the development of **VayuWeb**, an ambitious open-source 
 
 His mission is simple: build technology that lasts, strengthen the open-source ecosystem, and help shape a future where the web remains open, independent, and owned by the people who use it.
 
-### Publishing systems
+## Publishing systems
 
 Durable, observable engines that put authors in control of every layer.
 
-### Distributed architecture
+## Distributed architecture
 
 Resilient designs that stay simple under load and survive failure gracefully.
 
-### Developer tools
+## Developer tools
 
 Sharp, fast tooling that respects the time and craft of the people who use it.
 
-### Sovereign web
+## Sovereign web
 
 Decentralized, peer-to-peer infrastructure that returns control to its users.
 
