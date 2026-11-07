@@ -30,11 +30,11 @@ var siteAdSwitches = []struct{ Key, Label, Hint string }{
 }
 
 // siteAdTexts are a site's ads texts.
-var siteAdTexts = []string{settings.KeyAdsenseClient, settings.KeyAffiliateDisclosure, settings.KeyAdsNever}
+var siteAdTexts = []string{settings.KeyAdsenseClient, settings.KeyAffiliateDisclosure, settings.KeyAdsNever, settings.KeyAdsTxtLines}
 
 // siteAdSettingsForm is a hosted site's ads switches and texts, saved by
 // handleOSSiteAdSettingsSave.
-func siteAdSettingsForm(adsOn, googleOn, affOn bool, client, disclosure, never string) string {
+func siteAdSettingsForm(adsOn, googleOn, affOn bool, client, disclosure, never, adsTxt string) string {
 	on := map[string]bool{settings.KeyFeatureAds: adsOn, settings.KeyFeatureGoogleAds: googleOn, settings.KeyFeatureAffiliate: affOn}
 	var b strings.Builder
 	b.WriteString(`<div class="form-grid">`)
@@ -57,6 +57,7 @@ func siteAdSettingsForm(adsOn, googleOn, affOn bool, client, disclosure, never s
 	field(settings.KeyAdsenseClient, "AdSense publisher ID", "This site's own, like ca-pub-1234567890123456; blank serves no AdSense unit.", client, 0)
 	field(settings.KeyAffiliateDisclosure, "Affiliate disclosure", "Shown above this site's posts while its disclosure is on.", disclosure, 3)
 	field(settings.KeyAdsNever, "Never show ads on", "This site's pages and posts that show no ad. One address a line, \"/\" for its home page.", never, 3)
+	field(settings.KeyAdsTxtLines, "More ads.txt lines", "Other sellers this site authorises, one line each, after the line its AdSense publisher ID gives.", adsTxt, 3)
 	b.WriteString(`</div><div class="vm-row"><button type="button" class="btn btn--primary btn--sm" data-site-ads-save>Save</button></div>`)
 	return b.String()
 }

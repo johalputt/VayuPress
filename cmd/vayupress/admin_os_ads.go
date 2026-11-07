@@ -48,10 +48,11 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 	adsOn := a.adsEnabled(ctx, sc)
 	googleOn := a.siteSettings != nil && a.siteSettings.FeatureEnabled(ctx, sc, settings.KeyFeatureGoogleAds)
 	adsenseClient := a.adsenseClient(ctx, sc)
-	disclosure, never := "", ""
+	disclosure, never, adsTxt := "", "", ""
 	if a.siteSettings != nil {
 		disclosure = a.siteSettings.Get(ctx, sc, settings.KeyAffiliateDisclosure)
 		never = a.siteSettings.Get(ctx, sc, settings.KeyAdsNever)
+		adsTxt = a.siteSettings.Get(ctx, sc, settings.KeyAdsTxtLines)
 	}
 
 	var slots []ads.Slot
@@ -119,9 +120,11 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 			Control: field("ad-disclosure", settings.KeyAffiliateDisclosure, "textarea", "Affiliate disclosure", disclosure)},
 		ui.Row{Label: "Never show ads on", Hint: "These pages and posts show no ad, whatever their slots say. One address a line, \"/\" for the home page.", ID: "ad-never",
 			Control: field("ad-never", settings.KeyAdsNever, "textarea", "Never show ads on", never)},
+		ui.Row{Label: "More ads.txt lines", Hint: "Other sellers this site authorises, one line each; /ads.txt starts with the line your AdSense publisher ID gives.", ID: "ad-ads-txt",
+			Control: field("ad-ads-txt", settings.KeyAdsTxtLines, "textarea", "More ads.txt lines", adsTxt)},
 	))
 	if site != "" {
-		settingsSection = ui.Section("This site's ads", "Its switches, its AdSense publisher ID and its pages", ui.HTML(siteAdSettingsForm(adsOn, googleOn, a.affiliateEnabled(ctx, sc), adsenseClient, disclosure, never)))
+		settingsSection = ui.Section("This site's ads", "Its switches, its AdSense publisher ID and its pages", ui.HTML(siteAdSettingsForm(adsOn, googleOn, a.affiliateEnabled(ctx, sc), adsenseClient, disclosure, never, adsTxt)))
 	}
 	page := ui.SettingsPage("Advertising", state, "Ad slots and members' ads for this site alone, served from it with no ad network.",
 		ui.HTML(`<div class="page-lead">`+lead+`</div>`),

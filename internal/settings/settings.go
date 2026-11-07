@@ -288,6 +288,9 @@ const (
 	// and the Google Ads module is on, ad slots of type "adsense" render real
 	// AdSense units and the page CSP is widened to admit Google's ad origins.
 	KeyAdsenseClient = "ads.adsense_client"
+	// KeyAdsTxtLines are a site's own lines for its /ads.txt, after the line
+	// its AdSense publisher ID gives.
+	KeyAdsTxtLines = "ads.txt_lines"
 	// KeyAffiliateDisclosure is the short disclosure text shown above content
 	// when the affiliate module is enabled (FTC-style "contains affiliate links").
 	KeyAffiliateDisclosure = "ads.affiliate_disclosure"
@@ -780,6 +783,7 @@ var AllKeys = map[string]bool{
 	KeyMailIDTerms:             true,
 	KeyAdSlotPriceCents:        true,
 	KeyAdsenseClient:           true,
+	KeyAdsTxtLines:             true,
 	KeyAffiliateDisclosure:     true,
 	KeySiteMode:                true,
 	KeyBizTemplate:             true,

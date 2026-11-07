@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,6 +15,8 @@ import (
 	"github.com/johalputt/vayupress/internal/ads"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/domain"
+	"github.com/johalputt/vayupress/internal/members"
+	"github.com/johalputt/vayupress/internal/payments"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/users"
 )
@@ -110,5 +113,43 @@ func TestCopyingMyAdsToASite(t *testing.T) {
 	}
 	if mine, _ := a.ads.List(ctx, ""); len(mine) != 3 {
 		t.Errorf("the install's own slots after the copy: %d", len(mine))
+	}
+}
+
+// An ad a member buys on a hosted site is that site's: it waits for review on
+// the site's own Ads page, never on the install's.
+func TestAMemberAdBelongsToTheSiteItWasBoughtOn(t *testing.T) {
+	a, _, blog := hostedBlogApp(t)
+	a.ads, a.members, a.payments = ads.New(dbpkg.DB), members.New(dbpkg.DB), payments.New(dbpkg.DB)
+	ctx := context.Background()
+	if err := a.siteSettings.SetMany(ctx, settings.ForPrimary(), map[string]string{settings.KeyFeaturePayments: "on"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.siteSettings.SetMany(ctx, settings.ForDomain(blog.ID), map[string]string{settings.KeyFeatureAds: "on"}); err != nil {
+		t.Fatal(err)
+	}
+	m, err := a.members.Upsert(ctx, "reader@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := a.members.CreateSession(ctx, m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := requestFor("/api/v1/members/ads", blog)
+	req.Method = http.MethodPost
+	req.Body = io.NopCloser(strings.NewReader(`{"placement":"` + ads.PlacementSidebar + `","image_url":"/media/reader.png"}`))
+	req.AddCookie(&http.Cookie{Name: memberCookie, Value: token})
+	rec := httptest.NewRecorder()
+	a.handleMemberAdSubmit(rec, req)
+	if rec.Code != http.StatusOK && rec.Code != http.StatusCreated {
+		t.Fatalf("submit: %d %s", rec.Code, rec.Body.String())
+	}
+	mine, _ := a.ads.MemberAds(ctx, "reader@example.com")
+	if len(mine) != 1 || mine[0].Site != blog.ID {
+		t.Fatalf("the member's ad belongs to %+v, want the site %s", mine, blog.ID)
+	}
+	if got, _ := a.ads.List(ctx, ""); len(got) != 0 {
+		t.Error("the member's ad is on the install's Ads page")
 	}
 }

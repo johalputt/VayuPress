@@ -15,6 +15,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   Google AdSense, affiliate disclosure), AdSense publisher ID, disclosure
   and pages that show no ad. "Copy my ads to this site" copies the
   install's own slots and ads settings onto a site once, as a copy.
+- **`/ads.txt` for every site**, from that site's own AdSense publisher ID
+  and any lines it adds ("More ads.txt lines" on its Advertising page); a
+  site with neither has none, and a site serving an uploaded bundle that
+  carries its own `ads.txt` serves that file.
 
 - **A hosted site's own share image**, uploaded and removed on its settings
   page: the picture shown when a link to the site is shared.
