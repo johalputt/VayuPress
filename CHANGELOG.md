@@ -10,6 +10,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **The boot log no longer reports "Real visitor IP" failed on a proxied
+  site before anyone has visited.** The posture report written at start-up
+  has no request and no traffic to measure, and the row read that absence
+  as a failure, every start, while the site's readers resolved to their own
+  addresses. It now says the address has not been measured yet; the panel
+  and the connector decide it from the first readers' requests, as before.
+
 - **An update no longer closes the site while the database is migrated.**
   The server applies pending migrations before it opens its port, and the
   updater switched to the new binary at once, so 3.18.32's migration 133,

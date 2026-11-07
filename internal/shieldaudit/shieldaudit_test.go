@@ -613,3 +613,22 @@ func findCheck(t *testing.T, checks []Check, title string) Check {
 	}
 	return c
 }
+
+// TestAnUnmeasuredRealIPIsNotAFailure — the boot report runs before any reader
+// and with no request; it said the proxied site's visitor addresses were
+// broken at every start while they resolved correctly.
+func TestAnUnmeasuredRealIPIsNotAFailure(t *testing.T) {
+	var row *Check
+	out := Run(Inputs{BehindCDN: true, ClientIPUnmeasured: true})
+	for i := range out {
+		if out[i].Title == "Real visitor IP" {
+			row = &out[i]
+		}
+	}
+	if row == nil {
+		t.Fatal("no real-visitor-IP row")
+	}
+	if row.Status != Info || !strings.Contains(row.Detail, "Not measured yet") {
+		t.Errorf("before any visitor the row reads %v: %q; want Info, not measured yet", row.Status, row.Detail)
+	}
+}

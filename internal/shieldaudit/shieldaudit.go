@@ -223,6 +223,13 @@ type Inputs struct {
 	// and "verified from your own request" are different strengths of evidence
 	// and the report's whole value is not overstating either.
 	ClientIPFromVisitorTraffic bool
+	// ClientIPUnmeasured marks that there was nothing to measure: no request
+	// asked, and no visitor traffic has been seen yet — the report written to
+	// the boot log, before the first reader. ClientIPResolved is then only its
+	// zero value, and the row says it has not been measured instead of calling
+	// that a failure: johal.in's log announced "Real visitor IP" broken at every
+	// start while its readers were resolving correctly.
+	ClientIPUnmeasured bool
 	// CountryEdgeAnswers / CountryTableAnswers / CountryDisagreements record which
 	// source answered "what country is this visitor in", and how often the two
 	// available sources named DIFFERENT countries for the same request.
@@ -375,6 +382,9 @@ func Run(in Inputs) []Check {
 	// --- The real-IP failure, which silently disables every per-IP limit -----
 
 	switch {
+	case in.BehindCDN && in.ClientIPUnmeasured:
+		add("Real visitor IP", Info,
+			"Not measured yet: no visitor has arrived since this process started. The row is decided from the first readers' requests through the proxy, and the panel shows it once they have.")
 	case in.BehindCDN && !in.ClientIPResolved:
 		detail := "This site is marked as proxied, but the request that generated this report did not resolve to a visitor address distinct from the peer. Every per-IP limit is therefore measuring the edge, not the reader: the whole audience shares one bucket, and the first busy minute shows everyone a challenge."
 		// The country rules deserve their own sentence, because their failure is

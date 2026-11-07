@@ -220,6 +220,8 @@ func (a *App) shieldAuditInputs(r *http.Request) shieldaudit.Inputs {
 		// so on a proxied install the row could only ever say FAIL, and a whole
 		// investigation was run off a value that was never a measurement.
 		in.ClientIPResolved, in.ClientIPFromVisitorTraffic = ok, true
+	} else {
+		in.ClientIPUnmeasured = true
 	}
 	// Whether the operator has stated any rule that depends on a country lookup.
 	// Without this the real-IP row could only describe the rate-limiting cost,

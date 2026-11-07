@@ -189,10 +189,18 @@ func TestTheNilRequestPathReportsFromRealVisitorTraffic(t *testing.T) {
 		})
 	}
 
-	// And with nothing observed, it must NOT invent an answer.
+	// And with nothing observed, it must NOT invent an answer: the report
+	// written at boot, before any reader, said "Real visitor IP" failed.
 	visitorResolvedUnix.Store(0)
 	if _, seen := lastVisitorResolution(); seen {
 		t.Error("an unobserved install reported an observation")
+	}
+	if in := a.shieldAuditInputs(nil); !in.ClientIPUnmeasured {
+		t.Error("asked before any visitor, the report is not marked unmeasured, so its real-IP row reads as a failure")
+	}
+	visitorResolvedUnix.Store(timeNowUnixForTest())
+	if in := a.shieldAuditInputs(nil); in.ClientIPUnmeasured {
+		t.Error("after visitor traffic was seen, the report still says it has not been measured")
 	}
 }
 
