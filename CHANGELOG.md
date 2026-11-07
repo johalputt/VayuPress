@@ -8,6 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **A hosted blog's Trending & pinned lists are its own.** Every hosted
+  blog's widget, and Halcyon's Most read and Pinned lists, showed the main
+  site's most-read and pinned posts, at addresses the blog does not serve.
+  Each site now ranks, pins and falls back to newest posts from its own
+  posts alone, keeps its own copy of the lists, and has its own switch on
+  its Settings page ("Most read and pinned"). Migration 133 gives the
+  ranking's index the post's site, so this costs no extra read.
+
 ## [3.18.31] — 2026-11-07
 
 Every hosted website and blog has its own ads: its own slots, publisher ID, ads.txt, disclosure and member ads, with impressions and clicks counted per site; a hosted site shows none of the install's ads until it sets up its own.

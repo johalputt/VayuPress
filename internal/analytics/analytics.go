@@ -302,7 +302,9 @@ type TrendingArticle struct {
 //
 // Both halves of that are needed. status, is_page and created_at are stored
 // after content and blocks_json, so testing them on the row reads the post's
-// body; idx_articles_slug_listed (migration 101) answers them without the row.
+// body; idx_articles_slug_site_listed (migration 133, which replaced 101's)
+// answers them without the row, the post's site included: each site's
+// trending lists only its own posts.
 // And with no ANALYZE statistics SQLite chose to drive the join from articles
 // instead, walking every published post through idx_articles_pagefeed and
 // reading each one: on a copy with 60k posts and 20k viewed slugs, 21 s from a
@@ -321,7 +323,7 @@ const (
 				GROUP BY RTRIM(SUBSTR(url_path, 2), '/')
 			) pv
 			CROSS JOIN articles l ON l.slug = pv.slug
-			WHERE pv.slug <> '' AND l.status = 'published' AND l.is_page = 0
+			WHERE pv.slug <> '' AND l.domain_id = ? AND l.status = 'published' AND l.is_page = 0
 			ORDER BY pv.v DESC, l.created_at DESC
 			LIMIT ?
 		) top
@@ -339,7 +341,7 @@ const (
 				GROUP BY RTRIM(SUBSTR(path, 2), '/')
 			) d
 			CROSS JOIN articles l ON l.slug = d.slug
-			WHERE d.slug <> '' AND l.status = 'published' AND l.is_page = 0
+			WHERE d.slug <> '' AND l.domain_id = ? AND l.status = 'published' AND l.is_page = 0
 			ORDER BY d.v DESC, l.created_at DESC
 			LIMIT ?
 		) top
@@ -352,7 +354,8 @@ const (
 // cookieless daily aggregate (analytics_daily, path "/<slug>"); the join to
 // articles filters to live posts and supplies the title + feature image. Ties
 // break by recency so a fresh post outranks an equally-viewed older one.
-func (s *Store) TrendingArticles(ctx context.Context, days, limit int) ([]TrendingArticle, error) {
+// Only site's posts are ranked ("" is the install's own).
+func (s *Store) TrendingArticles(ctx context.Context, site string, days, limit int) ([]TrendingArticle, error) {
 	if days <= 0 {
 		days = 7
 	}
@@ -365,7 +368,7 @@ func (s *Store) TrendingArticles(ctx context.Context, days, limit int) ([]Trendi
 	// were stored as two different rows, so the trailing-slash spelling matched
 	// nothing and its views vanished from trending. Grouping on the trimmed slug
 	// merges the two spellings into one total instead of scoring only one of them.
-	rows, err := s.readDB().QueryContext(ctx, trendingDailySQL, from, limit)
+	rows, err := s.readDB().QueryContext(ctx, trendingDailySQL, from, site, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -387,8 +390,8 @@ func (s *Store) TrendingArticles(ctx context.Context, days, limit int) ([]Trendi
 // event_type=1) — so the public "Trending" widget shows exactly the top pages
 // the operator sees there, restricted to real posts. Highest pageviews first;
 // ties break by recency. Returns an empty (not nil) slice when there is no data
-// so the caller can fall back cleanly.
-func (s *Store) TrendingArticlesByViews(ctx context.Context, days, limit int) ([]TrendingArticle, error) {
+// so the caller can fall back cleanly. Only site's posts are ranked.
+func (s *Store) TrendingArticlesByViews(ctx context.Context, site string, days, limit int) ([]TrendingArticle, error) {
 	if days <= 0 {
 		days = 7
 	}
@@ -411,7 +414,7 @@ func (s *Store) TrendingArticlesByViews(ctx context.Context, days, limit int) ([
 	// from trending. Normalising inside the GROUP BY (rather than only at the
 	// join) matters: the two spellings are one article, and grouping them
 	// separately would score the same post twice at half its real traffic each.
-	rows, err := s.readDB().QueryContext(ctx, trendingByViewsSQL, from, limit)
+	rows, err := s.readDB().QueryContext(ctx, trendingByViewsSQL, from, site, limit)
 	if err != nil {
 		return nil, err
 	}

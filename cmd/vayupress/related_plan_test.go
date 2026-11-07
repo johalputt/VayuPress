@@ -48,9 +48,20 @@ func TestATagCountReadsOnlyTheIndex(t *testing.T) {
 // after content) on every trending request, 4 s each on johal.in.
 func TestPinnedPostsAreFoundByTheFeaturedIndex(t *testing.T) {
 	openMigratedDB(t)
-	got := queryPlan(t, pinnedSQL, 5)
+	got := queryPlan(t, pinnedSQL, "", 5)
 	if !strings.Contains(got, "USING INDEX idx_articles_featured (featured=?)") {
 		t.Errorf("pinned posts are not found through idx_articles_featured: %s", got)
+	}
+}
+
+// A site's newest posts, trending's fallback, are read through the site's own
+// index newest first, so the query stops at its limit instead of sorting
+// every post of the install.
+func TestTrendingsNewestPostsAreReadThroughTheSitesIndex(t *testing.T) {
+	openMigratedDB(t)
+	got := queryPlan(t, recentSQL, "d1", 10)
+	if !strings.Contains(got, "idx_articles_feed_domain (domain_id=? AND is_page=? AND status=?)") || strings.Contains(got, "TEMP B-TREE") {
+		t.Errorf("a site's newest posts are not read through idx_articles_feed_domain in order: %s", got)
 	}
 }
 

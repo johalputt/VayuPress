@@ -44,7 +44,7 @@ func (a *App) handleAdsTxt(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	sc := adScope(a.contentScope(r))
+	sc := siteSettingsScope(a.contentScope(r))
 	body := adsTxtBody(a.siteSettings.Get(r.Context(), sc, settings.KeyAdsenseClient), a.siteSettings.Get(r.Context(), sc, settings.KeyAdsTxtLines))
 	if body == "" {
 		http.NotFound(w, r)

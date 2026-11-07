@@ -31,7 +31,7 @@ func newSlashDB(t *testing.T) *sql.DB {
 	for _, q := range []string{
 		`CREATE TABLE articles(id INTEGER PRIMARY KEY, slug TEXT, title TEXT, feature_image TEXT,
 		 status TEXT NOT NULL DEFAULT 'published', is_page INTEGER NOT NULL DEFAULT 0,
-		 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`,
+		 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, domain_id TEXT NOT NULL DEFAULT '');`,
 		`CREATE TABLE analytics_pageviews(id TEXT PRIMARY KEY, session_id TEXT NOT NULL DEFAULT '',
 		 url_path TEXT NOT NULL, event_type INTEGER NOT NULL DEFAULT 1,
 		 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,domain_id TEXT NOT NULL DEFAULT '',
@@ -66,7 +66,7 @@ func TestTrailingSlashViewsCountTowardTrending(t *testing.T) {
 	addViews(t, db, "/nft-experiences/", 50) // trailing slash — used to vanish
 	addViews(t, db, "/paid-email", 3)
 
-	got, err := New(db).TrendingArticlesByViews(context.Background(), 7, 10)
+	got, err := New(db).TrendingArticlesByViews(context.Background(), "", 7, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestBothSpellingsMergeIntoOneRow(t *testing.T) {
 	addViews(t, db, "/nft-experiences", 20)
 	addViews(t, db, "/nft-experiences/", 30)
 
-	got, err := New(db).TrendingArticlesByViews(context.Background(), 7, 10)
+	got, err := New(db).TrendingArticlesByViews(context.Background(), "", 7, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestDailyAggregateAlsoNormalises(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got, err := New(db).TrendingArticles(context.Background(), 7, 10)
+	got, err := New(db).TrendingArticles(context.Background(), "", 7, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestRootPathNeverMatchesAnArticle(t *testing.T) {
 	addViews(t, db, "/", 500)
 	addViews(t, db, "/paid-email", 2)
 
-	got, err := New(db).TrendingArticlesByViews(context.Background(), 7, 10)
+	got, err := New(db).TrendingArticlesByViews(context.Background(), "", 7, 10)
 	if err != nil {
 		t.Fatal(err)
 	}

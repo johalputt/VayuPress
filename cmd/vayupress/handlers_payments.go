@@ -52,11 +52,12 @@ func (a *App) paymentsEnabled(ctx context.Context) bool {
 		a.siteSettings.FeatureEnabled(ctx, settings.ForPrimary(), settings.KeyFeaturePayments)
 }
 
-// adScope is the settings scope of an ads site: the install's own for "",
-// else the hosted site's. Every ads setting is the site's own (its modules,
-// AdSense ID, disclosure, the pages that show none); a hosted site that has
-// set none shows no ads, never the install's.
-func adScope(site string) settings.Scope {
+// siteSettingsScope is the settings scope of a site as contentScope names it:
+// the install's own for "", else the hosted site's. Every ads setting is the
+// site's own (its modules, AdSense ID, disclosure, the pages that show none),
+// and so is its Trending switch; a hosted site that has set none shows no ads,
+// never the install's.
+func siteSettingsScope(site string) settings.Scope {
 	if site == "" {
 		return settings.ForPrimary()
 	}

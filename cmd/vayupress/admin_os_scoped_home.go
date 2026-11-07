@@ -386,7 +386,7 @@ func (a *App) scopedToolChips(r *http.Request, d domain.Domain, posts int) map[s
 	if a.ads != nil {
 		if slots, err := a.ads.List(ctx, d.ID); err == nil {
 			switch {
-			case !a.adsEnabled(ctx, adScope(d.ID)):
+			case !a.adsEnabled(ctx, siteSettingsScope(d.ID)):
 				c["ads"] = scopedToolChip{Text: "off"}
 			default:
 				c["ads"] = scopedToolChip{On: true, Text: strconv.Itoa(len(slots)) + " slot" + plural(len(slots))}

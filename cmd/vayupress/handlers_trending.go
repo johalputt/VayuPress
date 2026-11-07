@@ -66,17 +66,26 @@ func (p trendingPayload) nothingToShow() bool {
 	return len(p.Pinned) == 0 && len(p.Windows["7"]) == 0 && len(p.Windows["30"]) == 0
 }
 
+// trendingEntry is one site's memo. Each site has its own: one memo for the
+// whole install served every hosted blog the install's own most-read and
+// pinned posts, at addresses the blog does not serve.
+type trendingEntry struct {
+	payload *trendingPayload
+	expiry  time.Time
+	// computing is the single-flight guard: exactly one goroutine may be
+	// recomputing a site's payload at a time. Without it, a burst of widget
+	// fetches after a restart (the in-process memo starts empty) or a cache
+	// expiry each ran the trending queries concurrently and saturated the read
+	// pool — the recurring "502 for ~10 minutes after an update" the memo could
+	// not absorb because it is lost on every restart.
+	computing bool
+}
+
 var (
-	trendingMu     sync.Mutex
-	trendingCache  *trendingPayload
-	trendingExpiry time.Time
-	// trendingComputing is the single-flight guard: exactly one goroutine may be
-	// recomputing the payload at a time. Without it, a burst of widget fetches
-	// after a restart (the in-process memo starts empty) or a cache expiry each
-	// ran the trending queries concurrently and saturated the read pool — the
-	// recurring "502 for ~10 minutes after an update" the memo could not absorb
-	// because it is lost on every restart.
-	trendingComputing bool
+	trendingMu sync.Mutex
+	// trendingSites holds an entry per site ("" is the install's own). It
+	// grows only by contentScope's answers, which are the registered sites.
+	trendingSites = map[string]*trendingEntry{}
 	// trendingGen is bumped on every invalidation (pin/unpin). A recompute that
 	// started before an invalidation must not overwrite the cache with data that
 	// predates the change, so it only stores its result if the generation is
@@ -85,21 +94,37 @@ var (
 	trendingGen uint64
 )
 
-// invalidateTrendingCache drops the memoised payload so the next request rebuilds
-// it. Called when a post is pinned/unpinned so the change shows up promptly.
+// invalidateTrendingCache drops every site's memoised payload so the next
+// request rebuilds it. Called when a post is pinned/unpinned so the change
+// shows up promptly. A compute in flight keeps its guard: dropping the entry
+// would let a second one start beside it.
 func invalidateTrendingCache() {
 	trendingMu.Lock()
-	trendingCache = nil
-	trendingExpiry = time.Time{}
+	for _, e := range trendingSites {
+		e.payload, e.expiry = nil, time.Time{}
+	}
 	trendingGen++
 	trendingMu.Unlock()
 }
 
-// handleTrendingJSON serves the trending + pinned lists as JSON. It is public,
-// cookieless and read-only (no CSRF). When the feature is disabled it returns an
-// empty, disabled payload so the widget removes itself.
+// trendingEntryFor returns site's memo, made on first use. Called with
+// trendingMu held.
+func trendingEntryFor(site string) *trendingEntry {
+	e := trendingSites[site]
+	if e == nil {
+		e = &trendingEntry{}
+		trendingSites[site] = e
+	}
+	return e
+}
+
+// handleTrendingJSON serves the trending + pinned lists of the site being read
+// as JSON. It is public, cookieless and read-only (no CSRF). When the site has
+// the feature off it returns an empty, disabled payload so the widget removes
+// itself.
 func (a *App) handleTrendingJSON(w http.ResponseWriter, r *http.Request) {
-	if a.siteSettings != nil && !a.siteSettings.FeatureEnabled(r.Context(), settings.ForPrimary(), settings.KeyFeatureTrending) {
+	site := a.contentScope(r)
+	if a.siteSettings != nil && !a.siteSettings.FeatureEnabled(r.Context(), siteSettingsScope(site), settings.KeyFeatureTrending) {
 		writeJSON(w, r, http.StatusOK, trendingPayload{
 			Enabled: false,
 			Pinned:  []trendingItem{},
@@ -109,9 +134,9 @@ func (a *App) handleTrendingJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	trendingMu.Lock()
-	fresh := trendingCache != nil && time.Now().Before(trendingExpiry)
-	if fresh {
-		cached := *trendingCache
+	e := trendingEntryFor(site)
+	if e.payload != nil && time.Now().Before(e.expiry) {
+		cached := *e.payload
 		trendingMu.Unlock()
 		a.writeTrending(w, r, cached)
 		return
@@ -122,10 +147,10 @@ func (a *App) handleTrendingJSON(w http.ResponseWriter, r *http.Request) {
 	// served instantly from the last good payload (stale-while-revalidate) or,
 	// on a truly cold start, a cheap pinned+recent "warming" payload — nobody
 	// blocks on the DB behind the herd.
-	stale := trendingCache
-	iCompute := !trendingComputing
+	stale := e.payload
+	iCompute := !e.computing
 	if iCompute {
-		trendingComputing = true
+		e.computing = true
 	}
 	trendingMu.Unlock()
 
@@ -133,7 +158,7 @@ func (a *App) handleTrendingJSON(w http.ResponseWriter, r *http.Request) {
 		if stale != nil {
 			a.writeTrending(w, r, *stale)
 		} else {
-			a.writeTrending(w, r, a.trendingWarming(r))
+			a.writeTrending(w, r, a.trendingWarming(site))
 		}
 		return
 	}
@@ -142,13 +167,13 @@ func (a *App) handleTrendingJSON(w http.ResponseWriter, r *http.Request) {
 	if stale != nil {
 		// Serve the stale payload immediately and refresh off the request path so
 		// this caller never blocks on the DB either.
-		go a.recomputeTrending()
+		go a.recomputeTrending(site)
 		a.writeTrending(w, r, *stale)
 		return
 	}
 	// Cold start: compute inline so the first caller gets real data; all the
 	// concurrent callers during this window took the warming path above.
-	a.writeTrending(w, r, a.recomputeTrending())
+	a.writeTrending(w, r, a.recomputeTrending(site))
 }
 
 // writeTrending sends a trending payload. A GOOD payload carries the short
@@ -172,19 +197,19 @@ func (a *App) writeTrending(w http.ResponseWriter, r *http.Request, p trendingPa
 	writeJSON(w, r, http.StatusOK, p)
 }
 
-// recomputeTrending rebuilds the payload from analytics, stores it with the
+// recomputeTrending rebuilds site's payload from analytics, stores it with the
 // right TTL, releases the single-flight guard, and returns it. It uses a
 // detached, bounded context so a client disconnecting mid-flight cannot cancel
 // the shared cache fill, and it always clears the guard — even on panic — so a
 // failed compute can never wedge trending in the "computing" state forever.
-func (a *App) recomputeTrending() trendingPayload {
+func (a *App) recomputeTrending(site string) trendingPayload {
 	trendingMu.Lock()
 	gen := trendingGen
 	trendingMu.Unlock()
 
 	defer func() {
 		trendingMu.Lock()
-		trendingComputing = false
+		trendingEntryFor(site).computing = false
 		trendingMu.Unlock()
 		_ = recover() // a background render/query panic must never crash the process
 	}()
@@ -197,21 +222,21 @@ func (a *App) recomputeTrending() trendingPayload {
 	// yet, which would leave the widget empty; fall back to the most-recent posts
 	// so the section always shows, and cache that fallback only briefly so real
 	// analytics trending takes over as soon as views arrive.
-	seven := a.trendingItems(ctx, 7, trendingWindowLimit)
-	thirty := a.trendingItems(ctx, 30, trendingWindowLimit)
+	seven := a.trendingItems(ctx, site, 7, trendingWindowLimit)
+	thirty := a.trendingItems(ctx, site, 30, trendingWindowLimit)
 	fallback := false
 	if len(seven) == 0 {
-		seven = a.recentItems(ctx, trendingWindowLimit)
+		seven = a.recentItems(ctx, site, trendingWindowLimit)
 		fallback = true
 	}
 	if len(thirty) == 0 {
-		thirty = a.recentItems(ctx, trendingWindowLimit)
+		thirty = a.recentItems(ctx, site, trendingWindowLimit)
 		fallback = true
 	}
 
 	payload := trendingPayload{
 		Enabled: true,
-		Pinned:  a.pinnedItems(ctx, trendingPinnedLimit),
+		Pinned:  a.pinnedItems(ctx, site, trendingPinnedLimit),
 		Windows: map[string][]trendingItem{"7": seven, "30": thirty},
 	}
 	ttl := trendingCacheTTL
@@ -231,8 +256,8 @@ func (a *App) recomputeTrending() trendingPayload {
 	// Only publish if no invalidation (pin/unpin) landed while we were computing;
 	// otherwise our result predates the change and would mask it for a full TTL.
 	if trendingGen == gen {
-		trendingCache = &payload
-		trendingExpiry = time.Now().Add(ttl)
+		e := trendingEntryFor(site)
+		e.payload, e.expiry = &payload, time.Now().Add(ttl)
 	}
 	trendingMu.Unlock()
 	return payload
@@ -247,13 +272,13 @@ func (a *App) recomputeTrending() trendingPayload {
 // used to be sent with a five-minute public cache header — hiding the widget for
 // that visitor across subsequent posts. The payload is always marked degraded so
 // it is never stored by a browser or proxy either way.
-func (a *App) trendingWarming(_ *http.Request) trendingPayload {
+func (a *App) trendingWarming(site string) trendingPayload {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	recent := a.recentItems(ctx, trendingWindowLimit)
+	recent := a.recentItems(ctx, site, trendingWindowLimit)
 	return trendingPayload{
 		Enabled:  true,
-		Pinned:   a.pinnedItems(ctx, trendingPinnedLimit),
+		Pinned:   a.pinnedItems(ctx, site, trendingPinnedLimit),
 		Windows:  map[string][]trendingItem{"7": recent, "30": recent},
 		degraded: true,
 	}
@@ -268,19 +293,26 @@ func (a *App) trendingWarming(_ *http.Request) trendingPayload {
 // read every post's body on every trending request, the warming answer
 // included: 4 s a request, and the Monitoring p95 read 5.4 s after the update
 // that fixed articles. The pluses leave idx_articles_featured as the only index
-// the query can use, so it reads the few rows that are pinned.
+// the query can use, so it reads the few rows that are pinned; the site is
+// tested on those rows (domain_id is stored after content too).
 const pinnedSQL = `SELECT slug, title, COALESCE(feature_image,'') FROM articles
-		 WHERE featured = 1 AND +status = 'published' AND +is_page = 0
+		 WHERE featured = 1 AND +domain_id = ? AND +status = 'published' AND +is_page = 0
 		 ORDER BY created_at DESC LIMIT ?`
 
-// pinnedItems returns the operator's pinned (featured) published posts, newest
-// first, capped at limit.
-func (a *App) pinnedItems(ctx context.Context, limit int) []trendingItem {
+// recentSQL reads a site's newest posts through idx_articles_feed_domain
+// (site, page, status, then newest first), so it stops at limit.
+const recentSQL = `SELECT slug, title, COALESCE(feature_image,'') FROM articles
+		 WHERE domain_id = ? AND status = 'published' AND is_page = 0
+		 ORDER BY created_at DESC LIMIT ?`
+
+// pinnedItems returns site's pinned (featured) published posts, newest first,
+// capped at limit.
+func (a *App) pinnedItems(ctx context.Context, site string, limit int) []trendingItem {
 	out := []trendingItem{}
 	if dbpkg.DB == nil {
 		return out
 	}
-	rows, err := dbpkg.Reader().QueryContext(ctx, pinnedSQL, limit)
+	rows, err := dbpkg.Reader().QueryContext(ctx, pinnedSQL, site, limit)
 	if err != nil {
 		return out
 	}
@@ -295,18 +327,15 @@ func (a *App) pinnedItems(ctx context.Context, limit int) []trendingItem {
 	return out
 }
 
-// recentItems returns the most-recent published, non-page posts as trending
-// items — the fallback used when analytics has no views in the window yet, so
-// the widget always renders something instead of hiding itself.
-func (a *App) recentItems(ctx context.Context, limit int) []trendingItem {
+// recentItems returns site's most-recent published, non-page posts as
+// trending items — the fallback used when analytics has no views in the window
+// yet, so the widget always renders something instead of hiding itself.
+func (a *App) recentItems(ctx context.Context, site string, limit int) []trendingItem {
 	out := []trendingItem{}
 	if dbpkg.DB == nil {
 		return out
 	}
-	rows, err := dbpkg.Reader().QueryContext(ctx,
-		`SELECT slug, title, COALESCE(feature_image,'') FROM articles
-		 WHERE status = 'published' AND is_page = 0
-		 ORDER BY created_at DESC LIMIT ?`, limit)
+	rows, err := dbpkg.Reader().QueryContext(ctx, recentSQL, site, limit)
 	if err != nil {
 		return out
 	}
@@ -321,9 +350,9 @@ func (a *App) recentItems(ctx context.Context, limit int) []trendingItem {
 	return out
 }
 
-// trendingItems returns the most-viewed posts over the trailing window via the
-// analytics store. Always returns a non-nil slice so the JSON encodes "[]".
-func (a *App) trendingItems(ctx context.Context, days, limit int) []trendingItem {
+// trendingItems returns site's most-viewed posts over the trailing window via
+// the analytics store. Always returns a non-nil slice so the JSON encodes "[]".
+func (a *App) trendingItems(ctx context.Context, site string, days, limit int) []trendingItem {
 	out := []trendingItem{}
 	if a.analytics == nil {
 		return out
@@ -331,9 +360,9 @@ func (a *App) trendingItems(ctx context.Context, days, limit int) []trendingItem
 	// Prefer the SAME source the admin Analytics "Top pages" panel uses (the
 	// per-pageview event log) so the public Trending list matches it exactly.
 	// Fall back to the daily aggregate only if that log has no data yet.
-	arts, err := a.analytics.TrendingArticlesByViews(ctx, days, limit)
+	arts, err := a.analytics.TrendingArticlesByViews(ctx, site, days, limit)
 	if err != nil || len(arts) == 0 {
-		if fb, ferr := a.analytics.TrendingArticles(ctx, days, limit); ferr == nil {
+		if fb, ferr := a.analytics.TrendingArticles(ctx, site, days, limit); ferr == nil {
 			arts = fb
 		}
 	}

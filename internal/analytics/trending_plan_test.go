@@ -31,8 +31,8 @@ func openTrendingDB(t *testing.T) {
 }
 
 // TestTrendingReadsNoPostItDoesNotShow — both trending queries rank the viewed
-// slugs from an index, keep the published posts among them from
-// idx_articles_slug_listed, and never walk the posts. On johal.in the walk read
+// slugs from an index, keep the site's published posts among them from
+// idx_articles_slug_site_listed, and never walk the posts. On johal.in the walk read
 // every post's body: /api/trending at 6.8 s p95.
 func TestTrendingReadsNoPostItDoesNotShow(t *testing.T) {
 	openTrendingDB(t)
@@ -40,10 +40,10 @@ func TestTrendingReadsNoPostItDoesNotShow(t *testing.T) {
 		name, sql string
 		want      []string
 	}{
-		{"by pageviews", trendingByViewsSQL, []string{"COVERING INDEX idx_apv_trending", "COVERING INDEX idx_articles_slug_listed"}},
-		{"by the daily totals", trendingDailySQL, []string{"COVERING INDEX idx_articles_slug_listed"}},
+		{"by pageviews", trendingByViewsSQL, []string{"COVERING INDEX idx_apv_trending", "COVERING INDEX idx_articles_slug_site_listed"}},
+		{"by the daily totals", trendingDailySQL, []string{"COVERING INDEX idx_articles_slug_site_listed"}},
 	} {
-		rows, err := dbpkg.DB.Query("EXPLAIN QUERY PLAN "+c.sql, "2026-09-01", 10)
+		rows, err := dbpkg.DB.Query("EXPLAIN QUERY PLAN "+c.sql, "2026-09-01", "", 10)
 		if err != nil {
 			t.Fatalf("%s: %v", c.name, err)
 		}
@@ -111,13 +111,13 @@ func TestTrendingKeepsItsPlacesForPublishedPosts(t *testing.T) {
 	s := New(dbpkg.DB)
 	for _, q := range []struct {
 		name string
-		run  func(context.Context, int, int) ([]TrendingArticle, error)
+		run  func(context.Context, string, int, int) ([]TrendingArticle, error)
 	}{
 		{"by pageviews", s.TrendingArticlesByViews},
 		{"by the daily totals", s.TrendingArticles},
 	} {
 		for limit, want := range map[int]string{1: "later", 2: "later earlier", 3: "later earlier quiet"} {
-			got, err := q.run(ctx, 7, limit)
+			got, err := q.run(ctx, "", 7, limit)
 			if err != nil {
 				t.Fatalf("%s: %v", q.name, err)
 			}
@@ -129,5 +129,57 @@ func TestTrendingKeepsItsPlacesForPublishedPosts(t *testing.T) {
 				t.Errorf("%s, limit %d: %v, want %s", q.name, limit, slugs, want)
 			}
 		}
+	}
+}
+
+// TestTrendingListsOnlyTheSitesOwnPosts — each site's ranking holds its own
+// posts and no other site's, however many more views the other's have: a
+// hosted blog listed the install's most-read posts, at addresses it does not
+// serve. One seed per query.
+func TestTrendingListsOnlyTheSitesOwnPosts(t *testing.T) {
+	for _, q := range []string{"by pageviews", "by the daily totals"} {
+		t.Run(q, func(t *testing.T) {
+			openTrendingDB(t)
+			now := time.Now().UTC()
+			for _, a := range []struct {
+				slug, site string
+				views      int
+			}{{"main-hit", "", 50}, {"blog-post", "d1", 3}} {
+				if _, err := dbpkg.DB.Exec(`INSERT INTO articles(id,title,slug,content,created_at,updated_at,status,is_page,domain_id) VALUES(?,?,?,'',?,?,'published',0,?)`,
+					a.slug, a.slug, a.slug, now, now, a.site); err != nil {
+					t.Fatal(err)
+				}
+				if q == "by the daily totals" {
+					if _, err := dbpkg.DB.Exec(`INSERT INTO analytics_daily(day,domain_id,path,views) VALUES(?,?,?,?)`, now.Format("2006-01-02"), a.site, "/"+a.slug, a.views); err != nil {
+						t.Fatal(err)
+					}
+					continue
+				}
+				for i := 0; i < a.views; i++ {
+					if _, err := dbpkg.DB.Exec(`INSERT INTO analytics_pageviews(id,session_id,url_path,event_type,created_at,domain_id) VALUES(?,'',?,1,?,?)`,
+						fmt.Sprintf("%s-%d", a.slug, i), "/"+a.slug, now, a.site); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			s := New(dbpkg.DB)
+			run := s.TrendingArticlesByViews
+			if q == "by the daily totals" {
+				run = s.TrendingArticles
+			}
+			for site, want := range map[string]string{"": "main-hit", "d1": "blog-post", "d2": ""} {
+				got, err := run(context.Background(), site, 7, 10)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var slugs []string
+				for _, a := range got {
+					slugs = append(slugs, a.Slug)
+				}
+				if strings.Join(slugs, " ") != want {
+					t.Errorf("site %q lists %v, want only its own %q", site, slugs, want)
+				}
+			}
+		})
 	}
 }

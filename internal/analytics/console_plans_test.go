@@ -114,8 +114,8 @@ func TestNoConsoleReadWalksAWholeTable(t *testing.T) {
 	weekAgo := time.Now().UTC().AddDate(0, 0, -7).Format("2006-01-02")
 	for _, days := range []int{1, 7, 30} {
 		_, _, _ = s.ViewsForScope(ctx, "", days, 10)
-		_, _ = s.TrendingArticles(ctx, days, 10)
-		_, _ = s.TrendingArticlesByViews(ctx, days, 10)
+		_, _ = s.TrendingArticles(ctx, "", days, 10)
+		_, _ = s.TrendingArticlesByViews(ctx, "", days, 10)
 		_, _ = s.ViewsBySlug(ctx, days, []string{"a", "b"})
 		_, _ = s.Since(ctx, days, 10)
 		_, _ = s.Attribution(ctx, days, gid)

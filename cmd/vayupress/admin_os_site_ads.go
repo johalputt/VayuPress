@@ -104,7 +104,7 @@ func (a *App) handleOSSiteAdSettingsSave(w http.ResponseWriter, r *http.Request)
 		kv[k] = v
 	}
 	if len(kv) > 0 {
-		if err := a.siteSettings.SetMany(r.Context(), adScope(site), kv); err != nil {
+		if err := a.siteSettings.SetMany(r.Context(), siteSettingsScope(site), kv); err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "save-failed", err.Error(), "")
 			return
 		}
@@ -139,7 +139,7 @@ func (a *App) handleOSSiteAdsCopy(w http.ResponseWriter, r *http.Request) {
 	for _, k := range siteAdTexts {
 		kv[k] = a.siteSettings.Get(r.Context(), settings.ForPrimary(), k)
 	}
-	if err := a.siteSettings.SetMany(r.Context(), adScope(site), kv); err != nil {
+	if err := a.siteSettings.SetMany(r.Context(), siteSettingsScope(site), kv); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "copy-failed", err.Error(), "")
 		return
 	}

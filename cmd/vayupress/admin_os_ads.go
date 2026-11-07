@@ -44,7 +44,7 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	ctx := r.Context()
 	site := adConsoleSite(r)
-	sc := adScope(site)
+	sc := siteSettingsScope(site)
 
 	adsOn := a.adsEnabled(ctx, sc)
 	googleOn := a.siteSettings != nil && a.siteSettings.FeatureEnabled(ctx, sc, settings.KeyFeatureGoogleAds)

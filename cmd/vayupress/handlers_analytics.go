@@ -119,7 +119,7 @@ window.VayuPress=window.VayuPress||{};window.VayuPress.track=function(n,d){send(
 		fmt.Fprint(w, clickMapJS(n))
 	}
 	// Ad impressions and clicks, on a site whose Advertising is on.
-	if a.adsEnabled(r.Context(), adScope(a.contentScope(r))) {
+	if a.adsEnabled(r.Context(), siteSettingsScope(a.contentScope(r))) {
 		fmt.Fprint(w, adEventsJS)
 	}
 }

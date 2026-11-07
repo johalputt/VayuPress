@@ -73,7 +73,7 @@ func (a *App) handleMemberAdsStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A member buys an ad on the site they are reading, with that site's ads.
-	available := a.ads != nil && a.payments != nil && a.adsEnabled(r.Context(), adScope(a.contentScope(r))) && a.paymentsEnabled(r.Context())
+	available := a.ads != nil && a.payments != nil && a.adsEnabled(r.Context(), siteSettingsScope(a.contentScope(r))) && a.paymentsEnabled(r.Context())
 	out := map[string]interface{}{
 		"available": available,
 		"price":     priceLabel(a.payCurrency(r.Context()), a.adSlotPriceCents(r.Context())),
@@ -101,7 +101,7 @@ func (a *App) handleMemberAdSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	site := a.contentScope(r)
-	if a.ads == nil || a.payments == nil || !a.adsEnabled(ctx, adScope(site)) || !a.paymentsEnabled(ctx) {
+	if a.ads == nil || a.payments == nil || !a.adsEnabled(ctx, siteSettingsScope(site)) || !a.paymentsEnabled(ctx) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-unavailable", "Advertising is not available right now.", "")
 		return
 	}

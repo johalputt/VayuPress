@@ -743,7 +743,7 @@ func setAdCSP(w http.ResponseWriter, r *http.Request, frameOrigins []string) {
 // disk cache). When neither the Ads nor Affiliate module is enabled it is a
 // no-op and returns the input unchanged.
 func (a *App) injectArticleAds(ctx context.Context, nonce, htmlOut string, page ads.Page) (string, bool) {
-	sc := adScope(page.Site)
+	sc := siteSettingsScope(page.Site)
 	adsOn := a.adsEnabled(ctx, sc)
 	affOn := a.affiliateEnabled(ctx, sc)
 	if !adsOn && !affOn || a.ads == nil {
@@ -842,7 +842,7 @@ func fillSidebarAds(htmlOut, slots string) string {
 // whether an AdSense unit was emitted (so the caller widens the CSP + skips the
 // disk cache). A no-op returning the input unchanged when Ads is off.
 func (a *App) injectHomeAds(ctx context.Context, nonce, htmlOut string, page ads.Page) (string, bool) {
-	sc := adScope(page.Site)
+	sc := siteSettingsScope(page.Site)
 	if a.ads == nil || !a.adsEnabled(ctx, sc) || a.adsNeverOn(ctx, sc, page) {
 		return htmlOut, false
 	}

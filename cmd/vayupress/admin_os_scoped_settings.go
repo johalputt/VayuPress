@@ -72,6 +72,7 @@ var scopedSwitches = []struct {
 }{
 	{settings.KeyMembershipButtons, "Sign in and Subscribe buttons", "Readers can make an account and subscribe on this site.", "true", "false"},
 	{settings.KeyFeatureComments, "Comments", "Readers can comment on this site's posts.", "on", "off"},
+	{settings.KeyFeatureTrending, "Most read and pinned", "This site's own most-read and pinned posts, on its home page and under each post.", "on", "off"},
 	{settings.KeyHomeHero, "Home hero", "The large opening block on this site's home page.", "true", "false"},
 	{settings.KeyNoFollowLinks, "Nofollow on links to other sites", "Search engines are asked not to follow this site's outbound links.", "true", "false"},
 }

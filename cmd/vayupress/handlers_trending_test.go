@@ -11,15 +11,18 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/analytics"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/domain"
+	"github.com/johalputt/vayupress/internal/settings"
 )
 
-// resetTrendingState clears the package-level trending memo between tests (the
-// cache is process-global by design).
+// resetTrendingState clears the package-level trending memos between tests
+// (they are process-global by design).
 func resetTrendingState() {
 	trendingMu.Lock()
-	trendingCache = nil
-	trendingExpiry = time.Time{}
-	trendingComputing = false
+	trendingSites = map[string]*trendingEntry{}
 	trendingGen = 0
 	trendingMu.Unlock()
 }
@@ -35,7 +38,7 @@ func TestTrendingSingleFlightServesWhileComputing(t *testing.T) {
 
 	// Simulate a compute already owned by another goroutine.
 	trendingMu.Lock()
-	trendingComputing = true
+	trendingEntryFor("").computing = true
 	trendingMu.Unlock()
 
 	a := &App{} // nil DB/analytics → warming payload is empty-but-enabled
@@ -54,7 +57,7 @@ func TestTrendingSingleFlightServesWhileComputing(t *testing.T) {
 	}
 
 	trendingMu.Lock()
-	computing, cache := trendingComputing, trendingCache
+	computing, cache := trendingEntryFor("").computing, trendingEntryFor("").payload
 	trendingMu.Unlock()
 	if !computing {
 		t.Error("a non-owning request cleared the single-flight guard")
@@ -76,8 +79,8 @@ func TestTrendingServesFreshCache(t *testing.T) {
 		Windows: map[string][]trendingItem{"7": {{Slug: "fresh-hit", Title: "Fresh"}}, "30": {}},
 	}
 	trendingMu.Lock()
-	trendingCache = &fresh
-	trendingExpiry = time.Now().Add(time.Hour)
+	e := trendingEntryFor("")
+	e.payload, e.expiry = &fresh, time.Now().Add(time.Hour)
 	trendingMu.Unlock()
 
 	a := &App{}
@@ -168,21 +171,129 @@ func TestTrendingEmptyPayloadIsNeverCached(t *testing.T) {
 	}
 }
 
-// TestTrendingWarmingIgnoresClientDisconnect: the warming payload must not be
-// built on the request's context — a reader navigating away mid-fetch would
-// cancel the queries and produce an empty widget.
-func TestTrendingWarmingIgnoresClientDisconnect(t *testing.T) {
+// TestTrendingWarmingIsNeverCached: the warming payload is built on its own
+// context (it is given the site, not the request, so a reader navigating away
+// mid-fetch cannot cancel its queries), and it is marked degraded so it is
+// never stored.
+func TestTrendingWarmingIsNeverCached(t *testing.T) {
 	a := &App{}
-	req := httptest.NewRequest("GET", "/api/trending", nil)
-	ctx, cancel := context.WithCancel(req.Context())
-	cancel() // client is already gone
-	req = req.WithContext(ctx)
-	// Must still return a well-formed payload rather than panicking or blocking.
-	got := a.trendingWarming(req)
+	got := a.trendingWarming("")
 	if !got.Enabled {
 		t.Error("warming payload should still be enabled")
 	}
 	if !got.degraded {
 		t.Error("warming payload must be marked degraded so it is never cached")
+	}
+}
+
+// TestEachSiteTrendsAndPinsOnlyItsOwnPosts — a hosted blog listed the main
+// site's most-read and pinned posts, at addresses it does not serve: one memo
+// for the install, and queries with no site. Each list is seeded on its own:
+// pinned, the newest-posts fallback, and the ranking by views. The main site
+// is asked first, so a memo shared between sites would answer the blog.
+func TestEachSiteTrendsAndPinsOnlyItsOwnPosts(t *testing.T) {
+	ask := func(t *testing.T, a *App, d *domain.Domain) trendingPayload {
+		t.Helper()
+		r := httptest.NewRequest(http.MethodGet, "/api/trending", nil)
+		if d != nil {
+			r = requestFor("/api/trending", *d)
+		}
+		rec := httptest.NewRecorder()
+		a.handleTrendingJSON(rec, r)
+		var p trendingPayload
+		if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
+			t.Fatalf("invalid JSON: %v", err)
+		}
+		return p
+	}
+	slugs := func(items []trendingItem) string {
+		var out []string
+		for _, it := range items {
+			out = append(out, it.Slug)
+		}
+		return strings.Join(out, " ")
+	}
+	post := func(t *testing.T, slug, site string, featured int) {
+		t.Helper()
+		if _, err := dbpkg.DB.Exec(`INSERT INTO articles(id,title,slug,content,created_at,updated_at,status,is_page,featured,domain_id) VALUES(?,?,?,'',?,?,'published',0,?,?)`,
+			slug, slug, slug, time.Now().UTC(), time.Now().UTC(), featured, site); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, list := range []string{"pinned", "newest", "most read"} {
+		t.Run(list, func(t *testing.T) {
+			resetTrendingState()
+			t.Cleanup(resetTrendingState)
+			a, _, blog := hostedBlogApp(t)
+			switch list {
+			case "pinned":
+				post(t, "main-pinned", "", 1)
+				post(t, "blog-pinned", blog.ID, 1)
+			case "newest":
+				post(t, "main-new", "", 0)
+				post(t, "blog-new", blog.ID, 0)
+			case "most read":
+				a.analytics = analytics.New(dbpkg.DB)
+				for slug, site := range map[string]string{"main-read": "", "blog-read": blog.ID} {
+					post(t, slug, site, 0)
+					if _, err := dbpkg.DB.Exec(`INSERT INTO analytics_pageviews(id,session_id,url_path,event_type,created_at,domain_id) VALUES(?,'',?,1,?,?)`,
+						slug, "/"+slug, time.Now().UTC(), site); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			main, hosted := ask(t, a, nil), ask(t, a, &blog)
+			got := map[string][2]string{
+				"pinned":    {slugs(main.Pinned), slugs(hosted.Pinned)},
+				"newest":    {slugs(main.Windows["7"]), slugs(hosted.Windows["7"])},
+				"most read": {slugs(main.Windows["7"]), slugs(hosted.Windows["7"])},
+			}[list]
+			want := map[string][2]string{
+				"pinned":    {"main-pinned", "blog-pinned"},
+				"newest":    {"main-new", "blog-new"},
+				"most read": {"main-read", "blog-read"},
+			}[list]
+			if got != want {
+				t.Errorf("%s: the main site lists %q and the blog %q, want %q and %q", list, got[0], got[1], want[0], want[1])
+			}
+		})
+	}
+}
+
+// TestEachSiteHasItsOwnTrendingSwitch — the switch was read from the
+// install's settings for every site. Turned off for the blog, only the blog's
+// widget goes; turned off for the main site, the blog's stays.
+func TestEachSiteHasItsOwnTrendingSwitch(t *testing.T) {
+	resetTrendingState()
+	t.Cleanup(resetTrendingState)
+	a, _, blog := hostedBlogApp(t)
+	ctx := context.Background()
+	enabled := func(d *domain.Domain) bool {
+		r := httptest.NewRequest(http.MethodGet, "/api/trending", nil)
+		if d != nil {
+			r = requestFor("/api/trending", *d)
+		}
+		rec := httptest.NewRecorder()
+		a.handleTrendingJSON(rec, r)
+		var p trendingPayload
+		if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
+			t.Fatalf("invalid JSON: %v", err)
+		}
+		return p.Enabled
+	}
+	if err := a.siteSettings.SetMany(ctx, settings.ForDomain(blog.ID), map[string]string{settings.KeyFeatureTrending: "off"}); err != nil {
+		t.Fatal(err)
+	}
+	if !enabled(nil) || enabled(&blog) {
+		t.Errorf("off for the blog: main on=%v, blog on=%v; want main on, blog off", enabled(nil), enabled(&blog))
+	}
+	if err := a.siteSettings.SetMany(ctx, settings.ForDomain(blog.ID), map[string]string{settings.KeyFeatureTrending: "on"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.siteSettings.SetMany(ctx, settings.ForPrimary(), map[string]string{settings.KeyFeatureTrending: "off"}); err != nil {
+		t.Fatal(err)
+	}
+	if enabled(nil) || !enabled(&blog) {
+		t.Errorf("off for the main site: main on=%v, blog on=%v; want main off, blog on", enabled(nil), enabled(&blog))
 	}
 }

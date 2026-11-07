@@ -96,7 +96,7 @@ func TestTrendingArticles(t *testing.T) {
 	if _, err := s.db.Exec(`CREATE TABLE articles(
 		slug TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '',
 		feature_image TEXT, status TEXT NOT NULL DEFAULT 'published',
-		is_page INTEGER NOT NULL DEFAULT 0, created_at DATETIME)`); err != nil {
+		is_page INTEGER NOT NULL DEFAULT 0, created_at DATETIME, domain_id TEXT NOT NULL DEFAULT '')`); err != nil {
 		t.Fatal(err)
 	}
 	rows := [][3]string{
@@ -124,7 +124,7 @@ func TestTrendingArticles(t *testing.T) {
 	s.Record(ctx, "", "/about", "") // page — must not appear
 	s.Record(ctx, "", "/ghost", "") // no matching article — must not appear
 
-	got, err := s.TrendingArticles(ctx, 7, 10)
+	got, err := s.TrendingArticles(ctx, "", 7, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
