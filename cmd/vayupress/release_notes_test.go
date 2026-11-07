@@ -76,7 +76,7 @@ func TestReleaseVersionFilesAgree(t *testing.T) {
 	// right". Stricter than the thing being protected is not right — it is a gate
 	// that fails a releasable tree, which is how gates come to be worked around.
 	if rv := repoFile(t, ".release-version"); !releaseVersionMatches(rv, Version) {
-		t.Errorf(".release-version is %q but main.go Version is %q — the tag and the binary would disagree", rv, Version)
+		t.Errorf(".release-version is %q; it must name the tag v%s (main.go Version is %q), or the tag and the binary would disagree", rv, Version, Version)
 	}
 	if !strings.Contains(repoFile(t, "CHANGELOG.md"), "## ["+Version+"]") {
 		t.Errorf("CHANGELOG.md has no section for %s", Version)
