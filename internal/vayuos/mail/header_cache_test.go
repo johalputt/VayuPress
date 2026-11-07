@@ -98,17 +98,17 @@ func TestTheHeaderCacheChecksSizeAndTimeEachOnItsOwn(t *testing.T) {
 	base := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 
 	size, mod := write("Aaaa", base)
-	if h := m.headersFor(path, size, mod); h.subject != "Aaaa" {
+	if h := m.headersFor(path, size, mod, sealView{}); h.subject != "Aaaa" {
 		t.Fatalf("first read: %q", h.subject)
 	}
 	// Same size, later time.
 	size, mod = write("Bbbb", base.Add(time.Second))
-	if h := m.headersFor(path, size, mod); h.subject != "Bbbb" {
+	if h := m.headersFor(path, size, mod, sealView{}); h.subject != "Bbbb" {
 		t.Errorf("same size, new mtime served %q — the time check is not deciding", h.subject)
 	}
 	// Same time, different size.
 	size, mod = write("Cccccc", base.Add(time.Second))
-	if h := m.headersFor(path, size, mod); h.subject != "Cccccc" {
+	if h := m.headersFor(path, size, mod, sealView{}); h.subject != "Cccccc" {
 		t.Errorf("same mtime, new size served %q — the size check is not deciding", h.subject)
 	}
 }
@@ -123,7 +123,7 @@ func TestAFailedHeaderReadIsNotRemembered(t *testing.T) {
 	path := filepath.Join(dir, "msg")
 	content := []byte("Subject: Arrived\r\n\r\nbody\r\n")
 	mod := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-	if h := m.headersFor(path, int64(len(content)), mod); h.subject != "" {
+	if h := m.headersFor(path, int64(len(content)), mod, sealView{}); h.subject != "" {
 		t.Fatalf("a missing file produced a subject: %q", h.subject)
 	}
 	if err := os.WriteFile(path, content, 0o600); err != nil {
@@ -132,7 +132,7 @@ func TestAFailedHeaderReadIsNotRemembered(t *testing.T) {
 	if err := os.Chtimes(path, mod, mod); err != nil {
 		t.Fatal(err)
 	}
-	if h := m.headersFor(path, int64(len(content)), mod); h.subject != "Arrived" {
+	if h := m.headersFor(path, int64(len(content)), mod, sealView{}); h.subject != "Arrived" {
 		t.Errorf("after a failed read the message lists with subject %q — the failure was cached", h.subject)
 	}
 }

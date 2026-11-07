@@ -255,6 +255,7 @@ var trustedInboundHeaders = []string{
 	"x-vayumail-spam",             // any future X-VayuMail assertion
 	"x-vayumail-authenticated-as", //
 	"x-vayumail-checked",          // the From domain's sealed check (verdict.go)
+	"x-vayumail-sealed",           // a private mailbox's sealed file (sealing.go)
 }
 
 // stripTrustedHeaders removes every header a remote sender must not be able to

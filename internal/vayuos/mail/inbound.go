@@ -48,6 +48,7 @@ type StoredMessage struct {
 // Header parsing is best-effort; malformed messages still appear with their id.
 func (m *Maildir) List(domain, username string) ([]StoredMessage, error) {
 	var out []StoredMessage
+	seal := m.sealViewFor(domain, username)
 	for _, sub := range []string{"new", "cur"} {
 		dir := filepath.Join(m.accountDir(domain, username), sub)
 		entries, err := os.ReadDir(dir)
@@ -70,7 +71,8 @@ func (m *Maildir) List(domain, username string) ([]StoredMessage, error) {
 			// Cached summary when the file is unchanged (see Maildir.headersFor).
 			path := filepath.Join(dir, e.Name())
 			present[path] = struct{}{}
-			h := m.headersFor(path, info.Size(), info.ModTime())
+			h := m.headersFor(path, info.Size(), info.ModTime(), seal)
+			sm.Size = h.listSize
 			sm.From, sm.Subject = h.from, h.subject
 			sm.MessageID, sm.InReplyTo, sm.References = h.messageID, h.inReplyTo, h.refs
 			sm.Preview, sm.Attachment, sm.Encrypted, sm.Signed = h.preview, h.attachment, h.encrypted, h.signed
@@ -125,7 +127,11 @@ func (m *Maildir) ReadRaw(domain, username, id string) ([]byte, error) {
 	if name == "" || strings.ContainsAny(name, "/\\") || strings.Contains(name, "..") {
 		return nil, errors.New("vayumail: invalid message id")
 	}
-	return os.ReadFile(filepath.Join(m.accountDir(domain, username), sub, name))
+	raw, err := os.ReadFile(filepath.Join(m.accountDir(domain, username), sub, name))
+	if err != nil {
+		return nil, err
+	}
+	return m.openFor(domain, username, raw), nil
 }
 
 // forwardLoopHeader tags a message that VayuMail has already auto-forwarded

@@ -3,6 +3,7 @@
 package mail
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,6 +22,10 @@ type Maildir struct {
 	// onDeliver is told each time a message is filed (see
 	// Engine.SetDeliveredHook). Set before the store is shared, never after.
 	onDeliver func()
+
+	// keys seals and opens the mail of a private mailbox (sealing.go). Set
+	// before the store is shared, never after.
+	keys MailboxKeys
 
 	// hdrFolders remembers each message file's parsed headers, validated by the
 	// file's (size, mtime), grouped by the directory the file lives in. Listing a
@@ -75,6 +80,12 @@ type cachedHeaders struct {
 	signed     bool
 	category   string // categorize's verdict, from the header block
 	list       bool   // carries List-Unsubscribe: a list one can leave
+
+	// A private mailbox's message (sealing.go): sealed on disk, and whether
+	// this entry was read opened. listSize is the size a listing reports, the
+	// opened message's when it was opened.
+	sealed, opened bool
+	listSize       int64
 }
 
 // cleanMessageID normalises a Message-Id / References token for comparison:
@@ -106,20 +117,24 @@ func splitMessageIDs(s string) []string {
 
 // headersFor returns a message file's parsed headers, reading and caching them
 // only when the file is new or has changed since last time.
-func (m *Maildir) headersFor(path string, size int64, mod time.Time) cachedHeaders {
+//
+// A sealed message's entry also remembers whether it was read opened, and is
+// read again when that no longer matches the key: a listing made while the key
+// was held open must not go on showing subjects once it is closed.
+func (m *Maildir) headersFor(path string, size int64, mod time.Time, v sealView) cachedHeaders {
 	dir := filepath.Dir(path)
 	m.hdrMu.Lock()
 	m.hdrClock++
 	if fh := m.hdrFolders[dir]; fh != nil {
 		fh.used = m.hdrClock
-		if h, ok := fh.byPath[path]; ok && h.size == size && h.modTime.Equal(mod) {
+		if h, ok := fh.byPath[path]; ok && h.size == size && h.modTime.Equal(mod) && (!h.sealed || h.opened == v.open) {
 			m.hdrMu.Unlock()
 			return h
 		}
 	}
 	m.hdrMu.Unlock()
 
-	h, ok := readHeaders(path, size, mod)
+	h, ok := m.readHeaders(path, size, mod, v)
 	if !ok {
 		// Not remembered: a read that failed once (a descriptor limit, a file
 		// mid-move) would otherwise list this message with no sender or subject
@@ -187,8 +202,28 @@ func (m *Maildir) forgetMissing(dir string, present map[string]struct{}) {
 
 // readHeaders reads a message file's summary: its header block and the start
 // of its body, never the whole file (summarize).
-func readHeaders(path string, size int64, mod time.Time) (cachedHeaders, bool) {
-	h := cachedHeaders{size: size, modTime: mod}
+//
+// In a private mailbox the whole file is read, because a sealed message's
+// summary is inside the seal; opened while the key is held open, it is
+// summarised as the original, and listed at the original's size.
+func (m *Maildir) readHeaders(path string, size int64, mod time.Time, v sealView) (cachedHeaders, bool) {
+	h := cachedHeaders{size: size, modTime: mod, listSize: size}
+	if v.private {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return h, false
+		}
+		if isSealed(data) {
+			h.sealed = true
+			if v.open {
+				if plain, ok := m.openAll(v.email, data); ok {
+					h.opened, h.listSize, data = true, int64(len(plain)), plain
+				}
+			}
+		}
+		summarize(bytes.NewReader(data), &h)
+		return h, true
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return h, false
@@ -295,6 +330,10 @@ func (m *Maildir) Create(domain, username string) error {
 // the Maildir specification requires.
 func (m *Maildir) Deliver(domain, username string, raw []byte) (string, error) {
 	if err := m.Create(domain, username); err != nil {
+		return "", err
+	}
+	raw, err := m.sealFor(domain, username, raw)
+	if err != nil {
 		return "", err
 	}
 	n := atomic.AddUint64(&m.counter, 1)

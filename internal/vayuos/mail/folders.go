@@ -231,6 +231,10 @@ func (m *Maildir) DeliverTo(domain, username, folder string, raw []byte) (string
 	if err := m.ensureFolder(domain, username, folder); err != nil {
 		return "", err
 	}
+	raw, err := m.sealFor(domain, username, raw)
+	if err != nil {
+		return "", err
+	}
 	n := atomic.AddUint64(&m.counter, 1)
 	host, _ := os.Hostname()
 	if host == "" {
@@ -254,6 +258,7 @@ func (m *Maildir) DeliverTo(domain, username, folder string, raw []byte) (string
 func (m *Maildir) ListFolder(domain, username, folder string) ([]StoredMessage, error) {
 	var out []StoredMessage
 	dir := m.folderDir(domain, username, folder)
+	seal := m.sealViewFor(domain, username)
 	for _, sub := range []string{"new", "cur"} {
 		entries, err := os.ReadDir(filepath.Join(dir, sub))
 		if err != nil {
@@ -281,7 +286,8 @@ func (m *Maildir) ListFolder(domain, username, folder string) ([]StoredMessage, 
 			// stat-bound, not read-bound.
 			path := filepath.Join(dir, sub, e.Name())
 			present[path] = struct{}{}
-			h := m.headersFor(path, info.Size(), info.ModTime())
+			h := m.headersFor(path, info.Size(), info.ModTime(), seal)
+			sm.Size = h.listSize
 			sm.From, sm.To, sm.Subject = h.from, h.to, h.subject
 			sm.MessageID, sm.InReplyTo, sm.References = h.messageID, h.inReplyTo, h.refs
 			sm.Preview, sm.Attachment, sm.Encrypted, sm.Signed = h.preview, h.attachment, h.encrypted, h.signed
@@ -304,7 +310,11 @@ func (m *Maildir) ReadRawFolder(domain, username, folder, id string) ([]byte, er
 	if err != nil {
 		return nil, err
 	}
-	return os.ReadFile(filepath.Join(m.folderDir(domain, username, folder), sub, name))
+	raw, err := os.ReadFile(filepath.Join(m.folderDir(domain, username, folder), sub, name))
+	if err != nil {
+		return nil, err
+	}
+	return m.openFor(domain, username, raw), nil
 }
 
 // SearchResult is a message matched by Search, tagged with its folder.
