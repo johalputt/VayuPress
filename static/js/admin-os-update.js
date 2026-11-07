@@ -229,22 +229,35 @@
 
   // Poll a cheap endpoint until the service has clearly cycled (one failure
   // followed by a success), then reload so the operator sees the new state.
-  function waitForRestartThenReload(el) {
+  // watchId is an update's history row: its migrations run before the switch,
+  // while this version keeps answering (minutes on a large site), and a row
+  // marked failed means the switch will not come.
+  function waitForRestartThenReload(el, watchId) {
     var sawDown = false;
     var tries = 0;
-    var max = 90; // ~3 minutes at 2s
+    var max = watchId ? 900 : 90; // 30 or 3 minutes at 2s
     var timer = setInterval(function () {
       tries++;
       fetch('/os/api/update/history', { cache: 'no-store' })
         .then(function (r) {
-          if (r.ok) {
-            if (sawDown) {
+          if (!r.ok) { sawDown = true; return null; }
+          if (sawDown) {
+            clearInterval(timer);
+            setMsg(el, 'Service is back online — reloading…', false);
+            setTimeout(function () { location.reload(); }, 800);
+            return null;
+          }
+          return watchId ? r.json() : null;
+        })
+        .then(function (d) {
+          var rows = (d && d.history) || [];
+          for (var i = 0; i < rows.length; i++) {
+            if (rows[i].id === watchId && rows[i].status === 'failed') {
               clearInterval(timer);
-              setMsg(el, 'Service is back online — reloading…', false);
-              setTimeout(function () { location.reload(); }, 800);
+              setMsg(el, rows[i].detail || 'The update could not be activated.', true);
+              if (applyBtn) applyBtn.disabled = false;
+              if (checkBtn) checkBtn.disabled = false;
             }
-          } else {
-            sawDown = true;
           }
         })
         .catch(function () { sawDown = true; })
@@ -361,11 +374,12 @@
         // gateway timeout while it installs+restarts), the right thing is to wait
         // for the service to come back — NOT to report an error.
         if (res.isJSON && res.ok && res.d.version) {
-          setMsg(msgEl, 'Installed v' + res.d.version + '. Restarting to activate…', false);
+          setMsg(msgEl, 'Installed v' + String(res.d.version).replace(/^v/, '') +
+            '. Preparing the database while this version keeps serving, then restarting to activate it…', false);
         } else {
           setMsg(msgEl, 'Update applied — the service is restarting to activate it…', false);
         }
-        waitForRestartThenReload(msgEl);
+        waitForRestartThenReload(msgEl, res.isJSON && res.ok ? res.d.history : 0);
       })
       .catch(function () {
         // A dropped connection right after POSTing is the expected restart, not a
