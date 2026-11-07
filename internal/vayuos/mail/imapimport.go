@@ -51,8 +51,12 @@ type ImportStatus struct {
 	// Folder is the one being copied while running.
 	Folder         string
 	Copied, Failed int
-	Error          string
-	Updated        time.Time
+	// Total is how many messages this source holds for the mailbox: those
+	// copied before plus those counted still to come when the run began, so
+	// years of history show how far along they are. 0 before it is counted.
+	Total   int
+	Error   string
+	Updated time.Time
 }
 
 // importRun is a running import's handle.
@@ -104,6 +108,18 @@ func (e *Engine) ensureImportTables() error {
 		uidvalidity INTEGER NOT NULL,
 		last_uid INTEGER NOT NULL,
 		PRIMARY KEY(import_id, folder));`)
+	if err != nil {
+		return err
+	}
+	// total arrived after the table did; an install that made the table
+	// before is given the column once.
+	var has int
+	if err := e.db.QueryRow(`SELECT COUNT(1) FROM pragma_table_info('vayumail_imports') WHERE name='total'`).Scan(&has); err != nil {
+		return err
+	}
+	if has == 0 {
+		_, err = e.db.Exec(`ALTER TABLE vayumail_imports ADD COLUMN total INTEGER NOT NULL DEFAULT 0`)
+	}
 	return err
 }
 
@@ -198,8 +214,8 @@ func (e *Engine) ImportStatusFor(rd Reader) (*ImportStatus, error) {
 	dom, local := e.mailboxKey(rd.Key())
 	var s ImportStatus
 	var updated int64
-	err := e.db.QueryRow(`SELECT host,username,state,folder,copied,failed,error,updated_unix FROM vayumail_imports WHERE mailbox=? ORDER BY updated_unix DESC, id DESC LIMIT 1`,
-		local+"@"+dom).Scan(&s.Host, &s.Username, &s.State, &s.Folder, &s.Copied, &s.Failed, &s.Error, &updated)
+	err := e.db.QueryRow(`SELECT host,username,state,folder,copied,failed,total,error,updated_unix FROM vayumail_imports WHERE mailbox=? ORDER BY updated_unix DESC, id DESC LIMIT 1`,
+		local+"@"+dom).Scan(&s.Host, &s.Username, &s.State, &s.Folder, &s.Copied, &s.Failed, &s.Total, &s.Error, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -237,6 +253,21 @@ func (e *Engine) runImport(ctx context.Context, id int64, dom, local string, req
 	if err != nil {
 		return fmt.Errorf("listing the folders: %w", err)
 	}
+	// Count what is still to come before copying any, so the page can say
+	// how far along years of mail are. A folder that cannot be counted is
+	// left to the copy below to report.
+	pending := 0
+	for _, rf := range folders {
+		if importTarget(rf) == "" {
+			continue
+		}
+		if uids, err := e.importPending(c, id, rf.name); err == nil {
+			pending += len(uids)
+		}
+	}
+	if _, err := e.db.Exec(`UPDATE vayumail_imports SET total=copied+failed+?, updated_unix=? WHERE id=?`, pending, time.Now().Unix(), id); err != nil {
+		return err
+	}
 	for _, rf := range folders {
 		target := importTarget(rf)
 		if target == "" {
@@ -258,18 +289,9 @@ func (e *Engine) runImport(ctx context.Context, id int64, dom, local string, req
 // UID. A changed UIDVALIDITY means the server renumbered the folder, so it
 // is copied again from the start.
 func (e *Engine) importFolder(ctx context.Context, c *imapClient, id int64, dom, local, remote, target string, pace pacedio.Pacer) error {
-	validity, err := c.examine(remote)
+	validity, uids, err := e.importPendingIn(c, id, remote)
 	if err != nil {
-		return fmt.Errorf("opening %s: %w", decodeMUTF7(remote), err)
-	}
-	var lastValidity, last uint64
-	_ = e.db.QueryRow(`SELECT uidvalidity,last_uid FROM vayumail_import_progress WHERE import_id=? AND folder=?`, id, remote).Scan(&lastValidity, &last)
-	if lastValidity != validity {
-		last = 0
-	}
-	uids, err := c.uidsAfter(last)
-	if err != nil {
-		return fmt.Errorf("listing %s: %w", decodeMUTF7(remote), err)
+		return err
 	}
 	if _, err := e.db.Exec(`UPDATE vayumail_imports SET folder=?, updated_unix=? WHERE id=?`, target, time.Now().Unix(), id); err != nil {
 		return err
@@ -283,22 +305,32 @@ func (e *Engine) importFolder(ctx context.Context, c *imapClient, id int64, dom,
 		if e.MailboxOverQuota(local + "@" + dom) {
 			return errors.New("this mailbox is full; raise its quota or make room, then bring mail in again to carry on")
 		}
-		got, err := c.fetch(uids[:n])
+		// Sizes first: a batch is cut to what fits in importBatchBytes, so
+		// fifty messages of large attachments are never held at once, and a
+		// message larger than this server takes is counted, not downloaded.
+		sizes, err := c.sizes(uids[:n])
 		if err != nil {
 			return fmt.Errorf("reading %s: %w", decodeMUTF7(remote), err)
 		}
-		copied, failed := 0, 0
-		for _, m := range got {
-			if e.copyImported(dom, local, target, m) {
-				copied++
-			} else {
-				failed++
+		want, take, tooLarge := importBatch(uids[:n], sizes, e.cfg.MaxMessageBytes, importBatchBytes)
+		copied, failed := 0, tooLarge
+		if len(want) > 0 {
+			got, err := c.fetch(want)
+			if err != nil {
+				return fmt.Errorf("reading %s: %w", decodeMUTF7(remote), err)
+			}
+			for _, m := range got {
+				if e.copyImported(dom, local, target, m) {
+					copied++
+				} else {
+					failed++
+				}
 			}
 		}
 		// The batch is recorded as done only once written, so a stop in the
 		// middle copies the batch again rather than losing it.
-		last = uids[n-1]
-		uids = uids[n:]
+		last := uids[take-1]
+		uids = uids[take:]
 		if _, err := e.db.Exec(`INSERT INTO vayumail_import_progress(import_id,folder,uidvalidity,last_uid) VALUES(?,?,?,?)
 			ON CONFLICT(import_id,folder) DO UPDATE SET uidvalidity=excluded.uidvalidity, last_uid=excluded.last_uid`, id, remote, validity, last); err != nil {
 			return err
@@ -308,6 +340,66 @@ func (e *Engine) importFolder(ctx context.Context, c *imapClient, id int64, dom,
 		}
 	}
 	return nil
+}
+
+// importBatchBytes bounds the mail one batch holds in memory. A batch takes
+// up to fifty messages, and one message may be up to importMaxLiteral: before
+// the bound, a mailbox of large attachments put over a gigabyte in memory at
+// once, enough to stop a small server.
+const importBatchBytes = 32 << 20
+
+// importBatch decides one batch from the next UIDs and their sizes: want is
+// what to fetch, at most bound bytes together (at least one message, however
+// large, so a big message still comes across), take how many of uids the
+// batch accounts for, and tooLarge how many of those are over maxMessage and
+// counted as failed without being downloaded. A UID with no size answered is
+// taken to be bound bytes, so it travels alone.
+func importBatch(uids []uint64, sizes map[uint64]int64, maxMessage, bound int64) (want []uint64, take, tooLarge int) {
+	var held int64
+	for _, u := range uids {
+		s, known := sizes[u]
+		if !known {
+			s = bound
+		}
+		if known && s > maxMessage {
+			tooLarge++
+			take++
+			continue
+		}
+		if len(want) > 0 && held+s > bound {
+			break
+		}
+		want, held = append(want, u), held+s
+		take++
+	}
+	return want, take, tooLarge
+}
+
+// importPending opens a remote folder and lists the UIDs not yet copied from
+// it by this import.
+func (e *Engine) importPending(c *imapClient, id int64, remote string) ([]uint64, error) {
+	_, uids, err := e.importPendingIn(c, id, remote)
+	return uids, err
+}
+
+// importPendingIn is importPending, with the folder's UIDVALIDITY. A changed
+// UIDVALIDITY means the server renumbered the folder, so it is copied again
+// from the start.
+func (e *Engine) importPendingIn(c *imapClient, id int64, remote string) (uint64, []uint64, error) {
+	validity, err := c.examine(remote)
+	if err != nil {
+		return 0, nil, fmt.Errorf("opening %s: %w", decodeMUTF7(remote), err)
+	}
+	var lastValidity, last uint64
+	_ = e.db.QueryRow(`SELECT uidvalidity,last_uid FROM vayumail_import_progress WHERE import_id=? AND folder=?`, id, remote).Scan(&lastValidity, &last)
+	if lastValidity != validity {
+		last = 0
+	}
+	uids, err := c.uidsAfter(last)
+	if err != nil {
+		return 0, nil, fmt.Errorf("listing %s: %w", decodeMUTF7(remote), err)
+	}
+	return validity, uids, nil
 }
 
 // copyImported files one fetched message, with its read and pinned marks.

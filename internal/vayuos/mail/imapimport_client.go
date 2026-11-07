@@ -343,6 +343,33 @@ func (c *imapClient) uidsAfter(last uint64) ([]uint64, error) {
 	return out, nil
 }
 
+var fetchSizeRe = regexp.MustCompile(`(?i)\bRFC822\.SIZE (\d+)`)
+
+// sizes asks the server how large each message is, without reading any, so a
+// batch can be cut to what fits in memory before it is fetched. A UID the
+// server does not answer for is missing from the map.
+func (c *imapClient) sizes(uids []uint64) (map[uint64]int64, error) {
+	set := make([]string, len(uids))
+	for i, u := range uids {
+		set[i] = strconv.FormatUint(u, 10)
+	}
+	resps, err := c.command("UID FETCH " + strings.Join(set, ",") + " (UID RFC822.SIZE)")
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uint64]int64, len(uids))
+	for _, r := range resps {
+		m, s := fetchUIDRe.FindStringSubmatch(r.text), fetchSizeRe.FindStringSubmatch(r.text)
+		if m == nil || s == nil {
+			continue
+		}
+		uid, _ := strconv.ParseUint(m[1], 10, 32)
+		n, _ := strconv.ParseInt(s[1], 10, 64)
+		out[uid] = n
+	}
+	return out, nil
+}
+
 // fetched is one message as FETCH returned it.
 type fetched struct {
 	uid     uint64

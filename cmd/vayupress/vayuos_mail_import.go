@@ -114,6 +114,9 @@ func (a *App) mailImportBody(ctx context.Context, rd vmail.Reader, note string) 
 		case vmail.ImportRunning:
 			page.State = "Bringing mail in from " + st.Host
 			detail := n + " copied so far"
+			if st.Total > 0 {
+				detail = itoaSafe(st.Copied+st.Failed) + " of " + itoaSafe(st.Total) + " messages done"
+			}
 			if st.Folder != "" {
 				detail += ", now " + st.Folder
 			}
