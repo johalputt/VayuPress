@@ -338,6 +338,11 @@ for (const [device, use] of [
   // Where the rail and section list leave the least room beside them.
   ["a small laptop", { viewport: { width: 1024, height: 768 } }],
   ["a phone", { viewport: { width: 390, height: 900 }, hasTouch: true }],
+  // Apple's foldable iPhone (iPhone Duo): 1398 x 2034 and 1878 x 2670 pixels
+  // as Apple publishes them, at the @3x of every Super Retina XDR iPhone. The
+  // open screen is neither phone nor tablet, the width no other check walks.
+  ["a foldable, folded", { viewport: { width: 466, height: 678 }, hasTouch: true }],
+  ["a foldable, open", { viewport: { width: 626, height: 890 }, hasTouch: true }],
 ]) {
   test.describe(`on ${device}`, () => {
     test.use(use);
