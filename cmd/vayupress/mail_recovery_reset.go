@@ -91,6 +91,10 @@ type mailResetDeps struct {
 	// RecordAccess appends to the client-visible access ledger. Required for the
 	// break-glass path and unused otherwise.
 	RecordAccess func(ctx context.Context, mailbox, actor, action, detail string) error
+	// CloseHeldKey closes a private mailbox's key if a sign-in holds it open:
+	// a reset signs everything out, and the key opened by the old password is
+	// part of that.
+	CloseHeldKey func(email string)
 }
 
 // errMailHandedOver is returned when the operator's password-reset path is
@@ -203,6 +207,10 @@ func applyMailPasswordReset(ctx context.Context, d mailResetDeps, email, newPass
 		} else {
 			out.SessionsRevoked += n
 		}
+	}
+	// 3c. A private mailbox's key held open by one of those sign-ins.
+	if d.CloseHeldKey != nil {
+		d.CloseHeldKey(email)
 	}
 	// 4. Outstanding reset links, including the one that authorised this reset if
 	//    it has not already been consumed, and any a second requester holds.
@@ -331,6 +339,9 @@ func (a *App) mailResetDepsFor() (mailResetDeps, bool) {
 	// all inherit it — they funnel through applyMailPasswordReset.
 	d.handedOver = a.vayuMail.IsHandedOver
 	d.RecordAccess = a.vayuMail.AppendLedger
+	if a.vayuPGP != nil {
+		d.CloseHeldKey = a.vayuPGP.CloseHeld
+	}
 	d.FileToMailbox = a.fileRecoveryNotice
 	return d, true
 }

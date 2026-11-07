@@ -17,6 +17,7 @@ import (
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/users"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
+	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -25,7 +26,11 @@ import (
 // (in-memory SQLite, temp storage, no protocol listeners) holding one active
 // mailbox, dana@example.com, so the app-password handlers and the auth bridge
 // exercise the real account store.
-func appWithMailAccounts(t *testing.T) *App {
+func appWithMailAccounts(t *testing.T) *App { return appWithMailKeys(t, nil) }
+
+// appWithMailKeys is appWithMailAccounts with VayuPGP, handed to the engine
+// through the app's own bridge as at boot, so private mailboxes are sealed.
+func appWithMailKeys(t *testing.T, keys *vpgp.Engine) *App {
 	t.Helper()
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
@@ -40,7 +45,12 @@ func appWithMailAccounts(t *testing.T) *App {
 	cfg.Hostname = "mail.example.com"
 	cfg.StorageDir = t.TempDir()
 	cfg.InboundEnabled = false // no listeners in tests
-	e := vmail.NewEngine(&cfg, nil, db)
+	a := &App{vayuPGP: keys}
+	var bridge vmail.Bridge
+	if keys != nil {
+		bridge = &vayuMailBridge{app: a}
+	}
+	e := vmail.NewEngine(&cfg, bridge, db)
 	if err := e.Start(context.Background()); err != nil {
 		t.Fatalf("start engine: %v", err)
 	}
@@ -54,7 +64,8 @@ func appWithMailAccounts(t *testing.T) *App {
 		t.Fatalf("create account: %v", err)
 	}
 	applyMailHandoverSchema(t, db)
-	return &App{vayuMail: e}
+	a.vayuMail = e
+	return a
 }
 
 // applyMailHandoverSchema runs the SHIPPED migration 081 against a test database.

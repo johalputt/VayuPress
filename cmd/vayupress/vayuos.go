@@ -214,6 +214,9 @@ func (b *vayuMailBridge) verifyCredentialScoped(ctx context.Context, addr, passw
 		if accts != nil {
 			if hash := accts.HashFor(ctx, addr); hash != "" {
 				if auth.VerifySecretArgon2id(password, hash) && !closed && !b.app.passkeyOnly(ctx, "vmail:"+addr) {
+					// The mailbox's own password, proved: a private mailbox's
+					// mail opens for this sign-in (vayuos_mail_privatekey.go).
+					b.app.holdMailOpen(addr, password)
 					return true
 				}
 			}
@@ -385,6 +388,15 @@ func (b *vayuMailBridge) SignDetached(data []byte, signer string) ([]byte, bool)
 		return nil, false
 	}
 	return sig, true
+}
+
+// MailboxKeys hands VayuMail the keys that seal a private mailbox's mail on
+// disk (vayuos_mail_privatekey.go). Nil without VayuPGP: nothing is sealed.
+func (b *vayuMailBridge) MailboxKeys() vmail.MailboxKeys {
+	if b.app.vayuPGP == nil {
+		return nil
+	}
+	return b.app.vayuPGP
 }
 
 func (b *vayuMailBridge) DescribePublicKey(armored []byte) (string, []string, error) {
@@ -2092,6 +2104,11 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	side := a.mailSide(r, rd, folder, view, facts.Counts)
 	side.Search = mailSearchForm(user, folder, search, false)
 	cfg.MailSide = side
+	// The holder's own sealed mail, while its key is not held open: the
+	// list shows senders and dates, and this says how to open the rest.
+	if _, own := a.ownMailbox(r); own != "" && mailKeyOf(own, a.vayuMail.Config().Domain) == user {
+		body.WriteString(a.sealedNotice(own, ""))
+	}
 	body.WriteString(`<span id="vm-inbox-spin" class="htmx-indicator vm-spin" aria-hidden="true">loading…</span>`)
 	// The Mail plan's panes are their own kind, "app": the fidelity plan
 	// leaves Mail's anatomy to that plan's renders (§3).

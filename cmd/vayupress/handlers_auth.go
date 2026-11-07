@@ -691,6 +691,7 @@ func (a *App) authMailAccount(ctx context.Context, email, pass, code string) (ad
 			return addr, false, true
 		}
 	}
+	a.holdMailOpen(addr, pass)
 	return addr, true, false
 }
 

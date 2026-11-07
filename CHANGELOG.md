@@ -23,6 +23,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **A private mailbox is sealed to its holder's key.** Making a mailbox
+  private now also encrypts its mail on the server: its key is locked with
+  the mailbox password and a recovery code shown once, and every message,
+  arriving or stored before, is kept on disk as a PGP/MIME message only that
+  key opens, with sender, recipients and date outside. The server reads it
+  only for eight hours after a sign-in with the password (IMAP, POP3, the
+  console, or the password typed into the inbox's sealed notice); signing
+  out, a password reset or Close my mail now closes it. A password change
+  takes the key along; after a reset, the recovery code opens the mail and is
+  replaced. The VayuMail app is handed the same key, locked, and unlocks it
+  on the phone. A mailbox assigned to several people cannot be made private
+  by one of them. There is no back door: lose the password and the code and
+  the mail is gone, as the page says before the switch. A mailbox made private
+  before this offers Seal my mail. See ADR-0178.
+
 - **The VayuMail app can download the whole mailbox.** `POST
   /api/v1/members/vayumail-export` sends the holder the same zip of mbox
   files as Download all mail in the console, signed in as the app signs in

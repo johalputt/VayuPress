@@ -780,6 +780,19 @@ func mimeSanitizeFilename(s string) string {
 // delivering goroutine, so it must return at once. Call it before Start.
 func (e *Engine) SetDeliveredHook(fn func()) { e.delivered = fn }
 
+// SealStored seals the mail email held before its holder took its key
+// (Maildir.SealStored).
+func (e *Engine) SealStored(email string) (sealed, left int, err error) {
+	if e.maildir == nil {
+		return 0, 0, errors.New("vayumail: not started")
+	}
+	local, domain := splitAddress(strings.ToLower(strings.TrimSpace(email)))
+	if domain == "" {
+		domain = e.cfg.Domain
+	}
+	return e.maildir.SealStored(domain, local)
+}
+
 // SetDecryptHook installs a transform applied to messages before they are
 // served over IMAP (used for transparent PGP decryption). Call before Start.
 func (e *Engine) SetDecryptHook(h DecryptHook) { e.decrypt = h }
@@ -823,6 +836,9 @@ func (e *Engine) Start(ctx context.Context) error {
 	e.dkim = dk
 	e.maildir = NewMaildir(e.cfg.StorageDir + "/maildir")
 	e.maildir.onDeliver = e.delivered
+	if kb, ok := e.bridge.(keyedBridge); ok {
+		e.maildir.keys = kb.MailboxKeys()
+	}
 	// Recover mail stranded by the address-case defect before any listener opens
 	// (Section 2 audit). Runs on every boot: it is a no-op on a clean store, and
 	// on an install that received a display-cased RCPT it moves those messages

@@ -46,6 +46,13 @@ type MailboxKeys interface {
 	DecryptForEmail(armored []byte, email string) ([]byte, error)
 }
 
+// keyedBridge is a Bridge that also hands over the keys that seal private
+// mailboxes; the engine gives them to its Maildir at Start. The host's bridge
+// is one, so the seal is wired where every other host service is.
+type keyedBridge interface {
+	MailboxKeys() MailboxKeys
+}
+
 // sealedMark names a file this Maildir sealed. Inbound mail cannot forge it
 // (stripTrustedHeaders), and it is only looked for in a mailbox whose holder
 // keeps the key.
@@ -57,9 +64,6 @@ var outerHeaders = map[string]bool{
 	"from": true, "to": true, "cc": true, "date": true,
 	"message-id": true, "in-reply-to": true, "references": true,
 }
-
-// SetKeys gives the Maildir its key source. Set before the store is shared.
-func (m *Maildir) SetKeys(k MailboxKeys) { m.keys = k }
 
 func mailboxEmail(domain, username string) string {
 	if strings.Contains(username, "@") {

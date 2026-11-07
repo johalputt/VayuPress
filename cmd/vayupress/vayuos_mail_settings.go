@@ -363,8 +363,21 @@ func (a *App) handleVayuOSMyPassword(w http.ResponseWriter, r *http.Request) {
 		answer("danger", "Mail is not running.")
 		return
 	}
+	// A sealed mailbox's key is locked with this password: it moves to the new
+	// one first, and back if the change itself is refused, so the key and the
+	// password never part.
+	holder := a.vayuPGP != nil && a.vayuPGP.HolderKeeps(own)
+	if holder {
+		if err := a.vayuPGP.ChangeHolderPassword(own, r.FormValue("current"), r.FormValue("new")); err != nil {
+			answer("danger", "Not changed: your mail is locked under an earlier password. Open it with your recovery code first.")
+			return
+		}
+	}
 	out, err := applyMailPasswordReset(r.Context(), deps, own, r.FormValue("new"), mailResetByHolder, own)
 	if err != nil {
+		if holder {
+			_ = a.vayuPGP.ChangeHolderPassword(own, r.FormValue("new"), r.FormValue("current"))
+		}
 		answer("danger", "Not changed: "+err.Error()+".")
 		return
 	}

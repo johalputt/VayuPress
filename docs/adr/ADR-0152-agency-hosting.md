@@ -256,6 +256,11 @@ The requirement was that after handover the operator cannot read the client's
 mail. Password changes and second factors do not deliver it, per finding 4. Only
 encryption under a key the server does not hold would.
 
+**Since amended by ADR-0178:** with an export, an importer, an app that does
+not need the server's key, and a rule for shared addresses in place, a
+mailbox its holder makes private is now sealed to their key. The reasons
+below are why it waited for those, and why it stays the holder's choice.
+
 **Cryptographic sealing is designed and deliberately not built.** The mechanism
 is sound — a content key wrapped under a passphrase-derived key, encryption at
 the delivery hook, the server-held private half purged. It loses on the business,

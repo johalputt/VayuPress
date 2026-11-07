@@ -37,7 +37,7 @@ func sealedMaildir(t *testing.T) (*Maildir, *pgp.Engine) {
 		t.Fatal(err)
 	}
 	md := NewMaildir(t.TempDir())
-	md.SetKeys(keys)
+	md.keys = keys
 	if err := md.CreateAll("example.com", "dana"); err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func (failingSeal) SealTo(string, []byte) ([]byte, error) {
 // TestASealThatFailsStoresNothing — never the message in the clear instead.
 func TestASealThatFailsStoresNothing(t *testing.T) {
 	md := NewMaildir(t.TempDir())
-	md.SetKeys(failingSeal{})
+	md.keys = failingSeal{}
 	if _, err := md.Deliver("example.com", "dana", privateMessage("x", "y")); err == nil {
 		t.Fatal("a failed seal reported a delivery")
 	}

@@ -729,6 +729,9 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/settings", a.handleVayuOSMySettings)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/settings/password", a.handleVayuOSMyPassword)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/settings/private", a.handleVayuOSMakePrivate)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/unlock", a.handleVayuOSMailUnlock)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/unlock/recover", a.handleVayuOSMailRecover)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/lock", a.handleVayuOSMailLock)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/avatar", a.handleVayuOSAvatarUpload)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/avatar/remove", a.handleVayuOSAvatarRemove)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/smime", a.handleVayuOSSMIMEUpload)
@@ -2309,6 +2312,7 @@ func osChangePasswordPage(email, msg, csrf string) string {
 func (a *App) handleOSLogout(w http.ResponseWriter, r *http.Request) {
 	if a.sessions != nil {
 		if token := auth.SessionTokenFromRequest(r); token != "" {
+			a.closeMailOnSignOut(r.Context(), token)
 			_ = a.sessions.Destroy(r.Context(), token)
 		}
 	}
