@@ -388,7 +388,7 @@ func calAgenda(v calView, evs []vmail.CalEvent, home *time.Location) string {
 			continue
 		}
 		shown = true
-		b.WriteString(`<li class="cal-agenda__day"><h2 class="cal-agenda__date">` + d.Format("Mon 2 January") + `</h2><ul>` + strings.Join(items, "") + `</ul></li>`)
+		b.WriteString(`<li><h2 class="cal-agenda__date">` + d.Format("Mon 2 January") + `</h2><ul>` + strings.Join(items, "") + `</ul></li>`)
 	}
 	if !shown {
 		b.WriteString(`<li class="cal-agenda__none">Nothing on these days.</li>`)
@@ -715,7 +715,7 @@ func (a *App) handleVayuOSCalendarEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	home := a.calendarHome(r)
-	ev := vmail.CalEvent{}
+	var ev vmail.CalEvent
 	scope := r.URL.Query().Get("scope")
 	if r.URL.Query().Get("uid") != "" {
 		found := false
