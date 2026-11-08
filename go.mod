@@ -30,6 +30,7 @@ require (
 	github.com/phuslu/iploc v1.0.20261101
 	github.com/rs/cors v1.11.1
 	github.com/sigstore/sigstore-go v1.4.0
+	github.com/teambition/rrule-go v1.8.2
 	github.com/yuin/goldmark v1.8.7
 	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/goptlib v1.6.0
 	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/lyrebird v0.0.0-20261104192811-59ac7e400c38
@@ -104,7 +105,6 @@ require (
 	github.com/sigstore/timestamp-authority/v2 v2.2.0 // indirect
 	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
-	github.com/teambition/rrule-go v1.8.2 // indirect
 	github.com/theupdateframework/go-tuf v0.7.0 // indirect
 	github.com/theupdateframework/go-tuf/v2 v2.4.2 // indirect
 	github.com/tinylib/msgp v1.6.4 // indirect
