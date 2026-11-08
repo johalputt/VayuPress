@@ -205,7 +205,7 @@ func TestTheRepeatInWords(t *testing.T) {
 // zone, or no zone, leaves the install's.
 func TestTheZoneIsTheBrowsersWhenItIsAZone(t *testing.T) {
 	a := calendarApp(t)
-	for v, want := range map[string]string{"Asia/Kolkata": "Asia/Kolkata", "Local": "UTC", "../../etc/passwd": "UTC", "": "UTC"} {
+	for v, want := range map[string]string{"Asia/Kolkata": "Asia/Kolkata", "Asia/Calcutta": "Asia/Kolkata", "Local": "UTC", "../../etc/passwd": "UTC", "": "UTC"} {
 		r := httptest.NewRequest(http.MethodGet, "/", nil)
 		if v != "" {
 			r.AddCookie(&http.Cookie{Name: calTZCookie, Value: url.QueryEscape(v)})

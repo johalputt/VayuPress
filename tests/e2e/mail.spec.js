@@ -1587,3 +1587,58 @@ test("a sealed message is opened and answered by someone outside", async ({ page
   await expect(page.locator("#vm-sealed button", { hasText: "Close it now" })).toHaveCount(0);
   await holder.close();
 });
+
+// The Calendar, as its holder uses it: an event made in the sheet lands in
+// the week at its hour (placed by the page's script, since the console's CSP
+// takes no style attributes), opens in its sheet with its time in words, and
+// is deleted from there.
+test("an event made in the Calendar is placed at its hour and deleted from its sheet", async ({ page, browser }) => {
+  await page.goto("/os/vayumail/accounts");
+  const csrf = (await page.context().cookies()).find((c) => c.name === "vp_csrf");
+  const local = "planner" + Date.now();
+  const made = await page.request.post("/os/vayumail/accounts/create", {
+    headers: { "X-CSRF-Token": csrf ? decodeURIComponent(csrf.value) : "" },
+    data: { local, name: "Planner", pass: "e2e-planner-passphrase-1", role: "mailbox" },
+  });
+  expect(made.ok()).toBeTruthy();
+  const origin = process.env.MAIL_UPSTREAM;
+  if (!origin) throw new Error("MAIL_UPSTREAM is not set: boot the mail install as .github/actions/boot-vayupress does");
+  const holder = await browser.newContext({ baseURL: origin, viewport: { width: 1440, height: 900 }, timezoneId: "Asia/Kolkata" });
+  page = await holder.newPage();
+  await page.goto("/os/login");
+  await page.locator("#login-email").fill(local + "@mail.test");
+  await page.locator("#login-password").fill("e2e-planner-passphrase-1");
+  await page.locator(".login-form button[type=submit]").first().click();
+  await page.waitForURL((u) => !u.pathname.startsWith("/os/login"));
+
+  await page.goto("/os/vayumail/calendar?v=week&d=2026-11-10");
+  // The page learns the browser's zone and lays itself out in it.
+  await expect(page.locator("[data-cal]")).toHaveAttribute("data-zone", "Asia/Kolkata");
+  await expect(page.locator(".sa-places a[aria-current=page]")).toHaveText("Calendar");
+  await page.getByRole("button", { name: "New event" }).click();
+  const sheet = page.locator("#cal-sheet");
+  await expect(sheet.locator("input[name=title]")).toBeVisible();
+  await sheet.locator("input[name=title]").fill("Pricing review");
+  await sheet.locator("input[name=sd]").fill("2026-11-10");
+  await sheet.locator("input[name=st]").fill("09:00");
+  await sheet.locator("input[name=ed]").fill("2026-11-10");
+  await sheet.locator("input[name=et]").fill("10:30");
+  await sheet.locator("input[name=zone]").fill("Europe/London");
+  await sheet.locator("select[name=r_freq]").selectOption("WEEKLY");
+  await expect(sheet.locator("[data-cal-when-weekly]")).toBeVisible();
+  await sheet.getByRole("button", { name: "Save" }).click();
+
+  // 09:00 London is 14:30 in Kolkata: the block's top is fourteen and a half
+  // hour rows below its column's.
+  const ev = page.locator(".cal-col[data-day='2026-11-10'] .cal-ev", { hasText: "Pricing review" });
+  await expect(ev).toBeVisible();
+  const hour = await page.locator(".cal-hours span").first().evaluate((e) => e.getBoundingClientRect().height);
+  const offset = await ev.evaluate((e) => e.getBoundingClientRect().top - e.parentElement.getBoundingClientRect().top);
+  expect(Math.abs(offset - 14.5 * hour)).toBeLessThan(2);
+  await ev.click();
+  await expect(sheet.locator(".cal-detail")).toContainText("14:30–16:00 (09:00–10:30 Europe/London)");
+  await expect(sheet.locator(".cal-detail")).toContainText("Every week on Tuesday");
+  await sheet.getByRole("button", { name: "Delete" }).click();
+  await expect(page.locator(".cal-ev", { hasText: "Pricing review" })).toHaveCount(0);
+  await holder.close();
+});

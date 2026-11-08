@@ -226,7 +226,7 @@ test("Mail's administration keeps to the page grammar, as tabs", async ({ page }
 // they run are in: Outbox and Connect a device (8.12), the mailbox directory
 // an administrator opens Mail on, and the Mail plan's surfaces, a mailbox,
 // compose and Talk, as the "app" kind (step 9).
-const MAIL_OWN = ["/os/vayumail/sent", "/os/vayumail/connect", "/os/vayumail/inbox", "/os/vayumail/inbox?user=ankush", "/os/vayumail/compose", "/os/talk"];
+const MAIL_OWN = ["/os/vayumail/sent", "/os/vayumail/connect", "/os/vayumail/inbox", "/os/vayumail/inbox?user=ankush", "/os/vayumail/compose", "/os/vayumail/calendar", "/os/talk"];
 test("Mail's own pages keep to the page grammar", async ({ page }) => {
   const base = process.env.MAIL_BASE_URL;
   if (!base) throw new Error("MAIL_BASE_URL is not set: boot the second install (.github/actions/boot-vayupress)");

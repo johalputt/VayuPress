@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **A Calendar beside Mail.** A mailbox's holder now has Mail and Calendar
+  side by side in the same top bar. It is the calendar their phone and
+  computer already keep in step, so an event made on either shows on the
+  other. It shows a week, a month or a day in the holder's own time zone (a
+  list on a phone), and an event opens in a sheet that says when it is, in
+  its own zone too when that is another, and how it repeats. Events are
+  made and changed in that sheet: all day or timed, in any time zone,
+  repeating daily, weekly on chosen days, monthly or yearly, until a date or
+  a number of times. A repeating event can be changed or deleted once, from
+  one occurrence on, or entirely; a repeat written by another app that the
+  editor cannot express is kept as it is; and a repeating event keeps its
+  local time across clock changes. Only the holder opens their calendar: an
+  administrator who opens someone's mail does not get it.
+
 ### Security
 
 - **Code scanning's reflected-XSS alerts on the Rules editor are closed at

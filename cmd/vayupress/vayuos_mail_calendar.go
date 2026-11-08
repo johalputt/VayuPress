@@ -50,9 +50,20 @@ var calZones = []string{
 	"America/Sao_Paulo", "America/Buenos_Aires",
 }
 
+// zoneRenamed are zones browsers still report by a name the zone database
+// has since replaced (their time-zone library keeps the old one): Chrome
+// says Asia/Calcutta for Kolkata. The page shows the place's name now.
+var zoneRenamed = map[string]string{
+	"Asia/Calcutta": "Asia/Kolkata", "Asia/Katmandu": "Asia/Kathmandu", "Asia/Saigon": "Asia/Ho_Chi_Minh",
+	"Asia/Rangoon": "Asia/Yangon", "Europe/Kiev": "Europe/Kyiv",
+}
+
 // calZone is a zone name the database knows, never the server's own.
 func calZone(name string) *time.Location {
 	name = strings.TrimSpace(name)
+	if now, ok := zoneRenamed[name]; ok {
+		name = now
+	}
 	if name == "" || name == "Local" || len(name) > 64 {
 		return nil
 	}
@@ -114,13 +125,17 @@ func calViewFor(kind, d string, home *time.Location, now time.Time) calView {
 	if t, err := time.ParseInLocation("2006-01-02", d, home); err == nil && t.Year() > 1900 && t.Year() < 3000 {
 		day = t
 	}
-	v := calView{Kind: kind, Day: day}
+	// Each case names its view as a literal: the request's own string, even
+	// once it has matched, is what a page would then be written from.
+	v := calView{Day: day}
 	switch kind {
 	case "day":
+		v.Kind = "day"
 		v.From, v.To = day, day.AddDate(0, 0, 1)
 		v.Title = day.Format("Monday 2 January 2006")
 		v.Prev, v.Next = day.AddDate(0, 0, -1), day.AddDate(0, 0, 1)
 	case "month":
+		v.Kind = "month"
 		first := time.Date(day.Year(), day.Month(), 1, 0, 0, 0, 0, home)
 		v.From = mondayOf(first)
 		v.To = v.From.AddDate(0, 0, 42)
@@ -430,7 +445,7 @@ func (a *App) handleVayuOSCalendar(w http.ResponseWriter, r *http.Request) {
 	csrfTokenFor(w, r)
 	rd, ok := a.calendarOwner(r)
 	if !ok {
-		page := `<div class="page-header"><h1>Calendar</h1></div><div class="empty-state">A calendar belongs to a mailbox, and this account has none. An administrator can give you an address under <strong>Members → Team &amp; roles</strong>.</div>`
+		page := `<div data-page-kind="status"><div class="page-header"><h1>Calendar</h1></div><div class="empty-state">A calendar belongs to a mailbox, and this account has none. An administrator can give you an address under <strong>Members → Team &amp; roles</strong>.</div></div>`
 		writeOSHTML(w, r, adminOSLayout(nonce, "Calendar", "vayuos", cfg, htmpl.HTML(page)))
 		return
 	}
@@ -964,11 +979,11 @@ func (a *App) handleVayuOSCalendarAction(w http.ResponseWriter, r *http.Request)
 			writeOSHTML(w, r, saCallout("danger", "The event was not deleted: "+esc(calSaveRefusal(err))+"."))
 			return
 		}
-		d := r.PostFormValue("d")
-		if _, err := time.Parse("2006-01-02", d); err != nil {
-			d = calDate(time.Now().In(home))
+		day, err := time.ParseInLocation("2006-01-02", r.PostFormValue("d"), home)
+		if err != nil {
+			day = time.Now().In(home)
 		}
-		w.Header().Set("HX-Redirect", "/os/vayumail/calendar?v=week&d="+d)
+		w.Header().Set("HX-Redirect", "/os/vayumail/calendar?v=week&d="+calDate(day))
 		writeOSHTML(w, r, "")
 	default:
 		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "unknown operation", "")
