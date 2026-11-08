@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.36] — 2026-11-08
+
+A Calendar beside Mail: the calendar your phone and computer already keep, in a week, a month or a day in your own time zone, with repeating events that keep their local time, guests invited by mail and their answers shown, invitations answered from the message they came in, and reminders on your devices and by mail.
+
 ### Added
 
 - **A Calendar beside Mail.** A mailbox's holder now has Mail and Calendar
