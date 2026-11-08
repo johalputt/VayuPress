@@ -50,6 +50,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   app set on an event is kept when you change the event in the console,
   unless you change the reminder.
 
+### Fixed
+
+- **Notes on several lines are saved.** A browser sends a text box's lines
+  in a form calendars cannot hold, and an event whose notes had more than
+  one line could not be saved from the editor; its lines are kept now. A
+  title or a place is one line wherever it is written, and a title with a
+  line break no longer stops an invitation, an answer or a reminder going.
+
 ### Security
 
 - **Code scanning's reflected-XSS alerts on the Rules editor are closed at

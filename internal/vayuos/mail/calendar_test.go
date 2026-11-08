@@ -351,3 +351,16 @@ func TestTheEditorsRefusals(t *testing.T) {
 		}
 	}
 }
+
+// TestNotesTypedOnSeveralLinesAreSaved — as a browser sends them, CRLF.
+func TestNotesTypedOnSeveralLinesAreSaved(t *testing.T) {
+	e, _ := calEngine(t)
+	at := time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC)
+	if _, err := e.SaveEvent(ReadAsOwner("ankush"), EventInput{Summary: "Plan", Description: "First line\r\nSecond line", Start: at, End: at.Add(time.Hour)}, ScopeAll, time.Time{}); err != nil {
+		t.Fatalf("notes on two lines: %v", err)
+	}
+	evs := between(t, e, at, at.Add(time.Hour), time.UTC)
+	if len(evs) != 1 || evs[0].Description != "First line\nSecond line" {
+		t.Fatalf("read back %+v", evs)
+	}
+}

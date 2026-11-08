@@ -434,3 +434,22 @@ func TestAnInvitationIsTheHoldersToAnswer(t *testing.T) {
 		t.Error("the holder's own invitation has a card")
 	}
 }
+
+// TestATitleWithALineBreakStillGoes — a title is one line from the editor
+// on (EventInput.check), so its invitation goes, and the break never
+// becomes a header.
+func TestATitleWithALineBreakStillGoes(t *testing.T) {
+	e, _, flush := itipEngine(t)
+	in := londonTeam(t, "rohan@ledger.example")
+	in.Summary = "Team\rBcc: everyone@x.example"
+	if _, err := e.SaveEvent(ReadAsOwner("ankush"), in, ScopeAll, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	sent := flush()
+	if len(sent) != 1 || !strings.Contains(sent[0].raw, "Subject: Invitation: Team Bcc: everyone@x.example @") {
+		t.Fatalf("sent %+v", sent)
+	}
+	if strings.Contains(sent[0].raw, "\r\nBcc:") {
+		t.Fatal("the title became a header")
+	}
+}

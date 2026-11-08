@@ -284,8 +284,8 @@ func inviteWords(cal *ical.Calendar, kind, organizer string) (subject, text stri
 			long += " (" + ev.Zone + ")"
 		}
 	}
-	title := strings.ReplaceAll(nonEmptyText(ev.Summary, "An event"), "\n", " ")
-	subject = kind + ": " + title + " @ " + when
+	title := oneLine(nonEmptyText(ev.Summary, "An event"))
+	subject = kind + ": " + title + " @ " + oneLine(when)
 	text = organizer + " "
 	switch kind {
 	case "Cancelled":
@@ -306,6 +306,19 @@ func inviteWords(cal *ical.Calendar, kind, organizer string) (subject, text stri
 		text += "\nYour calendar program shows Accept and Decline on this message.\n"
 	}
 	return subject, text
+}
+
+// oneLine is an event's title as a mail subject takes it: every line break
+// and control character a space. writeHeaders refuses a header with a line
+// break, so a title from an app, or from a stranger's invitation, that
+// carried one would stop the invitation, the answer or the reminder going.
+func oneLine(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return ' '
+		}
+		return r
+	}, s)
 }
 
 func nonEmptyText(s, otherwise string) string {
@@ -706,9 +719,9 @@ func (e *Engine) AnswerInvitation(rd Reader, folder, id, answer string) error {
 		return err
 	}
 	word := map[string]string{"ACCEPTED": "Accepted", "TENTATIVE": "Maybe", "DECLINED": "Declined"}[answer]
-	title := nonEmptyText(textOf(first, ical.PropSummary), "your event")
+	title := oneLine(nonEmptyText(textOf(first, ical.PropSummary), "your event"))
 	text := mbox + " " + map[string]string{"ACCEPTED": "is going to", "TENTATIVE": "may go to", "DECLINED": "is not going to"}[answer] + " " + title + ".\n"
-	_, err = e.sendMail(ctx, mbox, []string{mailtoOf(first.Props.Get(ical.PropOrganizer).Value)}, word+": "+strings.ReplaceAll(title, "\n", " "), "", text, "", false, &calendarPart{method: "REPLY", data: obj})
+	_, err = e.sendMail(ctx, mbox, []string{mailtoOf(first.Props.Get(ical.PropOrganizer).Value)}, word+": "+title, "", text, "", false, &calendarPart{method: "REPLY", data: obj})
 	return err
 }
 

@@ -29,6 +29,9 @@ import (
 const (
 	// reminderLate is how late a reminder may still be sent.
 	reminderLate = 10 * time.Minute
+	// maxReminderObject and maxReminderObjects bound one pass (sendReminders).
+	maxReminderObject  = 64 << 10
+	maxReminderObjects = 2000
 	// reminderLead is the longest a reminder may come before its event.
 	reminderLead = 7 * 24 * time.Hour
 )
@@ -68,7 +71,12 @@ func (e *Engine) sendReminders(now time.Time) {
 		return
 	}
 	ctx := context.Background()
-	rows, err := e.accounts.db.QueryContext(ctx, `SELECT mailbox,data FROM vayumail_dav WHERE kind=? AND data LIKE '%ACTION:EMAIL%'`, davEvent)
+	// Bounded, because a holder's apps write what they like: an event with
+	// its alarms is a few kilobytes, and the newest 2,000 with a reminder by
+	// mail are more than any calendar keeps in its coming week. Without the
+	// bounds, ten thousand megabyte objects would be read every half minute.
+	rows, err := e.accounts.db.QueryContext(ctx, `SELECT mailbox,data FROM vayumail_dav WHERE kind=? AND data LIKE '%ACTION:EMAIL%'
+		AND LENGTH(data) <= ? ORDER BY modified DESC LIMIT ?`, davEvent, maxReminderObject, maxReminderObjects)
 	if err != nil {
 		return
 	}
@@ -146,7 +154,7 @@ func (e *Engine) remind(ctx context.Context, mbox string, ev CalEvent, lead time
 	if ev.AllDay {
 		when = ev.Start.Format("Monday 2 January") + ", all day"
 	}
-	title := strings.ReplaceAll(nonEmptyText(ev.Summary, "An event"), "\n", " ")
+	title := oneLine(nonEmptyText(ev.Summary, "An event"))
 	body := title + "\n" + when + "\n"
 	if ev.Location != "" {
 		body += "Where: " + ev.Location + "\n"

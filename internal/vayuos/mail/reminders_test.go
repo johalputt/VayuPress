@@ -125,3 +125,16 @@ func TestAnEditLeavesAPhonesAlarms(t *testing.T) {
 		t.Fatal("setting no reminder left an alarm")
 	}
 }
+
+// TestARemindersPassReadsOnlyEventsOfAnEventsSize — an object past the bound
+// is not read every half minute, so its reminder by mail is not sent.
+func TestARemindersPassReadsOnlyEventsOfAnEventsSize(t *testing.T) {
+	e, s, _ := itipEngine(t)
+	putEvent(t, s, "big.ics", "big@x", "BEGIN:VEVENT", "UID:big@x", "DTSTAMP:20261101T080000Z", "SUMMARY:Big", "DTSTART:20261112T090000Z",
+		"DESCRIPTION:"+strings.Repeat("x", maxReminderObject), "BEGIN:VALARM", "ACTION:EMAIL", "TRIGGER:-PT10M", "SUMMARY:Big", "DESCRIPTION:Big",
+		"ATTENDEE:mailto:ankush@example.com", "END:VALARM", "END:VEVENT")
+	e.sendReminders(time.Date(2026, 11, 12, 8, 51, 0, 0, time.UTC))
+	if n := len(reminderMail(t, e)); n != 0 {
+		t.Fatalf("an object past the bound was read: %d reminders", n)
+	}
+}

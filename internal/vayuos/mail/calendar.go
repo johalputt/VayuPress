@@ -619,7 +619,12 @@ const (
 )
 
 func (in *EventInput) check() error {
-	in.Summary = strings.TrimSpace(in.Summary)
+	// A browser sends a textarea's lines as CRLF, and iCalendar text holds
+	// no CR (go-ical refuses to write one): notes keep their lines as LF;
+	// a title and a place are one line.
+	in.Summary = strings.TrimSpace(oneLine(in.Summary))
+	in.Location = strings.TrimSpace(oneLine(in.Location))
+	in.Description = strings.ReplaceAll(strings.ReplaceAll(in.Description, "\r\n", "\n"), "\r", "\n")
 	if in.Summary == "" || len(in.Summary) > 300 {
 		return errors.New("an event needs a title, at most 300 characters")
 	}
