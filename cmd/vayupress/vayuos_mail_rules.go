@@ -302,7 +302,11 @@ func (a *App) handleVayuOSFilterAction(w http.ResponseWriter, r *http.Request) {
 		rules, _ := accts.FiltersFor(r.Context(), email)
 		for _, rl := range rules {
 			if rl.ID == id {
-				writeOSHTML(w, r, ruleEditor(email, rl, ""))
+				// Drawn from the stored rule's mailbox, not the form's
+				// address: equal once authorised, but only the stored one
+				// is not the request's own text, which the code scanner
+				// follows through ruleDomID into the page.
+				writeOSHTML(w, r, ruleEditor(rl.Mailbox, rl, ""))
 				return
 			}
 		}

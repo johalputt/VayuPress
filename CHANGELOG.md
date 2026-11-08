@@ -8,6 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+
+- **Code scanning's reflected-XSS alerts on the Rules editor are closed at
+  their source.** Editing a rule drew its form with the address the request
+  named, passed through a function that keeps only letters, digits and
+  hyphens: nothing unsafe was ever written, but the scanner does not take a
+  hand-written filter as a barrier, and reported the path once for every
+  response writer it passes through. The editor is now drawn from the
+  stored rule's own address.
+
 ## [3.18.35] — 2026-11-08
 
 Mail rules can test several things at once and do several things in the order you set, written and tried in Settings › Rules before they run: forward to an address that has confirmed, reject at the door, label, move, mark read, pin or delete, run on mail already there, and see what a rule would catch first.

@@ -137,3 +137,17 @@ func TestAForwardIsConfirmedOnlyByTheButton(t *testing.T) {
 		t.Errorf("the link worked twice: %d", rec.Code)
 	}
 }
+
+// TestTheEditorIsDrawnFromTheStoredRule — an edit names the mailbox in the
+// form, and the editor that comes back carries the stored address, not the
+// form's text, whatever its case.
+func TestTheEditorIsDrawnFromTheStoredRule(t *testing.T) {
+	a := appWithMailAccounts(t)
+	postRule(a, url.Values{"op": {"save"}, "c_field_0": {"subject"}, "c_op_0": {"contains"}, "c_value_0": {"x"}, "a_kind_0": {"pin"}})
+	rules, _ := a.vayuMail.Accounts().FiltersFor(context.Background(), "dana@example.com")
+	vals := url.Values{"op": {"edit"}, "id": {strconv.FormatInt(rules[0].ID, 10)}, "email": {"DANA@example.com"}}
+	body := postForm(a.handleVayuOSFilterAction, "/os/vayumail/filters/action", vals.Encode(), rulesAdmin()).Body.String()
+	if !strings.Contains(body, `name="email" value="dana@example.com"`) || strings.Contains(body, "DANA") {
+		t.Fatalf("the editor is drawn from the form's address:\n%s", body)
+	}
+}
