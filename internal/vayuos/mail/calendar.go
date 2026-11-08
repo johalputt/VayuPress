@@ -63,6 +63,16 @@ type CalEvent struct {
 	Organizer CalAttendee
 	Attendees []CalAttendee
 	Sequence  int
+	// Remind is the event's first reminder, Before its start; ByMail when
+	// it comes by mail (reminders.go).
+	Remind *Reminder
+}
+
+// Reminder is how long before an event's start it is called to mind, and
+// whether by mail as well as on the holder's devices.
+type Reminder struct {
+	Before time.Duration
+	ByMail bool
 }
 
 // Repeats reports whether the occurrence belongs to a repeating series.
@@ -331,6 +341,21 @@ func (c *calReader) event(comp *ical.Component) (ev CalEvent, span time.Duration
 	if p := comp.Props.Get(ical.PropSequence); p != nil {
 		ev.Sequence, _ = p.Int()
 	}
+	for _, al := range comp.Children {
+		if al.Name != ical.CompAlarm {
+			continue
+		}
+		lead, ok := reminderLeadOf(al.Props.Get(ical.PropTrigger))
+		if !ok {
+			continue
+		}
+		if ev.Remind == nil {
+			ev.Remind = &Reminder{Before: lead}
+		}
+		if strings.EqualFold(textOf(al, ical.PropAction), "EMAIL") && lead == ev.Remind.Before {
+			ev.Remind.ByMail = true
+		}
+	}
 	if ev.AllDay {
 		days = int(ev.End.Sub(ev.Start).Round(24*time.Hour) / (24 * time.Hour))
 	}
@@ -543,6 +568,47 @@ type EventInput struct {
 	// Guests are the addresses invited: nil keeps the event's guests as
 	// they are, an empty list has none (itip.go sends them the event).
 	Guests []string
+	// Remind replaces the event's reminders when SetRemind is true: nil for
+	// none. Left unset, the reminders an app put on it are kept.
+	Remind    *Reminder
+	SetRemind bool
+}
+
+// setReminders writes the editor's reminder as alarms: one to show, which
+// phones and desktop programs raise, and one by mail when asked, which the
+// server delivers to the holder (reminders.go).
+func setReminders(comp *ical.Component, in EventInput, mbox string) {
+	if !in.SetRemind {
+		return
+	}
+	var kept []*ical.Component
+	for _, ch := range comp.Children {
+		if ch.Name != ical.CompAlarm {
+			kept = append(kept, ch)
+		}
+	}
+	comp.Children = kept
+	if in.Remind == nil {
+		return
+	}
+	alarm := func(action string) *ical.Component {
+		a := ical.NewComponent(ical.CompAlarm)
+		a.Props.SetText(ical.PropAction, action)
+		t := ical.NewProp(ical.PropTrigger)
+		t.SetDuration(-in.Remind.Before)
+		a.Props.Set(t)
+		a.Props.SetText(ical.PropDescription, in.Summary)
+		return a
+	}
+	comp.Children = append(comp.Children, alarm("DISPLAY"))
+	if in.Remind.ByMail {
+		m := alarm("EMAIL")
+		m.Props.SetText(ical.PropSummary, "Reminder: "+in.Summary)
+		me := ical.NewProp(ical.PropAttendee)
+		me.Value = "mailto:" + normEmail(mbox)
+		m.Props.Add(me)
+		comp.Children = append(comp.Children, m)
+	}
 }
 
 // The parts of a repeating event an edit or a delete is for.
@@ -556,6 +622,9 @@ func (in *EventInput) check() error {
 	in.Summary = strings.TrimSpace(in.Summary)
 	if in.Summary == "" || len(in.Summary) > 300 {
 		return errors.New("an event needs a title, at most 300 characters")
+	}
+	if in.SetRemind && in.Remind != nil && (in.Remind.Before < 0 || in.Remind.Before > reminderLead) {
+		return errors.New("a reminder comes at most a week before the event")
 	}
 	if len(in.Location) > 500 || len(in.Description) > 20000 {
 		return errors.New("a location is at most 500 characters, and notes at most 20,000")
@@ -747,6 +816,7 @@ func (e *Engine) SaveEvent(rd Reader, in EventInput, scope string, instance time
 		}
 		in.Rule = ""
 		fill(ov, in, now, true)
+		setReminders(ov, in, mbox)
 	case ScopeFollowing:
 		first, _, err := newCalReader(cal, in.Start.Location()).time(master.Props.Get(ical.PropDateTimeStart))
 		if err == nil && !instance.After(first) {
@@ -780,6 +850,7 @@ func (e *Engine) SaveEvent(rd Reader, in EventInput, scope string, instance time
 			setGuests(master, mbox, in.Guests)
 		}
 		fill(master, in, now, true)
+		setReminders(master, in, mbox)
 		if in.Rule == "" {
 			master.Props.Del(ical.PropRecurrenceRule)
 		} else {
@@ -835,6 +906,7 @@ func (e *Engine) newEvent(ctx context.Context, mbox string, in EventInput, now t
 	ev.Props.SetText(ical.PropUID, uid)
 	ev.Props.SetDateTime(ical.PropCreated, now)
 	fill(ev, in, now, false)
+	setReminders(ev, in, mbox)
 	if len(in.Guests) > 0 {
 		setGuests(ev, mbox, in.Guests)
 	}

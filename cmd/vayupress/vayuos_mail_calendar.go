@@ -629,6 +629,13 @@ func (a *App) handleVayuOSCalendarEvent(w http.ResponseWriter, r *http.Request) 
 	if ev.Location != "" {
 		b.WriteString(`<p class="cal-detail__row">` + saIcon("where") + `<span>` + esc(ev.Location) + `</span></p>`)
 	}
+	if ev.Remind != nil {
+		words := leadWords(ev.Remind.Before)
+		if ev.Remind.ByMail {
+			words += ", and by mail"
+		}
+		b.WriteString(`<p class="cal-detail__row">` + saIcon("bell") + `<span>` + esc(words) + `</span></p>`)
+	}
 	if len(ev.Attendees) > 0 {
 		b.WriteString(`<ul class="cal-detail__people">`)
 		for _, p := range ev.Attendees {
@@ -795,8 +802,55 @@ func calEditor(ev vmail.CalEvent, scope string, home *time.Location, own, msg st
 		b.WriteString(`<p class="cal-note">Guests are sent the event, and each change to it, by mail from your address.</p>`)
 	}
 	b.WriteString(field("Where", `<input type="text" name="location" maxlength="500" value="`+esc(ev.Location)+`">`))
+	b.WriteString(calRemindFields(ev))
 	b.WriteString(field("Notes", `<textarea name="notes" rows="3" maxlength="20000">`+esc(ev.Description)+`</textarea>`))
 	b.WriteString(`<div class="cal-form__acts"><button type="button" class="btn" data-sheet-close>Cancel</button><button type="submit" class="btn btn--primary">Save</button></div></form>`)
+	return b.String()
+}
+
+// calLeads are the reminders the editor offers, in seconds before.
+var calLeads = []struct {
+	secs  int
+	label string
+}{{0, "At the start"}, {300, "5 minutes before"}, {600, "10 minutes before"}, {1800, "30 minutes before"},
+	{3600, "1 hour before"}, {86400, "1 day before"}, {604800, "1 week before"}}
+
+// leadWords is a reminder's lead in words.
+func leadWords(d time.Duration) string {
+	for _, l := range calLeads {
+		if time.Duration(l.secs)*time.Second == d {
+			return l.label
+		}
+	}
+	return d.String() + " before"
+}
+
+// calRemindFields is the reminder part of the editor: when, and whether by
+// mail as well as on the holder's devices.
+func calRemindFields(ev vmail.CalEvent) string {
+	cur, mail := -1, false
+	if ev.Remind != nil {
+		cur, mail = int(ev.Remind.Before/time.Second), ev.Remind.ByMail
+	}
+	var b strings.Builder
+	b.WriteString(`<input type="hidden" name="remind_set" value="1"><div class="cal-two"><label class="field"><span class="field-label">Remind me</span><select name="remind">`)
+	b.WriteString(`<option value=""` + map[bool]string{true: " selected"}[cur < 0] + `>No reminder</option>`)
+	listed := false
+	for _, l := range calLeads {
+		sel := ""
+		if l.secs == cur {
+			sel, listed = " selected", true
+		}
+		b.WriteString(`<option value="` + strconv.Itoa(l.secs) + `"` + sel + `>` + l.label + `</option>`)
+	}
+	if cur >= 0 && !listed {
+		b.WriteString(`<option value="` + strconv.Itoa(cur) + `" selected>` + esc(leadWords(time.Duration(cur)*time.Second)) + `</option>`)
+	}
+	chk := ""
+	if mail {
+		chk = " checked"
+	}
+	b.WriteString(`</select></label><label class="cal-check cal-check--field"><input type="checkbox" name="remind_mail" value="1"` + chk + `> By mail too</label></div>`)
 	return b.String()
 }
 
@@ -945,6 +999,16 @@ func calInputFromForm(r *http.Request, home *time.Location) (vmail.EventInput, e
 		}
 		if in.End, err = time.ParseInLocation("2006-01-02 15:04", r.PostFormValue("ed")+" "+r.PostFormValue("et"), zone); err != nil {
 			return in, errors.New("the end is not a date and time")
+		}
+	}
+	if r.PostFormValue("remind_set") == "1" {
+		in.SetRemind = true
+		if v := r.PostFormValue("remind"); v != "" {
+			secs, err := strconv.Atoi(v)
+			if err != nil {
+				return in, errors.New("the reminder is not one the editor offers")
+			}
+			in.Remind = &vmail.Reminder{Before: time.Duration(secs) * time.Second, ByMail: r.PostFormValue("remind_mail") == "1"}
 		}
 	}
 	if _, ok := r.PostForm["guests"]; ok {

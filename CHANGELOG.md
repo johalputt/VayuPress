@@ -41,6 +41,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   a declined event is kept and not shown. A cancellation offers to take the
   event out, when it came from the event's own organizer. Only you see the
   card: an administrator who opens your mail does not.
+- **Reminders.** An event can remind you from the moment it starts to a
+  week before, on your phone and computer, and by mail too if you ask: the
+  mail reminder arrives in your Inbox at its time, where the console's
+  new-mail notice and your phone show it. Each occurrence of a repeating
+  event has its own. A reminder is sent once, and one missed while the
+  server was down for more than ten minutes is not sent late. A reminder an
+  app set on an event is kept when you change the event in the console,
+  unless you change the reminder.
 
 ### Security
 

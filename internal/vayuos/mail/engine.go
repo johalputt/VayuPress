@@ -1206,6 +1206,7 @@ func (e *Engine) worker() {
 			return
 		case <-ticker.C:
 			_, _, _ = e.queue.ProcessDue(context.Background(), time.Now())
+			e.sendReminders(time.Now())
 		}
 	}
 }

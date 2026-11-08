@@ -287,3 +287,32 @@ func TestAnInvitedEventKeepsItsOrganizersGuests(t *testing.T) {
 		t.Error("a new event offers no guests")
 	}
 }
+
+// TestAReminderIsSetFromTheEditor — chosen, shown back, said in words in
+// the sheet, and taken off again.
+func TestAReminderIsSetFromTheEditor(t *testing.T) {
+	a := calendarApp(t)
+	base := url.Values{"title": {"Dentist"}, "sd": {"2026-11-12"}, "st": {"09:00"}, "ed": {"2026-11-12"}, "et": {"10:00"}, "zone": {"UTC"},
+		"remind_set": {"1"}, "remind": {"600"}, "remind_mail": {"1"}}
+	if rec := calSave(a, dana(), base); rec.Header().Get("HX-Redirect") == "" {
+		t.Fatalf("save: %s", rec.Body.String())
+	}
+	from := time.Date(2026, 11, 12, 0, 0, 0, 0, time.UTC)
+	evs, _ := a.vayuMail.CalendarBetween(vmail.ReadAsOwner("dana"), from, from.AddDate(0, 0, 1), time.UTC)
+	if len(evs) != 1 || evs[0].Remind == nil || evs[0].Remind.Before != 10*time.Minute || !evs[0].Remind.ByMail {
+		t.Fatalf("stored %+v", evs)
+	}
+	ref := "uid=" + url.QueryEscape(evs[0].UID) + "&s=" + itoa64(evs[0].Start.Unix())
+	if ed := calGet(a, a.handleVayuOSCalendarEdit, "/os/vayumail/calendar/edit?"+ref, dana(), "UTC").Body.String(); !strings.Contains(ed, `<option value="600" selected>`) || !strings.Contains(ed, `name="remind_mail" value="1" checked`) {
+		t.Errorf("the editor does not show the reminder: %s", ed)
+	}
+	if sheet := calGet(a, a.handleVayuOSCalendarEvent, "/os/vayumail/calendar/event?"+ref, dana(), "UTC").Body.String(); !strings.Contains(sheet, "10 minutes before, and by mail") {
+		t.Errorf("the sheet does not say the reminder: %s", sheet)
+	}
+	base.Set("uid", evs[0].UID)
+	base.Set("remind", "")
+	calSave(a, dana(), base)
+	if evs, _ = a.vayuMail.CalendarBetween(vmail.ReadAsOwner("dana"), from, from.AddDate(0, 0, 1), time.UTC); len(evs) != 1 || evs[0].Remind != nil {
+		t.Fatalf("after No reminder: %+v", evs)
+	}
+}
