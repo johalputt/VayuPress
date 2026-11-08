@@ -38,7 +38,8 @@ func (a *App) privateMailboxBlock(r *http.Request, email string) string {
 		`An administrator can still suspend or delete the mailbox and change its storage allowance.</p>`
 	if sealing {
 		limits = `<p class="text-xs muted">Who wrote to you, to whom and when stay readable to the server, which needs them to deliver mail; ` +
-			`mail from outside is sealed the moment it arrives. Whoever controls the server's software could change it to catch your password ` +
+			`mail from outside is sealed the moment it arrives. Your calendar and contacts are not sealed: reminders, and your phone and computer, ` +
+			`need them while you are away. Whoever controls the server's software could change it to catch your password ` +
 			`the next time you sign in. An administrator can still suspend or delete the mailbox and change its storage allowance.</p>`
 	}
 	refusals := `administrators of this site cannot open this mailbox, set its password, clear its two-step sign-in, ` +

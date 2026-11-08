@@ -83,6 +83,10 @@ func makeDanaPrivate(t *testing.T, a *App, dana *users.User) string {
 	if m == nil || !strings.Contains(body, "Private and sealed") {
 		t.Fatalf("making the mailbox private showed no recovery code: %s", body)
 	}
+	// What sealing does not cover is said, not only left out.
+	if !strings.Contains(body, "Your calendar and contacts are not sealed") {
+		t.Fatalf("the sealed card does not say what stays readable: %s", body)
+	}
 	return m[1]
 }
 
