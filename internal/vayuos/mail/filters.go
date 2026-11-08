@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	netmail "net/mail"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -385,6 +386,11 @@ func isStandardFolder(name string) bool {
 type ruleMessage struct {
 	raw    []byte
 	parsed *ParsedMessage
+	// body is the text and HTML, lowered once for every body condition of
+	// every rule: lowering up to ruleBodyBytes again per condition would let
+	// one sender's message cost a mailbox's whole rule list that many times.
+	body     string
+	bodyRead bool
 }
 
 func (m *ruleMessage) message() *ParsedMessage {
@@ -412,8 +418,11 @@ func matchCondition(c RuleCondition, m *ruleMessage) bool {
 	case "subject":
 		hay = decodeMIMEWord(headerValue(m.raw, "Subject"))
 	case "body":
-		pm := m.message()
-		hay = pm.Text + " " + pm.HTML
+		if !m.bodyRead {
+			pm := m.message()
+			m.body, m.bodyRead = strings.ToLower(strings.TrimSpace(pm.Text+" "+pm.HTML)), true
+		}
+		hay = m.body
 	case "domain":
 		if a, err := netmail.ParseAddress(decodeMIMEWord(headerValue(m.raw, "From"))); err == nil {
 			_, hay = splitAddress(a.Address)
@@ -504,7 +513,7 @@ func (e *Engine) applyFilters(mailbox string, raw []byte) ruleOutcome {
 			case "label":
 				out.labels = append(out.labels, a.Arg)
 			case "forward":
-				if e.accounts.RuleForwardConfirmed(context.Background(), mailbox, a.Arg) {
+				if !slices.Contains(out.forwards, a.Arg) && e.accounts.RuleForwardConfirmed(context.Background(), mailbox, a.Arg) {
 					out.forwards = append(out.forwards, a.Arg)
 				}
 			case "reject":
@@ -602,7 +611,22 @@ func nonEmpty(s, otherwise string) string {
 }
 
 // ErrNoRuleForward is a forward confirmation that matches nothing waiting.
-var ErrNoRuleForward = errors.New("vayumail: that confirmation link is not valid, or was already used")
+var ErrNoRuleForward = errors.New("vayumail: that confirmation link is not valid, was already used, or has expired")
+
+// ErrRuleForwardWait is a confirmation not sent, because this address was
+// asked within the day or the mailbox has asked as many as a day allows. A
+// confirmation is mail from the server's own domain to an address a holder
+// typed: unbounded, saving a rule over and over would mail a stranger over
+// and over, and a mailbox could mail many strangers.
+var ErrRuleForwardWait = errors.New("vayumail: a confirmation was sent to that address in the last day, or this mailbox has sent as many as a day allows; try again tomorrow")
+
+const (
+	// ruleForwardLinkLife is how long a confirmation link works.
+	ruleForwardLinkLife = 7 * 24 * time.Hour
+	// maxRuleForwardAsksPerDay is how many addresses one mailbox can ask in
+	// a day.
+	maxRuleForwardAsksPerDay = 5
+)
 
 func (s *AccountStore) ensureRuleForwardTable() error {
 	if s.db == nil {
@@ -640,6 +664,16 @@ func (s *AccountStore) RequestRuleForward(ctx context.Context, mailbox, address 
 	if s.RuleForwardConfirmed(ctx, mailbox, address) {
 		return "", nil
 	}
+	dayAgo := time.Now().UTC().Add(-24 * time.Hour)
+	var sameAddress, asked int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(address=?),0), COUNT(1) FROM vayumail_rule_forwards WHERE mailbox=? AND confirmed=0 AND created>?`,
+		normEmail(address), normEmail(mailbox), dayAgo).Scan(&sameAddress, &asked); err != nil {
+		return "", err
+	}
+	if sameAddress > 0 || asked >= maxRuleForwardAsksPerDay {
+		return "", ErrRuleForwardWait
+	}
 	tok, err := randomHex(32)
 	if err != nil {
 		return "", err
@@ -658,7 +692,8 @@ func (s *AccountStore) ConfirmRuleForward(ctx context.Context, token string) (ma
 		return "", "", err
 	}
 	err = s.db.QueryRowContext(ctx,
-		`SELECT mailbox,address FROM vayumail_rule_forwards WHERE token_hash=? AND token_hash<>''`, hashRecoveryToken(token)).Scan(&mailbox, &address)
+		`SELECT mailbox,address FROM vayumail_rule_forwards WHERE token_hash=? AND token_hash<>'' AND created>?`,
+		hashRecoveryToken(token), time.Now().UTC().Add(-ruleForwardLinkLife)).Scan(&mailbox, &address)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", "", ErrNoRuleForward
 	}

@@ -368,7 +368,15 @@ func (a *App) askRuleForwards(r *http.Request, email string, rule vmail.FilterRu
 			continue
 		}
 		tok, err := a.vayuMail.Accounts().RequestRuleForward(r.Context(), email, act.Arg)
-		if err != nil || tok == "" {
+		if errors.Is(err, vmail.ErrRuleForwardWait) {
+			out += saCallout("info", "No new link was sent to "+html.EscapeString(act.Arg)+": one was sent in the last day, or this mailbox has asked as many addresses as a day allows. Nothing is forwarded until it is confirmed.")
+			continue
+		}
+		if err != nil {
+			out += saCallout("danger", "The confirmation to "+html.EscapeString(act.Arg)+" could not be made: "+html.EscapeString(err.Error())+".")
+			continue
+		}
+		if tok == "" {
 			continue
 		}
 		link := a.oauthBaseURL(r) + "/vayumail/forward/confirm?t=" + url.QueryEscape(tok)
@@ -408,7 +416,7 @@ func (a *App) handleRuleForwardConfirm(w http.ResponseWriter, r *http.Request) {
 	mbox, addr, err := a.vayuMail.Accounts().ConfirmRuleForward(r.Context(), tok)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
-		page(`<h1>Not confirmed</h1><p>This link is not valid, or was already used.</p>`)
+		page(`<h1>Not confirmed</h1><p>This link is not valid, was already used, or has expired.</p>`)
 		return
 	}
 	dbpkg.AuditLog("vayumail.filter.forward-confirmed", addr, mbox, addr)

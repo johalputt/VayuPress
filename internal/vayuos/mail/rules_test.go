@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -271,5 +272,107 @@ func TestTheSenderIsToldARuleRefused(t *testing.T) {
 		}
 		conn.Close()
 		srv.Stop(context.Background())
+	}
+}
+
+// TestAForwardLinkExpires — a link older than its week confirms nothing.
+func TestAForwardLinkExpires(t *testing.T) {
+	_, s, _ := ruleEngine(t)
+	ctx := context.Background()
+	tok, err := s.RequestRuleForward(ctx, ruleBox, "accounts@ledger.example")
+	if err != nil || tok == "" {
+		t.Fatal(tok, err)
+	}
+	if _, err := s.db.Exec(`UPDATE vayumail_rule_forwards SET created=?`, time.Now().UTC().Add(-ruleForwardLinkLife-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.ConfirmRuleForward(ctx, tok); !errors.Is(err, ErrNoRuleForward) {
+		t.Fatalf("an expired link: %v", err)
+	}
+	if s.RuleForwardConfirmed(ctx, ruleBox, "accounts@ledger.example") {
+		t.Fatal("an expired link confirmed the forward")
+	}
+}
+
+// TestForwardConfirmationsAreNotSentOverAndOver — saving a rule again does not
+// mail its address again within the day, and one mailbox cannot mail many
+// addresses with confirmations in a day.
+func TestForwardConfirmationsAreNotSentOverAndOver(t *testing.T) {
+	_, s, _ := ruleEngine(t)
+	ctx := context.Background()
+	if tok, err := s.RequestRuleForward(ctx, ruleBox, "a@ledger.example"); err != nil || tok == "" {
+		t.Fatal(tok, err)
+	}
+	if tok, err := s.RequestRuleForward(ctx, ruleBox, "a@ledger.example"); tok != "" || !errors.Is(err, ErrRuleForwardWait) {
+		t.Fatalf("a second request the same day: %q, %v", tok, err)
+	}
+	for i := 1; i < maxRuleForwardAsksPerDay; i++ {
+		if tok, err := s.RequestRuleForward(ctx, ruleBox, "b"+strconv.Itoa(i)+"@ledger.example"); err != nil || tok == "" {
+			t.Fatalf("request %d: %q, %v", i, tok, err)
+		}
+	}
+	if tok, err := s.RequestRuleForward(ctx, ruleBox, "one-too-many@ledger.example"); tok != "" || !errors.Is(err, ErrRuleForwardWait) {
+		t.Fatalf("past the day's asks: %q, %v", tok, err)
+	}
+	if _, err := s.db.Exec(`UPDATE vayumail_rule_forwards SET created=?`, time.Now().UTC().Add(-25*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if tok, err := s.RequestRuleForward(ctx, ruleBox, "a@ledger.example"); err != nil || tok == "" {
+		t.Fatalf("the next day: %q, %v", tok, err)
+	}
+}
+
+// TestADeletedMailboxsForwardsAreNotHandedOn — an address given again does
+// not inherit the addresses that agreed to take its last holder's mail.
+func TestADeletedMailboxsForwardsAreNotHandedOn(t *testing.T) {
+	_, s, _ := ruleEngine(t)
+	ctx := context.Background()
+	tok, _ := s.RequestRuleForward(ctx, ruleBox, "old-holder@home.example")
+	if _, _, err := s.ConfirmRuleForward(ctx, tok); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delete(ctx, ruleBox); err != nil {
+		t.Fatal(err)
+	}
+	if s.RuleForwardConfirmed(ctx, ruleBox, "old-holder@home.example") {
+		t.Fatal("the next holder of the address inherits a confirmed forward")
+	}
+}
+
+// TestOneCopyPerForwardAddress — two rules that forward to one address send
+// it one copy.
+func TestOneCopyPerForwardAddress(t *testing.T) {
+	e, s, _ := ruleEngine(t)
+	ctx := context.Background()
+	for _, w := range []string{"invoice", "billing"} {
+		saveRule(t, s, FilterRule{KeepGoing: true, Conditions: []RuleCondition{{Field: "subject", Op: "contains", Value: w}},
+			Actions: []RuleAction{{Kind: "forward", Arg: "accounts@ledger.example"}}})
+	}
+	tok, _ := s.RequestRuleForward(ctx, ruleBox, "accounts@ledger.example")
+	if _, _, err := s.ConfirmRuleForward(ctx, tok); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.DeliverInbound("v@vendor.example", ruleBox, []byte("From: v@vendor.example\r\nSubject: billing invoice\r\n\r\nx")); err != nil {
+		t.Fatal(err)
+	}
+	if d, _, _ := e.queue.ProcessDue(ctx, time.Now().Add(time.Hour)); d != 1 {
+		t.Fatalf("%d copies sent to one address, want 1", d)
+	}
+}
+
+// TestABodyIsLoweredOnceForAllItsConditions — the body conditions of every
+// rule read one lowered copy of the message, made at the first of them: a
+// message seen with a copy already made is read from that copy, not again.
+func TestABodyIsLoweredOnceForAllItsConditions(t *testing.T) {
+	m := &ruleMessage{raw: []byte("From: a@b.c\r\nSubject: s\r\n\r\nSome INVOICE text\r\n")}
+	if !matchCondition(RuleCondition{Field: "body", Op: "contains", Value: "invoice"}, m) {
+		t.Fatal("the body condition did not match")
+	}
+	if !m.bodyRead || !strings.Contains(m.body, "some invoice text") {
+		t.Fatalf("the lowered body kept is %q", m.body)
+	}
+	m.body = "only the kept copy says this"
+	if !matchCondition(RuleCondition{Field: "body", Op: "contains", Value: "kept copy"}, m) {
+		t.Fatal("a second body condition lowered the message again instead of reading the kept copy")
 	}
 }

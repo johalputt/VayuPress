@@ -21,6 +21,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   link. A rejected message is not stored, and the sending server is told so
   while it is still connected, with a fixed reply that never repeats your
   rule's words. Rules made before keep working as they were.
+- **Rules are written in Mail's Settings, in words.** Settings › Rules lists
+  each rule as a sentence, in its order, with Edit, Up, Down, a switch and
+  Delete. The editor takes up to three conditions and three actions. Test on
+  recent mail shows which of your last 500 messages a rule would have
+  caught, without saving it; Save and run on existing mail applies it to
+  your Inbox as it stands. The link that confirms a forward opens a page
+  that only asks, and its button confirms, so a mail scanner that opens
+  links cannot start a forward.
+
+### Security
+
+- **A forward's confirmation is bounded.** Its link works for a week, and
+  once. Saving a rule again does not mail its address again within the
+  day, and one mailbox can ask at most five addresses a day, so a rule
+  cannot be used to mail a stranger over and over from your domain.
+- **A deleted mailbox's confirmed forwards go with it.** An address given
+  again no longer inherits the addresses that agreed to take its last
+  holder's mail.
+- **A message is read once for all of a mailbox's body rules,** so a long
+  message sent to a mailbox with many rules costs one reading, not one per
+  rule. Two rules forwarding to one address send it one copy.
 
 ## [3.18.34] — 2026-11-08
 
