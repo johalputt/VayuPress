@@ -489,6 +489,10 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/pricing", a.handlePricingPage)
 	// Built-in legal page: the VayuMail app privacy policy (Google Play link).
 	r.Get("/vayumail/privacy", a.handleVayuMailPrivacy)
+	// A mail rule's forward, confirmed by the address it sends to: the GET
+	// only asks, the POST confirms (vayuos_mail_rules.go).
+	r.Get("/vayumail/forward/confirm", a.handleRuleForwardConfirm)
+	r.Post("/vayumail/forward/confirm", a.handleRuleForwardConfirm)
 	r.Get("/api/v1/tiers", a.handleTiersPublic)
 	// Public author profile pages.
 	r.Get("/author/{id}", a.handlePublicAuthor)

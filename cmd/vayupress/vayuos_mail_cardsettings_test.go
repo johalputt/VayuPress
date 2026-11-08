@@ -63,7 +63,7 @@ func TestEveryPerMailboxSettingLivesOnItsOwnPage(t *testing.T) {
 		"Forward a copy to",                          // forwarding sub-section
 		"Vacation autoresponder",                     // vacation sub-section
 		"<span class=\"field-label\">Aliases</span>", // aliases sub-section
-		"Filter rules",                               // filters sub-section
+		`<span class="field-label">Rules</span>`,     // the rules sub-section
 		`hx-post="/os/vayumail/aliases/action"`,      // per-mailbox alias endpoint
 		`hx-post="/os/vayumail/filters/action"`,      // per-mailbox filter endpoint
 		`name="target" value="dana@example.com"`,     // alias target fixed to this mailbox

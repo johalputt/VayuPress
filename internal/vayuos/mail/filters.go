@@ -546,6 +546,61 @@ func (e *Engine) RuleMatches(rd Reader, r FilterRule, limit int) (matched []Stor
 	return matched, looked, nil
 }
 
+// RunRule does to the mail already in rd's Inbox what a rule would have done
+// on arrival, up to limit messages: everything but forward and reject, which
+// are about mail as it comes in. It reports how many messages it changed.
+func (e *Engine) RunRule(rd Reader, r FilterRule, limit int) (int, error) {
+	matched, _, err := e.RuleMatches(rd, r, limit)
+	if err != nil {
+		return 0, err
+	}
+	changed := 0
+	for _, sm := range matched {
+		id, did := sm.ID, false
+		for _, a := range r.Actions {
+			switch a.Kind {
+			case "markread":
+				if nid, err := e.MarkRead(rd, "Inbox", id); err == nil {
+					id, did = nonEmpty(nid, id), true
+				}
+			case "pin":
+				if nid, err := e.SetPinned(rd, "Inbox", id, true); err == nil {
+					id, did = nonEmpty(nid, id), true
+				}
+			case "label":
+				if sm.MessageID != "" && e.SetLabel(rd, sm.MessageID, a.Arg, true) == nil {
+					did = true
+				}
+			}
+		}
+		// A move goes last: it takes the message out of the Inbox, where the
+		// other actions find it.
+		for _, a := range r.Actions {
+			to := a.Arg
+			if a.Kind == "delete" {
+				to = "Trash"
+			} else if a.Kind != "move" {
+				continue
+			}
+			if e.MoveMessage(rd, id, "Inbox", to) == nil {
+				did = true
+			}
+			break
+		}
+		if did {
+			changed++
+		}
+	}
+	return changed, nil
+}
+
+func nonEmpty(s, otherwise string) string {
+	if s != "" {
+		return s
+	}
+	return otherwise
+}
+
 // ErrNoRuleForward is a forward confirmation that matches nothing waiting.
 var ErrNoRuleForward = errors.New("vayumail: that confirmation link is not valid, or was already used")
 

@@ -64,7 +64,7 @@ func (a *App) mailboxSettingsSections(ctx context.Context, email string, forHold
 	b.WriteString(mailSettingGroup("addresses", "Addresses", addresses...))
 	b.WriteString(mailSettingGroup("rules", "Rules and replies",
 		mailSetting{Name: "Vacation reply", Find: "autoresponder out of office away", HTML: autosaveForm(openSection(a.vayuCardVacation(ctx, ac))), Bare: true},
-		mailSetting{Name: "Filters", Find: "rules sort move", HTML: a.vayuCardFilters(ctx, ac), Bare: true}))
+		mailSetting{Name: "Rules", Find: "rules filters sort move forward reject label", HTML: a.vayuCardFilters(ctx, ac), Bare: true}))
 	privacy := []mailSetting{
 		{Name: "Sign-in attempts", Find: "sign-in name login security", HTML: a.vayuCardSignins(ctx, ac), Bare: true},
 		{Name: "Encryption keys", Find: "pgp openpgp key", HTML: a.vayuCardPGP(ac), Bare: true},

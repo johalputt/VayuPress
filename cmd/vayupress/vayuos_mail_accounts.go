@@ -246,56 +246,6 @@ func (a *App) vayuCardAliases(ctx context.Context, ac vmail.Account) string {
 	return b.String()
 }
 
-// vayuCardFilters renders a mailbox's server-side delivery rules inside its card
-// (first match wins). Add/delete refresh the whole accounts list in place.
-func (a *App) vayuCardFilters(ctx context.Context, ac vmail.Account) string {
-	accts := a.vayuMail.Accounts()
-	rules, _ := accts.FiltersFor(ctx, ac.Email)
-	he := html.EscapeString(ac.Email)
-	post := ` hx-post="/os/vayumail/filters/action" hx-target="#vm-accounts-list" hx-swap="innerHTML"`
-
-	state := `<span class="muted text-xs">none</span>`
-	if len(rules) > 0 {
-		state = `<span class="vm-count">` + strconv.Itoa(len(rules)) + `</span>`
-	}
-
-	var b strings.Builder
-	b.WriteString(`<details class="vm-ooo vm-acct__sub"><summary><span class="field-label">Filter rules</span> ` + state + `</summary>`)
-	b.WriteString(`<p class="muted text-xs">Applied at delivery, <strong>first match wins</strong>. Rules filing into Junk or Trash suppress auto-forward and the autoresponder.</p>`)
-	b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>#</th><th>When</th><th>Then</th><th></th></tr></thead><tbody>`)
-	if len(rules) == 0 {
-		b.WriteString(`<tr><td colspan="4" class="muted">No rules yet.</td></tr>`)
-	}
-	for i, rl := range rules {
-		then := ""
-		switch rl.Action {
-		case "move":
-			then = "move to " + html.EscapeString(rl.Target)
-		case "markread":
-			then = "mark as read"
-		case "pin":
-			then = "pin"
-		}
-		b.WriteString(`<tr><td class="muted">` + strconv.Itoa(i+1) + `</td><td>` + html.EscapeString(rl.Field) + ` contains <span class="mono">` + html.EscapeString(rl.Contains) + `</span></td><td>` + then + `</td><td>` +
-			`<button type="button" class="btn btn--sm btn--danger"` + post + hxVals("op", "delete", "email", ac.Email, "id", strconv.FormatInt(rl.ID, 10)) + `>Delete</button></td></tr>`)
-	}
-	b.WriteString(`</tbody></table></div>`)
-	b.WriteString(`<form class="vm-row vm-row--end"` + post + `><input type="hidden" name="op" value="create"><input type="hidden" name="email" value="` + he + `">`)
-	b.WriteString(`<label class="field"><span class="field-label">When</span><select class="input input--sm" name="field"><option value="from">From</option><option value="to">To/Cc</option><option value="subject">Subject</option></select></label>`)
-	b.WriteString(`<label class="field vm-grow"><span class="field-label">contains</span><input class="input input--sm" type="text" name="contains" placeholder="newsletter@" required></label>`)
-	b.WriteString(`<label class="field"><span class="field-label">Then</span><select class="input input--sm" name="action">`)
-	for _, f := range vmail.StandardFolders {
-		if strings.EqualFold(f, "Inbox") || strings.EqualFold(f, "Snoozed") {
-			continue
-		}
-		b.WriteString(`<option value="move:` + html.EscapeString(f) + `">Move to ` + html.EscapeString(f) + `</option>`)
-	}
-	b.WriteString(`<option value="markread">Mark as read</option><option value="pin">Pin</option></select></label>`)
-	b.WriteString(`<button class="btn btn--primary btn--sm" type="submit">Add rule</button></form>`)
-	b.WriteString(`</details>`)
-	return b.String()
-}
-
 // vayuAccountCard renders one mailbox as a collapsible <details> card: a scannable
 // summary (address, role, status, 2FA, storage) with every control revealed on
 // expand. Inline controls are HTMX; the prompt-driven ones keep their data-*

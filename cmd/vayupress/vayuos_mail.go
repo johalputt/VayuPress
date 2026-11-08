@@ -1081,53 +1081,6 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	writeOSHTML(w, r, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body)))
 }
 
-// handleVayuOSFilterAction creates or deletes a delivery rule and returns the
-// refreshed card (HTMX swap). An administrator, or the mailbox's holder (3cl).
-func (a *App) handleVayuOSFilterAction(w http.ResponseWriter, r *http.Request) {
-	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
-		return
-	}
-	_ = r.ParseForm()
-	accts := a.vayuMail.Accounts()
-	email := strings.TrimSpace(r.FormValue("email"))
-	if !a.mayChangeMailboxSettings(r, email) {
-		code, msg := a.settingsRefusal(email)
-		writeAPIError(w, r, http.StatusForbidden, code, msg, "")
-		return
-	}
-	var opErr error
-	switch r.FormValue("op") {
-	case "create":
-		action, target := r.FormValue("action"), ""
-		if f, ok := strings.CutPrefix(action, "move:"); ok {
-			action, target = "move", f
-		}
-		opErr = accts.CreateFilter(r.Context(), vmail.FilterRule{
-			Mailbox: email, Field: r.FormValue("field"),
-			Contains: r.FormValue("contains"), Action: action, Target: target,
-		})
-		if opErr == nil {
-			dbpkg.AuditLog("vayumail.filter.create", dbpkg.AuditActor(r), email, r.FormValue("field")+"~"+r.FormValue("contains"))
-		}
-	case "delete":
-		id, _ := strconv.ParseInt(r.FormValue("id"), 10, 64)
-		opErr = accts.DeleteFilter(r.Context(), email, id)
-		if opErr == nil {
-			dbpkg.AuditLog("vayumail.filter.delete", dbpkg.AuditActor(r), email, r.FormValue("id"))
-		}
-	default:
-		opErr = errors.New("unknown operation")
-	}
-	// Filters are driven from the mailbox's own card (list) or its settings page;
-	// acctRefresh returns whichever surface the control lives on.
-	card := a.acctRefresh(r, email)
-	if opErr != nil {
-		card = saCallout("danger", html.EscapeString(opErr.Error())) + card
-	}
-	writeOSHTML(w, r, card)
-}
-
 // handleVayuOSAutoreplyAction saves a mailbox's autoresponder settings and
 // returns the refreshed card (HTMX swap). An administrator, or the mailbox's
 // holder (3cl).
