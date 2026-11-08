@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.35] — 2026-11-08
+
+Mail rules can test several things at once and do several things in the order you set, written and tried in Settings › Rules before they run: forward to an address that has confirmed, reject at the door, label, move, mark read, pin or delete, run on mail already there, and see what a rule would catch first.
+
 ### Added
 
 - **Mail rules do more, in the order you set.** A rule can now test several
