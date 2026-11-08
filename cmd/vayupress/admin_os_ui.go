@@ -705,6 +705,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/autoreply/action", a.handleVayuOSAutoreplyAction)
 		// Server-side filter rules (admin-only; HTMX card on the Accounts page).
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/filters/action", a.handleVayuOSFilterAction)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/calendar", a.handleVayuOSCalendar)
+		pr.Get("/os/vayumail/calendar/event", a.handleVayuOSCalendarEvent)
+		pr.Get("/os/vayumail/calendar/edit", a.handleVayuOSCalendarEdit)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/calendar/action", a.handleVayuOSCalendarAction)
 		// Outbox: HTMX auto-refresh fragment + per-message Resend/Delete/Retry-all.
 		pr.Get("/os/vayumail/outbox/fragment", a.handleVayuOSOutboxFragment)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/outbox/action", a.handleVayuOSOutboxAction)
@@ -1680,6 +1684,10 @@ type osMailSide struct {
 	// Own: the session reads its own mailbox, not one an administrator
 	// opened; what only a holder may do (seal a message as it) needs it.
 	Own bool
+	// Place is the holder's place beside Mail that is open ("calendar"),
+	// "" for Mail itself; PlaceSide is that place's sidebar, drawn in place
+	// of the folders.
+	Place, PlaceSide string
 }
 
 // osSite is one hosted site in the switcher.

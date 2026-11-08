@@ -396,6 +396,10 @@ func saMailSide(m *osMailSide, more string) string {
 	} else {
 		b.WriteString(`<div class="mx-account">` + m.Avatar + who + `</div>`)
 	}
+	if m.PlaceSide != "" {
+		b.WriteString(m.PlaceSide)
+		return b.String()
+	}
 	if m.Writable {
 		// The one filled button in Mail: what is done here most after
 		// reading. The list's pencil stays for the phone, whose folders are a
@@ -450,6 +454,26 @@ func saMailSide(m *osMailSide, more string) string {
 	}
 	b.WriteString(`</div>`)
 	return b.String()
+}
+
+// mailPlaces is Mail's name in the top bar, and for a mailbox's own holder
+// the places beside it: Mail and Calendar. An administrator who opened
+// someone's mailbox sees Mail alone, because a calendar opens only for its
+// holder.
+func mailPlaces(m *osMailSide) string {
+	mail := `/os/vayumail/inbox?user=` + qparam(m.User)
+	if !m.Own {
+		return `<a class="sa-appname" href="` + mail + `">Mail</a>`
+	}
+	place := func(href, icon, label string, on bool) string {
+		cur := ""
+		if on {
+			cur = ` aria-current="page"`
+		}
+		return `<a class="sa-places__a" href="` + href + `"` + cur + `>` + saIcon(icon) + `<span>` + label + `</span></a>`
+	}
+	return `<nav class="sa-places" aria-label="Mail and Calendar">` + place(mail, "mail", "Mail", m.Place == "") +
+		place("/os/vayumail/calendar", "calendar", "Calendar", m.Place == "calendar") + `</nav>`
 }
 
 // mailReadingChoices is where a message opens, as menu items: beside the
@@ -681,7 +705,7 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 	bodyCls := "vp-os"
 	if mailOpen {
 		bodyCls += " sa-mailapp"
-		brand += `<a class="sa-appname" href="/os/vayumail/inbox?user=` + qparam(s.MailSide.User) + `">Mail</a>`
+		brand += mailPlaces(s.MailSide)
 		status = ""
 		if s.MailSide.Search != "" {
 			search = `<div class="sa-topsearch">` + s.MailSide.Search + `</div>` + mailTopTools(s.MailSide, theme)
