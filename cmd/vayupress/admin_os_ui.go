@@ -710,6 +710,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/vayumail/calendar/event", a.handleVayuOSCalendarEvent)
 		pr.Get("/os/vayumail/calendar/edit", a.handleVayuOSCalendarEdit)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/calendar/action", a.handleVayuOSCalendarAction)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/calendar/answer", a.handleVayuOSCalendarAnswer)
 		// Outbox: HTMX auto-refresh fragment + per-message Resend/Delete/Retry-all.
 		pr.Get("/os/vayumail/outbox/fragment", a.handleVayuOSOutboxFragment)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/outbox/action", a.handleVayuOSOutboxAction)

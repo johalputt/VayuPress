@@ -111,9 +111,13 @@ func TestConsoleStylesheetIsServedMinified(t *testing.T) {
 // top bar, the category tabs, the trust line, Settings as one page, the
 // phone's swipe and Compose button, sessions and the checklist, throwaway
 // and sealed messages, which took the sheet to 395,344.
+// Raised to 425,000 on 2026-11-08 for the Calendar beside Mail: its week,
+// month, day and phone list, the event sheet and its editor with repeats and
+// guests, and the invitation card in a message, which took the sheet to
+// 410,684.
 // A budget is discipline, not a limit: raise it on purpose, in this line, when
 // a requirement needs it — never cut a feature to stay under it.
-const consoleCSSBudget = 410_000
+const consoleCSSBudget = 425_000
 
 func TestConsoleStylesheetFitsItsBudget(t *testing.T) {
 	src, err := os.ReadFile("../../static/css/vayuos.css") // #nosec G304 -- repository file

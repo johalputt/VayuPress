@@ -7675,3 +7675,13 @@
 .vp-os[data-ui="still-air"] .cal-day span { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: var(--radius-control); background: var(--surface-2); font: var(--type-label); color: var(--text-2); cursor: pointer; }
 .vp-os[data-ui="still-air"] .cal-day input:checked + span { background: var(--accent-soft); color: var(--accent); }
 .vp-os[data-ui="still-air"] .cal-day input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* An invitation in Mail (vayuos_mail_invite.go): a rule down its side and no
+   box, inside the reader's own card. */
+.vp-os[data-ui="still-air"] .mx-invite { display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-4) 0; padding: var(--space-3) var(--space-4); border-left: 3px solid var(--accent); background: var(--surface-2); }
+.vp-os[data-ui="still-air"] .mx-invite__kind { display: flex; align-items: center; gap: var(--space-2); margin: 0; font: var(--type-label); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .mx-invite__title { margin: 0; font: var(--type-heading); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .mx-invite__row { display: flex; align-items: center; gap: var(--space-2); margin: 0; font: var(--type-body); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .mx-invite__clash { margin: 0; font: var(--type-small); color: var(--danger); }
+.vp-os[data-ui="still-air"] .mx-invite__note { margin: 0; font: var(--type-small); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .mx-invite__acts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.vp-os[data-ui="still-air"] .mx-invite__acts .btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }

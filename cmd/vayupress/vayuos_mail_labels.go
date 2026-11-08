@@ -120,7 +120,7 @@ func (a *App) handleVayuOSLabelsAction(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.Header().Add("HX-Trigger", "vm-mail-changed")
 	}
-	card, ok := a.vayuReaderCard(rd, folder, id, readerView{Pane: true, Peek: true})
+	card, ok := a.vayuReaderCard(rd, folder, id, readerView{Pane: true, Peek: true, Home: a.calendarHome(r)})
 	if !ok {
 		card = vayuReadpaneEmpty("Message not available.")
 	}

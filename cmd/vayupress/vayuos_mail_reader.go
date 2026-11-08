@@ -26,6 +26,9 @@ import (
 // being chosen: it is marked read after two seconds on screen, by the page).
 type readerView struct {
 	Pane, HTML, Images, Peek bool
+	// Home is the zone an invitation's time is read in: the holder's, from
+	// the request; the install's when nil.
+	Home *time.Location
 }
 
 // vayuReaderCard renders one message. It reads the message and, unless the
@@ -370,6 +373,13 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		if o := vmail.ParseListUnsubscribe(stored); o.Any() && received && !readOnly {
 			c.WriteString(mailUnsubscribeLine(user, folder, id, o))
 		}
+	}
+	if received {
+		home := v.Home
+		if home == nil {
+			home = config.SiteLocation()
+		}
+		c.WriteString(a.inviteCard(rd, folder, id, raw, home, ""))
 	}
 	c.WriteString(`<div class="mx-msg__body">` + a.mailBodyHTML(pm, raw, v) + `</div>`)
 

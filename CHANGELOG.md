@@ -31,6 +31,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   maybe or not going. An answer counts only from the guest it is for, and
   your own reminders are never sent to them. An event someone else invited
   you to keeps its guests as they set them.
+- **Answer invitations in Mail.** An invitation someone sends you shows at
+  the top of the message: what, when in your own time zone, where, from
+  whom, and what you already have at that time, with Accept, Maybe and
+  Decline. Your answer puts the event in your calendar and tells the
+  organizer from your address; nothing goes into your calendar before you
+  answer, so an invitation from a stranger is only a message until you say
+  otherwise. A later version of the invitation replaces an earlier one, and
+  a declined event is kept and not shown. A cancellation offers to take the
+  event out, when it came from the event's own organizer. Only you see the
+  card: an administrator who opens your mail does not.
 
 ### Security
 

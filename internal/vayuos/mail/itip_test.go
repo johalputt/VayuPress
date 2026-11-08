@@ -288,3 +288,149 @@ func TestTheGuestListIsAddresses(t *testing.T) {
 		t.Error("more than the most guests were taken")
 	}
 }
+
+func inviteMail(from, method, uid string, seq int, start string, extra ...string) []byte {
+	return []byte("From: " + from + "\r\nTo: ankush@example.com\r\nSubject: Invitation\r\nContent-Type: multipart/alternative; boundary=b\r\n\r\n" +
+		"--b\r\nContent-Type: text/plain\r\n\r\nCome.\r\n--b\r\nContent-Type: text/calendar; method=" + method + "; charset=utf-8\r\n\r\n" +
+		"BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//x//x//EN\r\nMETHOD:" + method + "\r\nBEGIN:VEVENT\r\nUID:" + uid + "\r\nDTSTAMP:20261108T100000Z\r\n" +
+		"SEQUENCE:" + strconv.Itoa(seq) + "\r\nSUMMARY:Board\r\nDTSTART:" + start + "\r\nDURATION:PT1H\r\nORGANIZER:mailto:boss@other.example\r\n" +
+		"ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:ankush@example.com\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:cfo@other.example\r\n" + strings.Join(extra, "") + "END:VEVENT\r\nEND:VCALENDAR\r\n--b--\r\n")
+}
+
+// deliverAndFind delivers a message to the holder and returns its id.
+func deliverAndFind(t *testing.T, e *Engine, from string, raw []byte) string {
+	t.Helper()
+	before, _ := e.maildir.ListFolder("example.com", "ankush", "Inbox")
+	if _, err := e.DeliverInbound(from, calBox, raw); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := e.maildir.ListFolder("example.com", "ankush", "Inbox")
+	for _, m := range after {
+		seen := false
+		for _, b := range before {
+			seen = seen || b.ID == m.ID
+		}
+		if !seen {
+			return m.ID
+		}
+	}
+	t.Fatal("the message did not arrive")
+	return ""
+}
+
+func novemberEvents(t *testing.T, e *Engine) []CalEvent {
+	t.Helper()
+	from, to := month(2026, 11)
+	return between(t, e, from, to, time.UTC)
+}
+
+// TestAnInvitationWaitsForItsAnswer — shown, not in the calendar; accepted,
+// it is, and the organizer is told from the holder's address; declined, it
+// is kept and not shown.
+func TestAnInvitationWaitsForItsAnswer(t *testing.T) {
+	e, s, flush := itipEngine(t)
+	rd := ReadAsOwner("ankush")
+	id := deliverAndFind(t, e, "boss@other.example", inviteMail("Boss <boss@other.example>", "REQUEST", "board@other", 0, "20261112T090000Z"))
+	raw, _ := e.ReadFolderMessage(rd, "Inbox", id)
+	inv, ok := e.InvitationIn(rd, raw, time.UTC)
+	if !ok || inv.Method != "REQUEST" || inv.Organizer.Email != "boss@other.example" || inv.Stored || inv.Event.Summary != "Board" {
+		t.Fatalf("the invitation read as %+v %v", inv, ok)
+	}
+	if evs := novemberEvents(t, e); len(evs) != 0 {
+		t.Fatalf("an unanswered invitation is in the calendar: %+v", evs)
+	}
+	if err := e.AnswerInvitation(rd, "Inbox", id, "accepted"); err != nil {
+		t.Fatal(err)
+	}
+	if evs := novemberEvents(t, e); len(evs) != 1 || evs[0].Start.Day() != 12 {
+		t.Fatalf("after accepting: %+v", evs)
+	}
+	sent := flush()
+	if len(sent) != 1 || sent[0].to[0] != "boss@other.example" {
+		t.Fatalf("sent %+v", sent)
+	}
+	reply := unfold(sent[0].raw)
+	for _, want := range []string{"Subject: Accepted: Board", "From: ankush@example.com", "METHOD:REPLY", "UID:board@other", "ATTENDEE;PARTSTAT=ACCEPTED:mailto:ankush@example.com", "method=REPLY"} {
+		if !strings.Contains(reply, want) {
+			t.Errorf("the answer lacks %q", want)
+		}
+	}
+	if strings.Count(reply, "ATTENDEE") != 1 {
+		t.Error("the answer speaks for more than the holder")
+	}
+	if err := e.AnswerInvitation(rd, "Inbox", id, "declined"); err != nil {
+		t.Fatal(err)
+	}
+	if evs := novemberEvents(t, e); len(evs) != 0 {
+		t.Fatalf("a declined event is shown: %+v", evs)
+	}
+	if inv, _ := e.InvitationIn(rd, raw, time.UTC); !inv.Stored || inv.Answer != "DECLINED" {
+		t.Fatalf("after declining: %+v", inv)
+	}
+	if _, err := s.eventByUID(context.Background(), calBox, "board@other"); err != nil {
+		t.Error("a declined event was not kept")
+	}
+}
+
+// TestALaterVersionOfAnInvitationWins — answering the earlier one after it
+// changes only the answer.
+func TestALaterVersionOfAnInvitationWins(t *testing.T) {
+	e, _, _ := itipEngine(t)
+	rd := ReadAsOwner("ankush")
+	first := deliverAndFind(t, e, "boss@other.example", inviteMail("boss@other.example", "REQUEST", "b@o", 0, "20261112T090000Z"))
+	moved := deliverAndFind(t, e, "boss@other.example", inviteMail("boss@other.example", "REQUEST", "b@o", 1, "20261113T150000Z"))
+	if err := e.AnswerInvitation(rd, "Inbox", moved, "tentative"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.AnswerInvitation(rd, "Inbox", first, "accepted"); err != nil {
+		t.Fatal(err)
+	}
+	evs := novemberEvents(t, e)
+	if len(evs) != 1 || evs[0].Start.Day() != 13 || evs[0].Start.Hour() != 15 {
+		t.Fatalf("the earlier version replaced the later: %+v", evs)
+	}
+}
+
+// TestACancellationIsTheOrganizers — from them it takes the event out; from
+// anyone else it changes nothing.
+func TestACancellationIsTheOrganizers(t *testing.T) {
+	e, _, _ := itipEngine(t)
+	rd := ReadAsOwner("ankush")
+	inv := deliverAndFind(t, e, "boss@other.example", inviteMail("boss@other.example", "REQUEST", "c@o", 0, "20261112T090000Z"))
+	if err := e.AnswerInvitation(rd, "Inbox", inv, "accepted"); err != nil {
+		t.Fatal(err)
+	}
+	forged := deliverAndFind(t, e, "mallory@evil.example", inviteMail("mallory@evil.example", "CANCEL", "c@o", 1, "20261112T090000Z"))
+	if err := e.RemoveCancelled(rd, "Inbox", forged); err == nil {
+		t.Fatal("a cancellation from someone else was taken")
+	}
+	if evs := novemberEvents(t, e); len(evs) != 1 {
+		t.Fatal("a cancellation from someone else removed the event")
+	}
+	real := deliverAndFind(t, e, "boss@other.example", inviteMail("Boss <boss@other.example>", "CANCEL", "c@o", 1, "20261112T090000Z"))
+	if err := e.RemoveCancelled(rd, "Inbox", real); err != nil {
+		t.Fatal(err)
+	}
+	if evs := novemberEvents(t, e); len(evs) != 0 {
+		t.Fatalf("after the organizer's cancellation: %+v", evs)
+	}
+}
+
+// TestAnInvitationIsTheHoldersToAnswer — an administrator's reader sees none
+// and answers none; the holder's own invitation to others has no card.
+func TestAnInvitationIsTheHoldersToAnswer(t *testing.T) {
+	e, _, _ := itipEngine(t)
+	id := deliverAndFind(t, e, "boss@other.example", inviteMail("boss@other.example", "REQUEST", "d@o", 0, "20261112T090000Z"))
+	op := ReadAsOperator("ankush", "admin@example.com")
+	raw, _ := e.ReadFolderMessage(ReadAsOwner("ankush"), "Inbox", id)
+	if _, ok := e.InvitationIn(op, raw, time.UTC); ok {
+		t.Error("an administrator is shown the holder's invitation")
+	}
+	if err := e.AnswerInvitation(op, "Inbox", id, "accepted"); !errors.Is(err, ErrCalendarHolderOnly) {
+		t.Errorf("an administrator answered: %v", err)
+	}
+	own := []byte(strings.ReplaceAll(string(inviteMail("ankush@example.com", "REQUEST", "e@o", 0, "20261112T090000Z")), "ORGANIZER:mailto:boss@other.example", "ORGANIZER:mailto:ankush@example.com"))
+	if _, ok := e.InvitationIn(ReadAsOwner("ankush"), own, time.UTC); ok {
+		t.Error("the holder's own invitation has a card")
+	}
+}

@@ -161,6 +161,13 @@ type calReader struct {
 	home  *time.Location
 	vtz   map[string]*ical.Component
 	zones map[string]*time.Location
+	// self is the holder's address: an event they declined is kept, as
+	// their phone keeps it, and not shown.
+	self string
+}
+
+func (c *calReader) declined(comp *ical.Component) bool {
+	return c.self != "" && partStatOfSelf(comp, c.self) == "DECLINED"
 }
 
 func newCalReader(cal *ical.Calendar, home *time.Location) *calReader {
@@ -371,7 +378,7 @@ func (c *calReader) occurrences(cal *ical.Calendar, from, to time.Time, budget *
 	// it has been moved to.
 	for unix, ov := range overrides {
 		ev, _, _, err := c.event(ov)
-		if err != nil || cancelled(ov) || !overlaps(ev.Start, ev.End, from, to) {
+		if err != nil || cancelled(ov) || c.declined(ov) || !overlaps(ev.Start, ev.End, from, to) {
 			continue
 		}
 		ev.Instance = time.Unix(unix, 0).In(ev.Start.Location())
@@ -380,7 +387,7 @@ func (c *calReader) occurrences(cal *ical.Calendar, from, to time.Time, budget *
 		}
 		out = append(out, ev)
 	}
-	if master == nil || cancelled(master) {
+	if master == nil || cancelled(master) || c.declined(master) {
 		return out
 	}
 	base, span, days, err := c.event(master)
@@ -505,7 +512,9 @@ func (e *Engine) CalendarBetween(rd Reader, from, to time.Time, home *time.Locat
 		if err != nil {
 			continue
 		}
-		out = append(out, newCalReader(cal, home).occurrences(cal, from, to, &budget)...)
+		c := newCalReader(cal, home)
+		c.self = mbox
+		out = append(out, c.occurrences(cal, from, to, &budget)...)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		if !out[i].Start.Equal(out[j].Start) {

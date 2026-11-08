@@ -514,3 +514,255 @@ func (e *Engine) applyCalendarReply(mbox string, raw []byte) bool {
 	_, err = e.accounts.davPut(ctx, normEmail(mbox), davEvent, o.Name, textOf(master, ical.PropUID), out, davCondition{ifMatch: o.ETag})
 	return err == nil
 }
+
+// ── Invitations the holder receives ─────────────────────────────────────────
+
+// Invitation is an invitation a message carries, as the reader shows it.
+// Nothing of it is in the holder's calendar until they answer it: anyone
+// can send one, and a calendar that took them in unasked would be a way to
+// put anything in front of the holder.
+type Invitation struct {
+	Method    string // REQUEST, or CANCEL for an event called off
+	Event     CalEvent
+	Organizer CalAttendee
+	// Answer is the holder's answer so far, from their calendar: ACCEPTED,
+	// TENTATIVE or DECLINED, "" when they have not answered.
+	Answer string
+	// Stored: the event is in the holder's calendar.
+	Stored bool
+}
+
+// invitationOf reads the iTIP object a message carries: its method, the
+// calendar and its event, when it is a REQUEST or a CANCEL from someone
+// other than mbox about one event.
+func invitationOf(raw []byte, mbox string) (string, *ical.Calendar, *ical.Component, bool) {
+	_, data := calendarPartOf(raw)
+	if data == nil {
+		return "", nil, nil, false
+	}
+	cal, err := ical.NewDecoder(bytes.NewReader(data)).Decode()
+	if err != nil {
+		return "", nil, nil, false
+	}
+	method := strings.ToUpper(textOf(cal.Component, ical.PropMethod))
+	if method != "REQUEST" && method != "CANCEL" {
+		return "", nil, nil, false
+	}
+	var first *ical.Component
+	for _, ch := range cal.Children {
+		if ch.Name == ical.CompEvent {
+			first = ch
+			break
+		}
+	}
+	if first == nil || textOf(first, ical.PropUID) == "" {
+		return "", nil, nil, false
+	}
+	org := first.Props.Get(ical.PropOrganizer)
+	if org == nil || mailtoOf(org.Value) == normEmail(mbox) {
+		return "", nil, nil, false
+	}
+	return method, cal, first, true
+}
+
+// partStatOfSelf is mbox's own answer on an event, "" when it has none.
+func partStatOfSelf(comp *ical.Component, mbox string) string {
+	for _, p := range comp.Props.Values(ical.PropAttendee) {
+		if mailtoOf(p.Value) == normEmail(mbox) {
+			return strings.ToUpper(p.Params.Get(ical.ParamParticipationStatus))
+		}
+	}
+	return ""
+}
+
+// InvitationIn is the invitation a message carries for rd's holder, read in
+// their zone; ok is false when it carries none for them.
+func (e *Engine) InvitationIn(rd Reader, raw []byte, home *time.Location) (Invitation, bool) {
+	mbox, err := e.calendarOf(rd)
+	if err != nil {
+		return Invitation{}, false
+	}
+	method, cal, first, ok := invitationOf(raw, mbox)
+	if !ok {
+		return Invitation{}, false
+	}
+	ev, _, _, err := newCalReader(cal, home).event(first)
+	if err != nil {
+		return Invitation{}, false
+	}
+	inv := Invitation{Method: method, Event: ev, Organizer: ev.Organizer}
+	if o, err := e.accounts.eventByUID(context.Background(), mbox, ev.UID); err == nil {
+		inv.Stored = true
+		if stored, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode(); err == nil {
+			if m, _ := parts(stored); m != nil {
+				inv.Answer = partStatOfSelf(m, mbox)
+			}
+		}
+	}
+	return inv, true
+}
+
+// ErrNotAnInvitation is an answer to a message that carries no invitation
+// for the holder.
+var ErrNotAnInvitation = errors.New("vayumail: this message carries no invitation for you")
+
+// AnswerInvitation answers the invitation in rd's message folder/id:
+// ACCEPTED, TENTATIVE or DECLINED. The event goes into the holder's calendar
+// with their answer on it (a later version of it than the one stored
+// replaces it; an earlier one changes only the answer), and the organizer is
+// sent the answer from the holder's address.
+func (e *Engine) AnswerInvitation(rd Reader, folder, id, answer string) error {
+	mbox, err := e.calendarOf(rd)
+	if err != nil {
+		return err
+	}
+	answer = strings.ToUpper(answer)
+	if answer != "ACCEPTED" && answer != "TENTATIVE" && answer != "DECLINED" {
+		return errors.New("vayumail: an answer is accept, maybe or decline")
+	}
+	raw, err := e.ReadFolderMessage(rd, folder, id)
+	if err != nil {
+		return err
+	}
+	method, cal, first, ok := invitationOf(raw, mbox)
+	if !ok || method != "REQUEST" {
+		return ErrNotAnInvitation
+	}
+	ctx := context.Background()
+	uid := textOf(first, ical.PropUID)
+	seqOf := func(c *ical.Component) int {
+		if p := c.Props.Get(ical.PropSequence); p != nil {
+			n, _ := p.Int()
+			return n
+		}
+		return 0
+	}
+	setSelf := func(c *ical.Component) {
+		props := c.Props[ical.PropAttendee]
+		for i := range props {
+			if mailtoOf(props[i].Value) == mbox {
+				props[i].Params.Set(ical.ParamParticipationStatus, answer)
+				props[i].Params.Del(ical.ParamRSVP)
+				return
+			}
+		}
+		p := ical.NewProp(ical.PropAttendee)
+		p.Value = "mailto:" + mbox
+		p.Params.Set(ical.ParamParticipationStatus, answer)
+		c.Props.Add(p)
+	}
+	// The calendar's copy: the invitation without its method.
+	keep := ical.NewCalendar()
+	keep.Props.SetText(ical.PropProductID, calProdID)
+	keep.Props.SetText(ical.PropVersion, "2.0")
+	for _, ch := range cal.Children {
+		if ch.Name == ical.CompEvent || ch.Name == ical.CompTimezone {
+			keep.Children = append(keep.Children, ch)
+		}
+	}
+	name, cond := "", davCondition{ifNoneMatch: "*"}
+	if o, err := e.accounts.eventByUID(ctx, mbox, uid); err == nil {
+		name, cond = o.Name, davCondition{ifMatch: o.ETag}
+		if stored, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode(); err == nil {
+			if m, _ := parts(stored); m != nil && seqOf(m) > seqOf(first) {
+				keep = stored // a later version is already here
+			}
+		}
+	} else {
+		id, err := randomHex(16)
+		if err != nil {
+			return err
+		}
+		name = id + ".ics"
+	}
+	for _, ch := range keep.Children {
+		if ch.Name == ical.CompEvent {
+			setSelf(ch)
+		}
+	}
+	data, err := encodeCal(keep)
+	if err != nil {
+		return err
+	}
+	if _, err := e.accounts.davPut(ctx, mbox, davEvent, name, uid, data, cond); err != nil {
+		return err
+	}
+	// The answer: the event named, and the holder alone, with their answer.
+	reply := ical.NewComponent(ical.CompEvent)
+	for _, n := range []string{ical.PropUID, ical.PropSequence, ical.PropDateTimeStart, ical.PropDateTimeEnd, ical.PropRecurrenceID, ical.PropSummary, ical.PropOrganizer} {
+		if p := first.Props.Get(n); p != nil {
+			reply.Props.Set(p)
+		}
+	}
+	reply.Props.SetDateTime(ical.PropDateTimeStamp, time.Now().UTC().Truncate(time.Second))
+	me := ical.NewProp(ical.PropAttendee)
+	me.Value = "mailto:" + mbox
+	me.Params.Set(ical.ParamParticipationStatus, answer)
+	reply.Props.Add(me)
+	out := ical.NewCalendar()
+	out.Children = []*ical.Component{reply}
+	obj, err := itipObject(out, "REPLY")
+	if err != nil {
+		return err
+	}
+	word := map[string]string{"ACCEPTED": "Accepted", "TENTATIVE": "Maybe", "DECLINED": "Declined"}[answer]
+	title := nonEmptyText(textOf(first, ical.PropSummary), "your event")
+	text := mbox + " " + map[string]string{"ACCEPTED": "is going to", "TENTATIVE": "may go to", "DECLINED": "is not going to"}[answer] + " " + title + ".\n"
+	_, err = e.sendMail(ctx, mbox, []string{mailtoOf(first.Props.Get(ical.PropOrganizer).Value)}, word+": "+strings.ReplaceAll(title, "\n", " "), "", text, "", false, &calendarPart{method: "REPLY", data: obj})
+	return err
+}
+
+// RemoveCancelled takes out of rd's calendar the event (or the occurrence)
+// the cancellation in folder/id calls off, when it came from the event's
+// own organizer.
+func (e *Engine) RemoveCancelled(rd Reader, folder, id string) error {
+	mbox, err := e.calendarOf(rd)
+	if err != nil {
+		return err
+	}
+	raw, err := e.ReadFolderMessage(rd, folder, id)
+	if err != nil {
+		return err
+	}
+	method, cal, first, ok := invitationOf(raw, mbox)
+	if !ok || method != "CANCEL" {
+		return ErrNotAnInvitation
+	}
+	from, err := netmail.ParseAddress(decodeMIMEWord(headerValue(raw, "From")))
+	organizer := mailtoOf(first.Props.Get(ical.PropOrganizer).Value)
+	if err != nil || normEmail(from.Address) != organizer {
+		return errors.New("vayumail: this cancellation is not from the event's organizer")
+	}
+	ctx := context.Background()
+	o, err := e.accounts.eventByUID(ctx, mbox, textOf(first, ical.PropUID))
+	if err != nil {
+		return err
+	}
+	stored, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
+	if err != nil {
+		return err
+	}
+	master, _ := parts(stored)
+	if master == nil || mailtoOf(textOf(master, ical.PropOrganizer)) != organizer {
+		return errors.New("vayumail: this cancellation is not from the event's organizer")
+	}
+	rid := first.Props.Get(ical.PropRecurrenceID)
+	if rid == nil {
+		return e.accounts.davDelete(ctx, mbox, davEvent, o.Name, davCondition{ifMatch: o.ETag})
+	}
+	// One occurrence called off: an exception date on the series.
+	c := newCalReader(cal, time.UTC)
+	at, _, err := c.time(rid)
+	if err != nil {
+		return err
+	}
+	ex := ical.NewProp(ical.PropExceptionDates)
+	newCalReader(stored, time.UTC).setInstant(ex, master, at)
+	master.Props.Add(ex)
+	data, err := encodeCal(stored)
+	if err != nil {
+		return err
+	}
+	_, err = e.accounts.davPut(ctx, mbox, davEvent, o.Name, textOf(master, ical.PropUID), data, davCondition{ifMatch: o.ETag})
+	return err
+}
