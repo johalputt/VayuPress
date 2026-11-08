@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.34] — 2026-11-08
+
+A mailbox made private is now sealed to its holder's key: its mail is encrypted on the server and opened only by the holder's password, with a recovery code as the one way back. The VayuMail app can download a whole mailbox, bringing mail in holds a bounded amount in memory and a server to the sizes it declares, and a deleted private mailbox's key leaves with its mail.
+
 ### Security
 
 - **A deleted private mailbox's key leaves with its mail.** Deleting a
