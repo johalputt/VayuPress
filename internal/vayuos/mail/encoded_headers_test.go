@@ -29,7 +29,7 @@ func TestTheListingReadsAnEncodedSubjectAndName(t *testing.T) {
 func TestAFilterMatchesWordsInAFoldedEncodedSubject(t *testing.T) {
 	raw := []byte(strings.ReplaceAll("From: k@bairesdev.example\n"+foldedSubject+"\nBody.\n", "\n", "\r\n"))
 	for _, words := range []string{"resource — added", "our article"} {
-		if !matchFilter(FilterRule{Field: "subject", Contains: words}, raw) {
+		if !ruleMatches(FilterRule{Conditions: []RuleCondition{{Field: "subject", Op: "contains", Value: words}}}, &ruleMessage{raw: raw}) {
 			t.Errorf("a filter on %q did not match the subject", words)
 		}
 	}

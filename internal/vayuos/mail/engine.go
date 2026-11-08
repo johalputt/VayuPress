@@ -981,13 +981,25 @@ func (e *Engine) Start(ctx context.Context) error {
 }
 
 // inboundDeliver files each recipient's copy of a received message locally.
+//
+// A recipient whose rules reject the message stores nothing. The sending
+// server is told only when every recipient rejected it: one answer covers the
+// whole message, so refusing it for one would have it sent again to all.
 func (e *Engine) inboundDeliver(from string, rcpts []string, raw []byte) error {
 	var firstErr error
+	rejected := 0
 	raw = e.sealVerdict(raw)
 	for _, rcpt := range rcpts {
-		if _, derr := e.deliver(from, rcpt, raw, true); derr != nil && firstErr == nil {
+		_, derr := e.deliver(from, rcpt, raw, true)
+		switch {
+		case errors.Is(derr, ErrRejectedByRule):
+			rejected++
+		case derr != nil && firstErr == nil:
 			firstErr = derr
 		}
+	}
+	if firstErr == nil && rejected == len(rcpts) {
+		return ErrRejectedByRule
 	}
 	return firstErr
 }

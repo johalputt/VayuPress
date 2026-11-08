@@ -21,10 +21,10 @@ func TestFilterCRUDAndValidation(t *testing.T) {
 	}
 	// Vocabulary enforcement.
 	bad := []FilterRule{
-		{Mailbox: mbox, Field: "body", Contains: "x", Action: "move", Target: "Archive"}, // bad field
-		{Mailbox: mbox, Field: "from", Contains: "x", Action: "explode"},                 // bad action
-		{Mailbox: mbox, Field: "from", Contains: "x", Action: "move", Target: "Nope"},    // bad folder
-		{Mailbox: mbox, Field: "from", Contains: "", Action: "pin"},                      // empty match
+		{Mailbox: mbox, Field: "colour", Contains: "x", Action: "move", Target: "Archive"}, // bad field
+		{Mailbox: mbox, Field: "from", Contains: "x", Action: "explode"},                   // bad action
+		{Mailbox: mbox, Field: "from", Contains: "x", Action: "move", Target: "Snoozed"},   // a folder rules cannot file into
+		{Mailbox: mbox, Field: "from", Contains: "", Action: "pin"},                        // empty match
 	}
 	for i, r := range bad {
 		if err := s.CreateFilter(ctx, r); err == nil {
@@ -60,7 +60,8 @@ func TestFilterMatching(t *testing.T) {
 		{FilterRule{Field: "from", Contains: "nobody"}, false},     //
 	}
 	for i, c := range cases {
-		if got := matchFilter(c.rule, raw); got != c.want {
+		c.rule.Conditions = []RuleCondition{{Field: c.rule.Field, Op: "contains", Value: c.rule.Contains}}
+		if got := ruleMatches(c.rule, &ruleMessage{raw: raw}); got != c.want {
 			t.Errorf("case %d: match=%v want %v", i, got, c.want)
 		}
 	}

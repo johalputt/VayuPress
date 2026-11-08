@@ -468,6 +468,14 @@ func (s *SMTPServer) handle(conn net.Conn) {
 					msg = append([]byte(pre), clean...)
 				}
 				if herr := s.handler(from, rcpts, msg); herr != nil {
+					reset()
+					// The recipient's own rules refused it: a fixed answer, never
+					// the rule's words, which would tell a stranger what it
+					// looks for.
+					if errors.Is(herr, ErrRejectedByRule) {
+						write("550 5.7.1 Message refused by the recipient")
+						continue
+					}
 					write("451 4.3.0 Message handling failed")
 					continue
 				}

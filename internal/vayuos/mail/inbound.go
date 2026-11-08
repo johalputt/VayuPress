@@ -203,36 +203,49 @@ func (e *Engine) deliver(envelopeFrom, recipientEmail string, raw []byte, stampe
 			return e.maildir.DeliverTo(domain, local, "Junk", raw)
 		}
 	}
-	// Server-side filter rules: first match wins. Mail a rule files into Junk
-	// or Trash behaves like junk-filtered mail — no forward, no autoreply.
+	// The mailbox's own rules (filters.go). Mail a rule files into Junk or
+	// Trash behaves like junk-filtered mail: no forward, no autoreply.
 	addr := local + "@" + domain
-	if rule := e.applyFilters(addr, raw); rule != nil {
-		switch rule.Action {
-		case "move":
-			folder := canonicalFolder(rule.Target)
-			id, err := e.maildir.DeliverTo(domain, local, folder, raw)
-			if err == nil && !strings.EqualFold(folder, "Junk") && !strings.EqualFold(folder, "Trash") {
-				e.forwardCopy(addr, raw)
-				e.maybeAutoReply(envelopeFrom, addr, raw)
-			}
-			return id, err
-		case "markread", "pin":
-			id, err := e.maildir.Deliver(domain, local, raw)
-			if err == nil {
-				if rule.Action == "markread" {
-					if nid, merr := e.MarkRead(ReadAsSystem(local, "filter-rule:markread"), "Inbox", id); merr == nil && nid != "" {
-						id = nid
-					}
-				} else {
-					if nid, perr := e.SetPinned(ReadAsSystem(local, "filter-rule:pin"), "Inbox", id, true); perr == nil && nid != "" {
-						id = nid
-					}
-				}
-				e.forwardCopy(addr, raw)
-				e.maybeAutoReply(envelopeFrom, addr, raw)
-			}
+	if out := e.applyFilters(addr, raw); out.matched {
+		if out.reject {
+			return "", ErrRejectedByRule
+		}
+		var id string
+		var err error
+		folder := "Inbox"
+		if out.folder != "" {
+			folder = out.folder
+			id, err = e.maildir.DeliverTo(domain, local, folder, raw)
+		} else {
+			id, err = e.maildir.Deliver(domain, local, raw)
+		}
+		if err != nil {
 			return id, err
 		}
+		rd := ReadAsSystem(local, "rule")
+		if out.markRead {
+			if nid, merr := e.MarkRead(rd, folder, id); merr == nil && nid != "" {
+				id = nid
+			}
+		}
+		if out.pin {
+			if nid, perr := e.SetPinned(rd, folder, id, true); perr == nil && nid != "" {
+				id = nid
+			}
+		}
+		if mid := headerValue(raw, "Message-ID"); mid != "" {
+			for _, l := range out.labels {
+				_ = e.SetLabel(rd, mid, l, true)
+			}
+		}
+		if !strings.EqualFold(folder, "Junk") && !strings.EqualFold(folder, "Trash") {
+			e.forwardCopy(addr, raw)
+			for _, to := range out.forwards {
+				e.forwardTo(addr, to, raw)
+			}
+			e.maybeAutoReply(envelopeFrom, addr, raw)
+		}
+		return id, nil
 	}
 	id, err := e.maildir.Deliver(domain, local, raw)
 	if err == nil {
@@ -251,15 +264,17 @@ func (e *Engine) forwardCopy(mailbox string, raw []byte) {
 	if e.accounts == nil || e.queue == nil {
 		return
 	}
-	fwd := e.accounts.ForwardFor(context.Background(), mailbox)
-	if fwd == "" || strings.EqualFold(fwd, mailbox) {
-		return
-	}
-	if hasHeader(raw, forwardLoopHeader) {
+	e.forwardTo(mailbox, e.accounts.ForwardFor(context.Background(), mailbox), raw)
+}
+
+// forwardTo relays a copy to one address, loop-safe as forwardCopy is: a
+// message already carrying the forward tag is not forwarded again.
+func (e *Engine) forwardTo(mailbox, to string, raw []byte) {
+	if e.queue == nil || to == "" || strings.EqualFold(to, mailbox) || hasHeader(raw, forwardLoopHeader) {
 		return
 	}
 	tagged := prependHeader(raw, forwardLoopHeader+": "+mailbox)
-	_, _ = e.queue.Enqueue(context.Background(), mailbox, []string{fwd}, tagged)
+	_, _ = e.queue.Enqueue(context.Background(), mailbox, []string{to}, tagged)
 }
 
 // hasHeader reports whether the message's header block contains the named

@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Mail rules do more, in the order you set.** A rule can now test several
+  things at once, all or any of them: who it is from or to, the subject, the
+  body, the sender's domain, an attachment, its size, a mailing list or a
+  header you name, each "contains", "does not contain", "is" or "ends with".
+  It can do several things: move to any folder, label, mark read, pin,
+  forward, reject or delete. Rules run in the order you set; the first that
+  matches decides unless it says to keep going, and any rule can be switched
+  off. A forward starts only after the address it sends to confirms by a
+  link. A rejected message is not stored, and the sending server is told so
+  while it is still connected, with a fixed reply that never repeats your
+  rule's words. Rules made before keep working as they were.
+
 ## [3.18.34] — 2026-11-08
 
 A mailbox made private is now sealed to its holder's key: its mail is encrypted on the server and opened only by the holder's password, with a recovery code as the one way back. The VayuMail app can download a whole mailbox, bringing mail in holds a bounded amount in memory and a server to the sizes it declares, and a deleted private mailbox's key leaves with its mail.
