@@ -7659,6 +7659,7 @@
 .vp-os[data-ui="still-air"] .cal-detail__acts, .vp-os[data-ui="still-air"] .cal-form__acts { display: flex; gap: var(--space-3); }
 .vp-os[data-ui="still-air"] .cal-form__acts { justify-content: flex-end; }
 .vp-os[data-ui="still-air"] .cal-detail__delete { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); padding-top: var(--space-4); border-top: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .cal-note { margin: calc(-1 * var(--space-2)) 0 0; font: var(--type-small); color: var(--text-3); }
 .vp-os[data-ui="still-air"] .cal-form { display: flex; flex-direction: column; gap: var(--space-4); }
 .vp-os[data-ui="still-air"] .cal-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-4); }
 .vp-os[data-ui="still-air"] .cal-when { display: flex; gap: var(--space-2); }

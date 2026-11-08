@@ -477,6 +477,9 @@ func (a *App) handleVayuOSCalendar(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		b.WriteString(saCallout("danger", "The calendar could not be read: "+esc(err.Error())+"."))
 	}
+	if r.URL.Query().Get("note") == "unsent" {
+		b.WriteString(saCallout("warn", "The event is saved, but not every guest could be sent it. Open it and save again to send it once more."))
+	}
 	if v.Kind == "month" {
 		b.WriteString(calMonth(v, evs, home, today))
 	} else {
@@ -736,11 +739,14 @@ func (a *App) handleVayuOSCalendarEdit(w http.ResponseWriter, r *http.Request) {
 		}
 		ev = vmail.CalEvent{Start: start, End: start.Add(time.Hour)}
 	}
-	writeOSHTML(w, r, calEditor(ev, scope, home, ""))
+	_, own := a.ownMailbox(r)
+	writeOSHTML(w, r, calEditor(ev, scope, home, own, ""))
 }
 
-// calEditor is the event's form, in the event's own zone.
-func calEditor(ev vmail.CalEvent, scope string, home *time.Location, msg string) string {
+// calEditor is the event's form, in the event's own zone. own is the
+// holder's address: an event someone else organizes keeps its guests as
+// they set them.
+func calEditor(ev vmail.CalEvent, scope string, home *time.Location, own, msg string) string {
 	zone := home
 	if loc := calZone(ev.Zone); loc != nil {
 		zone = loc
@@ -778,6 +784,16 @@ func calEditor(ev vmail.CalEvent, scope string, home *time.Location, msg string)
 		field("Ends", `<span class="cal-when"><input type="date" name="ed" required value="`+calDate(e)+`"><input type="time" name="et" value="`+clock(e)+`" data-cal-time></span>`) + `</div>`)
 	b.WriteString(field("Time zone", `<input type="text" name="zone" list="cal-zones" value="`+esc(zone.String())+`" autocomplete="off" spellcheck="false" data-cal-time>`))
 	b.WriteString(calRepeatFields(ev))
+	if ev.Organizer.Email != "" && !strings.EqualFold(ev.Organizer.Email, own) {
+		b.WriteString(`<p class="cal-note">Organized by ` + esc(nonEmpty(ev.Organizer.Name, ev.Organizer.Email)) + `. Its guests are theirs; a change you make here stays in your own calendar.</p>`)
+	} else {
+		var guests []string
+		for _, g := range ev.Attendees {
+			guests = append(guests, g.Email)
+		}
+		b.WriteString(field("Guests", `<input type="text" name="guests" value="`+esc(strings.Join(guests, ", "))+`" placeholder="Addresses, separated by commas" autocomplete="off" spellcheck="false">`))
+		b.WriteString(`<p class="cal-note">Guests are sent the event, and each change to it, by mail from your address.</p>`)
+	}
 	b.WriteString(field("Where", `<input type="text" name="location" maxlength="500" value="`+esc(ev.Location)+`">`))
 	b.WriteString(field("Notes", `<textarea name="notes" rows="3" maxlength="20000">`+esc(ev.Description)+`</textarea>`))
 	b.WriteString(`<div class="cal-form__acts"><button type="button" class="btn" data-sheet-close>Cancel</button><button type="submit" class="btn btn--primary">Save</button></div></form>`)
@@ -931,6 +947,14 @@ func calInputFromForm(r *http.Request, home *time.Location) (vmail.EventInput, e
 			return in, errors.New("the end is not a date and time")
 		}
 	}
+	if _, ok := r.PostForm["guests"]; ok {
+		in.Guests = []string{}
+		for _, g := range strings.FieldsFunc(r.PostFormValue("guests"), func(c rune) bool { return c == ',' || c == ';' || c == '\n' }) {
+			if g = strings.TrimSpace(g); g != "" {
+				in.Guests = append(in.Guests, g)
+			}
+		}
+	}
 	in.Rule, err = ruleFromCalForm(r, in.Start, in.AllDay)
 	return in, err
 }
@@ -960,19 +984,30 @@ func (a *App) handleVayuOSCalendarAction(w http.ResponseWriter, r *http.Request)
 		if err == nil {
 			uid, err = a.vayuMail.SaveEvent(rd, in, scope, inst)
 		}
+		back := "/os/vayumail/calendar?v=week&d=" + calDate(in.Start.In(home))
+		if errors.Is(err, vmail.ErrInvitationsNotSent) {
+			// Saved: the calendar says so, and that a guest was not told.
+			w.Header().Set("HX-Redirect", back+"&note=unsent")
+			writeOSHTML(w, r, "")
+			return
+		}
 		if err != nil {
 			ev := vmail.CalEvent{UID: in.UID, Summary: in.Summary, Location: in.Location, Description: in.Description, Start: in.Start, End: in.End, AllDay: in.AllDay, Rule: in.Rule, Instance: inst}
+			for _, g := range in.Guests {
+				ev.Attendees = append(ev.Attendees, vmail.CalAttendee{Email: g})
+			}
 			if in.Start.IsZero() {
 				ev.Start = time.Now().In(home)
 				ev.End = ev.Start
 			} else if !in.AllDay {
 				ev.Zone = in.Start.Location().String()
 			}
-			writeOSHTML(w, r, calEditor(ev, scope, home, saCallout("danger", esc(calSaveRefusal(err))+".")))
+			_, own := a.ownMailbox(r)
+			writeOSHTML(w, r, calEditor(ev, scope, home, own, saCallout("danger", esc(calSaveRefusal(err))+".")))
 			return
 		}
 		_ = uid
-		w.Header().Set("HX-Redirect", "/os/vayumail/calendar?v=week&d="+calDate(in.Start.In(home)))
+		w.Header().Set("HX-Redirect", back)
 		writeOSHTML(w, r, "")
 	case "delete":
 		if err := a.vayuMail.DeleteEvent(rd, r.PostFormValue("uid"), scope, inst); err != nil {

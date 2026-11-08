@@ -27,6 +27,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -530,6 +531,9 @@ type EventInput struct {
 	AllDay     bool
 	// Rule is an RRULE value, "" for an event that does not repeat.
 	Rule string
+	// Guests are the addresses invited: nil keeps the event's guests as
+	// they are, an empty list has none (itip.go sends them the event).
+	Guests []string
 }
 
 // The parts of a repeating event an edit or a delete is for.
@@ -684,6 +688,11 @@ func (e *Engine) SaveEvent(rd Reader, in EventInput, scope string, instance time
 	if err := in.check(); err != nil {
 		return "", err
 	}
+	if in.Guests != nil {
+		if in.Guests, err = cleanGuests(in.Guests, mbox); err != nil {
+			return "", err
+		}
+	}
 	ctx, now := context.Background(), time.Now().UTC().Truncate(time.Second)
 	if in.UID == "" {
 		return e.newEvent(ctx, mbox, in, now)
@@ -715,6 +724,13 @@ func (e *Engine) SaveEvent(rd Reader, in EventInput, scope string, instance time
 		if ov == nil {
 			ov = ical.NewComponent(ical.CompEvent)
 			ov.Props.SetText(ical.PropUID, in.UID)
+			// The occurrence has the series' organizer and guests, each
+			// with their answer so far.
+			for _, name := range []string{ical.PropOrganizer, ical.PropAttendee} {
+				for _, p := range master.Props.Values(name) {
+					ov.Props.Add(&p)
+				}
+			}
 			rid := ical.NewProp(ical.PropRecurrenceID)
 			newCalReader(cal, in.Start.Location()).setInstant(rid, master, instance)
 			ov.Props.Set(rid)
@@ -737,9 +753,23 @@ func (e *Engine) SaveEvent(rd Reader, in EventInput, scope string, instance time
 		if _, err := e.accounts.davPut(ctx, mbox, davEvent, o.Name, in.UID, data, davCondition{ifMatch: o.ETag}); err != nil {
 			return "", err
 		}
+		sent := e.sendInvitations(ctx, mbox, o.Data, data)
+		if in.Guests == nil {
+			in.Guests = guestsOf(master)
+		}
 		in.UID = ""
-		return e.newEvent(ctx, mbox, in, now)
+		uid, err := e.newEvent(ctx, mbox, in, now)
+		if err == nil {
+			err = sent
+		}
+		return uid, err
 	default:
+		if in.Guests != nil && !slices.Equal(in.Guests, guestsOf(master)) {
+			if !organizedBy(master, mbox) {
+				return "", ErrNotOrganizer
+			}
+			setGuests(master, mbox, in.Guests)
+		}
 		fill(master, in, now, true)
 		if in.Rule == "" {
 			master.Props.Del(ical.PropRecurrenceRule)
@@ -757,7 +787,7 @@ func (e *Engine) SaveEvent(rd Reader, in EventInput, scope string, instance time
 	if _, err := e.accounts.davPut(ctx, mbox, davEvent, o.Name, in.UID, data, davCondition{ifMatch: o.ETag}); err != nil {
 		return "", err
 	}
-	return in.UID, nil
+	return in.UID, e.sendInvitations(ctx, mbox, o.Data, data)
 }
 
 // endSeriesBefore ends a series' rule just before the occurrence at t: UNTIL
@@ -796,6 +826,9 @@ func (e *Engine) newEvent(ctx context.Context, mbox string, in EventInput, now t
 	ev.Props.SetText(ical.PropUID, uid)
 	ev.Props.SetDateTime(ical.PropCreated, now)
 	fill(ev, in, now, false)
+	if len(in.Guests) > 0 {
+		setGuests(ev, mbox, in.Guests)
+	}
 	if in.Rule != "" {
 		rp := ical.NewProp(ical.PropRecurrenceRule)
 		rp.SetValueType(ical.ValueRecurrence)
@@ -810,7 +843,7 @@ func (e *Engine) newEvent(ctx context.Context, mbox string, in EventInput, now t
 	if _, err := e.accounts.davPut(ctx, mbox, davEvent, id+".ics", uid, data, davCondition{ifNoneMatch: "*"}); err != nil {
 		return "", err
 	}
-	return uid, nil
+	return uid, e.sendInvitations(ctx, mbox, nil, data)
 }
 
 // DeleteEvent removes an event: the whole series (ScopeAll), the occurrence
@@ -860,12 +893,17 @@ func (e *Engine) DeleteEvent(rd Reader, uid, scope string, instance time.Time) e
 			return err
 		}
 	default:
-		return e.accounts.davDelete(ctx, mbox, davEvent, o.Name, davCondition{ifMatch: o.ETag})
+		if err := e.accounts.davDelete(ctx, mbox, davEvent, o.Name, davCondition{ifMatch: o.ETag}); err != nil {
+			return err
+		}
+		return e.sendInvitations(ctx, mbox, o.Data, nil)
 	}
 	data, err := encodeCal(cal)
 	if err != nil {
 		return err
 	}
-	_, err = e.accounts.davPut(ctx, mbox, davEvent, o.Name, uid, data, davCondition{ifMatch: o.ETag})
-	return err
+	if _, err = e.accounts.davPut(ctx, mbox, davEvent, o.Name, uid, data, davCondition{ifMatch: o.ETag}); err != nil {
+		return err
+	}
+	return e.sendInvitations(ctx, mbox, o.Data, data)
 }

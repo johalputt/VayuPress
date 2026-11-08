@@ -1335,7 +1335,7 @@ func (e *Engine) QueueStatus(ctx context.Context) (*QueueStatus, *SMTPStats, err
 // key is known), DKIM-signs it, and enqueues it for delivery. senderUserID is
 // used for PGP signing/encryption context; pass "" to skip PGP.
 func (e *Engine) SendMail(ctx context.Context, from string, to []string, subject, htmlBody, textBody, senderUserID string) (int64, error) {
-	return e.sendMail(ctx, from, to, subject, htmlBody, textBody, senderUserID, true)
+	return e.sendMail(ctx, from, to, subject, htmlBody, textBody, senderUserID, true, nil)
 }
 
 // SendSystemMail sends transactional / system mail — sign-in (magic) links,
@@ -1345,10 +1345,17 @@ func (e *Engine) SendMail(ctx context.Context, from string, to []string, subject
 // as an unreadable "-----BEGIN PGP MESSAGE-----" blob). It is still DKIM-signed,
 // queued for durable delivery, and local-loopback aware.
 func (e *Engine) SendSystemMail(ctx context.Context, from string, to []string, subject, htmlBody, textBody string) (int64, error) {
-	return e.sendMail(ctx, from, to, subject, htmlBody, textBody, "", false)
+	return e.sendMail(ctx, from, to, subject, htmlBody, textBody, "", false, nil)
 }
 
-func (e *Engine) sendMail(ctx context.Context, from string, to []string, subject, htmlBody, textBody, senderUserID string, allowPGP bool) (int64, error) {
+// calendarPart is an invitation's iCalendar object and its iTIP method, sent
+// beside the text as RFC 6047 has it.
+type calendarPart struct {
+	method string
+	data   []byte
+}
+
+func (e *Engine) sendMail(ctx context.Context, from string, to []string, subject, htmlBody, textBody, senderUserID string, allowPGP bool, cal *calendarPart) (int64, error) {
 	_ = senderUserID // reserved for PGP signing context
 	if e.queue == nil || e.dkim == nil {
 		return 0, errors.New("vayumail: not started")
@@ -1385,6 +1392,16 @@ func (e *Engine) sendMail(ctx context.Context, from string, to []string, subject
 
 	var bodyBuf bytes.Buffer
 	switch {
+	case cal != nil:
+		// An invitation: the text for a person, and the event for their
+		// calendar program, which shows Accept and Decline from it. Never
+		// encrypted (allowPGP is false for these): a program that cannot
+		// read the event cannot answer it.
+		boundary := mimeBoundary()
+		headers = append(headers, HeaderField{Key: "Content-Type", Value: `multipart/alternative; boundary="` + boundary + `"`})
+		writeMIMEPart(&bodyBuf, boundary, "text/plain; charset=utf-8", text, false)
+		writeMIMEPart(&bodyBuf, boundary, "text/calendar; charset=utf-8; method="+cal.method, string(cal.data), false)
+		bodyBuf.WriteString("--" + boundary + "--\r\n")
 	case pgpApplied:
 		headers = append(headers,
 			HeaderField{Key: "Content-Type", Value: "text/plain; charset=utf-8"},

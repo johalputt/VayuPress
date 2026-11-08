@@ -175,7 +175,7 @@ func TestTheEditorsRepeatBecomesARule(t *testing.T) {
 	if editableRule("FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1") || !editableRule("FREQ=WEEKLY;BYDAY=TU,TH;COUNT=3") || editableRule("FREQ=MONTHLY;BYDAY=2TU") {
 		t.Error("editableRule misjudges what the fields can say")
 	}
-	ed := calEditor(vmail.CalEvent{UID: "x@y", Summary: "Payroll", Start: start, End: start, Rule: "FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1", Instance: start}, "", london, "")
+	ed := calEditor(vmail.CalEvent{UID: "x@y", Summary: "Payroll", Start: start, End: start, Rule: "FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1", Instance: start}, "", london, "dana@example.com", "")
 	if !strings.Contains(ed, `<option value="keep" selected>As it is: Every month</option>`) || !strings.Contains(ed, `name="r_rule" value="FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1"`) {
 		t.Errorf("the editor does not keep a rule it cannot say:\n%s", ed)
 	}
@@ -249,5 +249,41 @@ func TestASaveTheEngineRefusesComesBackInTheEditor(t *testing.T) {
 	rec = calSave(a, dana(), url.Values{"title": {"Nowhere"}, "sd": {"2026-11-10"}, "st": {"10:00"}, "ed": {"2026-11-10"}, "et": {"11:00"}, "zone": {"Mars/Olympus"}})
 	if !strings.Contains(rec.Body.String(), "the time zone is not one the calendar knows") {
 		t.Errorf("an unknown zone: %s", rec.Body.String())
+	}
+}
+
+// TestGuestsAddedInTheEditorAreOnTheEvent — the field's addresses, the
+// holder's own and repeats dropped; whether every one could be sent the
+// invitation, the calendar says.
+func TestGuestsAddedInTheEditorAreOnTheEvent(t *testing.T) {
+	a := calendarApp(t)
+	rec := calSave(a, dana(), url.Values{"title": {"Review"}, "sd": {"2026-11-10"}, "st": {"11:00"}, "ed": {"2026-11-10"}, "et": {"12:00"},
+		"zone": {"UTC"}, "guests": {"Rohan <rohan@ledger.example>, dana@example.com; sana@north.example\nrohan@ledger.example"}})
+	if got := rec.Header().Get("HX-Redirect"); !strings.HasPrefix(got, "/os/vayumail/calendar?v=week&d=2026-11-10") {
+		t.Fatalf("save: %q %s", got, rec.Body.String())
+	}
+	from := time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC)
+	evs, _ := a.vayuMail.CalendarBetween(vmail.ReadAsOwner("dana"), from, from.AddDate(0, 0, 1), time.UTC)
+	if len(evs) != 1 || len(evs[0].Attendees) != 2 || evs[0].Attendees[0].Email != "rohan@ledger.example" || evs[0].Organizer.Email != "dana@example.com" {
+		t.Fatalf("stored %+v", evs)
+	}
+	q := "/os/vayumail/calendar/edit?uid=" + url.QueryEscape(evs[0].UID) + "&s=" + itoa64(evs[0].Start.Unix())
+	ed := calGet(a, a.handleVayuOSCalendarEdit, q, dana(), "UTC").Body.String()
+	if !strings.Contains(ed, `name="guests" value="rohan@ledger.example, sana@north.example"`) {
+		t.Errorf("the editor does not show the guests: %s", ed)
+	}
+}
+
+// TestAnInvitedEventKeepsItsOrganizersGuests — the editor says whose event
+// it is and offers no guests to change.
+func TestAnInvitedEventKeepsItsOrganizersGuests(t *testing.T) {
+	ev := vmail.CalEvent{UID: "o@x", Summary: "Board", Start: time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC), End: time.Date(2026, 11, 10, 10, 0, 0, 0, time.UTC),
+		Organizer: vmail.CalAttendee{Email: "boss@other.example", Name: "The Boss"}, Attendees: []vmail.CalAttendee{{Email: "dana@example.com"}}}
+	ed := calEditor(ev, "", time.UTC, "dana@example.com", "")
+	if strings.Contains(ed, `name="guests"`) || !strings.Contains(ed, "Organized by The Boss") {
+		t.Fatalf("an invited event's editor: %s", ed)
+	}
+	if own := calEditor(vmail.CalEvent{Start: ev.Start, End: ev.End}, "", time.UTC, "dana@example.com", ""); !strings.Contains(own, `name="guests"`) {
+		t.Error("a new event offers no guests")
 	}
 }

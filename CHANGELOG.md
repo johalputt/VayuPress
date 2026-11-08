@@ -23,6 +23,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   editor cannot express is kept as it is; and a repeating event keeps its
   local time across clock changes. Only the holder opens their calendar: an
   administrator who opens someone's mail does not get it.
+- **Invite guests to an event.** Guests named on an event are sent it by
+  mail from your address, as an invitation every calendar program shows
+  with Accept and Decline, with the time zone it is in; they are sent each
+  change, and its cancellation when it is deleted or they are taken off it.
+  Their answers come back to your mailbox and are shown on the event: going,
+  maybe or not going. An answer counts only from the guest it is for, and
+  your own reminders are never sent to them. An event someone else invited
+  you to keeps its guests as they set them.
 
 ### Security
 

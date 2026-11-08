@@ -206,6 +206,10 @@ func (e *Engine) deliver(envelopeFrom, recipientEmail string, raw []byte, stampe
 	// The mailbox's own rules (filters.go). Mail a rule files into Junk or
 	// Trash behaves like junk-filtered mail: no forward, no autoreply.
 	addr := local + "@" + domain
+	// A guest's answer to one of this mailbox's invitations is recorded on
+	// the event (itip.go) and the message filed as read: the calendar now
+	// says what it says.
+	answered := e.applyCalendarReply(addr, raw)
 	if out := e.applyFilters(addr, raw); out.matched {
 		if out.reject {
 			return "", ErrRejectedByRule
@@ -223,7 +227,7 @@ func (e *Engine) deliver(envelopeFrom, recipientEmail string, raw []byte, stampe
 			return id, err
 		}
 		rd := ReadAsSystem(local, "rule")
-		if out.markRead {
+		if out.markRead || answered {
 			if nid, merr := e.MarkRead(rd, folder, id); merr == nil && nid != "" {
 				id = nid
 			}
@@ -249,6 +253,11 @@ func (e *Engine) deliver(envelopeFrom, recipientEmail string, raw []byte, stampe
 	}
 	id, err := e.maildir.Deliver(domain, local, raw)
 	if err == nil {
+		if answered {
+			if nid, merr := e.MarkRead(ReadAsSystem(local, "calendar answer"), "Inbox", id); merr == nil && nid != "" {
+				id = nid
+			}
+		}
 		e.forwardCopy(addr, raw)
 		e.maybeAutoReply(envelopeFrom, addr, raw)
 	}
