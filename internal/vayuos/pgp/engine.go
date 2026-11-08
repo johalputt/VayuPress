@@ -194,6 +194,11 @@ func (e *Engine) RevokeKeypair(userID string) error {
 	if e.ks == nil {
 		return errors.New("vayupgp: engine not started")
 	}
+	// Revoking a holder's key would drop it from the address and leave the
+	// mailbox's next mail unsealed: the seal follows the key.
+	if e.ks.isHolder(userID) {
+		return ErrHolderKey
+	}
 	rec, priv, err := e.ks.load(userID)
 	if err != nil {
 		return err

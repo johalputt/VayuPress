@@ -240,6 +240,9 @@ func TestRotatedOutKeysGoWithTheHolder(t *testing.T) {
 	if _, err := re.RotateKeypair("dana@example.com"); !errors.Is(err, ErrHolderKey) {
 		t.Fatalf("rotating a holder's key gave %v, want ErrHolderKey", err)
 	}
+	if err := re.RevokeKeypair("dana@example.com"); !errors.Is(err, ErrHolderKey) || !re.HolderKeeps("dana@example.com") {
+		t.Fatalf("revoking a holder's key gave %v; revoked, the address's next mail would go unsealed", err)
+	}
 }
 
 // TestTheAppIsHandedTheLockedKey — what the key endpoint gives the phone is
@@ -257,6 +260,40 @@ func TestTheAppIsHandedTheLockedKey(t *testing.T) {
 	if _, err := openArmor([]byte(armored), []byte(holderPW)); err != nil {
 		t.Fatalf("the password does not open what the app gets: %v", err)
 	}
+}
+
+// TestADeletedMailboxsKeyIsNotHandedOn — once retired, the address is free:
+// a new key is made for whoever holds it next, and the old one is still on
+// disk for the retired mail.
+func TestADeletedMailboxsKeyIsNotHandedOn(t *testing.T) {
+	e, _, sealed := heldEngine(t)
+	if err := e.RetireHolderKey("dana@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if e.HolderKeeps("dana@example.com") || e.HeldOpen("dana@example.com") {
+		t.Fatal("the retired key is still the address's key")
+	}
+	re := restarted(t, e)
+	if _, err := re.EnsureKeypair(&PGPUser{UserID: "dana@example.com", Name: "Dana", Email: "dana@example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	if re.HolderKeeps("dana@example.com") {
+		t.Fatal("the next holder of the address was given the last holder's locked key")
+	}
+	if _, err := re.SignDetachedFromEmail([]byte("x"), "dana@example.com"); err != nil {
+		t.Fatalf("the next holder's key is not usable: %v", err)
+	}
+	entries, _ := os.ReadDir(e.cfg.StorageDir)
+	kept := false
+	for _, f := range entries {
+		if strings.Contains(f.Name(), ".retired-") {
+			kept = true
+		}
+	}
+	if !kept {
+		t.Error("the retired key was deleted; the retired mail could never be opened again")
+	}
+	_ = sealed
 }
 
 // TestALockStoppedPartWayIsFinished — a key file left unlocked by an

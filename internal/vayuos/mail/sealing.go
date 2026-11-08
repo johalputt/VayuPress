@@ -44,6 +44,9 @@ type MailboxKeys interface {
 	HeldOpen(email string) bool
 	SealTo(email string, plain []byte) ([]byte, error)
 	DecryptForEmail(armored []byte, email string) ([]byte, error)
+	// RetireHolderKey takes a deleted mailbox's holder key out of use, so a
+	// reissued address does not inherit it (Engine.DeleteMailbox).
+	RetireHolderKey(email string) error
 }
 
 // keyedBridge is a Bridge that also hands over the keys that seal private

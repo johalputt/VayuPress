@@ -3,6 +3,9 @@
 package mail
 
 import (
+	"bufio"
+	"fmt"
+	"net"
 	"reflect"
 	"strings"
 	"testing"
@@ -102,5 +105,27 @@ func TestAnOlderImportTableGainsTheTotal(t *testing.T) {
 	var n int
 	if err := e.db.QueryRow(`SELECT COUNT(1) FROM pragma_table_info('vayumail_imports') WHERE name='total'`).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("the total column was not added (%d, %v)", n, err)
+	}
+}
+
+// TestAServerThatUnderstatesSizesIsStopped — sizes declared small, messages
+// sent large: the answer is cut off at the bound instead of held whole.
+func TestAServerThatUnderstatesSizesIsStopped(t *testing.T) {
+	prev := importCommandBytes
+	importCommandBytes = 1000
+	t.Cleanup(func() { importCommandBytes = prev })
+	server, client := net.Pipe()
+	t.Cleanup(func() { _ = server.Close(); _ = client.Close() })
+	go func() {
+		body := strings.Repeat("x", 600)
+		for i := 1; i <= 3; i++ {
+			fmt.Fprintf(server, "* %d FETCH (UID %d BODY[] {%d}\r\n%s)\r\n", i, i, len(body), body)
+		}
+		fmt.Fprintf(server, "a1 OK done\r\n")
+	}()
+	c := &imapClient{conn: client, r: bufio.NewReader(client)}
+	out, err := c.finish("a1")
+	if err == nil || !strings.Contains(err.Error(), "more mail than it said") || out != nil {
+		t.Fatalf("three 600-byte messages past a 1000-byte bound gave %d responses and %v", len(out), err)
 	}
 }

@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+
+- **A deleted private mailbox's key leaves with its mail.** Deleting a
+  mailbox moved its mail aside but left its key registered to the address,
+  so whoever was given the address next would have had every message sealed
+  to a key only the last holder's password opens. The key, with its
+  rotated-out keys, is now retired with the mail: taken out of use and kept
+  on disk beside the retired mail. A holder's key can no longer be revoked
+  either, which would have left the mailbox's next mail unsealed.
+- **Bring mail in holds a server to the sizes it declared.** A batch is cut
+  by the sizes the other server gives, so one that declared small messages
+  and sent large ones could still make a batch hold fifty messages of up to
+  64 MB each. One command's answer may now carry no more than one message at
+  the largest an import takes; a server that sends more ends the session.
+
 ### Fixed
 
 - **Bring mail in holds a bounded amount of mail in memory.** A batch took

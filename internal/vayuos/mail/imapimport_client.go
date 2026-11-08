@@ -28,6 +28,14 @@ import (
 // the session is ended rather than buffered.
 const importMaxLiteral = 64 << 20
 
+// importCommandBytes bounds what one command's answer may carry in literals
+// together. A batch is cut by the sizes the server declares (importBatch), so
+// a server that declares small messages and sends large ones would otherwise
+// be held to importMaxLiteral per message, fifty times over; past this, it
+// has sent more than it said, and the session ends. One message at the
+// largest an import takes still fits. A variable so a test can lower it.
+var importCommandBytes = importMaxLiteral
+
 // importCommandTimeout bounds each command's round trip.
 const importCommandTimeout = 2 * time.Minute
 
@@ -170,10 +178,17 @@ func (c *imapClient) command(cmd string) ([]imapResponse, error) {
 
 func (c *imapClient) finish(tag string) ([]imapResponse, error) {
 	var out []imapResponse
+	held := 0
 	for {
 		resp, err := c.readResponse()
 		if err != nil {
 			return out, err
+		}
+		for _, l := range resp.lits {
+			held += len(l)
+		}
+		if held > importCommandBytes {
+			return nil, errors.New("the server sent more mail than it said it would")
 		}
 		if rest, ok := strings.CutPrefix(resp.text, tag+" "); ok {
 			if strings.HasPrefix(strings.ToUpper(rest), "OK") {

@@ -160,6 +160,20 @@ func TestASharedMailboxIsNotOneHoldersToSeal(t *testing.T) {
 	}
 }
 
+// TestADeletedPrivateMailboxsAddressCanBeGivenAgain — deleting it takes its
+// key with its mail, so the next holder's mail is not sealed to a key only
+// the last holder's password opens.
+func TestADeletedPrivateMailboxsAddressCanBeGivenAgain(t *testing.T) {
+	a, _, dana := sealedMailApp(t)
+	makeDanaPrivate(t, a, dana)
+	if _, err := a.vayuMail.DeleteMailbox(context.Background(), "dana@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if a.vayuPGP.HolderKeeps("dana@example.com") {
+		t.Fatal("the deleted mailbox's locked key is still the address's key")
+	}
+}
+
 // TestTheInboxSaysTheMailIsSealed — the holder's own inbox carries the notice
 // and its form while the key is shut.
 func TestTheInboxSaysTheMailIsSealed(t *testing.T) {

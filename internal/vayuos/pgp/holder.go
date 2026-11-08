@@ -431,6 +431,40 @@ func (e *Engine) RecoverHolder(email, code, password string) (string, error) {
 	return next, nil
 }
 
+// RetireHolderKey takes a deleted mailbox's holder key, and its rotated-out
+// keys, out of use: the files are renamed out of the key store's index, kept
+// on disk beside the retired mail they open, so the address can be given to
+// someone new without their mail being sealed to a key they do not hold, and a
+// mailbox deleted by mistake can still be restored with it. A key the install
+// holds is left as it is.
+func (e *Engine) RetireHolderKey(email string) error {
+	userID, err := e.holderID(email)
+	if err != nil || !e.ks.isHolder(userID) {
+		return nil
+	}
+	stamp := time.Now().UTC().Format("20060102T150405Z")
+	for _, name := range e.ks.holderFiles(userID) {
+		src := filepath.Join(e.ks.dir, name)
+		if err := os.Rename(src, src+".retired-"+stamp); err != nil {
+			return fmt.Errorf("vayupgp: retire key file: %w", err)
+		}
+	}
+	e.ks.mu.Lock()
+	delete(e.ks.fileByID, userID)
+	delete(e.ks.archByID, userID)
+	delete(e.ks.holder, userID)
+	if cur, ok := e.ks.byEmail[normalizeEmail(email)]; ok && cur == userID {
+		delete(e.ks.byEmail, normalizeEmail(email))
+		delete(e.ks.emailCreated, normalizeEmail(email))
+	}
+	e.ks.mu.Unlock()
+	e.mu.Lock()
+	delete(e.held, userID)
+	delete(e.unlocked, userID)
+	e.mu.Unlock()
+	return nil
+}
+
 // SealTo encrypts plain to email's public key: no private key is needed, so
 // mail for a private mailbox is sealed whether or not its holder is signed in.
 func (e *Engine) SealTo(email string, plain []byte) ([]byte, error) {

@@ -1241,7 +1241,19 @@ func (e *Engine) DeleteMailbox(ctx context.Context, email string) (retiredTo str
 	if e.maildir == nil {
 		return "", nil
 	}
-	return e.maildir.Retire(dom, local, time.Now().UTC().Format("20060102T150405Z"))
+	retiredTo, err = e.maildir.Retire(dom, local, time.Now().UTC().Format("20060102T150405Z"))
+	if err != nil {
+		return "", err
+	}
+	// A private mailbox's key goes with its mail: left in place, the next
+	// holder of the address would have every message sealed to a key only the
+	// last holder's password opens.
+	if e.maildir.keys != nil {
+		if err := e.maildir.keys.RetireHolderKey(normEmail(email)); err != nil {
+			return retiredTo, err
+		}
+	}
+	return retiredTo, nil
 }
 
 // MailboxStats returns message counts for a local account.
