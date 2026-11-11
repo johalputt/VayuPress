@@ -72,10 +72,28 @@ func guestZone(r *http.Request, p vmail.BookingPage) *time.Location {
 	return time.UTC
 }
 
+// bookSlots bounds the booking pages worked out at once. A page's free times
+// are a month of the holder's calendar expanded, for anyone who asks, with no
+// session to limit them by: past these, a visit waits a moment and is then
+// told the page is busy, so a flood of visits costs four expansions at a
+// time and no more.
+var bookSlots = make(chan struct{}, 4)
+
+// bookWait is how long a visit waits for one of bookSlots.
+var bookWait = 3 * time.Second
+
 func (a *App) handleBookPage(w http.ResponseWriter, r *http.Request) {
 	p, ok := a.publicBookingPage(r)
 	if !ok {
 		a.bookNotFound(w)
+		return
+	}
+	select {
+	case bookSlots <- struct{}{}:
+		defer func() { <-bookSlots }()
+	case <-time.After(bookWait):
+		w.Header().Set("Retry-After", "5")
+		a.writeBookShell(w, http.StatusServiceUnavailable, p.Title, `<h1 class="login-title">Busy</h1><p class="login-sub">This page is busy. Try again in a moment.</p>`)
 		return
 	}
 	loc := guestZone(r, p)

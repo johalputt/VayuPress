@@ -154,3 +154,30 @@ func TestTheBookingEditorReadsHours(t *testing.T) {
 		t.Error("a link names its mailbox wrongly")
 	}
 }
+
+// TestABusyBookingPageSaysSoAndWorksOutNothing — past the pages worked out at
+// once, a visit is answered 503 and asked to come back.
+func TestABusyBookingPageSaysSoAndWorksOutNothing(t *testing.T) {
+	a := calendarApp(t)
+	danaAllDay(t, a)
+	h := bookingRouter(a)
+	was := bookWait
+	bookWait = 20 * time.Millisecond
+	for i := 0; i < cap(bookSlots); i++ {
+		bookSlots <- struct{}{}
+	}
+	t.Cleanup(func() {
+		bookWait = was
+		for len(bookSlots) > 0 {
+			<-bookSlots
+		}
+	})
+	rec := visit(h, http.MethodGet, "/book/dana/intro?tz=UTC", "")
+	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Retry-After") == "" || strings.Contains(rec.Body.String(), "book__time") {
+		t.Fatalf("a busy page answered %d: %s", rec.Code, rec.Body.String())
+	}
+	<-bookSlots
+	if rec := visit(h, http.MethodGet, "/book/dana/intro?tz=UTC", ""); rec.Code != http.StatusOK {
+		t.Fatalf("with a slot free: %d", rec.Code)
+	}
+}
