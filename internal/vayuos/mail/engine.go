@@ -1207,6 +1207,7 @@ func (e *Engine) worker() {
 		case <-ticker.C:
 			_, _, _ = e.queue.ProcessDue(context.Background(), time.Now())
 			e.sendReminders(time.Now())
+			e.emptyOldTrash(time.Now())
 		}
 	}
 }
@@ -1254,7 +1255,9 @@ func (e *Engine) DeleteMailbox(ctx context.Context, email string) (retiredTo str
 	if e.maildir == nil {
 		return "", nil
 	}
-	retiredTo, err = e.maildir.Retire(dom, local, time.Now().UTC().Format("20060102T150405Z"))
+	stamp := time.Now().UTC().Format("20060102T150405Z")
+	e.retireDrive(normEmail(local+"@"+dom), stamp)
+	retiredTo, err = e.maildir.Retire(dom, local, stamp)
 	if err != nil {
 		return "", err
 	}
