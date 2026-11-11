@@ -6330,6 +6330,9 @@
 .vp-os[data-ui="still-air"] .mx-preview img { display: block; max-width: 100%; max-height: 240px; width: auto; height: auto; }
 .vp-os[data-ui="still-air"] .mx-files > li { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
 .vp-os[data-ui="still-air"] .mx-file__open { align-self: flex-start; padding: 0 var(--space-2); font: var(--type-small); color: var(--accent); }
+.vp-os[data-ui="still-air"] button.mx-file__open { border: 0; background: none; cursor: pointer; }
+.vp-os[data-ui="still-air"] button.mx-file__open:hover { text-decoration: underline; }
+.vp-os[data-ui="still-air"] .mx-file__open[data-tone="danger"] { color: var(--danger); }
 .vp-os[data-ui="still-air"] .mx-source .vm-raw { max-height: 360px; overflow: auto; }
 .vp-os[data-ui="still-air"] .mx-files { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: var(--space-4); margin: var(--space-7) 0 0; padding: 0; }
 .vp-os[data-ui="still-air"] .mx-file {

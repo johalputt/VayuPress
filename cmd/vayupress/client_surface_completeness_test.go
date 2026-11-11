@@ -14,6 +14,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/users"
+	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
 // SECTION 4 AUDIT — the confinement attacked from the side nobody attacks it
@@ -312,6 +313,90 @@ func TestGrantingALeafDoesNotGrantTheAccountsBranch(t *testing.T) {
 			t.Errorf("%q is reachable by a client. Adding a leaf under "+
 				"/os/vayumail/accounts must not carry its parent — that branch creates, "+
 				"deletes and re-passwords every mailbox on the install", p)
+		}
+	}
+}
+
+// A bound client holds a mailbox and is given the mailbox, not the places
+// beside it. What it cannot reach it is not offered: no Calendar or Drive in
+// the top bar, no From Drive in the composer, no Save to Drive or invitation
+// buttons in the reader, and the handlers behind them refuse it as the
+// surface does. Read from the surface, so the day a place is added to it the
+// offer follows and this test says which.
+func TestAClientIsOfferedNoPlaceItCannotReach(t *testing.T) {
+	a := resetSessionApp(t)
+	cl := boundClient()
+	req := withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/inbox", nil), cl)
+	req = req.WithContext(context.WithValue(req.Context(), ctxAccessKey, accessMailOnly))
+	got := a.holderPlaces(req)
+	if got.Calendar != clientPathAllowed("/os/vayumail/calendar") || got.Drive != clientPathAllowed("/os/vayumail/drive") {
+		t.Fatalf("a client is offered %+v, and its surface carries calendar=%v drive=%v", got,
+			clientPathAllowed("/os/vayumail/calendar"), clientPathAllowed("/os/vayumail/drive"))
+	}
+	if got.Calendar || got.Drive {
+		t.Skip("the surface now carries a place beside Mail; the offers below are then meant")
+	}
+	for name, h := range map[string]http.HandlerFunc{"inbox": a.handleVayuOSInbox, "compose": a.handleVayuOSCompose} {
+		rec := httptest.NewRecorder()
+		h(rec, req)
+		body := rec.Body.String()
+		for _, refused := range []string{"/os/vayumail/calendar", "/os/vayumail/drive", "data-c-drive", "sa-places"} {
+			if strings.Contains(body, refused) {
+				t.Errorf("the %s page a client is given carries %q, which it cannot reach", name, refused)
+			}
+		}
+	}
+	// A member with a mailbox of their own is offered both.
+	member := withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/inbox", nil),
+		&users.User{ID: "m1", Email: "boss@example.com", Role: users.RoleAuthor, MailAddress: "boss@example.com"})
+	if got := a.holderPlaces(member); !got.Calendar || !got.Drive {
+		t.Errorf("a member with a mailbox is offered %+v", got)
+	}
+}
+
+// The same for what a message carries: an invitation's card answers into the
+// Calendar and an attachment's Save to Drive into Drive, so a client reading
+// its own mail is shown neither, and a member reading the same mail both.
+func TestAClientsReaderOffersNoPlaceItCannotReach(t *testing.T) {
+	a := calendarApp(t)
+	files := withAttachments(t, a)
+	if _, err := a.vayuMail.DeliverInbound("boss@other.example", "dana@example.com", []byte(danaInvite)); err != nil {
+		t.Fatal(err)
+	}
+	var invite string
+	msgs, _ := a.vayuMail.ListFolder(vmail.ReadAsOwner("dana"), "Inbox")
+	for _, m := range msgs {
+		if strings.HasPrefix(m.Subject, "Invitation") {
+			invite = m.ID
+		}
+	}
+	if invite == "" {
+		t.Fatalf("the invitation is not in the inbox: %+v", msgs)
+	}
+	cards := func(u *users.User) string {
+		req := withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/message", nil), u)
+		if u.Role == users.RoleClient {
+			req = req.WithContext(context.WithValue(req.Context(), ctxAccessKey, accessMailOnly))
+		}
+		view := readerView{Pane: true, Peek: true, Places: a.holderPlaces(req)}
+		one, _ := a.vayuReaderCard(a.mailReader(req, ""), "Inbox", files, view)
+		two, _ := a.vayuReaderCard(a.mailReader(req, ""), "Inbox", invite, view)
+		if !strings.Contains(one, "doc.pdf") || !strings.Contains(two, "Come.") {
+			t.Fatalf("the reader did not show %s its own mail:\n%s\n%s", u.Role, one, two)
+		}
+		return one + two
+	}
+	client := cards(&users.User{ID: "client-2", Email: "dana@example.com", Role: users.RoleClient,
+		ClientDomainID: "a1b2c3d4e5f6a1b2c3d4e5f6", MailAddress: "dana@example.com"})
+	for _, refused := range []string{"Save to Drive", "/os/vayumail/drive", "mx-invite", "/os/vayumail/calendar"} {
+		if strings.Contains(client, refused) {
+			t.Errorf("a client's reader carries %q, which it cannot reach", refused)
+		}
+	}
+	member := cards(dana())
+	for _, offered := range []string{"Save to Drive", `id="mx-invite"`, "/os/vayumail/calendar/answer"} {
+		if !strings.Contains(member, offered) {
+			t.Errorf("a member's reader lacks %q", offered)
 		}
 	}
 }

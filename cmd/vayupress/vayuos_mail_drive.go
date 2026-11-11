@@ -18,6 +18,7 @@ package main
 // engine refuses an operator's reader whatever this page does.
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	htmpl "html/template"
@@ -102,7 +103,7 @@ func (a *App) handleVayuOSDrive(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 	csrfTokenFor(w, r)
-	rd, ok := a.calendarOwner(r)
+	rd, ok := a.driveOwner(r)
 	if !ok {
 		page := `<div data-page-kind="status"><div class="page-header"><h1>Drive</h1></div><div class="empty-state">Files belong to a mailbox, and this account has none. An administrator can give you an address under <strong>Members → Team &amp; roles</strong>.</div></div>`
 		writeOSHTML(w, r, adminOSLayout(nonce, "Drive", "vayuos", cfg, htmpl.HTML(page)))
@@ -216,7 +217,7 @@ func (a *App) driveFolders(rd vmail.Reader, parent int64, prefix string, depth i
 
 // handleVayuOSDriveEntry is the sheet for one entry, or for a new folder.
 func (a *App) handleVayuOSDriveEntry(w http.ResponseWriter, r *http.Request) {
-	rd, ok := a.calendarOwner(r)
+	rd, ok := a.driveOwner(r)
 	if !ok {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "Files open only for their holder.", "")
 		return
@@ -355,7 +356,7 @@ func (a *App) driveShareSection(rd vmail.Reader, d vmail.DriveEntry, home *time.
 
 // handleVayuOSDriveAction changes one of the session's own entries.
 func (a *App) handleVayuOSDriveAction(w http.ResponseWriter, r *http.Request) {
-	rd, ok := a.calendarOwner(r)
+	rd, ok := a.driveOwner(r)
 	if !ok {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "Files open only for their holder.", "")
 		return
@@ -442,7 +443,7 @@ func (a *App) handleVayuOSDriveAction(w http.ResponseWriter, r *http.Request) {
 // before it is read: the engine's own limit is the rule, and this stops a
 // body far past it being received at all.
 func (a *App) handleVayuOSDriveUpload(w http.ResponseWriter, r *http.Request) {
-	rd, ok := a.calendarOwner(r)
+	rd, ok := a.driveOwner(r)
 	if !ok {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "Files open only for their holder.", "")
 		return
@@ -489,7 +490,7 @@ func (a *App) handleVayuOSDriveUpload(w http.ResponseWriter, r *http.Request) {
 // handleVayuOSDriveFile sends a file: a download, or with show=1 one of
 // drivePictures drawn in place.
 func (a *App) handleVayuOSDriveFile(w http.ResponseWriter, r *http.Request) {
-	rd, ok := a.calendarOwner(r)
+	rd, ok := a.driveOwner(r)
 	if !ok {
 		http.NotFound(w, r)
 		return
@@ -523,4 +524,91 @@ func (a *App) handleVayuOSDriveFile(w http.ResponseWriter, r *http.Request) {
 	h.Set("Content-Type", ctype)
 	h.Set("Content-Disposition", disposition+`; filename="`+mailSafeFilename(d.Name)+`"`)
 	http.ServeContent(w, r, "", time.Time{}, f)
+}
+
+// handleVayuOSDriveSave keeps one of a message's attachments in the
+// holder's Drive: the message is read as the reader reads it (opened, when
+// it is sealed or encrypted), and the file is kept under its own name, or
+// that name with a number when it is taken. Only for the session's own
+// mailbox: an administrator reading someone's mail has no Drive of theirs
+// to put it in.
+func (a *App) handleVayuOSDriveSave(w http.ResponseWriter, r *http.Request) {
+	rd, ok := a.driveOwner(r)
+	if !ok {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "Files open only for their holder.", "")
+		return
+	}
+	_ = r.ParseForm()
+	folder, id := sanitizeMailFolder(strings.TrimSpace(r.PostFormValue("folder"))), sanitizeMailID(strings.TrimSpace(r.PostFormValue("id")))
+	idx, _ := strconv.Atoi(r.PostFormValue("idx"))
+	said := func(tone, text string) {
+		writeOSHTML(w, r, `<span class="mx-file__open" role="status" data-tone="`+tone+`">`+text+`</span>`)
+	}
+	raw, err := a.vayuMail.ReadFolderMessage(rd, folder, id)
+	if err != nil || id == "" {
+		said("danger", "Not saved: the message is not here.")
+		return
+	}
+	name, ctype, data, found := vmail.ExtractAttachment(raw, idx)
+	if !found {
+		said("danger", "Not saved: the message has no such file.")
+		return
+	}
+	if _, _, err := a.vayuMail.DriveKeepNew(rd, 0, mailSafeFilename(name), ctype, bytes.NewReader(data)); err != nil {
+		said("danger", "Not saved: "+esc(driveRefusal(err))+".")
+		return
+	}
+	writeOSHTML(w, r, `<a class="mx-file__open" href="/os/vayumail/drive">Saved to Drive</a>`)
+}
+
+// handleVayuOSDrivePick is a folder of the holder's Drive as the composer's
+// From Drive menu shows it: its folders to go into, its files to attach.
+// admin-os-mail.js fetches a chosen file and adds it to the message as it
+// adds one chosen from the computer, so the send path takes one kind of
+// attachment and its size limit is one rule.
+func (a *App) handleVayuOSDrivePick(w http.ResponseWriter, r *http.Request) {
+	rd, ok := a.driveOwner(r)
+	if !ok {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "Files open only for their holder.", "")
+		return
+	}
+	dir, _ := strconv.ParseInt(r.URL.Query().Get("dir"), 10, 64)
+	entries, err := a.vayuMail.DriveList(rd, dir)
+	if err != nil {
+		// A folder since deleted or trashed: the top, not an empty menu.
+		dir = 0
+		entries, _ = a.vayuMail.DriveList(rd, 0)
+	}
+	into := func(id int64, label string) string {
+		return `<li><button type="button" class="mx-compose__opt" hx-get="/os/vayumail/drive/pick?dir=` + strconv.FormatInt(id, 10) + `" hx-target="closest [data-c-drive-list]" hx-swap="outerHTML">` + saIcon("folder") + `<span>` + label + `</span></button></li>`
+	}
+	var b strings.Builder
+	b.WriteString(`<ul class="mx-compose__tpls" data-c-drive-list aria-label="Files in Drive">`)
+	if dir != 0 {
+		up := int64(0)
+		if path, perr := a.vayuMail.DrivePath(rd, dir); perr == nil && len(path) > 0 {
+			up = path[len(path)-1].Parent
+		}
+		b.WriteString(into(up, "Back"))
+	}
+	limit := int64(composeMaxAttachMB()) << 20
+	for _, d := range entries {
+		if d.IsDir {
+			b.WriteString(into(d.ID, esc(d.Name)))
+			continue
+		}
+		// A file past the message's own limit is shown and not offered:
+		// attaching it could only be refused at Send.
+		off := ""
+		if d.Size > limit {
+			off = ` disabled title="Larger than a message takes"`
+		}
+		b.WriteString(`<li><button type="button" class="mx-compose__opt" data-c-drive-file="` + strconv.FormatInt(d.ID, 10) + `" data-name="` + esc(d.Name) + `"` + off + `>` +
+			saIcon("doc") + `<span>` + esc(d.Name) + ` · ` + esc(humanBytes(d.Size)) + `</span></button></li>`)
+	}
+	if len(entries) == 0 {
+		b.WriteString(`<li class="mx-compose__tpl-empty">Nothing is here.</li>`)
+	}
+	b.WriteString(`</ul>`)
+	writeOSHTML(w, r, b.String())
 }

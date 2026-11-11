@@ -32,7 +32,7 @@ func TestAnInvitationIsAnsweredFromItsCard(t *testing.T) {
 		t.Fatalf("%d messages", len(msgs))
 	}
 	id := msgs[0].ID
-	card, _ := a.vayuReaderCard(own, "Inbox", id, readerView{Pane: true, Home: time.UTC})
+	card, _ := a.vayuReaderCard(own, "Inbox", id, readerView{Pane: true, Home: time.UTC, Places: holderPlaces{Calendar: true}})
 	for _, want := range []string{"Invitation from The Boss", "Board &lt;b&gt;meeting&lt;/b&gt;", "Thursday 12 November 2026 · 09:00–10:00", "Room 4", "At the same time: Dentist", ">Accept</button>"} {
 		if !strings.Contains(card, want) {
 			t.Errorf("the card lacks %q", want)
@@ -41,7 +41,7 @@ func TestAnInvitationIsAnsweredFromItsCard(t *testing.T) {
 	if strings.Contains(card, "<b>meeting</b>") {
 		t.Error("the invitation's title was written unescaped")
 	}
-	if op, _ := a.vayuReaderCard(vmail.ReadAsOperator("dana", "boss@example.com"), "Inbox", id, readerView{Pane: true}); strings.Contains(op, "mx-invite") {
+	if op, _ := a.vayuReaderCard(vmail.ReadAsOperator("dana", "boss@example.com"), "Inbox", id, readerView{Pane: true, Places: holderPlaces{Calendar: true}}); strings.Contains(op, "mx-invite") {
 		t.Error("an administrator is shown the holder's invitation")
 	}
 	rec := postForm(a.handleVayuOSCalendarAnswer, "/os/vayumail/calendar/answer", url.Values{"folder": {"Inbox"}, "id": {id}, "answer": {"ACCEPTED"}}.Encode(), dana())

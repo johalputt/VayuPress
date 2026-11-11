@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func driveEngine(t *testing.T) (*Engine, *AccountStore) {
@@ -623,5 +624,47 @@ func TestAFileIsNotSealedTwice(t *testing.T) {
 	}
 	if got := read(t, e, dana, id); got != "the plan" {
 		t.Fatalf("after two runs reached it the file opens as %d bytes that are not its own", len(got))
+	}
+}
+
+// TestAFileKeptAsNewNeverWritesOverAnother — a taken name gets a number
+// before its extension, and the first file is as it was, with no version.
+func TestAFileKeptAsNewNeverWritesOverAnother(t *testing.T) {
+	e, _ := driveEngine(t)
+	first := put(t, e, 0, "invoice.pdf", "march")
+	var names []string
+	for _, body := range []string{"april", "may"} {
+		_, name, err := e.DriveKeepNew(ankush, 0, "invoice.pdf", "application/pdf", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		names = append(names, name)
+	}
+	if strings.Join(names, ", ") != "invoice (2).pdf, invoice (3).pdf" {
+		t.Fatalf("kept as %q", names)
+	}
+	if got := read(t, e, ankush, first); got != "march" {
+		t.Errorf("the first file now reads %q", got)
+	}
+	if vs, _ := e.DriveVersions(ankush, first); len(vs) != 0 {
+		t.Errorf("the first file was written over: %d versions", len(vs))
+	}
+	if _, name, err := e.DriveKeepNew(ankush, 0, "notes", "", strings.NewReader("a")); err != nil || name != "notes" {
+		t.Errorf("a free name: %q %v", name, err)
+	}
+	if _, name, _ := e.DriveKeepNew(ankush, 0, "notes", "", strings.NewReader("b")); name != "notes (2)" {
+		t.Errorf("a taken name with no extension: %q", name)
+	}
+	long := strings.Repeat("é", 125) + ".txt" // 254 bytes
+	put(t, e, 0, long, "x")
+	_, name, err := e.DriveKeepNew(ankush, 0, long, "", strings.NewReader("y"))
+	if err != nil || len(name) > 255 || !utf8.ValidString(name) || !strings.HasSuffix(name, " (2).txt") {
+		t.Errorf("a long taken name: %d bytes, %q, %v", len(name), name, err)
+	}
+	if _, _, err := e.DriveKeepNew(ankush, 0, "a/b", "", strings.NewReader("x")); !errors.Is(err, ErrDriveName) {
+		t.Errorf("a path as a name: %v", err)
+	}
+	if _, _, err := e.DriveKeepNew(ReadAsOperator("ankush", "boss@example.com"), 0, "x.txt", "", strings.NewReader("x")); !errors.Is(err, ErrDriveHolderOnly) {
+		t.Errorf("an administrator: %v", err)
 	}
 }

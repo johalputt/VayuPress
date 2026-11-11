@@ -29,6 +29,10 @@ type readerView struct {
 	// Home is the zone an invitation's time is read in: the holder's, from
 	// the request; the install's when nil.
 	Home *time.Location
+	// Places is which places beside Mail the session is offered: an
+	// invitation is answered into the Calendar and an attachment saved into
+	// Drive only where there is one to reach.
+	Places holderPlaces
 }
 
 // vayuReaderCard renders one message. It reads the message and, unless the
@@ -374,7 +378,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 			c.WriteString(mailUnsubscribeLine(user, folder, id, o))
 		}
 	}
-	if received {
+	if received && v.Places.Calendar {
 		home := v.Home
 		if home == nil {
 			home = config.SiteLocation()
@@ -408,6 +412,13 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 				`<span class="mx-file__dl" aria-hidden="true">` + saIcon("download") + `</span><span class="vp-sr-only">Download</span></a>`)
 			if _, ok := mailPreviewable(att.ContentType); ok {
 				c.WriteString(`<a class="mx-file__open" href="` + esc(dl+"&inline=1") + `" target="_blank" rel="noopener">Open<span class="vp-sr-only"> ` + esc(att.Filename) + `</span></a>`)
+			}
+			// Into the holder's own Drive (vayuos_mail_drive.go): for the
+			// mailbox's holder, not an administrator reading it, and where
+			// the session has a Drive. The button is replaced by what happened.
+			if rd.IsOwner() && v.Places.Drive {
+				c.WriteString(`<button type="button" class="mx-file__open" hx-post="/os/vayumail/drive/save"` + hxVals("folder", folder, "id", id, "idx", itoaSafe(att.Index)) +
+					` hx-swap="outerHTML">Save to Drive<span class="vp-sr-only"> ` + esc(att.Filename) + `</span></button>`)
 			}
 			c.WriteString(`</li>`)
 		}

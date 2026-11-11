@@ -314,6 +314,14 @@ func (a *App) composeSheet(r *http.Request, page bool) (sheet, refusal string) {
 		`</div></details>`)
 	b.WriteString(`<button type="button" class="mx-compose__tool" data-c-attach-btn aria-label="Attach files" title="Up to ` + strconv.Itoa(composeMaxAttachMB()) + ` MB in all">` + saIcon("clip") + `</button>`)
 	b.WriteString(`<input type="file" data-c-files multiple hidden>`)
+	// From Drive: the holder's own files, read as the menu opens
+	// (handleVayuOSDrivePick). Not for an administrator writing as another
+	// mailbox: Drive is its holder's.
+	if _, own := a.driveOwner(r); own {
+		b.WriteString(`<details class="sa-pop mx-compose__tpl" data-c-drive hx-get="/os/vayumail/drive/pick" hx-trigger="toggle once" hx-target="find [data-c-drive-list]" hx-swap="outerHTML">` +
+			`<summary class="mx-compose__tool" aria-label="Attach from Drive" title="Attach from Drive">` + saIcon("folder") + `</summary><div class="sa-pop__panel">` +
+			`<ul class="mx-compose__tpls" data-c-drive-list><li class="mx-compose__tpl-empty">Reading your files…</li></ul></div></details>`)
+	}
 	b.WriteString(`<button type="button" class="mx-compose__tool" data-c-format aria-label="Format" aria-pressed="false">` + saIcon("type") + `</button>`)
 	// Templates: the mailbox's saved wording, read as the menu opens
 	// (vayuos_mail_templates.go).

@@ -720,6 +720,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/vayumail/drive/file", a.handleVayuOSDriveFile)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/drive/action", a.handleVayuOSDriveAction)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/drive/upload", a.handleVayuOSDriveUpload)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/drive/save", a.handleVayuOSDriveSave)
+		pr.Get("/os/vayumail/drive/pick", a.handleVayuOSDrivePick)
 		// Outbox: HTMX auto-refresh fragment + per-message Resend/Delete/Retry-all.
 		pr.Get("/os/vayumail/outbox/fragment", a.handleVayuOSOutboxFragment)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/outbox/action", a.handleVayuOSOutboxAction)
@@ -1699,6 +1701,9 @@ type osMailSide struct {
 	// "" for Mail itself; PlaceSide is that place's sidebar, drawn in place
 	// of the folders.
 	Place, PlaceSide string
+	// Places is which of those places the session is offered at all
+	// (holderPlaces): the top bar names only what it can open.
+	Places holderPlaces
 }
 
 // osSite is one hosted site in the switcher.

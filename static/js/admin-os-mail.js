@@ -909,6 +909,24 @@
       Array.prototype.slice.call(tray ? tray.children : []).forEach(function (chip, n) { if (n >= shownFiles) chip.classList.add('is-new'); });
     }
     if (browseBtn && filesEl) browseBtn.addEventListener('click', function () { filesEl.click(); });
+    // From Drive: a file chosen in the menu is fetched here and joins the
+    // tray as one chosen from the computer does, so Send, drafts and the size
+    // limit know one kind of attachment.
+    compose.addEventListener('click', function (e) {
+      var pick = e.target.closest ? e.target.closest('[data-c-drive-file]') : null;
+      if (!pick || pick.disabled) return;
+      var name = pick.getAttribute('data-name');
+      pick.disabled = true;
+      fetch('/os/vayumail/drive/file?id=' + encodeURIComponent(pick.getAttribute('data-c-drive-file')), { credentials: 'same-origin' })
+        .then(function (r) { if (!r.ok) throw new Error('not read'); return r.blob(); })
+        .then(function (blob) {
+          addFiles([new File([blob], name, { type: 'application/octet-stream' })]);
+          var menu = pick.closest('details');
+          if (menu) menu.open = false;
+        })
+        .catch(function () { if (cStatus) cStatus.textContent = name + ' could not be read from Drive.'; })
+        .then(function () { pick.disabled = false; });
+    });
     if (filesEl) filesEl.addEventListener('change', function () { addFiles(filesEl.files); filesEl.value = ''; });
     if (dropzone) {
       ['dragenter', 'dragover'].forEach(function (ev) {

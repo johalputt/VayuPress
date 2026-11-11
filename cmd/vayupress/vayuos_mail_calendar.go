@@ -93,7 +93,19 @@ func (a *App) calendarAddress(rd vmail.Reader) string {
 
 // calendarOwner is the Reader for the session's own mailbox's calendar.
 func (a *App) calendarOwner(r *http.Request) (vmail.Reader, bool) {
-	if !a.mailRunning() {
+	return a.placeOwner(r, "/os/vayumail/calendar")
+}
+
+// driveOwner is the Reader for the session's own mailbox's Drive.
+func (a *App) driveOwner(r *http.Request) (vmail.Reader, bool) {
+	return a.placeOwner(r, "/os/vayumail/drive")
+}
+
+// placeOwner is the Reader for one of the places beside Mail, for a session
+// that has its own mailbox and can reach that place (sessionReaches). Every
+// page that offers the place asks here, so the offer and the route agree.
+func (a *App) placeOwner(r *http.Request, place string) (vmail.Reader, bool) {
+	if !a.mailRunning() || !sessionReaches(r, place) {
 		return vmail.Reader{}, false
 	}
 	_, own := a.ownMailbox(r)
@@ -102,6 +114,15 @@ func (a *App) calendarOwner(r *http.Request) (vmail.Reader, bool) {
 	}
 	rd := a.mailReader(r, mailKeyOf(own, a.vayuMail.Config().Domain))
 	return rd, rd.Key() != ""
+}
+
+// holderPlaces is which places beside Mail this session is offered.
+type holderPlaces struct{ Calendar, Drive bool }
+
+func (a *App) holderPlaces(r *http.Request) holderPlaces {
+	_, cal := a.calendarOwner(r)
+	_, drive := a.driveOwner(r)
+	return holderPlaces{Calendar: cal, Drive: drive}
 }
 
 // calView is the stretch of days a page shows.

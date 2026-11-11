@@ -21,6 +21,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   site, and only PNG, JPEG, GIF and WebP pictures are shown in place. Drive
   opens for the mailbox's holder alone; an administrator who opens someone's
   mailbox does not see their files.
+- **Drive inside Mail.** An attachment has **Save to Drive** beside its
+  download: the file goes into your Drive under its own name, and beside a
+  file of that name rather than over it. The composer has **Attach from
+  Drive**: pick a file from your folders and it is attached as one from
+  your computer is. Both are for the mailbox's holder only.
 - **Share a file by a link.** From a file's sheet in Drive, make a link for
   someone with no account here. A link can have a password, an end (a day,
   7 days, 30 days, or until you stop it) and a most number of downloads.
@@ -44,6 +49,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   administrator sets is one allowance for mail and files, so the figure on
   the accounts page, in Settings and in Mail's sidebar is now both, and a
   mailbox whose files fill it stops taking new mail as a full mailbox does.
+
+### Fixed
+
+- **A client account is offered only what it can open.** A client of the
+  studio who holds a mailbox is given the mailbox, not the Calendar or
+  Drive beside it. Since 3.18.36 its top bar named the Calendar and an
+  invitation's card showed Accept and Decline, and each led to a refusal.
+  The top bar, the invitation card, Save to Drive and Attach from Drive
+  are now shown only to a session that can reach them.
 
 ## [3.18.37] — 2026-11-11
 

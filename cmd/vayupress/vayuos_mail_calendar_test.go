@@ -109,11 +109,19 @@ func TestACalendarOpensOnlyForItsHolder(t *testing.T) {
 	if rec := calSave(a, boss, url.Values{"title": {"x"}, "sd": {"2026-11-10"}, "st": {"09:00"}, "ed": {"2026-11-10"}, "et": {"10:00"}, "zone": {"UTC"}}); rec.Code != http.StatusForbidden {
 		t.Errorf("a save answered an administrator %d", rec.Code)
 	}
-	if got := mailPlaces(&osMailSide{User: "dana", Own: false}); strings.Contains(got, "Calendar") {
+	both := holderPlaces{Calendar: true, Drive: true}
+	if got := mailPlaces(&osMailSide{User: "dana", Own: false, Places: both}); strings.Contains(got, "Calendar") {
 		t.Errorf("someone else's mailbox offers its calendar: %s", got)
 	}
-	if got := mailPlaces(&osMailSide{User: "dana", Own: true, Place: "calendar"}); !strings.Contains(got, `href="/os/vayumail/calendar" aria-current="page"`) {
+	if got := mailPlaces(&osMailSide{User: "dana", Own: true, Place: "calendar", Places: both}); !strings.Contains(got, `href="/os/vayumail/calendar" aria-current="page"`) {
 		t.Errorf("the holder's places: %s", got)
+	}
+	// The top bar names a place only where the session is offered it.
+	if got := mailPlaces(&osMailSide{User: "dana", Own: true, Places: holderPlaces{Calendar: true}}); !strings.Contains(got, ">Calendar<") || strings.Contains(got, ">Drive<") {
+		t.Errorf("a session offered the Calendar alone: %s", got)
+	}
+	if got := mailPlaces(&osMailSide{User: "dana", Own: true}); strings.Contains(got, "sa-places") {
+		t.Errorf("a session offered neither place: %s", got)
 	}
 }
 

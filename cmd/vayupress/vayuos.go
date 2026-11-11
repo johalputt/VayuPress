@@ -1997,6 +1997,9 @@ func (a *App) mailSide(r *http.Request, rd vmail.Reader, folder, view string, vi
 	side := &osMailSide{User: rd.Key(), Address: mbox, Avatar: mailAvatarImg(mbox, a.mailboxAvatarSet()), Admin: a.isAdminRequest(r),
 		Folders: a.mailNavFor(rd, folder, view, viewCounts, false),
 		Used:    a.vayuMail.MailboxUsage(mbox), Quota: a.vayuMail.MailboxQuota(mbox), Writable: !a.vayuMail.ReaderReadOnly(rd), Own: rd.IsOwner()}
+	if side.Own {
+		side.Places = a.holderPlaces(r)
+	}
 	if acc := a.vayuMail.Accounts(); acc != nil {
 		side.Name = acc.FullNameFor(r.Context(), mbox)
 	}
@@ -2130,7 +2133,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	// in compose, so their folder starts with nothing open.
 	pane := vayuReadpaneEmpty("")
 	if facts.Newest != "" && !strings.EqualFold(folder, "Drafts") {
-		if card, ok := a.vayuReaderCard(rd, folder, facts.Newest, readerView{Pane: true, Peek: true, Home: a.calendarHome(r)}); ok {
+		if card, ok := a.vayuReaderCard(rd, folder, facts.Newest, readerView{Pane: true, Peek: true, Home: a.calendarHome(r), Places: a.holderPlaces(r)}); ok {
 			pane = card
 		}
 	}
@@ -3153,7 +3156,7 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	card, ok := a.vayuReaderCard(rd, folder, id, readerView{Pane: pane, Peek: pane && r.URL.Query().Get("peek") == "1", Home: a.calendarHome(r),
+	card, ok := a.vayuReaderCard(rd, folder, id, readerView{Pane: pane, Peek: pane && r.URL.Query().Get("peek") == "1", Home: a.calendarHome(r), Places: a.holderPlaces(r),
 		HTML: r.URL.Query().Get("html") == "1", Images: r.URL.Query().Get("images") == "1"})
 	if !ok {
 		if pane {
@@ -3268,13 +3271,13 @@ func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Reque
 		}
 		// The pane action carries the reader's view choice (see paneVals), so the
 		// card comes back in the rendering they were reading.
-		if card, ok := a.vayuReaderCard(rd, folder, id, readerView{Pane: true, HTML: r.FormValue("html") == "1", Images: r.FormValue("images") == "1", Home: a.calendarHome(r)}); ok {
+		if card, ok := a.vayuReaderCard(rd, folder, id, readerView{Pane: true, HTML: r.FormValue("html") == "1", Images: r.FormValue("images") == "1", Home: a.calendarHome(r), Places: a.holderPlaces(r)}); ok {
 			writeOSHTML(w, r, card)
 		} else {
 			writeOSHTML(w, r, vayuReadpaneEmpty(""))
 		}
 	default:
-		if card, ok := a.vayuReaderCard(rd, folder, id, readerView{Pane: true, HTML: r.FormValue("html") == "1", Images: r.FormValue("images") == "1", Home: a.calendarHome(r)}); ok {
+		if card, ok := a.vayuReaderCard(rd, folder, id, readerView{Pane: true, HTML: r.FormValue("html") == "1", Images: r.FormValue("images") == "1", Home: a.calendarHome(r), Places: a.holderPlaces(r)}); ok {
 			writeOSHTML(w, r, card)
 		} else {
 			writeOSHTML(w, r, vayuReadpaneEmpty(""))

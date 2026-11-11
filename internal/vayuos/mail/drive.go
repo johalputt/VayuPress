@@ -471,6 +471,47 @@ func (e *Engine) DrivePut(rd Reader, parent int64, name, ctype string, r io.Read
 	return old.ID, nil
 }
 
+// DriveKeepNew keeps r as a new file in parent, never over one already
+// there: a name that is taken gets a number, "plan (2).pdf". What Mail
+// saves comes by a sender's name for it, and two messages' "invoice.pdf"
+// are two files, not one written over. It answers the name it used.
+func (e *Engine) DriveKeepNew(rd Reader, parent int64, name, ctype string, r io.Reader) (int64, string, error) {
+	mbox, err := e.driveOf(rd)
+	if err != nil {
+		return 0, "", err
+	}
+	if name, err = driveName(name); err != nil {
+		return 0, "", err
+	}
+	free := name
+	for n := 2; ; n++ {
+		if _, taken := e.driveNamed(context.Background(), mbox, parent, free); !taken {
+			break
+		}
+		if n > 999 {
+			return 0, "", ErrDriveExists
+		}
+		free = numberedName(name, n)
+	}
+	id, err := e.DrivePut(rd, parent, free, ctype, r)
+	return id, free, err
+}
+
+// numberedName is name with (n) before its extension, kept inside the 255
+// bytes a name has.
+func numberedName(name string, n int) string {
+	ext := ""
+	if i := strings.LastIndexByte(name, '.'); i > 0 && len(name)-i <= 10 {
+		name, ext = name[:i], name[i:]
+	}
+	tail := fmt.Sprintf(" (%d)%s", n, ext)
+	for len(name)+len(tail) > 255 {
+		_, size := utf8.DecodeLastRuneInString(name)
+		name = name[:len(name)-size]
+	}
+	return name + tail
+}
+
 // pruneVersions keeps a file's latest driveVersions versions.
 func (e *Engine) pruneVersions(ctx context.Context, mbox string, fileID int64) {
 	rows, err := e.accounts.db.QueryContext(ctx, `SELECT id,blob FROM vayumail_drive_versions WHERE mailbox=? AND file_id=? ORDER BY id DESC LIMIT -1 OFFSET ?`, mbox, fileID, driveVersions)

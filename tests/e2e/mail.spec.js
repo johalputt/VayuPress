@@ -1789,3 +1789,61 @@ test("a file is uploaded to a Drive folder, renamed, and is only ever a download
   await expect(page.locator(".drive-row", { hasText: "terms-final.txt" })).toBeVisible();
   await holder.close();
 });
+
+// Drive inside Mail: a file in Drive is attached to a message from the
+// composer's menu, and the attachment of the message that arrives is saved
+// back to Drive, beside the first and not over it.
+test("a file from Drive is attached to a message, and an attachment is saved to Drive", async ({ page, browser }) => {
+  test.setTimeout(90000);
+  await page.goto("/os/vayumail/accounts");
+  const csrf = (await page.context().cookies()).find((c) => c.name === "vp_csrf");
+  const local = "mover" + Date.now();
+  const made = await page.request.post("/os/vayumail/accounts/create", {
+    headers: { "X-CSRF-Token": csrf ? decodeURIComponent(csrf.value) : "" },
+    data: { local, name: "Mover", pass: "e2e-mover-passphrase-1", role: "mailbox" },
+  });
+  expect(made.ok()).toBeTruthy();
+  const origin = process.env.MAIL_UPSTREAM;
+  if (!origin) throw new Error("MAIL_UPSTREAM is not set: boot the mail install as .github/actions/boot-vayupress does");
+  const holder = await browser.newContext({ baseURL: origin, viewport: { width: 1440, height: 900 } });
+  page = await holder.newPage();
+  await page.goto("/os/login");
+  await page.locator("#login-email").fill(local + "@mail.test");
+  await page.locator("#login-password").fill("e2e-mover-passphrase-1");
+  await page.locator(".login-form button[type=submit]").first().click();
+  await page.waitForURL((u) => !u.pathname.startsWith("/os/login"));
+
+  await page.goto("/os/vayumail/drive");
+  await page.locator("[data-drive-upload]").setInputFiles([{ name: "note.txt", mimeType: "text/plain", buffer: Buffer.from("From Drive.") }]);
+  await expect(page.locator(".drive-row", { hasText: "note.txt" })).toBeVisible();
+
+  await page.goto("/os/vayumail/compose");
+  const subject = "With a file from Drive " + Date.now();
+  const to = page.locator('[data-c-chips="to"] input');
+  await to.fill(local + "@mail.test");
+  await to.press("Enter");
+  await page.locator("[data-c-subject]").fill(subject);
+  await page.locator("[data-c-body]").fill("It is attached.");
+  // The menu reads the files as it opens; the file is fetched when chosen
+  // and joins the tray as one chosen from the computer does.
+  const fetched = page.waitForResponse((r) => r.url().includes("/os/vayumail/drive/file?id="));
+  await page.locator("[data-c-drive] summary").click();
+  await page.locator("[data-c-drive-file]", { hasText: "note.txt" }).click();
+  await fetched;
+  await expect(page.locator(".vm-attach-chip", { hasText: "note.txt" })).toContainText("11 B");
+  await page.locator("[data-c-body]").press("Control+Enter");
+
+  await expect.poll(async () => page.evaluate(async () => (await fetch("/os/vayumail/inbox/fragment?folder=Inbox")).text()), { timeout: 40000 }).toContain(subject);
+  await page.goto("/os/vayumail/inbox");
+  await page.locator(".mx-row", { hasText: subject }).first().click();
+  const save = page.getByRole("button", { name: "Save to Drive note.txt" });
+  await expect(save).toBeVisible();
+  await save.click();
+  await expect(page.locator("a.mx-file__open", { hasText: "Saved to Drive" })).toBeVisible();
+
+  await page.goto("/os/vayumail/drive");
+  await expect(page.locator(".drive-row", { hasText: "note (2).txt" })).toBeVisible();
+  await expect(page.locator(".drive-row")).toHaveCount(2);
+  await holder.close();
+});
+

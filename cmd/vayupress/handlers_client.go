@@ -26,6 +26,8 @@ package main
 import (
 	"net/http"
 	"strings"
+
+	"github.com/johalputt/vayupress/internal/users"
 )
 
 // osAudience declares who an /os prefix is for.
@@ -162,6 +164,17 @@ func init() { mustValidateClientSurface() }
 //
 // Deny by default: a path matching no declared prefix is refused. This is the
 // whole inversion — nothing needs to be added here for a new page to be safe.
+// sessionReaches reports whether a request's session may reach an /os path
+// at all, so a page offers no control that leads to a refusal: a bound
+// client is given its mailbox and not everything beside it (clientSurface),
+// and what the list does not carry is not drawn for it. Derived from the
+// list itself, so a place added to the surface is offered with no second
+// edit, and one never added is never offered.
+func sessionReaches(r *http.Request, path string) bool {
+	u := currentUser(r)
+	return u == nil || u.Role != users.RoleClient || clientPathAllowed(path)
+}
+
 func clientPathAllowed(path string) bool {
 	for _, e := range clientSurface {
 		if e.Audience != audienceClient {
