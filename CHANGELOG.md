@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.37] — 2026-11-11
+
+Booking pages: share a link and anyone can book a free time in your calendar. They see only free times, in their own time zone, and a time is booked only when they confirm by a link mailed to them. Built with Go 1.27.4.
+
 ### Added
 
 - **Booking pages.** Share a link and anyone can book a free time in your
