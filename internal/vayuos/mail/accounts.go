@@ -548,6 +548,10 @@ func (s *AccountStore) SetActive(ctx context.Context, email string, active bool)
 //	filters            rules that would run on somebody else's mail
 //	rule_forwards      addresses that agreed to take the last holder's mail,
 //	                   not the next one's
+//	reminders_sent     which of the holder's reminders went out
+//	booking_pages      the public pages that book into the holder's calendar,
+//	bookings           and what was booked on them: a new holder of the
+//	                   address did not offer them
 //	snooze             per-mailbox scheduling state
 //	autoreply_log      auto-reply dedupe bookkeeping
 //	scheduled          mail held to send later, which must not go out from a
@@ -574,6 +578,9 @@ var perAddressTables = [][2]string{
 	{"vayumail_contact_groups", "owner"},
 	{"vayumail_filters", "mailbox"},
 	{"vayumail_rule_forwards", "mailbox"},
+	{"vayumail_reminders_sent", "mailbox"},
+	{"vayumail_booking_pages", "mailbox"},
+	{"vayumail_bookings", "mailbox"},
 	{"vayumail_snooze", "mailbox"},
 	{"vayumail_autoreply_log", "mailbox"},
 	{"vayumail_scheduled", "owner"},

@@ -66,6 +66,9 @@ type CalEvent struct {
 	// Remind is the event's first reminder, Before its start; ByMail when
 	// it comes by mail (reminders.go).
 	Remind *Reminder
+	// Free: the event does not make the holder busy (TRANSP:TRANSPARENT),
+	// so a booking page offers its time.
+	Free bool
 }
 
 // Reminder is how long before an event's start it is called to mind, and
@@ -341,6 +344,7 @@ func (c *calReader) event(comp *ical.Component) (ev CalEvent, span time.Duration
 	if p := comp.Props.Get(ical.PropSequence); p != nil {
 		ev.Sequence, _ = p.Int()
 	}
+	ev.Free = strings.EqualFold(textOf(comp, ical.PropTransparency), "TRANSPARENT")
 	for _, al := range comp.Children {
 		if al.Name != ical.CompAlarm {
 			continue
