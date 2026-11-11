@@ -90,9 +90,9 @@ func (a *App) sealStoredMail(own string) {
 	case err != nil:
 		logging.LogError("vayumail", "sealing the stored mail of "+own, err.Error())
 	case left > 0:
-		logging.LogWarn("vayumail", "sealed "+itoaSafe(sealed)+" stored messages of "+own+"; "+itoaSafe(left)+" are left for the next run")
+		logging.LogWarn("vayumail", "sealed "+itoaSafe(sealed)+" stored messages and files of "+own+"; "+itoaSafe(left)+" are left for the next run")
 	default:
-		logging.LogInfo("vayumail", "sealed "+itoaSafe(sealed)+" stored messages of "+own)
+		logging.LogInfo("vayumail", "sealed "+itoaSafe(sealed)+" stored messages and files of "+own)
 	}
 }
 

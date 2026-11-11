@@ -32,13 +32,20 @@ import (
 )
 
 func (a *App) writeBookShell(w http.ResponseWriter, status int, title, inner string) {
+	writeGuestPage(w, status, title, `<div class="login-card book-card">`+inner+`</div>`+
+		`<script src="/os/static/js/book.js?v=`+assetVer("js/book.js")+`"></script>`)
+}
+
+// writeGuestPage is a page for someone with no session who came by a link
+// that is itself the secret (a booking's, a shared file's): never kept by a
+// cache, never sent on in a Referer, never indexed.
+func writeGuestPage(w http.ResponseWriter, status int, title, body string) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_, _ = w.Write([]byte(authPageShell(title, `<div class="login-card book-card">`+inner+`</div>`+
-		`<script src="/os/static/js/book.js?v=`+assetVer("js/book.js")+`"></script>`)))
+	_, _ = w.Write([]byte(authPageShell(title, body)))
 }
 
 // publicBookingPage is the page a link names, when it is taking bookings.

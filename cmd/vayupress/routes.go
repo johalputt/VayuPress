@@ -501,6 +501,10 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Post("/book/cancel", a.handleBookCancel)
 	r.Get("/book/{owner}/{slug}", a.handleBookPage)
 	r.Post("/book/{owner}/{slug}", a.handleBookPage)
+	// A shared file's link (drive_public.go): the page on GET, the file on
+	// a press of its button.
+	r.Get("/drive/s/{token}", a.handleDriveShare)
+	r.Post("/drive/s/{token}", a.handleDriveShare)
 	r.Post("/vayumail/forward/confirm", a.handleRuleForwardConfirm)
 	r.Get("/api/v1/tiers", a.handleTiersPublic)
 	// Public author profile pages.

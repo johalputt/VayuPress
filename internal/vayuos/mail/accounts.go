@@ -585,6 +585,7 @@ var perAddressTables = [][2]string{
 	{"vayumail_bookings", "mailbox"},
 	{"vayumail_drive", "mailbox"},
 	{"vayumail_drive_versions", "mailbox"},
+	{"vayumail_drive_shares", "mailbox"},
 	{"vayumail_snooze", "mailbox"},
 	{"vayumail_autoreply_log", "mailbox"},
 	{"vayumail_scheduled", "owner"},

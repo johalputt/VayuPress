@@ -259,6 +259,11 @@ func (a *App) driveSheet(rd vmail.Reader, d vmail.DriveEntry, home *time.Locatio
 			meta += " · sealed"
 		}
 		b.WriteString(`<p class="cal-note">` + esc(meta) + `</p>`)
+		if !d.Sealed && a.vayuPGP != nil && a.vayuPGP.HolderKeeps(a.calendarAddress(rd)) {
+			// A private mailbox's holder was told their files are sealed; the
+			// one that is not says so itself.
+			b.WriteString(`<p class="cal-note">This file is not sealed. A private mailbox seals files up to 25 MB; a larger one kept from before it was private stays as it was. To leave nothing readable on the server, download it and delete it here.</p>`)
+		}
 		b.WriteString(`<div class="cal-detail__acts"><a class="btn btn--sm" href="/os/vayumail/drive/file?id=` + id + `" download>` + saIcon("download") + `Download</a></div>`)
 	}
 	if !d.IsDir {
@@ -272,6 +277,9 @@ func (a *App) driveSheet(rd vmail.Reader, d vmail.DriveEntry, home *time.Locatio
 			}
 			b.WriteString(`</ul>`)
 		}
+	}
+	if !d.IsDir {
+		b.WriteString(a.driveShareSection(rd, d, home, post))
 	}
 	b.WriteString(`<form class="cal-form"` + post + `><input type="hidden" name="op" value="rename"><input type="hidden" name="id" value="` + id + `">` +
 		`<label class="field"><span class="field-label">Name</span><input type="text" name="name" required maxlength="255" value="` + esc(d.Name) + `" autocomplete="off"></label>` +
@@ -292,6 +300,56 @@ func (a *App) driveSheet(rd vmail.Reader, d vmail.DriveEntry, home *time.Locatio
 	}
 	b.WriteString(`</select></label><div class="cal-form__acts"><button type="submit" class="btn btn--sm">Move</button></div></form>`)
 	b.WriteString(`<div class="cal-detail__delete"><button type="button" class="btn btn--sm btn--danger"` + post + hxVals("op", "trash", "id", id) + `>Move to Trash</button></div></div>`)
+	return b.String()
+}
+
+// driveEnds are the ends a link is offered, in days; 0 is until stopped.
+var driveEnds = [][2]string{{"1", "In a day"}, {"7", "In 7 days"}, {"30", "In 30 days"}, {"0", "When I stop it"}}
+
+// driveShareSection is a file's links and the form that makes one. A link's
+// address is shown once, when it is made (the action's answer): only its
+// hash is kept, so this list cannot show it again.
+func (a *App) driveShareSection(rd vmail.Reader, d vmail.DriveEntry, home *time.Location, post string) string {
+	id := strconv.FormatInt(d.ID, 10)
+	var b strings.Builder
+	b.WriteString(`<h3 class="cal-booking__h">Share by link</h3>`)
+	if d.Sealed {
+		// Said before the link is made: the copy is readable on the server's
+		// disk, which the sealed file is not.
+		b.WriteString(`<p class="cal-note">This file is sealed to your key. A link needs a copy that is not sealed, kept on the server until the link ends or you stop it.</p>`)
+	}
+	if links, _ := a.vayuMail.DriveShares(rd, d.ID); len(links) > 0 {
+		b.WriteString(`<ul class="drive-versions">`)
+		for _, l := range links {
+			what := "Made " + l.Created.In(home).Format("2 January")
+			if !l.Expires.IsZero() {
+				what += " · ends " + l.Expires.In(home).Format("2 January, 15:04")
+			}
+			if l.Most > 0 {
+				what += " · " + strconv.Itoa(l.Downloads) + " of " + strconv.Itoa(l.Most) + " downloads"
+			} else {
+				what += " · " + strconv.Itoa(l.Downloads) + " " + pluralWord(l.Downloads, "download", "downloads")
+			}
+			if l.Password {
+				what += " · password"
+			}
+			b.WriteString(`<li><span>` + esc(what) + `</span><button type="button" class="btn btn--sm"` + post + hxVals("op", "unshare", "id", id, "share", strconv.FormatInt(l.ID, 10)) + `>Stop</button></li>`)
+		}
+		b.WriteString(`</ul>`)
+	}
+	b.WriteString(`<form class="cal-form"` + post + `><input type="hidden" name="op" value="share"><input type="hidden" name="id" value="` + id + `">` +
+		`<label class="field"><span class="field-label">Ends</span><select name="ends">`)
+	for _, e := range driveEnds {
+		sel := ""
+		if e[0] == "7" {
+			sel = " selected"
+		}
+		b.WriteString(`<option value="` + e[0] + `"` + sel + `>` + e[1] + `</option>`)
+	}
+	b.WriteString(`</select></label>` +
+		`<label class="field"><span class="field-label">Password (optional)</span><input type="text" name="password" minlength="` + strconv.Itoa(vmail.ShareMinPassword) + `" maxlength="256" autocomplete="off"></label>` +
+		`<label class="field"><span class="field-label">Most downloads (optional)</span><input type="number" name="most" min="1" max="` + strconv.Itoa(vmail.ShareMaxDownloads) + `"></label>` +
+		`<div class="cal-form__acts"><button type="submit" class="btn btn--sm">Make a link</button></div></form>`)
 	return b.String()
 }
 
@@ -330,6 +388,26 @@ func (a *App) handleVayuOSDriveAction(w http.ResponseWriter, r *http.Request) {
 			// holder is choosing between versions and may go back.
 			if path, perr := a.vayuMail.DrivePath(rd, id); perr == nil && len(path) > 0 {
 				writeOSHTML(w, r, a.driveSheet(rd, path[len(path)-1], a.calendarHome(r), saCallout("ok", "That version is the file again. The one it replaced is kept below.")))
+				return
+			}
+		}
+	case "share":
+		days, _ := strconv.Atoi(r.PostFormValue("ends"))
+		most, _ := strconv.Atoi(r.PostFormValue("most"))
+		var token string
+		if token, err = a.vayuMail.DriveShareFile(rd, id, r.PostFormValue("password"), time.Duration(days)*24*time.Hour, most); err == nil {
+			link := a.oauthBaseURL(r) + "/drive/s/" + token
+			said := saCallout("ok", `This link is shown once. Copy it now.<input class="input" type="text" readonly aria-label="The link" value="`+esc(link)+`">`)
+			if path, perr := a.vayuMail.DrivePath(rd, id); perr == nil && len(path) > 0 {
+				writeOSHTML(w, r, a.driveSheet(rd, path[len(path)-1], a.calendarHome(r), said))
+				return
+			}
+		}
+	case "unshare":
+		share, _ := strconv.ParseInt(r.PostFormValue("share"), 10, 64)
+		if err = a.vayuMail.DriveUnshare(rd, share); err == nil {
+			if path, perr := a.vayuMail.DrivePath(rd, id); perr == nil && len(path) > 0 {
+				writeOSHTML(w, r, a.driveSheet(rd, path[len(path)-1], a.calendarHome(r), saCallout("ok", "That link is stopped.")))
 				return
 			}
 		}

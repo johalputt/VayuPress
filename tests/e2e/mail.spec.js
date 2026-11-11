@@ -1758,7 +1758,31 @@ test("a file is uploaded to a Drive folder, renamed, and is only ever a download
   await sheet.getByRole("button", { name: "Rename" }).click();
   const renamed = page.locator(".drive-row", { hasText: "terms-final.txt" });
   await expect(renamed).toBeVisible();
+  // A link to it, made in the sheet and shown once. Someone with no session
+  // sees what the file is, and the file itself only on a press, as a
+  // download; stopped, the link is not open.
   await renamed.getByRole("button", { name: "More for terms-final.txt" }).click();
+  await sheet.locator("input[name=most]").fill("3");
+  await sheet.getByRole("button", { name: "Make a link" }).click();
+  const shown = sheet.locator(".callout--ok input[readonly]");
+  await expect(shown).toHaveValue(/\/drive\/s\/[0-9a-f]{64}$/);
+  const link = new URL(await shown.inputValue()).pathname;
+  const guestCtx = await browser.newContext({ baseURL: origin });
+  const guest = await guestCtx.newPage();
+  await guest.goto(link);
+  await expect(guest.locator("h1")).toHaveText("terms-final.txt");
+  await expect(guest.locator(".login-sub")).toContainText("shared by " + local + "@mail.test");
+  const [download] = await Promise.all([guest.waitForEvent("download"), guest.getByRole("button", { name: "Download" }).click()]);
+  expect(download.suggestedFilename()).toBe("terms-final.txt");
+  const handed = await guestCtx.request.post(link);
+  expect(handed.headers()["content-disposition"]).toBe('attachment; filename="terms-final.txt"');
+  expect(handed.headers()["content-security-policy"]).toBe("default-src 'none'; sandbox");
+  expect(await handed.text()).toBe("The terms.");
+  await expect(sheet.locator(".drive-versions li", { hasText: "of 3 downloads" })).toHaveCount(1);
+  await sheet.locator(".drive-versions li", { hasText: "of 3 downloads" }).getByRole("button", { name: "Stop" }).click();
+  await expect(sheet.locator(".callout--ok")).toContainText("That link is stopped");
+  expect((await guestCtx.request.get(link)).status()).toBe(404);
+  await guestCtx.close();
   await sheet.getByRole("button", { name: "Move to Trash" }).click();
   await expect(page.locator(".drive-row", { hasText: "terms-final.txt" })).toHaveCount(0);
   await page.locator(".sa-appside__item", { hasText: "Trash" }).click();

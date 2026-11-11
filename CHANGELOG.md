@@ -21,9 +21,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   site, and only PNG, JPEG, GIF and WebP pictures are shown in place. Drive
   opens for the mailbox's holder alone; an administrator who opens someone's
   mailbox does not see their files.
+- **Share a file by a link.** From a file's sheet in Drive, make a link for
+  someone with no account here. A link can have a password, an end (a day,
+  7 days, 30 days, or until you stop it) and a most number of downloads.
+  Its address is shown once, when it is made, and only its hash is kept.
+  The link's page says what the file is; the file is handed out only on a
+  press of its button, as a download, so a scanner opening the address uses
+  none of its downloads. Ten wrong passwords close a link. It hands out the
+  file as it is now, and nothing while the file is in Trash, its mailbox is
+  suspended, or after you stop it. A sealed file in a private mailbox needs
+  a readable copy for its link, kept until the link ends; the sheet says so
+  before you make one.
 
 ### Changed
 
+- **Making a mailbox private seals its files as well as its mail.** Files
+  already in Drive, and their earlier versions, are sealed to your key when
+  the mailbox becomes private. A file over 25 MB kept from before is left
+  as it was, and its sheet and the Private mailbox card say so. A link made
+  while a file was readable ends when the file is sealed.
 - **A mailbox's storage figure counts its files too.** The allowance an
   administrator sets is one allowance for mail and files, so the figure on
   the accounts page, in Settings and in Mail's sidebar is now both, and a

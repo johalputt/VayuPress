@@ -107,6 +107,24 @@ func (s *AccountStore) ensureDriveTables() error {
 		blob TEXT NOT NULL,
 		sealed INTEGER NOT NULL DEFAULT 0,
 		saved DATETIME NOT NULL);`)
+	if err != nil {
+		return err
+	}
+	// A link to a file (drive_share.go). blob and size are the unsealed copy
+	// kept for a sealed file's link, '' and 0 for any other.
+	_, err = s.db.Exec(`CREATE TABLE IF NOT EXISTS vayumail_drive_shares(
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		mailbox TEXT NOT NULL,
+		file_id INTEGER NOT NULL,
+		token_hash TEXT NOT NULL UNIQUE,
+		pass_hash TEXT NOT NULL DEFAULT '',
+		created DATETIME NOT NULL,
+		expires DATETIME,
+		most INTEGER NOT NULL DEFAULT 0,
+		downloads INTEGER NOT NULL DEFAULT 0,
+		failures INTEGER NOT NULL DEFAULT 0,
+		blob TEXT NOT NULL DEFAULT '',
+		size INTEGER NOT NULL DEFAULT 0);`)
 	return err
 }
 
@@ -155,15 +173,17 @@ func (e *Engine) blobPath(mbox, blob string) (string, error) {
 	return filepath.Join(e.driveDir(mbox), blob[:2], blob), nil
 }
 
-// DriveUsed is the bytes a mailbox's files take, versions and Trash too.
+// DriveUsed is the bytes a mailbox's files take: versions, Trash and the
+// copies kept for links too.
 func (s *AccountStore) DriveUsed(ctx context.Context, mbox string) int64 {
 	if s.ensureDriveTables() != nil {
 		return 0
 	}
-	var files, versions int64
+	var files, versions, copies int64
 	_ = s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(size),0) FROM vayumail_drive WHERE mailbox=?`, normEmail(mbox)).Scan(&files)
 	_ = s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(size),0) FROM vayumail_drive_versions WHERE mailbox=?`, normEmail(mbox)).Scan(&versions)
-	return files + versions
+	_ = s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(size),0) FROM vayumail_drive_shares WHERE mailbox=?`, normEmail(mbox)).Scan(&copies)
+	return files + versions + copies
 }
 
 const driveCols = `id,parent,name,is_dir,size,ctype,modified,trashed,sealed`
@@ -478,6 +498,109 @@ func (e *Engine) pruneVersions(ctx context.Context, mbox string, fileID int64) {
 	}
 }
 
+// sealStoredFiles seals the files a mailbox kept before it was private, and
+// their earlier versions, as SealStored does its mail: each is rewritten in
+// place, sealed to the holder's key. A file larger than maxSealedFile is
+// left as it is, since opening it sealed would hold it in memory twice; it
+// stays marked unsealed, and its sheet says so. left counts the files that
+// could not be sealed this time and will be on the next run.
+//
+// A link made while a file was in the clear has no copy of its own, so it
+// ends when the file is sealed (shareByToken): the holder makes it again,
+// and is told then that a readable copy is kept for it.
+func (e *Engine) sealStoredFiles(mbox string) (sealed, left int) {
+	if e.accounts == nil || e.maildir == nil || e.maildir.keys == nil || e.accounts.ensureDriveTables() != nil {
+		return 0, 0
+	}
+	ctx := context.Background()
+	rows, err := e.accounts.db.QueryContext(ctx, `SELECT blob,size FROM vayumail_drive WHERE mailbox=? AND is_dir=0 AND sealed=0 AND blob<>''
+		UNION ALL SELECT blob,size FROM vayumail_drive_versions WHERE mailbox=? AND sealed=0`, mbox, mbox)
+	if err != nil {
+		return 0, 0
+	}
+	type plain struct {
+		blob string
+		size int64
+	}
+	var all []plain
+	for rows.Next() {
+		var p plain
+		if rows.Scan(&p.blob, &p.size) == nil {
+			all = append(all, p)
+		}
+	}
+	if rows.Err() != nil || rows.Close() != nil {
+		return 0, 0
+	}
+	for _, p := range all {
+		if p.size > maxSealedFile {
+			continue
+		}
+		if e.sealBlob(ctx, mbox, p.blob) != nil {
+			left++
+			continue
+		}
+		sealed++
+	}
+	return sealed, left
+}
+
+// sealBlob rewrites one blob sealed, and marks the row that has it.
+func (e *Engine) sealBlob(ctx context.Context, mbox, blob string) error {
+	// It waits for a slot where a holder's own request is told to try again:
+	// this runs behind the page, once, and a file it gave up on would stay
+	// readable on the disk of a mailbox whose holder was told it is sealed.
+	slots := e.sealSlots(mbox)
+	slots <- struct{}{}
+	defer func() { <-slots }()
+	// One at a time, and the mark read again inside: two runs over one
+	// mailbox (the page's, and a second press) would otherwise both read a
+	// file as unsealed and the later seal the earlier's sealed bytes, which
+	// then open to nothing a person can read.
+	e.sealingStored.Lock()
+	defer e.sealingStored.Unlock()
+	var still int
+	_ = e.accounts.db.QueryRowContext(ctx, `SELECT (SELECT COUNT(1) FROM vayumail_drive WHERE mailbox=? AND blob=? AND sealed=0) + (SELECT COUNT(1) FROM vayumail_drive_versions WHERE mailbox=? AND blob=? AND sealed=0)`, mbox, blob, mbox, blob).Scan(&still)
+	if still == 0 {
+		return nil
+	}
+	path, err := e.blobPath(mbox, blob)
+	if err != nil {
+		return err
+	}
+	raw, err := os.ReadFile(path) // #nosec G304 -- blobPath admits only this package's hex names under the mailbox's directory
+	if err != nil {
+		return err
+	}
+	out, err := e.maildir.keys.SealTo(mbox, raw)
+	if err != nil {
+		return err
+	}
+	tmp := path + ".part"
+	if err := os.WriteFile(tmp, out, 0o600); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	// Gone while it was being sealed (deleted, or pruned as a version): not
+	// written back.
+	if _, err := os.Stat(path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	// By the blob, in both tables: a file saved over meanwhile has moved its
+	// row to the versions, and the blob's name is this package's own random
+	// one, so it names one row wherever that row now is.
+	if _, err := e.accounts.db.ExecContext(ctx, `UPDATE vayumail_drive SET sealed=1 WHERE mailbox=? AND blob=?`, mbox, blob); err != nil {
+		return err
+	}
+	_, err = e.accounts.db.ExecContext(ctx, `UPDATE vayumail_drive_versions SET sealed=1 WHERE mailbox=? AND blob=?`, mbox, blob)
+	return err
+}
+
 // DriveVersion is what a file was before it was written over.
 type DriveVersion struct {
 	ID    int64
@@ -555,6 +678,13 @@ func (e *Engine) removeBlob(mbox, blob string) {
 	}
 }
 
+// sealSlots is a mailbox's slots themselves (sealSlot).
+func (e *Engine) sealSlots(mbox string) chan struct{} {
+	v, _ := e.driveSealing.LoadOrStore(mbox, make(chan struct{}, sealedAtOnce))
+	slots, _ := v.(chan struct{})
+	return slots
+}
+
 // bytesFile is an opened sealed file; closing it gives its slot back.
 type bytesFile struct {
 	*bytes.Reader
@@ -570,8 +700,7 @@ func (b *bytesFile) Close() error { b.done(); return nil }
 // wait. It answers at once: false when the mailbox's slots are taken. The
 // function it returns gives the slot back, and is safe to call twice.
 func (e *Engine) sealSlot(mbox string) (func(), bool) {
-	v, _ := e.driveSealing.LoadOrStore(mbox, make(chan struct{}, sealedAtOnce))
-	slots, _ := v.(chan struct{})
+	slots := e.sealSlots(mbox)
 	select {
 	case slots <- struct{}{}:
 		var once sync.Once
@@ -767,6 +896,9 @@ func (e *Engine) driveRemove(ctx context.Context, mbox string, id int64) error {
 			return err
 		}
 		if _, err := e.accounts.db.ExecContext(ctx, `DELETE FROM vayumail_drive_versions WHERE mailbox=? AND file_id=?`, mbox, x); err != nil {
+			return err
+		}
+		if err := e.dropShares(ctx, `SELECT id,mailbox,blob FROM vayumail_drive_shares WHERE mailbox=? AND file_id=?`, mbox, x); err != nil {
 			return err
 		}
 		if _, err := e.accounts.db.ExecContext(ctx, `DELETE FROM vayumail_drive WHERE mailbox=? AND id=?`, mbox, x); err != nil {

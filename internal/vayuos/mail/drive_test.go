@@ -515,3 +515,113 @@ func TestAMailboxHasTwoSealedFilesInMemoryAtOnce(t *testing.T) {
 		}
 	}
 }
+
+// TestGoingPrivateSealsTheFilesAlreadyKept — the file, what it was before,
+// and nothing twice; a file too large to seal is left and stays marked so;
+// a link made while a file was readable ends.
+func TestGoingPrivateSealsTheFilesAlreadyKept(t *testing.T) {
+	e, s := driveEngine(t)
+	md, keys := sealedMaildir(t)
+	e.maildir = md
+	if err := s.Create(context.Background(), "dana@example.com", "h", "Dana", "mailbox"); err != nil {
+		t.Fatal(err)
+	}
+	dana := ReadAsOwner("dana")
+	keep := func(name, body string) int64 {
+		t.Helper()
+		id, err := e.DrivePut(dana, 0, name, "", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	keep("plan.txt", "the first words")
+	plan := keep("plan.txt", "the second words")
+	other := keep("other.txt", "other words")
+	big := keep("big.bin", "words too many to seal")
+	if _, err := s.db.Exec(`UPDATE vayumail_drive SET size=? WHERE id=?`, maxSealedFile+1, big); err != nil {
+		t.Fatal(err)
+	}
+	token, err := e.DriveShareFile(dana, other, "", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	makePrivate(t, keys)
+	sealed, left, err := e.SealStored("dana@example.com")
+	if err != nil || sealed != 3 || left != 0 {
+		t.Fatalf("sealed %d, left %d, %v; want the file, its earlier version and the other file", sealed, left, err)
+	}
+	onDisk := func(word string) bool {
+		for _, p := range diskFiles(t, e) {
+			if b, _ := os.ReadFile(p); bytes.Contains(b, []byte(word)) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, word := range []string{"first words", "second words", "other words"} {
+		if onDisk(word) {
+			t.Errorf("%q is still readable on the disk", word)
+		}
+	}
+	if !onDisk("too many to seal") {
+		t.Error("a file past the most that is sealed was rewritten")
+	}
+	list, _ := e.DriveList(dana, 0)
+	for _, d := range list {
+		if d.Sealed == (d.ID == big) {
+			t.Errorf("%s: sealed is %v", d.Name, d.Sealed)
+		}
+	}
+	// A second run finds nothing to do, and seals nothing twice.
+	if again, _, _ := e.SealStored("dana@example.com"); again != 0 {
+		t.Errorf("a second run sealed %d more", again)
+	}
+	if got := read(t, e, dana, plan); got != "the second words" {
+		t.Fatalf("the file opens as %q", got)
+	}
+	vs, _ := e.DriveVersions(dana, plan)
+	if len(vs) != 1 {
+		t.Fatalf("%d versions", len(vs))
+	}
+	if err := e.DriveRestoreVersion(dana, plan, vs[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, e, dana, plan); got != "the first words" {
+		t.Errorf("its earlier version opens as %q", got)
+	}
+	if _, err := fetch(e, token, ""); !errors.Is(err, ErrShareGone) {
+		t.Errorf("a link made while the file was readable: %v", err)
+	}
+	keys.CloseHeld("dana@example.com")
+	if _, _, err := e.DriveOpen(dana, plan); !errors.Is(err, ErrDriveLocked) {
+		t.Errorf("with the key closed: %v", err)
+	}
+}
+
+// TestAFileIsNotSealedTwice — a run that listed a file as unsealed, and
+// reaches it after another run sealed it, leaves it alone.
+func TestAFileIsNotSealedTwice(t *testing.T) {
+	e, s := driveEngine(t)
+	md, keys := sealedMaildir(t)
+	e.maildir = md
+	if err := s.Create(context.Background(), "dana@example.com", "h", "Dana", "mailbox"); err != nil {
+		t.Fatal(err)
+	}
+	dana := ReadAsOwner("dana")
+	id, err := e.DrivePut(dana, 0, "plan.txt", "", strings.NewReader("the plan"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var blob string
+	_ = s.db.QueryRow(`SELECT blob FROM vayumail_drive WHERE id=?`, id).Scan(&blob)
+	makePrivate(t, keys)
+	for i := 0; i < 2; i++ {
+		if err := e.sealBlob(context.Background(), "dana@example.com", blob); err != nil {
+			t.Fatalf("seal %d: %v", i+1, err)
+		}
+	}
+	if got := read(t, e, dana, id); got != "the plan" {
+		t.Fatalf("after two runs reached it the file opens as %d bytes that are not its own", len(got))
+	}
+}

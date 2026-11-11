@@ -88,6 +88,9 @@ type Engine struct {
 	// driveSealing is each mailbox's slots for sealed files held in memory
 	// (drive.go, sealSlot): mailbox to a channel of sealedAtOnce.
 	driveSealing sync.Map
+	// sealingStored makes the sealing of stored files one file at a time
+	// (drive.go, sealBlob).
+	sealingStored sync.Mutex
 }
 
 // usageEntry is one cached mailbox size with the moment it was measured.
@@ -796,8 +799,8 @@ func mimeSanitizeFilename(s string) string {
 // delivering goroutine, so it must return at once. Call it before Start.
 func (e *Engine) SetDeliveredHook(fn func()) { e.delivered = fn }
 
-// SealStored seals the mail email held before its holder took its key
-// (Maildir.SealStored).
+// SealStored seals what email held before its holder took its key: its
+// mail (Maildir.SealStored) and its files (sealStoredFiles).
 func (e *Engine) SealStored(email string) (sealed, left int, err error) {
 	if e.maildir == nil {
 		return 0, 0, errors.New("vayumail: not started")
@@ -806,7 +809,11 @@ func (e *Engine) SealStored(email string) (sealed, left int, err error) {
 	if domain == "" {
 		domain = e.cfg.Domain
 	}
-	return e.maildir.SealStored(domain, local)
+	if sealed, left, err = e.maildir.SealStored(domain, local); err != nil {
+		return sealed, left, err
+	}
+	files, later := e.sealStoredFiles(normEmail(local + "@" + domain))
+	return sealed + files, left + later, nil
 }
 
 // SetDecryptHook installs a transform applied to messages before they are
@@ -1224,6 +1231,7 @@ func (e *Engine) worker() {
 			_, _, _ = e.queue.ProcessDue(context.Background(), time.Now())
 			e.sendReminders(time.Now())
 			e.emptyOldTrash(time.Now())
+			e.sweepShares(context.Background(), time.Now())
 		}
 	}
 }
