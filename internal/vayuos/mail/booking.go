@@ -79,6 +79,10 @@ type Booking struct {
 }
 
 var (
+	// ErrBookingDetails and ErrBookingOwn are a guest's own mistakes, said
+	// back to them; any other error of a hold is the server's and is not.
+	ErrBookingDetails  = errors.New("vayumail: a booking needs your name and an address you can read")
+	ErrBookingOwn      = errors.New("vayumail: a page is booked by someone else")
 	ErrNoSuchBooking   = errors.New("vayumail: that link is not valid, was already used, or has expired")
 	ErrSlotTaken       = errors.New("vayumail: that time is no longer free")
 	ErrBookingsWait    = errors.New("vayumail: this page is taking no more bookings for now; try again later")
@@ -268,6 +272,18 @@ func (s *AccountStore) BookingPage(ctx context.Context, mailbox string, id int64
 	return scanBookingPage(pid, mb, body, en)
 }
 
+// BookingOffered reports whether a page takes bookings: it is switched on
+// and its mailbox is active. A mailbox an administrator has suspended
+// offers none of its pages, which only deleting it did before.
+func (s *AccountStore) BookingOffered(ctx context.Context, p BookingPage) bool {
+	if !p.Enabled || s.db == nil {
+		return false
+	}
+	var active int
+	_ = s.db.QueryRowContext(ctx, `SELECT active FROM vayumail_accounts WHERE email=?`, normEmail(p.Mailbox)).Scan(&active)
+	return active == 1
+}
+
 // DeleteBookingPage removes a page; its bookings stay in the calendar.
 func (s *AccountStore) DeleteBookingPage(ctx context.Context, mailbox string, id int64) error {
 	if err := s.ensureBookingTables(); err != nil {
@@ -442,18 +458,18 @@ func (e *Engine) slotFree(p BookingPage, start time.Time, length int, now time.T
 // it (the token is hex, so it needs no escaping). The link works for
 // bookingHoldFor.
 func (e *Engine) HoldBooking(ctx context.Context, p BookingPage, start time.Time, length int, name, email, answer string, now time.Time, confirmBase string) error {
-	if !p.Enabled {
+	if !e.accounts.BookingOffered(ctx, p) {
 		return errNoBookingPage
 	}
 	name = strings.TrimSpace(oneLine(name))
 	answer = strings.TrimSpace(answer)
 	addr, err := netmail.ParseAddress(strings.TrimSpace(email))
 	if err != nil || name == "" || len(name) > 120 || len(answer) > 2000 || !strings.Contains(addr.Address, "@") {
-		return errors.New("vayumail: a booking needs your name and an address you can read")
+		return ErrBookingDetails
 	}
 	email = normEmail(addr.Address)
 	if email == normEmail(p.Mailbox) {
-		return errors.New("vayumail: a page is booked by someone else")
+		return ErrBookingOwn
 	}
 	if !e.slotFree(p, start, length, now) {
 		return ErrSlotTaken
@@ -505,19 +521,39 @@ func (e *Engine) heldBooking(ctx context.Context, column, token string) (Booking
 // time is still free. The event carries the link that cancels it:
 // cancelBase with the cancel token after it.
 func (e *Engine) ConfirmBooking(ctx context.Context, token string, now time.Time, cancelBase string) (Booking, error) {
+	if e.accounts == nil || e.accounts.ensureBookingTables() != nil || token == "" {
+		return Booking{}, ErrNoSuchBooking
+	}
+	// The link is claimed before anything is read: of two confirms at the
+	// same moment (the button pressed twice) only one changes the row, and
+	// the other stops here. Read first, the second went on, found the
+	// first's event in its time and marked a booking that was made as
+	// cancelled. Claimed, the hold is also no longer what makes the time
+	// busy.
+	res, err := e.accounts.db.ExecContext(ctx, `UPDATE vayumail_bookings SET status='checking' WHERE confirm_hash=? AND confirm_hash<>'' AND status='held'`, hashRecoveryToken(token))
+	if err != nil {
+		return Booking{}, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return Booking{}, ErrNoSuchBooking
+	}
 	b, mbox, err := e.heldBooking(ctx, "confirm_hash", token)
-	if err != nil || b.Status != "held" || !b.Created.After(now.Add(-bookingHoldFor)) {
+	if err != nil {
+		return Booking{}, ErrNoSuchBooking
+	}
+	release := func() {
+		_, _ = e.accounts.db.ExecContext(ctx, `UPDATE vayumail_bookings SET status='held' WHERE id=?`, b.ID)
+	}
+	if !b.Created.After(now.Add(-bookingHoldFor)) {
+		release()
 		return Booking{}, ErrNoSuchBooking
 	}
 	p, err := e.accounts.BookingPage(ctx, mbox, b.PageID, "")
-	if err != nil || !p.Enabled {
+	if err != nil || !e.accounts.BookingOffered(ctx, p) {
+		release()
 		return Booking{}, ErrNoSuchBooking
 	}
 	length := int(b.End.Sub(b.Start) / time.Minute)
-	// The hold itself is not what makes the time busy.
-	if _, err := e.accounts.db.ExecContext(ctx, `UPDATE vayumail_bookings SET status='checking' WHERE id=? AND status='held'`, b.ID); err != nil {
-		return Booking{}, err
-	}
 	if !e.slotFree(p, b.Start, length, b.Created) {
 		_, _ = e.accounts.db.ExecContext(ctx, `UPDATE vayumail_bookings SET status='cancelled', confirm_hash='' WHERE id=?`, b.ID)
 		return Booking{}, ErrSlotTaken
@@ -538,7 +574,7 @@ func (e *Engine) ConfirmBooking(ctx context.Context, token string, now time.Time
 	uid, err := e.SaveEvent(ReadAsSystem(mbox, "booking"), EventInput{Summary: p.Title + " with " + b.Name, Description: notes,
 		Start: b.Start.In(loc), End: b.End.In(loc), Guests: []string{b.Email}}, ScopeAll, time.Time{})
 	if err != nil && !errors.Is(err, ErrInvitationsNotSent) {
-		_, _ = e.accounts.db.ExecContext(ctx, `UPDATE vayumail_bookings SET status='held' WHERE id=?`, b.ID)
+		release()
 		return Booking{}, err
 	}
 	if _, err := e.accounts.db.ExecContext(ctx, `UPDATE vayumail_bookings SET status='confirmed', confirm_hash='', cancel_hash=?, uid=? WHERE id=?`,

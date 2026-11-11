@@ -268,3 +268,54 @@ func TestADeletedMailboxsBookingPagesGoWithIt(t *testing.T) {
 		t.Fatal("a deleted mailbox's booking page is still offered")
 	}
 }
+
+// TestASecondConfirmAtTheSameMomentStops — a link being confirmed is not
+// confirmed again beside it, and the booking it is making is left alone.
+func TestASecondConfirmAtTheSameMomentStops(t *testing.T) {
+	e, s, flush := itipEngine(t)
+	p := introPage(t, s)
+	ctx := context.Background()
+	tok, err := bookTuesday(t, e, flush, p, "10:00", "kenji@guest.example", bookingNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The first confirm has claimed the link and not yet finished.
+	if _, err := s.db.Exec(`UPDATE vayumail_bookings SET status='checking'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.ConfirmBooking(ctx, tok, bookingNow.Add(time.Minute), ""); !errors.Is(err, ErrNoSuchBooking) {
+		t.Fatalf("a second confirm beside the first: %v", err)
+	}
+	var status string
+	_ = s.db.QueryRow(`SELECT status FROM vayumail_bookings`).Scan(&status)
+	if status != "checking" {
+		t.Fatalf("the second confirm left the booking %q", status)
+	}
+	from := time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC)
+	if evs := between(t, e, from, from.AddDate(0, 0, 1), time.UTC); len(evs) != 0 {
+		t.Fatalf("the second confirm made an event: %+v", evs)
+	}
+}
+
+// TestASuspendedMailboxOffersNoBookingPages — and takes no bookings.
+func TestASuspendedMailboxOffersNoBookingPages(t *testing.T) {
+	e, s, flush := itipEngine(t)
+	p := introPage(t, s)
+	ctx := context.Background()
+	if !s.BookingOffered(ctx, p) {
+		t.Fatal("an active mailbox's page is not offered")
+	}
+	tok, _ := bookTuesday(t, e, flush, p, "10:00", "kenji@guest.example", bookingNow)
+	if err := s.SetActive(ctx, calBox, false); err != nil {
+		t.Fatal(err)
+	}
+	if s.BookingOffered(ctx, p) {
+		t.Fatal("a suspended mailbox's page is offered")
+	}
+	if _, err := bookTuesday(t, e, flush, p, "12:00", "ana@guest.example", bookingNow); err == nil {
+		t.Fatal("a suspended mailbox took a booking")
+	}
+	if _, err := e.ConfirmBooking(ctx, tok, bookingNow.Add(time.Minute), ""); !errors.Is(err, ErrNoSuchBooking) {
+		t.Fatalf("a hold was confirmed on a suspended mailbox: %v", err)
+	}
+}

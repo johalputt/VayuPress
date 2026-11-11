@@ -27,6 +27,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
@@ -54,7 +55,7 @@ func (a *App) publicBookingPage(r *http.Request) (vmail.BookingPage, bool) {
 		mbox = owner + "@" + a.vayuMail.Config().Domain
 	}
 	p, err := a.vayuMail.Accounts().BookingPage(r.Context(), mbox, 0, slug)
-	return p, err == nil && p.Enabled
+	return p, err == nil && a.vayuMail.Accounts().BookingOffered(r.Context(), p)
 }
 
 func (a *App) bookNotFound(w http.ResponseWriter) {
@@ -253,10 +254,16 @@ func (a *App) bookHold(w http.ResponseWriter, r *http.Request, p vmail.BookingPa
 	err = a.vayuMail.HoldBooking(r.Context(), p, start, length, name, email, answer, now, a.oauthBaseURL(r)+"/book/confirm?t=")
 	self := func(kv ...string) string { return r.URL.Path + "?tz=" + url.QueryEscape(loc.String()) }
 	if err != nil {
-		said := "This could not be booked: " + strings.TrimPrefix(err.Error(), "vayumail: ") + "."
-		status := http.StatusOK
-		if errors.Is(err, vmail.ErrBookingsWait) {
-			status = http.StatusTooManyRequests
+		// A guest's own mistake is said back to them; anything else is the
+		// server's, and its words are not theirs to read.
+		said, status := "This could not be booked just now. Try again in a moment.", http.StatusInternalServerError
+		switch {
+		case errors.Is(err, vmail.ErrBookingDetails), errors.Is(err, vmail.ErrBookingOwn), errors.Is(err, vmail.ErrSlotTaken):
+			said, status = "This could not be booked: "+strings.TrimPrefix(err.Error(), "vayumail: ")+".", http.StatusOK
+		case errors.Is(err, vmail.ErrBookingsWait):
+			said, status = "This could not be booked: "+strings.TrimPrefix(err.Error(), "vayumail: ")+".", http.StatusTooManyRequests
+		default:
+			dbpkg.AuditLog("vayumail.booking.hold-failed", "guest", p.Mailbox, err.Error())
 		}
 		a.writeBookShell(w, status, p.Title, a.bookIntro(p, length, loc, self)+a.bookDetails(p, start, length, loc, name, email, answer, said))
 		return
