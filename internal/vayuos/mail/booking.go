@@ -438,9 +438,10 @@ func (e *Engine) slotFree(p BookingPage, start time.Time, length int, now time.T
 }
 
 // HoldBooking holds start for the guest and mails them the link that makes
-// it a booking, from the holder's address; confirmLink turns the token into
-// the link. The link works for bookingHoldFor.
-func (e *Engine) HoldBooking(ctx context.Context, p BookingPage, start time.Time, length int, name, email, answer string, now time.Time, confirmLink func(token string) string) error {
+// it a booking, from the holder's address: confirmBase with the token after
+// it (the token is hex, so it needs no escaping). The link works for
+// bookingHoldFor.
+func (e *Engine) HoldBooking(ctx context.Context, p BookingPage, start time.Time, length int, name, email, answer string, now time.Time, confirmBase string) error {
 	if !p.Enabled {
 		return errNoBookingPage
 	}
@@ -476,7 +477,7 @@ func (e *Engine) HoldBooking(ctx context.Context, p BookingPage, start time.Time
 	loc := zoneNamed(p.Zone)
 	text := "You asked to book " + p.Title + " with " + p.Mailbox + ":\n" +
 		start.In(loc).Format("Monday 2 January 2006, 15:04") + " (" + p.Zone + "), " + strconv.Itoa(length) + " minutes.\n\n" +
-		"Confirm it here within 15 minutes:\n" + confirmLink(tok) + "\n\n" +
+		"Confirm it here within 15 minutes:\n" + confirmBase + tok + "\n\n" +
 		"If you did not ask for this, do nothing: nothing is booked until the link is confirmed.\n"
 	_, err = e.SendSystemMail(ctx, p.Mailbox, []string{email}, "Confirm your booking: "+p.Title, "", text)
 	return err
@@ -501,9 +502,9 @@ func (e *Engine) heldBooking(ctx context.Context, column, token string) (Booking
 
 // ConfirmBooking makes the held booking a link names an event in the
 // holder's calendar, with the guest invited, once, while it is held and the
-// time is still free. cancelLink turns the cancel token into the link the
-// event carries.
-func (e *Engine) ConfirmBooking(ctx context.Context, token string, now time.Time, cancelLink func(token string) string) (Booking, error) {
+// time is still free. The event carries the link that cancels it:
+// cancelBase with the cancel token after it.
+func (e *Engine) ConfirmBooking(ctx context.Context, token string, now time.Time, cancelBase string) (Booking, error) {
 	b, mbox, err := e.heldBooking(ctx, "confirm_hash", token)
 	if err != nil || b.Status != "held" || !b.Created.After(now.Add(-bookingHoldFor)) {
 		return Booking{}, ErrNoSuchBooking
@@ -532,7 +533,7 @@ func (e *Engine) ConfirmBooking(ctx context.Context, token string, now time.Time
 		}
 		notes += b.Answer + "\n"
 	}
-	notes += "\nTo cancel this booking: " + cancelLink(cancel) + "\n"
+	notes += "\nTo cancel this booking: " + cancelBase + cancel + "\n"
 	loc := zoneNamed(p.Zone)
 	uid, err := e.SaveEvent(ReadAsSystem(mbox, "booking"), EventInput{Summary: p.Title + " with " + b.Name, Description: notes,
 		Start: b.Start.In(loc), End: b.End.In(loc), Guests: []string{b.Email}}, ScopeAll, time.Time{})

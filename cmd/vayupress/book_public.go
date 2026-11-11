@@ -250,10 +250,7 @@ func (a *App) bookHold(w http.ResponseWriter, r *http.Request, p vmail.BookingPa
 	}
 	start := time.Unix(t, 0).In(loc)
 	name, email, answer := r.PostFormValue("name"), r.PostFormValue("email"), r.PostFormValue("answer")
-	base := a.oauthBaseURL(r)
-	err = a.vayuMail.HoldBooking(r.Context(), p, start, length, name, email, answer, now, func(tok string) string {
-		return base + "/book/confirm?t=" + url.QueryEscape(tok)
-	})
+	err = a.vayuMail.HoldBooking(r.Context(), p, start, length, name, email, answer, now, a.oauthBaseURL(r)+"/book/confirm?t=")
 	self := func(kv ...string) string { return r.URL.Path + "?tz=" + url.QueryEscape(loc.String()) }
 	if err != nil {
 		said := "This could not be booked: " + strings.TrimPrefix(err.Error(), "vayumail: ") + "."
@@ -281,8 +278,7 @@ func (a *App) handleBookConfirm(w http.ResponseWriter, r *http.Request) {
 			`<form class="login-form" method="POST"><input type="hidden" name="t" value="`+esc(tok)+`"><button class="btn btn--primary" type="submit">Confirm</button></form>`)
 		return
 	}
-	base := a.oauthBaseURL(r)
-	b, err := a.vayuMail.ConfirmBooking(r.Context(), tok, time.Now(), func(c string) string { return base + "/book/cancel?t=" + url.QueryEscape(c) })
+	b, err := a.vayuMail.ConfirmBooking(r.Context(), tok, time.Now(), a.oauthBaseURL(r)+"/book/cancel?t=")
 	if err != nil {
 		msg := "This link is not valid, was already used, or has expired. Book again from the page you came from."
 		if errors.Is(err, vmail.ErrSlotTaken) {

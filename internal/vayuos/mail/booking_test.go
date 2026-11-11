@@ -5,7 +5,7 @@ package mail
 import (
 	"context"
 	"errors"
-	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -92,15 +92,33 @@ func TestFreeTimesRespectNoticeReachAndDays(t *testing.T) {
 	}
 }
 
-func bookTuesday(t *testing.T, e *Engine, p BookingPage, at, who string, now time.Time) (string, error) {
+var linkToken = regexp.MustCompile(`/book/(?:confirm|cancel)\?t=([0-9a-f]{64})`)
+
+// tokenIn is the token of the booking link in a mail or an event's notes,
+// as the guest has it.
+func tokenIn(t *testing.T, text string) string {
+	t.Helper()
+	m := linkToken.FindStringSubmatch(text)
+	if m == nil {
+		t.Fatalf("no booking link in %q", text)
+	}
+	return m[1]
+}
+
+// bookTuesday holds a time and returns the confirm token from the mail the
+// guest was sent.
+func bookTuesday(t *testing.T, e *Engine, flush func() []sentMail, p BookingPage, at, who string, now time.Time) (string, error) {
 	t.Helper()
 	start, _ := time.Parse(time.RFC3339, "2026-11-10T"+at+":00Z")
-	var token string
-	err := e.HoldBooking(context.Background(), p, start, 30, "Kenji Mori", who, "Pricing", now, func(tok string) string {
-		token = tok
-		return "https://site.example/book/confirm?t=" + url.QueryEscape(tok)
-	})
-	return token, err
+	flush()
+	if err := e.HoldBooking(context.Background(), p, start, 30, "Kenji Mori", who, "Pricing", now, "https://site.example/book/confirm?t="); err != nil {
+		return "", err
+	}
+	sent := flush()
+	if len(sent) != 1 {
+		t.Fatalf("%d mails for one hold", len(sent))
+	}
+	return tokenIn(t, sent[0].raw), nil
 }
 
 // TestABookingIsHeldConfirmedAndCancelled — held, the time is taken for
@@ -111,27 +129,26 @@ func TestABookingIsHeldConfirmedAndCancelled(t *testing.T) {
 	e, s, flush := itipEngine(t)
 	p := introPage(t, s)
 	ctx := context.Background()
-	confirm, err := bookTuesday(t, e, p, "10:00", "Kenji <kenji@guest.example>", bookingNow)
-	if err != nil {
+	start := time.Date(2026, 11, 10, 10, 0, 0, 0, time.UTC)
+	if err := e.HoldBooking(ctx, p, start, 30, "Kenji Mori", "Kenji <kenji@guest.example>", "Pricing", bookingNow, "https://site.example/book/confirm?t="); err != nil {
 		t.Fatal(err)
 	}
 	sent := flush()
-	if len(sent) != 1 || sent[0].to[0] != "kenji@guest.example" || !strings.Contains(sent[0].raw, "Subject: Confirm your booking: Intro call") ||
-		!strings.Contains(unfold(sent[0].raw), "https://site.example/book/confirm?t=") {
+	if len(sent) != 1 || sent[0].to[0] != "kenji@guest.example" || !strings.Contains(sent[0].raw, "Subject: Confirm your booking: Intro call") {
 		t.Fatalf("the confirmation mail: %+v", sent)
 	}
+	confirm := tokenIn(t, sent[0].raw)
 	if got := tuesday(t, e, p, bookingNow); strings.Contains(got, "10:00") || strings.Contains(got, "10:30") {
 		t.Fatalf("a held time (and its gap) is still offered: %q", got)
 	}
 	if got := tuesday(t, e, p, bookingNow.Add(16*time.Minute)); !strings.HasPrefix(got, "Tue 10:00") {
 		t.Fatalf("a hold past its fifteen minutes still takes the time: %q", got)
 	}
-	var cancelTok string
-	b, err := e.ConfirmBooking(ctx, confirm, bookingNow.Add(5*time.Minute), func(tok string) string { cancelTok = tok; return "https://site.example/book/cancel?t=" + tok })
+	b, err := e.ConfirmBooking(ctx, confirm, bookingNow.Add(5*time.Minute), "https://site.example/book/cancel?t=")
 	if err != nil || b.Status != "confirmed" {
 		t.Fatalf("confirm: %+v %v", b, err)
 	}
-	if _, err := e.ConfirmBooking(ctx, confirm, bookingNow.Add(6*time.Minute), func(string) string { return "" }); !errors.Is(err, ErrNoSuchBooking) {
+	if _, err := e.ConfirmBooking(ctx, confirm, bookingNow.Add(6*time.Minute), ""); !errors.Is(err, ErrNoSuchBooking) {
 		t.Fatalf("the confirm link worked twice: %v", err)
 	}
 	from := time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC)
@@ -140,6 +157,7 @@ func TestABookingIsHeldConfirmedAndCancelled(t *testing.T) {
 		!strings.Contains(evs[0].Description, "/book/cancel?t=") || !strings.Contains(evs[0].Description, "Pricing") {
 		t.Fatalf("the event: %+v", evs)
 	}
+	cancelTok := tokenIn(t, evs[0].Description)
 	if sent := flush(); len(sent) != 1 || !strings.Contains(sent[0].raw, "METHOD:REQUEST") {
 		t.Fatalf("the guest was not invited: %+v", sent)
 	}
@@ -164,17 +182,17 @@ func TestABookingIsHeldConfirmedAndCancelled(t *testing.T) {
 // TestAConfirmLinkPastItsHoldBooksNothing — and a time taken meanwhile is
 // refused when the guest confirms.
 func TestAConfirmLinkPastItsHoldBooksNothing(t *testing.T) {
-	e, s, _ := itipEngine(t)
+	e, s, flush := itipEngine(t)
 	p := introPage(t, s)
 	ctx := context.Background()
-	late, _ := bookTuesday(t, e, p, "10:00", "kenji@guest.example", bookingNow)
-	if _, err := e.ConfirmBooking(ctx, late, bookingNow.Add(16*time.Minute), func(string) string { return "" }); !errors.Is(err, ErrNoSuchBooking) {
+	late, _ := bookTuesday(t, e, flush, p, "10:00", "kenji@guest.example", bookingNow)
+	if _, err := e.ConfirmBooking(ctx, late, bookingNow.Add(16*time.Minute), ""); !errors.Is(err, ErrNoSuchBooking) {
 		t.Fatalf("a link past its hold: %v", err)
 	}
-	taken, _ := bookTuesday(t, e, p, "12:00", "ana@guest.example", bookingNow)
+	taken, _ := bookTuesday(t, e, flush, p, "12:00", "ana@guest.example", bookingNow)
 	putEvent(t, s, "meanwhile.ics", "mw@x", "BEGIN:VEVENT", "UID:mw@x", "DTSTAMP:20261101T000000Z", "SUMMARY:Board",
 		"DTSTART:20261110T120000Z", "DTEND:20261110T130000Z", "END:VEVENT")
-	if _, err := e.ConfirmBooking(ctx, taken, bookingNow.Add(time.Minute), func(string) string { return "" }); !errors.Is(err, ErrSlotTaken) {
+	if _, err := e.ConfirmBooking(ctx, taken, bookingNow.Add(time.Minute), ""); !errors.Is(err, ErrSlotTaken) {
 		t.Fatalf("a time taken meanwhile: %v", err)
 	}
 }
@@ -183,19 +201,19 @@ func TestAConfirmLinkPastItsHoldBooksNothing(t *testing.T) {
 // times a day, and holds at most so many at once; a page switched off takes
 // none, and a day at its most offers nothing more.
 func TestABookingPagesMailIsBounded(t *testing.T) {
-	e, s, _ := itipEngine(t)
+	e, s, flush := itipEngine(t)
 	p := introPage(t, s)
 	for i, at := range []string{"10:00", "11:00", "12:00"} {
 		now := bookingNow.Add(time.Duration(i) * 20 * time.Minute) // each earlier hold has lapsed
-		if _, err := bookTuesday(t, e, p, at, "spam@victim.example", now); err != nil {
+		if _, err := bookTuesday(t, e, flush, p, at, "spam@victim.example", now); err != nil {
 			t.Fatalf("hold %d: %v", i, err)
 		}
 	}
-	if _, err := bookTuesday(t, e, p, "12:30", "spam@victim.example", bookingNow.Add(time.Hour)); !errors.Is(err, ErrBookingsWait) {
+	if _, err := bookTuesday(t, e, flush, p, "12:30", "spam@victim.example", bookingNow.Add(time.Hour)); !errors.Is(err, ErrBookingsWait) {
 		t.Fatalf("a fourth mail to one address in a day: %v", err)
 	}
 	p.Enabled = false
-	if _, err := bookTuesday(t, e, p, "12:30", "other@guest.example", bookingNow.Add(time.Hour)); err == nil {
+	if _, err := bookTuesday(t, e, flush, p, "12:30", "other@guest.example", bookingNow.Add(time.Hour)); err == nil {
 		t.Fatal("a page switched off took a booking")
 	}
 	p.Enabled = true
@@ -206,7 +224,7 @@ func TestABookingPagesMailIsBounded(t *testing.T) {
 		t.Fatal("second page")
 	}
 	later := bookingNow.Add(2 * time.Hour) // the first page's holds have lapsed
-	if _, err := bookTuesday(t, e, q, "10:00", "one@guest.example", later); err != nil {
+	if _, err := bookTuesday(t, e, flush, q, "10:00", "one@guest.example", later); err != nil {
 		t.Fatal(err)
 	}
 	from := time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC)
