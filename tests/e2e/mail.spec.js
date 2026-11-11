@@ -1691,3 +1691,77 @@ test("a booking page is made in the Calendar and booked from its link", async ({
   await guestCtx.close();
   await holder.close();
 });
+
+// Drive, as its holder uses it: a folder made in the sheet, a file sent
+// into it by the page's script, renamed and moved to Trash from its sheet.
+// And what was uploaded is only ever a download: an HTML file in the Drive
+// is not a page of the console's origin.
+test("a file is uploaded to a Drive folder, renamed, and is only ever a download", async ({ page, browser }) => {
+  await page.goto("/os/vayumail/accounts");
+  const csrf = (await page.context().cookies()).find((c) => c.name === "vp_csrf");
+  const local = "filer" + Date.now();
+  const made = await page.request.post("/os/vayumail/accounts/create", {
+    headers: { "X-CSRF-Token": csrf ? decodeURIComponent(csrf.value) : "" },
+    data: { local, name: "Filer", pass: "e2e-filer-passphrase-1", role: "mailbox" },
+  });
+  expect(made.ok()).toBeTruthy();
+  const origin = process.env.MAIL_UPSTREAM;
+  if (!origin) throw new Error("MAIL_UPSTREAM is not set: boot the mail install as .github/actions/boot-vayupress does");
+  const holder = await browser.newContext({ baseURL: origin, viewport: { width: 1440, height: 900 } });
+  page = await holder.newPage();
+  await page.goto("/os/login");
+  await page.locator("#login-email").fill(local + "@mail.test");
+  await page.locator("#login-password").fill("e2e-filer-passphrase-1");
+  await page.locator(".login-form button[type=submit]").first().click();
+  await page.waitForURL((u) => !u.pathname.startsWith("/os/login"));
+
+  await page.goto("/os/vayumail/drive");
+  await expect(page.locator(".sa-places a[aria-current=page]")).toHaveText("Drive");
+  await expect(page.locator(".drive-empty")).toBeVisible();
+  const sheet = page.locator("#drive-sheet");
+  await page.getByRole("button", { name: "New folder" }).click();
+  await sheet.locator("input[name=name]").fill("Contracts");
+  await sheet.getByRole("button", { name: "Make folder" }).click();
+  await page.locator(".drive-row__name", { hasText: "Contracts" }).click();
+  await expect(page.locator(".drive-crumbs")).toContainText("Contracts");
+
+  // Two files at once: the script sends them one after the other and the
+  // list is read again from the server.
+  await page.locator("[data-drive-upload]").setInputFiles([
+    { name: "terms.txt", mimeType: "text/plain", buffer: Buffer.from("The terms.") },
+    { name: "page.html", mimeType: "text/html", buffer: Buffer.from("<script>document.title='ran'</script>") },
+  ]);
+  const row = page.locator(".drive-row", { hasText: "terms.txt" });
+  await expect(row).toBeVisible();
+  await expect(page.locator(".drive-row", { hasText: "page.html" })).toBeVisible();
+
+  const id = new URL(await page.locator(".drive-row", { hasText: "page.html" }).locator("button.drive-row__name").getAttribute("hx-get"), origin).searchParams.get("id");
+  for (const show of ["", "&show=1"]) {
+    const got = await page.request.get("/os/vayumail/drive/file?id=" + id + show);
+    expect(got.headers()["content-disposition"]).toBe('attachment; filename="page.html"');
+    expect(got.headers()["content-type"]).toBe("application/octet-stream");
+    expect(got.headers()["x-content-type-options"]).toBe("nosniff");
+    expect(got.headers()["content-security-policy"]).toBe("default-src 'none'; sandbox");
+    expect(await got.text()).toBe("<script>document.title='ran'</script>");
+  }
+
+  // Saved over, the file keeps what it was, and its sheet brings that back.
+  await page.locator("[data-drive-upload]").setInputFiles([{ name: "terms.txt", mimeType: "text/plain", buffer: Buffer.from("The terms, amended.") }]);
+  await expect(row.locator(".drive-row__meta").first()).toHaveText("19 B");
+  await row.getByRole("button", { name: "More for terms.txt" }).click();
+  await expect(sheet.locator("input[name=name]")).toHaveValue("terms.txt");
+  await expect(sheet.locator(".drive-versions li")).toHaveCount(1);
+  await sheet.getByRole("button", { name: "Bring back" }).click();
+  await expect(sheet.locator(".callout--ok")).toContainText("That version is the file again");
+  await expect(sheet.locator(".cal-note").first()).toContainText("10 B");
+  await sheet.locator("input[name=name]").fill("terms-final.txt");
+  await sheet.getByRole("button", { name: "Rename" }).click();
+  const renamed = page.locator(".drive-row", { hasText: "terms-final.txt" });
+  await expect(renamed).toBeVisible();
+  await renamed.getByRole("button", { name: "More for terms-final.txt" }).click();
+  await sheet.getByRole("button", { name: "Move to Trash" }).click();
+  await expect(page.locator(".drive-row", { hasText: "terms-final.txt" })).toHaveCount(0);
+  await page.locator(".sa-appside__item", { hasText: "Trash" }).click();
+  await expect(page.locator(".drive-row", { hasText: "terms-final.txt" })).toBeVisible();
+  await holder.close();
+});

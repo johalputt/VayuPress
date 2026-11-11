@@ -127,6 +127,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	r.Get("/os/static/js/admin-os-mail.js", serveAdminOSAsset("js/admin-os-mail.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-talk.js", serveAdminOSAsset("js/admin-os-talk.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-calendar.js", serveAdminOSAsset("js/admin-os-calendar.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-drive.js", serveAdminOSAsset("js/admin-os-drive.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/book.js", serveAdminOSAsset("js/book.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-tor.js", serveAdminOSAsset("js/admin-os-tor.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-update.js", serveAdminOSAsset("js/admin-os-update.js", "application/javascript; charset=utf-8"))
@@ -714,6 +715,11 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/calendar/answer", a.handleVayuOSCalendarAnswer)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/calendar/booking", a.handleVayuOSBookingPage)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/calendar/booking/action", a.handleVayuOSBookingAction)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/drive", a.handleVayuOSDrive)
+		pr.Get("/os/vayumail/drive/entry", a.handleVayuOSDriveEntry)
+		pr.Get("/os/vayumail/drive/file", a.handleVayuOSDriveFile)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/drive/action", a.handleVayuOSDriveAction)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/drive/upload", a.handleVayuOSDriveUpload)
 		// Outbox: HTMX auto-refresh fragment + per-message Resend/Delete/Retry-all.
 		pr.Get("/os/vayumail/outbox/fragment", a.handleVayuOSOutboxFragment)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/outbox/action", a.handleVayuOSOutboxAction)
@@ -1689,7 +1695,7 @@ type osMailSide struct {
 	// Own: the session reads its own mailbox, not one an administrator
 	// opened; what only a holder may do (seal a message as it) needs it.
 	Own bool
-	// Place is the holder's place beside Mail that is open ("calendar"),
+	// Place is the holder's place beside Mail that is open ("calendar", "drive"),
 	// "" for Mail itself; PlaceSide is that place's sidebar, drawn in place
 	// of the folders.
 	Place, PlaceSide string

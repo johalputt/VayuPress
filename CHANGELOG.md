@@ -8,6 +8,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Drive.** Every mailbox has a place for files, beside Mail and Calendar:
+  folders, upload by choosing files or dropping them on the page, rename,
+  move, and a Trash that keeps what you delete for thirty days. Saving a
+  file over one of the same name keeps the last five versions of it. Files
+  share the mailbox's storage allowance with its mail, and the sidebar shows
+  both together. In a private mailbox a file is sealed to your key, as your
+  mail is, and opens while the mailbox is unlocked. A file is only ever
+  handed back as a download: nothing uploaded is served as a page of your
+  site, and only PNG, JPEG, GIF and WebP pictures are shown in place. Drive
+  opens for the mailbox's holder alone; an administrator who opens someone's
+  mailbox does not see their files.
+
+### Changed
+
+- **A mailbox's storage figure counts its files too.** The allowance an
+  administrator sets is one allowance for mail and files, so the figure on
+  the accounts page, in Settings and in Mail's sidebar is now both, and a
+  mailbox whose files fill it stops taking new mail as a full mailbox does.
+
 ## [3.18.37] — 2026-11-11
 
 Booking pages: share a link and anyone can book a free time in your calendar. They see only free times, in their own time zone, and a time is booked only when they confirm by a link mailed to them. Built with Go 1.27.4.

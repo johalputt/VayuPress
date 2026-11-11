@@ -7691,9 +7691,35 @@
 .vp-os[data-ui="still-air"] .cal-booking__link { display: flex; align-items: center; gap: var(--space-2); margin: 0; font: var(--type-body); overflow-wrap: anywhere; }
 .vp-os[data-ui="still-air"] .cal-booking__day { display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: center; gap: var(--space-3); font: var(--type-body); }
 .vp-os[data-ui="still-air"] .cal-booking__h { margin: var(--space-5) 0 0; font: var(--type-heading); }
-.vp-os[data-ui="still-air"] .cal-booking__list { list-style: none; margin: 0; padding: 0; }
-.vp-os[data-ui="still-air"] .cal-booking__list li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); padding: var(--space-3) 0; border-bottom: 1px solid var(--border-1); font: var(--type-small); }
+.vp-os[data-ui="still-air"] .cal-booking__list, .vp-os[data-ui="still-air"] .drive-versions { list-style: none; margin: 0; padding: 0; }
+.vp-os[data-ui="still-air"] .cal-booking__list li, .vp-os[data-ui="still-air"] .drive-versions li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); padding: var(--space-3) 0; border-bottom: 1px solid var(--border-1); font: var(--type-small); }
 .vp-os[data-ui="still-air"] .cal-booking__who { color: var(--text-1); font: var(--type-strong); }
+/* Drive (vayuos_mail_drive.go): the holder's files, a list of rows. */
+.vp-os[data-ui="still-air"] .drive { display: flex; flex-direction: column; min-height: 100%; padding: var(--space-4) var(--space-5) var(--space-6); border: 1px solid transparent; }
+.vp-os[data-ui="still-air"] .drive--over { border: 1px dashed var(--accent); border-radius: var(--radius-surface); background: var(--accent-soft); }
+.vp-os[data-ui="still-air"] .drive-head { display: flex; align-items: center; gap: var(--space-3); padding-bottom: var(--space-4); border-bottom: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .drive-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; margin: 0 auto 0 0; font: var(--type-title); overflow-wrap: anywhere; }
+.vp-os[data-ui="still-air"] .drive-crumbs a { color: var(--text-2); text-decoration: none; }
+.vp-os[data-ui="still-air"] .drive-crumbs a:hover { color: var(--text-1); }
+.vp-os[data-ui="still-air"] .drive-status { font: var(--type-small); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .drive-status:not(:empty) { padding: var(--space-3) 0; }
+.vp-os[data-ui="still-air"] .drive-status--bad { color: var(--danger); }
+.vp-os[data-ui="still-air"] .drive-empty { margin: 0; padding: var(--space-6) 0; font: var(--type-body); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .drive-list { list-style: none; margin: 0; padding: 0; }
+.vp-os[data-ui="still-air"] .drive-row { display: grid; grid-template-columns: minmax(0, 1fr) 88px 112px auto; align-items: center; gap: var(--space-3); border-bottom: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .drive-row:hover { background: var(--surface-hover); }
+.vp-os[data-ui="still-air"] .drive-row__name { display: flex; align-items: center; gap: var(--space-3); min-width: 0; padding: var(--space-3) var(--space-2); border: 0; background: none; color: var(--text-1); font: var(--type-body); text-align: left; text-decoration: none; cursor: pointer; }
+.vp-os[data-ui="still-air"] .drive-row__name:hover { text-decoration: none; }
+.vp-os[data-ui="still-air"] .drive-row__name > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-os[data-ui="still-air"] .drive-row__name .sa-ico { flex: none; color: var(--text-3); }
+.vp-os[data-ui="still-air"] .drive-row__meta { font: var(--type-small); color: var(--text-3); white-space: nowrap; }
+.vp-os[data-ui="still-air"] .drive-kind { flex: none; min-width: 36px; padding: 1px var(--space-1); border: 1px solid var(--border-1); border-radius: var(--radius-small); font: var(--type-meta); color: var(--text-3); text-align: center; }
+.vp-os[data-ui="still-air"] .drive-preview { display: block; max-width: 100%; max-height: 320px; margin: 0 auto; border-radius: var(--radius-control); }
+@media (max-width: 640px) {
+  .vp-os[data-ui="still-air"] .drive { padding: var(--space-3) var(--space-4) var(--space-6); }
+  .vp-os[data-ui="still-air"] .drive-row { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .vp-os[data-ui="still-air"] .drive-row__meta:nth-of-type(2) { display: none; }
+}
 /* A booking page as a guest sees it (book_public.go): wider than a sign-in
    card, three parts side by side, one above another on a phone. */
 .vp-os .auth-col:has(.book-card) { max-width: 980px; }

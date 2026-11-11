@@ -33,6 +33,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 )
@@ -48,6 +49,8 @@ const (
 	maxDriveDepth   = 32
 	driveVersions   = 5
 	driveTrashFor   = 30 * 24 * time.Hour
+	// sealedAtOnce: see sealSlot.
+	sealedAtOnce = 2
 )
 
 var (
@@ -59,6 +62,7 @@ var (
 	ErrDriveTooLarge   = errors.New("vayumail: a file is at most 100 MB, and 25 MB in a private mailbox")
 	ErrDriveLocked     = errors.New("vayumail: this file is sealed; unlock the mailbox to open it")
 	ErrDriveMove       = errors.New("vayumail: a folder cannot be moved into itself")
+	ErrDriveBusy       = errors.New("vayumail: two of this mailbox's sealed files are being kept or opened already; try again when one is done")
 )
 
 // DriveEntry is one file or folder.
@@ -323,16 +327,6 @@ func (e *Engine) DriveMkdir(rd Reader, parent int64, name string) (int64, error)
 	return res.LastInsertId()
 }
 
-// usedBytes is what a mailbox's mail and files take together.
-func (e *Engine) usedBytes(mbox string) int64 {
-	local, dom := splitAddress(mbox)
-	var mail int64
-	if e.maildir != nil {
-		mail = e.maildir.AccountSize(dom, local)
-	}
-	return mail + e.accounts.DriveUsed(context.Background(), mbox)
-}
-
 // DrivePut keeps r as the file name in parent. A file of that name already
 // there is written over, and what it was is kept as a version.
 func (e *Engine) DrivePut(rd Reader, parent int64, name, ctype string, r io.Reader) (int64, error) {
@@ -343,6 +337,7 @@ func (e *Engine) DrivePut(rd Reader, parent int64, name, ctype string, r io.Read
 	if name, err = driveName(name); err != nil {
 		return 0, err
 	}
+	defer e.forgetUsage(mbox)
 	ctx := context.Background()
 	if err := e.driveFolder(ctx, mbox, parent); err != nil {
 		return 0, err
@@ -360,6 +355,11 @@ func (e *Engine) DrivePut(rd Reader, parent int64, name, ctype string, r io.Read
 	limit := int64(maxDriveFile)
 	if private {
 		limit = maxSealedFile
+		done, ok := e.sealSlot(mbox)
+		if !ok {
+			return 0, ErrDriveBusy
+		}
+		defer done()
 	}
 	blob, err := randomHex(16)
 	if err != nil {
@@ -411,7 +411,7 @@ func (e *Engine) DrivePut(rd Reader, parent int64, name, ctype string, r io.Read
 		}
 		sealed = 1
 	}
-	if quota := e.accounts.QuotaFor(ctx, mbox); quota > 0 && e.usedBytes(mbox)+size > quota {
+	if quota := e.accounts.QuotaFor(ctx, mbox); quota > 0 && e.mailboxUsage(mbox, false)+size > quota {
 		_ = os.Remove(tmp)
 		return 0, ErrDriveFull
 	}
@@ -478,15 +478,108 @@ func (e *Engine) pruneVersions(ctx context.Context, mbox string, fileID int64) {
 	}
 }
 
+// DriveVersion is what a file was before it was written over.
+type DriveVersion struct {
+	ID    int64
+	Size  int64
+	Saved time.Time // when those bytes were first kept
+}
+
+// DriveVersions is a file's earlier versions, newest first.
+func (e *Engine) DriveVersions(rd Reader, id int64) ([]DriveVersion, error) {
+	mbox, err := e.driveOf(rd)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := e.accounts.db.QueryContext(context.Background(), `SELECT id,size,saved FROM vayumail_drive_versions WHERE mailbox=? AND file_id=? ORDER BY id DESC LIMIT ?`, mbox, id, driveVersions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DriveVersion
+	for rows.Next() {
+		var v DriveVersion
+		if err := rows.Scan(&v.ID, &v.Size, &v.Saved); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+// DriveRestoreVersion makes an earlier version the file again. What the
+// file is now takes that version's place, so going back can be undone and
+// the bytes kept do not grow.
+func (e *Engine) DriveRestoreVersion(rd Reader, id, version int64) error {
+	mbox, err := e.driveOf(rd)
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	d, err := e.driveEntry(ctx, mbox, id)
+	if err != nil || d.IsDir {
+		return ErrDriveNotFound
+	}
+	tx, err := e.accounts.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var cur, old struct {
+		size   int64
+		blob   string
+		sealed int
+		at     time.Time
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT size,blob,sealed,modified FROM vayumail_drive WHERE id=? AND mailbox=?`, id, mbox).Scan(&cur.size, &cur.blob, &cur.sealed, &cur.at); err != nil {
+		return ErrDriveNotFound
+	}
+	// The version is asked for by its file and its mailbox as well as its
+	// number: a number from another file, or another holder's, finds nothing.
+	if err := tx.QueryRowContext(ctx, `SELECT size,blob,sealed,saved FROM vayumail_drive_versions WHERE id=? AND file_id=? AND mailbox=?`, version, id, mbox).Scan(&old.size, &old.blob, &old.sealed, &old.at); err != nil {
+		return ErrDriveNotFound
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE vayumail_drive SET size=?, blob=?, sealed=?, modified=? WHERE id=? AND mailbox=?`, old.size, old.blob, old.sealed, time.Now().UTC(), id, mbox); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE vayumail_drive_versions SET size=?, blob=?, sealed=?, saved=? WHERE id=? AND mailbox=?`, cur.size, cur.blob, cur.sealed, cur.at, version, mbox); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (e *Engine) removeBlob(mbox, blob string) {
+	e.forgetUsage(mbox)
 	if p, err := e.blobPath(mbox, blob); err == nil {
 		_ = os.Remove(p)
 	}
 }
 
-type bytesFile struct{ *bytes.Reader }
+// bytesFile is an opened sealed file; closing it gives its slot back.
+type bytesFile struct {
+	*bytes.Reader
+	done func()
+}
 
-func (bytesFile) Close() error { return nil }
+func (b *bytesFile) Close() error { b.done(); return nil }
+
+// sealSlot bounds the sealed files one mailbox has in memory at once to
+// sealedAtOnce: sealing and opening both hold a whole file and its other
+// form, and a download holds it for as long as its reader is slow. The
+// bound is the mailbox's own, so one holder's transfers never make another
+// wait. It answers at once: false when the mailbox's slots are taken. The
+// function it returns gives the slot back, and is safe to call twice.
+func (e *Engine) sealSlot(mbox string) (func(), bool) {
+	v, _ := e.driveSealing.LoadOrStore(mbox, make(chan struct{}, sealedAtOnce))
+	slots, _ := v.(chan struct{})
+	select {
+	case slots <- struct{}{}:
+		var once sync.Once
+		return func() { once.Do(func() { <-slots }) }, true
+	default:
+		return nil, false
+	}
+}
 
 // DriveOpen is a file and its bytes, opened if it is sealed.
 func (e *Engine) DriveOpen(rd Reader, id int64) (DriveEntry, io.ReadSeekCloser, error) {
@@ -514,18 +607,26 @@ func (e *Engine) DriveOpen(rd Reader, id int64) (DriveEntry, io.ReadSeekCloser, 
 		}
 		return d, f, nil
 	}
-	raw, err := os.ReadFile(path) // #nosec G304 -- as above
-	if err != nil {
-		return d, nil, ErrDriveNotFound
-	}
 	if e.maildir == nil || e.maildir.keys == nil {
 		return d, nil, ErrDriveLocked
 	}
+	// The opened file is in memory until its reader is closed, so the slot
+	// is held that long, not only while it is opened.
+	done, ok := e.sealSlot(mbox)
+	if !ok {
+		return d, nil, ErrDriveBusy
+	}
+	raw, err := os.ReadFile(path) // #nosec G304 -- as above
+	if err != nil {
+		done()
+		return d, nil, ErrDriveNotFound
+	}
 	plain, err := e.maildir.keys.DecryptForEmail(raw, mbox)
 	if err != nil {
+		done()
 		return d, nil, ErrDriveLocked
 	}
-	return d, bytesFile{bytes.NewReader(plain)}, nil
+	return d, &bytesFile{Reader: bytes.NewReader(plain), done: done}, nil
 }
 
 // DriveRename gives an entry another name where it is.

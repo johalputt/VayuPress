@@ -84,6 +84,10 @@ type Engine struct {
 	// needs to be roughly current. The quota-enforcement path never reads this.
 	usageMu    sync.Mutex
 	usageCache map[string]usageEntry
+
+	// driveSealing is each mailbox's slots for sealed files held in memory
+	// (drive.go, sealSlot): mailbox to a channel of sealedAtOnce.
+	driveSealing sync.Map
 }
 
 // usageEntry is one cached mailbox size with the moment it was measured.
@@ -302,8 +306,8 @@ func (e *Engine) MarkUnread(rd Reader, folder, id string) (string, error) {
 	return e.maildir.markUnseenFolder(dom, local, folder, id)
 }
 
-// MailboxUsage returns the total bytes a mailbox occupies across all folders,
-// for quota display in the admin panel. The answer is cached for a few seconds
+// MailboxUsage returns the total bytes a mailbox occupies, its mail across
+// all folders and its files (drive.go), for quota display in the admin panel. The answer is cached for a few seconds
 // (see usageTTL) because display callers ask for every mailbox at once.
 func (e *Engine) MailboxUsage(email string) int64 {
 	return e.mailboxUsage(email, true)
@@ -331,7 +335,11 @@ func (e *Engine) mailboxUsage(email string, cached bool) int64 {
 			return ent.bytes
 		}
 	}
+	// Mail and files share the one allowance, so they are one figure.
 	n := e.maildir.AccountSize(domain, local)
+	if e.accounts != nil {
+		n += e.accounts.DriveUsed(context.Background(), key)
+	}
 	e.usageMu.Lock()
 	if e.usageCache == nil {
 		e.usageCache = make(map[string]usageEntry)
@@ -339,6 +347,14 @@ func (e *Engine) mailboxUsage(email string, cached bool) int64 {
 	e.usageCache[key] = usageEntry{bytes: n, at: time.Now()}
 	e.usageMu.Unlock()
 	return n
+}
+
+// forgetUsage drops a mailbox's remembered size, for a change the holder
+// then looks at: a file kept or deleted shows in the figure at once.
+func (e *Engine) forgetUsage(mbox string) {
+	e.usageMu.Lock()
+	delete(e.usageCache, normEmail(mbox))
+	e.usageMu.Unlock()
 }
 
 // MailboxQuota returns an account's storage limit in bytes (0 = unlimited).

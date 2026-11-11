@@ -181,7 +181,7 @@ func (e *Engine) deliver(envelopeFrom, recipientEmail string, raw []byte, stampe
 	if e.accounts != nil {
 		if quota := e.accounts.QuotaFor(context.Background(), local+"@"+domain); quota > 0 {
 			// Mail and files share the allowance (drive.go).
-			if e.usedBytes(local+"@"+domain)+int64(len(raw)) > quota {
+			if e.mailboxUsage(local+"@"+domain, false)+int64(len(raw)) > quota {
 				return "", fmt.Errorf("vayumail: mailbox %s@%s is over its storage quota", local, domain)
 			}
 		}

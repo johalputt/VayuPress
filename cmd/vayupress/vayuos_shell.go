@@ -457,9 +457,9 @@ func saMailSide(m *osMailSide, more string) string {
 }
 
 // mailPlaces is Mail's name in the top bar, and for a mailbox's own holder
-// the places beside it: Mail and Calendar. An administrator who opened
-// someone's mailbox sees Mail alone, because a calendar opens only for its
-// holder.
+// the places beside it: Mail, Calendar and Drive. An administrator who
+// opened someone's mailbox sees Mail alone, because a calendar and the files
+// open only for their holder.
 func mailPlaces(m *osMailSide) string {
 	mail := `/os/vayumail/inbox?user=` + qparam(m.User)
 	if !m.Own {
@@ -472,8 +472,9 @@ func mailPlaces(m *osMailSide) string {
 		}
 		return `<a class="sa-places__a" href="` + href + `"` + cur + `>` + saIcon(icon) + `<span>` + label + `</span></a>`
 	}
-	return `<nav class="sa-places" aria-label="Mail and Calendar">` + place(mail, "mail", "Mail", m.Place == "") +
-		place("/os/vayumail/calendar", "calendar", "Calendar", m.Place == "calendar") + `</nav>`
+	return `<nav class="sa-places" aria-label="Mail, Calendar and Drive">` + place(mail, "mail", "Mail", m.Place == "") +
+		place("/os/vayumail/calendar", "calendar", "Calendar", m.Place == "calendar") +
+		place("/os/vayumail/drive", "folder", "Drive", m.Place == "drive") + `</nav>`
 }
 
 // mailReadingChoices is where a message opens, as menu items: beside the

@@ -354,3 +354,164 @@ func TestADeletedMailboxsFilesAreSetAside(t *testing.T) {
 		t.Fatalf("the address still counts %d bytes of files", got)
 	}
 }
+
+// TestAnEarlierVersionIsBroughtBackAndTheFileItReplacedIsKept — going back
+// is itself undone by going back, and keeps no more bytes than before.
+func TestAnEarlierVersionIsBroughtBackAndTheFileItReplacedIsKept(t *testing.T) {
+	e, s := driveEngine(t)
+	put(t, e, 0, "plan.txt", "one")
+	put(t, e, 0, "plan.txt", "two two")
+	id := put(t, e, 0, "plan.txt", "three three three")
+	vs, err := e.DriveVersions(ankush, id)
+	if err != nil || len(vs) != 2 || vs[0].Size != 7 || vs[1].Size != 3 {
+		t.Fatalf("versions, newest first: %+v %v", vs, err)
+	}
+	used := s.DriveUsed(context.Background(), "ankush@example.com")
+	if err := e.DriveRestoreVersion(ankush, id, vs[1].ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, e, ankush, id); got != "one" {
+		t.Fatalf("after bringing the first version back the file reads %q", got)
+	}
+	d, _ := e.driveEntry(context.Background(), "ankush@example.com", id)
+	if d.Size != 3 {
+		t.Errorf("the file's size is %d, want the version's 3", d.Size)
+	}
+	after, _ := e.DriveVersions(ankush, id)
+	if len(after) != 2 || after[1].ID != vs[1].ID || after[1].Size != 17 {
+		t.Fatalf("the file it replaced is not kept in the version's place: %+v", after)
+	}
+	if now := s.DriveUsed(context.Background(), "ankush@example.com"); now != used {
+		t.Errorf("going back changed the bytes kept from %d to %d", used, now)
+	}
+	if files := len(diskFiles(t, e)); files != 3 {
+		t.Errorf("%d files on disk, want 3", files)
+	}
+	if err := e.DriveRestoreVersion(ankush, id, vs[1].ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, e, ankush, id); got != "three three three" {
+		t.Errorf("going back again reads %q", got)
+	}
+}
+
+// TestAVersionOfAnotherFileOrAnotherHolderBringsNothingBack — a version is
+// reached through its own file, by its own holder.
+func TestAVersionOfAnotherFileOrAnotherHolderBringsNothingBack(t *testing.T) {
+	e, s := driveEngine(t)
+	if err := s.Create(context.Background(), "dana@example.com", "h", "Dana", "mailbox"); err != nil {
+		t.Fatal(err)
+	}
+	put(t, e, 0, "a.txt", "a, before")
+	a := put(t, e, 0, "a.txt", "a, now")
+	b := put(t, e, 0, "b.txt", "b, now")
+	vs, _ := e.DriveVersions(ankush, a)
+	if len(vs) != 1 {
+		t.Fatalf("%d versions of a.txt", len(vs))
+	}
+	dana := ReadAsOwner("dana")
+	mine, err := e.DrivePut(dana, 0, "mine.txt", "", strings.NewReader("dana's"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.DriveRestoreVersion(ankush, b, vs[0].ID); !errors.Is(err, ErrDriveNotFound) {
+		t.Errorf("a.txt's version asked of b.txt: %v", err)
+	}
+	if err := e.DriveRestoreVersion(dana, a, vs[0].ID); !errors.Is(err, ErrDriveNotFound) {
+		t.Errorf("another holder asking for the file's version: %v", err)
+	}
+	if err := e.DriveRestoreVersion(dana, mine, vs[0].ID); !errors.Is(err, ErrDriveNotFound) {
+		t.Errorf("another holder's version asked of their own file: %v", err)
+	}
+	// Even a row that wrongly ties one holder's bytes to another's file is
+	// not followed: a version is read by its mailbox as well as its file.
+	res, err := s.db.Exec(`INSERT INTO vayumail_drive_versions(mailbox,file_id,size,blob,sealed,saved) SELECT mailbox,?,size,blob,sealed,saved FROM vayumail_drive_versions WHERE id=?`, mine, vs[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stray, _ := res.LastInsertId()
+	if err := e.DriveRestoreVersion(dana, mine, stray); !errors.Is(err, ErrDriveNotFound) {
+		t.Errorf("a version row of another mailbox, tied to dana's file: %v", err)
+	}
+	if got, _ := e.DriveVersions(dana, mine); len(got) != 0 {
+		t.Errorf("dana's file lists another mailbox's bytes as its version: %+v", got)
+	}
+	if got, _ := e.DriveVersions(dana, a); len(got) != 0 {
+		t.Errorf("another holder lists the file's versions: %+v", got)
+	}
+	if err := e.DriveRestoreVersion(ReadAsOperator("ankush", "boss@example.com"), a, vs[0].ID); !errors.Is(err, ErrDriveHolderOnly) {
+		t.Errorf("an administrator bringing a version back: %v", err)
+	}
+	for id, want := range map[int64]string{a: "a, now", b: "b, now"} {
+		if got := read(t, e, ankush, id); got != want {
+			t.Errorf("file %d reads %q after the refusals, want %q", id, got, want)
+		}
+	}
+	if got := read(t, e, dana, mine); got != "dana's" {
+		t.Errorf("dana's file reads %q", got)
+	}
+}
+
+// TestAMailboxHasTwoSealedFilesInMemoryAtOnce — a third is told to wait,
+// a closed one gives its place back, and another mailbox is not held up.
+func TestAMailboxHasTwoSealedFilesInMemoryAtOnce(t *testing.T) {
+	e, s := driveEngine(t)
+	md, keys := sealedMaildir(t)
+	e.maildir = md
+	if err := s.Create(context.Background(), "dana@example.com", "h", "Dana", "mailbox"); err != nil {
+		t.Fatal(err)
+	}
+	makePrivate(t, keys)
+	dana := ReadAsOwner("dana")
+	id, err := e.DrivePut(dana, 0, "secret.txt", "", strings.NewReader("sealed"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, one, err := e.DriveOpen(dana, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, two, err := e.DriveOpen(dana, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := e.DriveOpen(dana, id); !errors.Is(err, ErrDriveBusy) {
+		t.Fatalf("a third sealed file opened at once: %v", err)
+	}
+	if _, err := e.DrivePut(dana, 0, "more.txt", "", strings.NewReader("x")); !errors.Is(err, ErrDriveBusy) {
+		t.Fatalf("a sealed file kept while two are open: %v", err)
+	}
+	// A plain mailbox's files are streamed from disk and are not counted.
+	plain := put(t, e, 0, "plain.txt", "p")
+	for i := 0; i < 4; i++ {
+		_, f, err := e.DriveOpen(ankush, plain)
+		if err != nil {
+			t.Fatalf("a plain file, opened %d times at once: %v", i+1, err)
+		}
+		defer f.Close()
+	}
+	_ = one.Close()
+	_ = one.Close() // closing twice gives one place back, not two
+	_, three, err := e.DriveOpen(dana, id)
+	if err != nil {
+		t.Fatalf("after one was closed: %v", err)
+	}
+	if _, _, err := e.DriveOpen(dana, id); !errors.Is(err, ErrDriveBusy) {
+		t.Fatalf("closing one file twice gave two places back: %v", err)
+	}
+	_ = two.Close()
+	_ = three.Close()
+	// A refusal gives its place back too: with the key locked, every open
+	// fails, and the mailbox is not left busy by them.
+	keys.CloseHeld("dana@example.com")
+	for i := 0; i < 5; i++ {
+		if _, _, err := e.DriveOpen(dana, id); !errors.Is(err, ErrDriveLocked) {
+			t.Fatalf("locked, open %d: %v", i+1, err)
+		}
+	}
+	for i := 0; i < 5; i++ {
+		if _, err := e.DrivePut(dana, 0, "kept.txt", "", strings.NewReader("y")); err != nil {
+			t.Fatalf("sealed put %d after the others finished: %v", i+1, err)
+		}
+	}
+}
