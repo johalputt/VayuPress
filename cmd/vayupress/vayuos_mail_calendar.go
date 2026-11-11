@@ -86,6 +86,11 @@ func (a *App) calendarHome(r *http.Request) *time.Location {
 	return config.SiteLocation()
 }
 
+// calendarAddress is the address of the mailbox a calendar Reader opens.
+func (a *App) calendarAddress(rd vmail.Reader) string {
+	return strings.ToLower(mailAddrOf(rd.Key(), a.vayuMail.Config().Domain))
+}
+
 // calendarOwner is the Reader for the session's own mailbox's calendar.
 func (a *App) calendarOwner(r *http.Request) (vmail.Reader, bool) {
 	if !a.mailRunning() {
@@ -399,7 +404,7 @@ func calAgenda(v calView, evs []vmail.CalEvent, home *time.Location) string {
 
 // calSide is the Calendar's sidebar: a new event, a month to move by, and
 // the zone the page is laid out in.
-func calSide(v calView, home *time.Location, today time.Time) string {
+func calSide(v calView, home *time.Location, today time.Time, pages []vmail.BookingPage, onPage int64) string {
 	var b strings.Builder
 	b.WriteString(`<button type="button" class="btn btn--primary mx-compose-btn" hx-get="/os/vayumail/calendar/edit?d=` + calDate(v.Day) + `" hx-target="#cal-sheet-body" hx-swap="innerHTML">` + saIcon("plus") + `New event</button>`)
 	first := time.Date(v.Day.Year(), v.Day.Month(), 1, 0, 0, 0, 0, home)
@@ -430,6 +435,20 @@ func calSide(v calView, home *time.Location, today time.Time) string {
 		b.WriteString(`<a class="` + cls + `" href="` + calHref(v.Kind, d) + `"` + cur + `>` + d.Format("2") + `</a>`)
 	}
 	b.WriteString(`</div></div>`)
+	b.WriteString(`<div class="sa-appside__group">Booking pages</div>`)
+	for _, p := range pages {
+		cur := ""
+		if p.ID == onPage {
+			cur = ` aria-current="page"`
+		}
+		b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/calendar/booking?id=` + strconv.FormatInt(p.ID, 10) + `"` + cur + `>` + saIcon("link") +
+			`<span class="sa-appside__label">` + esc(p.Title) + `</span></a>`)
+	}
+	newCur := ""
+	if onPage < 0 {
+		newCur = ` aria-current="page"`
+	}
+	b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/calendar/booking"` + newCur + `>` + saIcon("plus") + `<span class="sa-appside__label">New booking page</span></a>`)
 	b.WriteString(`<div class="sa-appside__group">Time zone</div><p class="cal-zone">` + saIcon("globe") + `<span>` + esc(home.String()) + `</span></p>`)
 	b.WriteString(`<div class="sa-appside__group">On your phone and computer</div><a class="sa-appside__item" href="/os/vayumail/connect">` + saIcon("phone") + `<span class="sa-appside__label">Add this calendar</span></a>`)
 	return b.String()
@@ -455,7 +474,8 @@ func (a *App) handleVayuOSCalendar(w http.ResponseWriter, r *http.Request) {
 	v := calViewFor(r.URL.Query().Get("v"), r.URL.Query().Get("d"), home, now)
 	evs, err := a.vayuMail.CalendarBetween(rd, v.From, v.To, home)
 	side := a.mailSide(r, rd, "", "", nil)
-	side.Place, side.PlaceSide = "calendar", calSide(v, home, today)
+	pages, _ := a.vayuMail.Accounts().BookingPagesFor(r.Context(), a.calendarAddress(rd))
+	side.Place, side.PlaceSide = "calendar", calSide(v, home, today, pages, 0)
 	cfg.MailSide = side
 
 	var b strings.Builder

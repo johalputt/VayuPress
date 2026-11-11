@@ -1642,3 +1642,52 @@ test("an event made in the Calendar is placed at its hour and deleted from its s
   await expect(page.locator(".cal-ev", { hasText: "Pricing review" })).toHaveCount(0);
   await holder.close();
 });
+
+// A booking page, made in the Calendar and booked from its public link: the
+// guest sees days and times, never the calendar, and their details hold a
+// time until they confirm by mail.
+test("a booking page is made in the Calendar and booked from its link", async ({ page, browser }) => {
+  await page.goto("/os/vayumail/accounts");
+  const csrf = (await page.context().cookies()).find((c) => c.name === "vp_csrf");
+  const local = "booker" + Date.now();
+  const made = await page.request.post("/os/vayumail/accounts/create", {
+    headers: { "X-CSRF-Token": csrf ? decodeURIComponent(csrf.value) : "" },
+    data: { local, name: "Booker", pass: "e2e-booker-passphrase-1", role: "mailbox" },
+  });
+  expect(made.ok()).toBeTruthy();
+  const origin = process.env.MAIL_UPSTREAM;
+  if (!origin) throw new Error("MAIL_UPSTREAM is not set: boot the mail install as .github/actions/boot-vayupress does");
+  const holder = await browser.newContext({ baseURL: origin, viewport: { width: 1440, height: 900 }, timezoneId: "UTC" });
+  page = await holder.newPage();
+  await page.goto("/os/login");
+  await page.locator("#login-email").fill(local + "@mail.test");
+  await page.locator("#login-password").fill("e2e-booker-passphrase-1");
+  await page.locator(".login-form button[type=submit]").first().click();
+  await page.waitForURL((u) => !u.pathname.startsWith("/os/login"));
+
+  await page.goto("/os/vayumail/calendar");
+  await page.getByRole("link", { name: "New booking page" }).click();
+  await page.locator("input[name=title]").fill("Intro call");
+  await page.locator("input[name=slug]").fill("intro");
+  for (let d = 0; d < 7; d++) await page.locator(`input[name=hours${d}]`).fill("00:00-24:00");
+  await page.locator("input[name=notice]").fill("0");
+  await page.getByRole("button", { name: "Save" }).click();
+  const link = page.locator(".cal-booking__link a");
+  await expect(link).toContainText("/book/" + local + "/intro");
+  await expect(page.locator(".sa-appside a[aria-current=page]")).toContainText("Intro call");
+
+  // A guest, with no session, in another zone.
+  const guestCtx = await browser.newContext({ baseURL: origin, timezoneId: "Asia/Tokyo" });
+  const guest = await guestCtx.newPage();
+  await guest.goto("/book/" + local + "/intro");
+  await expect(guest.locator(".book__row", { hasText: "Your time" })).toContainText("Asia/Tokyo");
+  const time = guest.locator(".book__time").first();
+  await expect(time).toBeVisible();
+  await time.click();
+  await guest.locator("#book-name").fill("Kenji");
+  await guest.locator("#book-email").fill("kenji@guest.example");
+  await guest.getByRole("button", { name: "Book this time" }).click();
+  await expect(guest.locator("h1")).toHaveText("Check your mail");
+  await guestCtx.close();
+  await holder.close();
+});

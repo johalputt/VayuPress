@@ -7686,3 +7686,29 @@
 .vp-os[data-ui="still-air"] .mx-invite__note { margin: 0; font: var(--type-small); color: var(--text-2); }
 .vp-os[data-ui="still-air"] .mx-invite__acts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .vp-os[data-ui="still-air"] .mx-invite__acts .btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+/* Booking pages (vayuos_mail_booking.go): the holder's editor. */
+.vp-os[data-ui="still-air"] .cal-booking { display: flex; flex-direction: column; gap: var(--space-4); max-width: 880px; padding: var(--space-5) var(--space-6); }
+.vp-os[data-ui="still-air"] .cal-booking__link { display: flex; align-items: center; gap: var(--space-2); margin: 0; font: var(--type-body); overflow-wrap: anywhere; }
+.vp-os[data-ui="still-air"] .cal-booking__day { display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: center; gap: var(--space-3); font: var(--type-body); }
+.vp-os[data-ui="still-air"] .cal-booking__h { margin: var(--space-5) 0 0; font: var(--type-heading); }
+.vp-os[data-ui="still-air"] .cal-booking__list { list-style: none; margin: 0; padding: 0; }
+.vp-os[data-ui="still-air"] .cal-booking__list li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); padding: var(--space-3) 0; border-bottom: 1px solid var(--border-1); font: var(--type-small); }
+.vp-os[data-ui="still-air"] .cal-booking__who { color: var(--text-1); font: var(--type-strong); }
+/* A booking page as a guest sees it (book_public.go): wider than a sign-in
+   card, three parts side by side, one above another on a phone. */
+.vp-os .auth-col:has(.book-card) { max-width: 980px; }
+.vp-os .book { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 0.9fr); gap: var(--space-6); }
+@media (max-width: 760px) { .vp-os .book { grid-template-columns: minmax(0, 1fr); } }
+.vp-os .book__who { margin: 0; font: var(--type-small); color: var(--text-2); }
+.vp-os .book__row { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-2) 0; font: var(--type-body); color: var(--text-2); }
+.vp-os .book__lengths { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.vp-os .book__lengths [aria-current="true"], .vp-os .book__day[aria-current="date"] { background: var(--accent); border-color: var(--accent); color: var(--surface-1); }
+.vp-os .book__monthhead { display: flex; align-items: center; gap: var(--space-2); }
+.vp-os .book__monthhead h2, .vp-os .book__times h2, .vp-os .book__details h2 { margin: 0 auto var(--space-3) 0; font: var(--type-heading); }
+.vp-os .book__grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--space-1); text-align: center; }
+.vp-os .book__wd { font: var(--type-meta); color: var(--text-3); }
+.vp-os .book__day { padding: var(--space-2) 0; border: 1px solid transparent; border-radius: var(--radius-control); background: var(--accent-soft); color: var(--accent); font: var(--type-strong); text-decoration: none; }
+.vp-os .book__day.is-off { background: none; color: var(--text-4); font: var(--type-body); }
+.vp-os .book__times { display: flex; flex-direction: column; gap: var(--space-2); }
+.vp-os .book__time { justify-content: center; }
+

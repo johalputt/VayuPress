@@ -492,6 +492,15 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// A mail rule's forward, confirmed by the address it sends to: the GET
 	// only asks, the POST confirms (vayuos_mail_rules.go).
 	r.Get("/vayumail/forward/confirm", a.handleRuleForwardConfirm)
+	// Booking pages, on the site's own host, for anyone with the link
+	// (book_public.go): the confirm and cancel links only ask; their
+	// buttons act.
+	r.Get("/book/confirm", a.handleBookConfirm)
+	r.Post("/book/confirm", a.handleBookConfirm)
+	r.Get("/book/cancel", a.handleBookCancel)
+	r.Post("/book/cancel", a.handleBookCancel)
+	r.Get("/book/{owner}/{slug}", a.handleBookPage)
+	r.Post("/book/{owner}/{slug}", a.handleBookPage)
 	r.Post("/vayumail/forward/confirm", a.handleRuleForwardConfirm)
 	r.Get("/api/v1/tiers", a.handleTiersPublic)
 	// Public author profile pages.

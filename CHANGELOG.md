@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Booking pages.** Share a link and anyone can book a free time in your
+  calendar. Make a page per kind of meeting in the Calendar: the lengths it
+  offers, your weekly hours, time kept free before and after, how soon and
+  how far ahead, the most in a day, and a question for the guest. The guest
+  sees only free times, in their own time zone, never what is in your
+  calendar; an all-day event or one marked free does not take a time. The
+  time is held for fifteen minutes and booked only when the guest confirms
+  by a link mailed to the address they gave, so nobody can fill your
+  calendar with addresses they do not hold. Booked, it is an event in your
+  calendar with the guest invited and a link to cancel it, and you are told
+  in your Inbox. A page mails one address at most three times a day.
+
 ## [3.18.36] — 2026-11-08
 
 A Calendar beside Mail: the calendar your phone and computer already keep, in a week, a month or a day in your own time zone, with repeating events that keep their local time, guests invited by mail and their answers shown, invitations answered from the message they came in, and reminders on your devices and by mail.
