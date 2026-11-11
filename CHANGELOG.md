@@ -22,6 +22,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   calendar with the guest invited and a link to cancel it, and you are told
   in your Inbox. A page mails one address at most three times a day.
 
+### Security
+
+- **Go 1.27.4.** The toolchain the binary is built with moves from 1.27.3
+  to 1.27.4. The vulnerability scan reports a flaw in 1.27.3's `net/http`,
+  which every page and the mail client's connections go through, and
+  1.27.4 is the release that follows it.
+
 ## [3.18.36] — 2026-11-08
 
 A Calendar beside Mail: the calendar your phone and computer already keep, in a week, a month or a day in your own time zone, with repeating events that keep their local time, guests invited by mail and their answers shown, invitations answered from the message they came in, and reminders on your devices and by mail.
