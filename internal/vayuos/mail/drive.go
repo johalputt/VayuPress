@@ -56,7 +56,7 @@ const (
 var (
 	ErrDriveHolderOnly = errors.New("vayumail: files are opened only by their holder")
 	ErrDriveNotFound   = errors.New("vayumail: there is no such file or folder")
-	ErrDriveName       = errors.New("vayumail: a name is 1 to 255 characters, with no slash, and not . or ..")
+	ErrDriveName       = errors.New("vayumail: a name is 1 to 255 characters with no slash, and one or two dots alone are not a name")
 	ErrDriveExists     = errors.New("vayumail: something here already has that name")
 	ErrDriveFull       = errors.New("vayumail: this would pass the mailbox's storage allowance")
 	ErrDriveTooLarge   = errors.New("vayumail: a file is at most 100 MB, and 25 MB in a private mailbox")
