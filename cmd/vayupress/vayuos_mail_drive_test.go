@@ -210,7 +210,7 @@ func TestTrashRestoreAndDeleteFromThePage(t *testing.T) {
 	if strings.Contains(page(""), "notes.txt") || !strings.Contains(page("?view=trash"), "<span>notes.txt</span>") {
 		t.Fatal("a trashed file is not in Trash alone")
 	}
-	if !strings.Contains(page("?view=trash"), "thirty days") {
+	if !strings.Contains(page("?view=trash"), "A file stays here 30 days") {
 		t.Error("Trash does not say how long it keeps a file")
 	}
 	sheet := calGet(a, a.handleVayuOSDriveEntry, "/os/vayumail/drive/entry?id="+id, dana(), "").Body.String()

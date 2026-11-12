@@ -86,7 +86,7 @@ func TestAHolderSharesAFileByALinkAndStopsIt(t *testing.T) {
 	}
 
 	sheet := calGet(a, a.handleVayuOSDriveEntry, "/os/vayumail/drive/entry?id="+strconv.FormatInt(id, 10), dana(), "").Body.String()
-	if !strings.Contains(sheet, "Share by link") || !strings.Contains(sheet, "· 1 download<") || strings.Contains(sheet, token) {
+	if !strings.Contains(sheet, "Share by link") || !strings.Contains(sheet, "· 1 download · last downloaded ") || strings.Contains(sheet, token) {
 		t.Fatalf("the sheet's list of links (which never shows the address again):\n%s", sheet)
 	}
 	rec := driveAct(a, dana(), url.Values{"op": {"unshare"}, "id": {strconv.FormatInt(id, 10)}, "share": {strconv.FormatInt(links[0].ID, 10)}})

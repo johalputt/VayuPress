@@ -28,6 +28,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Drive settings, Empty Trash and earlier versions to download.** Drive
+  settings choose how many earlier versions of each file are kept (1 to
+  20) and how long Trash keeps what you delete (7 to 90 days); Trash has
+  Empty Trash; an earlier version downloads as it was without becoming the
+  file again; and a link says when it was last downloaded.
 - **Large files, and uploads that survive a dropped connection.** A file
   can be up to 2 GB (it was 100 MB). The page sends a file in pieces, and a
   connection that drops is waited out and the upload goes on from where it

@@ -141,6 +141,13 @@ func (s *AccountStore) ensureDriveTables() error {
 	if err != nil {
 		return err
 	}
+	// When each link's downloads were handed out (drive_share.go).
+	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS vayumail_drive_share_downloads(share_id INTEGER NOT NULL, at INTEGER NOT NULL)`); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS vayumail_drive_share_downloads_share ON vayumail_drive_share_downloads(share_id, at)`); err != nil {
+		return err
+	}
 	// Each file's own key and checksums (driveblob.go, drivekeys.go): fkey
 	// is the key as kept, '' for a file kept before; sum the SHA-256 of the
 	// content, blob_sum of the bytes on the disk; checked when those bytes
@@ -567,9 +574,10 @@ func numberedName(name string, n int) string {
 	return name + tail
 }
 
-// pruneVersions keeps a file's latest driveVersions versions.
+// pruneVersions keeps as many of a file's latest versions as its holder
+// chose (driveVersions unless they chose).
 func (e *Engine) pruneVersions(ctx context.Context, mbox string, fileID int64) {
-	rows, err := e.accounts.db.QueryContext(ctx, `SELECT id,blob FROM vayumail_drive_versions WHERE mailbox=? AND file_id=? ORDER BY id DESC LIMIT -1 OFFSET ?`, mbox, fileID, driveVersions)
+	rows, err := e.accounts.db.QueryContext(ctx, `SELECT id,blob FROM vayumail_drive_versions WHERE mailbox=? AND file_id=? ORDER BY id DESC LIMIT -1 OFFSET ?`, mbox, fileID, e.driveSettingsOf(ctx, mbox).Versions)
 	if err != nil {
 		return
 	}
@@ -773,7 +781,7 @@ func (e *Engine) DriveVersions(rd Reader, id int64) ([]DriveVersion, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := e.accounts.db.QueryContext(context.Background(), `SELECT id,size,saved,sum,damaged FROM vayumail_drive_versions WHERE mailbox=? AND file_id=? ORDER BY id DESC LIMIT ?`, mbox, id, driveVersions)
+	rows, err := e.accounts.db.QueryContext(context.Background(), `SELECT id,size,saved,sum,damaged FROM vayumail_drive_versions WHERE mailbox=? AND file_id=? ORDER BY id DESC LIMIT ?`, mbox, id, e.driveSettingsOf(context.Background(), mbox).Versions)
 	if err != nil {
 		return nil, err
 	}
@@ -892,43 +900,48 @@ func (e *Engine) DriveOpen(rd Reader, id int64) (DriveEntry, io.ReadSeekCloser, 
 	if err := e.accounts.db.QueryRowContext(ctx, `SELECT blob,fkey FROM vayumail_drive WHERE id=? AND mailbox=?`, id, mbox).Scan(&blob, &fkey); err != nil {
 		return d, nil, ErrDriveNotFound
 	}
+	r, err := e.openKept(mbox, blob, fkey, d.Sealed, d.Size)
+	return d, r, err
+}
+
+// openKept opens one stored file's bytes however they were kept: in chunks
+// under the key its row keeps, or, kept before chunks, as they are or
+// sealed whole to the holder.
+func (e *Engine) openKept(mbox, blob, fkey string, sealed bool, size int64) (io.ReadSeekCloser, error) {
 	if fkey != "" {
-		r, err := e.openBlob(mbox, blob, fkey, d.Size, func() { e.markDamaged(mbox, blob) })
-		return d, r, err
+		return e.openBlob(mbox, blob, fkey, size, func() { e.markDamaged(mbox, blob) })
 	}
 	path, err := e.blobPath(mbox, blob)
 	if err != nil {
-		return d, nil, err
+		return nil, err
 	}
-	// A file kept before files were kept in chunks: as it is, or sealed
-	// whole to the holder.
-	if !d.Sealed {
+	if !sealed {
 		f, err := os.Open(path) // #nosec G304 -- blobPath admits only this package's hex names under the mailbox's directory
 		if err != nil {
-			return d, nil, ErrDriveNotFound
+			return nil, ErrDriveNotFound
 		}
-		return d, f, nil
+		return f, nil
 	}
 	if e.maildir == nil || e.maildir.keys == nil {
-		return d, nil, ErrDriveLocked
+		return nil, ErrDriveLocked
 	}
 	// The opened file is in memory until its reader is closed, so the slot
 	// is held that long, not only while it is opened.
 	done, ok := e.sealSlot(mbox)
 	if !ok {
-		return d, nil, ErrDriveBusy
+		return nil, ErrDriveBusy
 	}
 	raw, err := os.ReadFile(path) // #nosec G304 -- as above
 	if err != nil {
 		done()
-		return d, nil, ErrDriveNotFound
+		return nil, ErrDriveNotFound
 	}
 	plain, err := e.maildir.keys.DecryptForEmail(raw, mbox)
 	if err != nil {
 		done()
-		return d, nil, ErrDriveLocked
+		return nil, ErrDriveLocked
 	}
-	return d, &bytesFile{Reader: bytes.NewReader(plain), done: done}, nil
+	return &bytesFile{Reader: bytes.NewReader(plain), done: done}, nil
 }
 
 // DriveRename gives an entry another name where it is.
@@ -1093,32 +1106,36 @@ func (e *Engine) driveRemove(ctx context.Context, mbox string, id int64) error {
 	return nil
 }
 
-// emptyOldTrash removes what has been in Trash for driveTrashFor.
+// emptyOldTrash removes what has been in Trash as long as its holder's
+// Trash keeps things (driveTrashFor unless they chose), mailbox by mailbox.
 func (e *Engine) emptyOldTrash(now time.Time) {
 	if e.accounts == nil || e.accounts.ensureDriveTables() != nil {
 		return
 	}
 	ctx := context.Background()
-	rows, err := e.accounts.db.QueryContext(ctx, `SELECT mailbox,id FROM vayumail_drive WHERE trashed IS NOT NULL AND trashed<? LIMIT 500`, now.Add(-driveTrashFor).UTC())
+	rows, err := e.accounts.db.QueryContext(ctx, `SELECT DISTINCT mailbox FROM vayumail_drive WHERE trashed IS NOT NULL`)
 	if err != nil {
 		return
 	}
-	type gone struct {
-		mbox string
-		id   int64
-	}
-	var old []gone
+	var boxes []string
 	for rows.Next() {
-		var g gone
-		if rows.Scan(&g.mbox, &g.id) == nil {
-			old = append(old, g)
+		var m string
+		if rows.Scan(&m) == nil {
+			boxes = append(boxes, m)
 		}
 	}
 	if rows.Err() != nil || rows.Close() != nil {
 		return
 	}
-	for _, g := range old {
-		_ = e.driveRemove(ctx, g.mbox, g.id)
+	for _, mbox := range boxes {
+		keep := time.Duration(e.driveSettingsOf(ctx, mbox).TrashDays) * 24 * time.Hour
+		old, err := e.driveRows(ctx, `SELECT `+driveCols+` FROM vayumail_drive WHERE mailbox=? AND trashed IS NOT NULL AND trashed<? LIMIT 500`, mbox, now.Add(-keep).UTC())
+		if err != nil {
+			continue
+		}
+		for _, d := range old {
+			_ = e.driveRemove(ctx, mbox, d.ID)
+		}
 	}
 }
 

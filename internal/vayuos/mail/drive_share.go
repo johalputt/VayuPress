@@ -68,7 +68,13 @@ type DriveShare struct {
 	Most      int // 0: any number
 	Downloads int
 	Copy      bool // an unsealed copy of a sealed file is kept for it
+	// Recent is when the link's latest downloads were handed out, newest
+	// first: at most maxShareRecord.
+	Recent []time.Time
 }
+
+// maxShareRecord is the downloads a link keeps the time of.
+const maxShareRecord = 50
 
 // SharedFile is what a link's page says about its file.
 type SharedFile struct {
@@ -231,6 +237,32 @@ func (e *Engine) DriveShares(rd Reader, id int64) ([]DriveShare, error) {
 		}
 		out = append(out, s)
 	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if out[i].Recent, err = e.shareRecord(ctx, out[i].ID); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// shareRecord is when a link's latest downloads were handed out.
+func (e *Engine) shareRecord(ctx context.Context, share int64) ([]time.Time, error) {
+	rows, err := e.accounts.db.QueryContext(ctx, `SELECT at FROM vayumail_drive_share_downloads WHERE share_id=? ORDER BY at DESC LIMIT ?`, share, maxShareRecord)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []time.Time
+	for rows.Next() {
+		var at int64
+		if err := rows.Scan(&at); err != nil {
+			return nil, err
+		}
+		out = append(out, time.Unix(at, 0).UTC())
+	}
 	return out, rows.Err()
 }
 
@@ -270,6 +302,9 @@ func (e *Engine) dropShares(ctx context.Context, query string, args ...any) erro
 	}
 	for _, g := range all {
 		if _, err := e.accounts.db.ExecContext(ctx, `DELETE FROM vayumail_drive_shares WHERE id=?`, g.id); err != nil {
+			return err
+		}
+		if _, err := e.accounts.db.ExecContext(ctx, `DELETE FROM vayumail_drive_share_downloads WHERE share_id=?`, g.id); err != nil {
 			return err
 		}
 		if g.blob != "" {
@@ -359,6 +394,12 @@ func (e *Engine) DriveSharedOpen(token, password string) (SharedFile, io.ReadClo
 	if n, _ := res.RowsAffected(); n != 1 {
 		return SharedFile{}, nil, ErrShareGone
 	}
+	// When it was handed out, the latest maxShareRecord kept; nothing of
+	// who asked, whom the holder cannot be told about by a link anyway.
+	now := time.Now().Unix()
+	_, _ = e.accounts.db.ExecContext(ctx, `INSERT INTO vayumail_drive_share_downloads(share_id,at) VALUES(?,?)`, s.id, now)
+	_, _ = e.accounts.db.ExecContext(ctx, `DELETE FROM vayumail_drive_share_downloads WHERE share_id=? AND rowid NOT IN
+		(SELECT rowid FROM vayumail_drive_share_downloads WHERE share_id=? ORDER BY at DESC, rowid DESC LIMIT ?)`, s.id, s.id, maxShareRecord)
 	blob, fkey, size := s.blob, s.fkey, s.size
 	if blob == "" {
 		size = file.Size

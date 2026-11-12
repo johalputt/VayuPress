@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	htmpl "html/template"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -83,6 +84,8 @@ func (a *App) driveSide(ctx context.Context, rd vmail.Reader, dir int64, trash b
 	}
 	item("/os/vayumail/drive", "folder", "My files", !trash)
 	item("/os/vayumail/drive?view=trash", "trash", "Trash", trash)
+	b.WriteString(`<button type="button" class="sa-appside__item" hx-get="/os/vayumail/drive/entry?settings=1" hx-target="#drive-sheet-body" hx-swap="innerHTML">` + saIcon("settings") +
+		`<span class="sa-appside__label">Drive settings</span></button>`)
 	mbox := a.calendarAddress(rd)
 	// Mail and files share the mailbox's one allowance (the engine counts
 	// them together), so the figure here is both, with the files' part named.
@@ -158,7 +161,13 @@ func (a *App) handleVayuOSDrive(w http.ResponseWriter, r *http.Request) {
 		b.WriteString(saCallout("danger", "The files could not be read: "+esc(driveRefusal(err))+"."))
 	}
 	if trash && len(entries) > 0 {
-		b.WriteString(`<p class="cal-note">A file stays here thirty days, then it is deleted for good.</p>`)
+		days := 30
+		if ds, err := a.vayuMail.DriveSettingsOf(rd); err == nil {
+			days = ds.TrashDays
+		}
+		b.WriteString(`<p class="cal-note">A file stays here ` + strconv.Itoa(days) + ` days, then it is deleted for good.</p>` +
+			`<div class="cal-detail__acts"><button type="button" class="btn btn--sm btn--danger" hx-post="/os/vayumail/drive/action"` + hxVals("op", "empty") +
+			` hx-confirm="Delete everything in Trash for good? It cannot be brought back.">Empty Trash</button></div>`)
 	}
 	if n, _ := a.vayuMail.DriveDamaged(rd); n > 0 {
 		b.WriteString(saCallout("danger", strconv.Itoa(n)+" "+pluralWord(n, "file or version", "files or versions")+
@@ -235,6 +244,10 @@ func (a *App) handleVayuOSDriveEntry(w http.ResponseWriter, r *http.Request) {
 			`<div class="cal-form__acts"><button type="button" class="btn" data-sheet-close>Cancel</button><button type="submit" class="btn btn--primary">Make folder</button></div></form>`)
 		return
 	}
+	if q.Get("settings") == "1" {
+		writeOSHTML(w, r, a.driveSettingsSheet(rd, ""))
+		return
+	}
 	id, _ := strconv.ParseInt(q.Get("id"), 10, 64)
 	path, err := a.vayuMail.DrivePath(rd, id)
 	if err != nil || len(path) == 0 {
@@ -290,6 +303,7 @@ func (a *App) driveSheet(rd vmail.Reader, d vmail.DriveEntry, home *time.Locatio
 					damaged = " · damaged"
 				}
 				b.WriteString(`<li><span>` + esc(v.Saved.In(home).Format("2 January 2006, 15:04")) + ` · ` + esc(humanBytes(v.Size)) + damaged + `</span>` +
+					`<a class="btn btn--sm" href="/os/vayumail/drive/file?id=` + id + `&amp;version=` + strconv.FormatInt(v.ID, 10) + `" download>Download</a>` +
 					`<button type="button" class="btn btn--sm"` + post + hxVals("op", "version", "id", id, "version", strconv.FormatInt(v.ID, 10)) + `>Bring back</button></li>`)
 			}
 			b.WriteString(`</ul>`)
@@ -349,6 +363,9 @@ func (a *App) driveShareSection(rd vmail.Reader, d vmail.DriveEntry, home *time.
 			}
 			if l.Password {
 				what += " · password"
+			}
+			if len(l.Recent) > 0 {
+				what += " · last downloaded " + l.Recent[0].In(home).Format("2 January, 15:04")
 			}
 			b.WriteString(`<li><span>` + esc(what) + `</span><button type="button" class="btn btn--sm"` + post + hxVals("op", "unshare", "id", id, "share", strconv.FormatInt(l.ID, 10)) + `>Stop</button></li>`)
 		}
@@ -428,6 +445,18 @@ func (a *App) handleVayuOSDriveAction(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	case "settings":
+		versions, _ := strconv.Atoi(r.PostFormValue("versions"))
+		days, _ := strconv.Atoi(r.PostFormValue("trash_days"))
+		msg := saCallout("ok", "Saved.")
+		if serr := a.vayuMail.SetDriveSettings(rd, vmail.DriveSettings{Versions: versions, TrashDays: days}); serr != nil {
+			msg = saCallout("danger", esc(driveRefusal(serr))+".")
+		}
+		writeOSHTML(w, r, a.driveSettingsSheet(rd, msg))
+		return
+	case "empty":
+		_, err = a.vayuMail.DriveEmptyTrash(rd)
+		trashView = true
 	case "trash":
 		err = a.vayuMail.DriveTrash(rd, id, false)
 	case "restore":
@@ -512,7 +541,16 @@ func (a *App) handleVayuOSDriveFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
-	d, f, err := a.vayuMail.DriveOpen(rd, id)
+	var d vmail.DriveEntry
+	var f io.ReadSeekCloser
+	var err error
+	if v := r.URL.Query().Get("version"); v != "" {
+		// An earlier version, read without being made the file again.
+		version, _ := strconv.ParseInt(v, 10, 64)
+		d, f, err = a.vayuMail.DriveVersionOpen(rd, id, version)
+	} else {
+		d, f, err = a.vayuMail.DriveOpen(rd, id)
+	}
 	if err != nil {
 		if errors.Is(err, vmail.ErrDriveLocked) {
 			http.Error(w, "This file is sealed. Unlock your mailbox in Mail to open it.", http.StatusLocked)
@@ -627,4 +665,30 @@ func (a *App) handleVayuOSDrivePick(w http.ResponseWriter, r *http.Request) {
 	}
 	b.WriteString(`</ul>`)
 	writeOSHTML(w, r, b.String())
+}
+
+// driveSettingsSheet is the holder's choices for their Drive.
+func (a *App) driveSettingsSheet(rd vmail.Reader, msg string) string {
+	ds, err := a.vayuMail.DriveSettingsOf(rd)
+	if err != nil {
+		return saCallout("danger", "The settings could not be read.")
+	}
+	sel := func(name string, cur int, opts []int, word string) string {
+		var b strings.Builder
+		b.WriteString(`<select name="` + name + `">`)
+		for _, o := range opts {
+			on := ""
+			if o == cur {
+				on = " selected"
+			}
+			b.WriteString(`<option value="` + strconv.Itoa(o) + `"` + on + `>` + strconv.Itoa(o) + ` ` + word + `</option>`)
+		}
+		return b.String() + `</select>`
+	}
+	return `<form class="cal-form" data-sheet-title="Drive settings" hx-post="/os/vayumail/drive/action" hx-target="#drive-sheet-body" hx-swap="innerHTML">` + msg +
+		`<input type="hidden" name="op" value="settings">` +
+		`<label class="field"><span class="field-label">Earlier versions kept of each file</span>` + sel("versions", ds.Versions, []int{1, 3, 5, 10, 20}, "versions") + `</label>` +
+		`<label class="field"><span class="field-label">Trash keeps what you delete for</span>` + sel("trash_days", ds.TrashDays, []int{7, 14, 30, 60, 90}, "days") + `</label>` +
+		`<p class="cal-note">Fewer versions take effect at once: the older ones past the number are deleted. Versions and Trash count against the mailbox's storage.</p>` +
+		`<div class="cal-form__acts"><button type="submit" class="btn btn--primary">Save</button></div></form>`
 }
