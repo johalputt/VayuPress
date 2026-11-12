@@ -112,18 +112,24 @@ type SharedFolder struct {
 	Entries []DriveEntry
 }
 
-// sharedWithin reports whether entry id lies in the link's folder: the
-// folder itself or anything under it, out of Trash. The walk goes up from
-// the entry, so nothing outside the shared folder is ever listed.
+// sharedWithin reports whether entry id lies in the link's folder (within).
 func (e *Engine) sharedWithin(ctx context.Context, s shareRow, id int64) ([]DriveEntry, bool) {
+	return e.within(ctx, s.mbox, s.file, id)
+}
+
+// within reports whether entry id of mbox lies in folder root: the folder
+// itself or anything under it, out of Trash, and gives the folders from
+// root down to it. The walk goes up from the entry, so nothing outside the
+// folder is ever reached.
+func (e *Engine) within(ctx context.Context, mbox string, root, id int64) ([]DriveEntry, bool) {
 	var path []DriveEntry
 	for n, up := 0, id; n <= maxDriveDepth; n++ {
-		d, err := e.driveEntry(ctx, s.mbox, up)
+		d, err := e.driveEntry(ctx, mbox, up)
 		if err != nil || !d.Trashed.IsZero() {
 			return nil, false
 		}
 		path = append([]DriveEntry{d}, path...)
-		if up == s.file {
+		if up == root {
 			return path, true
 		}
 		if d.Parent == 0 {

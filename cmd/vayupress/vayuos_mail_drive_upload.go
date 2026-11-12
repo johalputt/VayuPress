@@ -69,7 +69,13 @@ func (a *App) handleVayuOSDriveUploadStart(w http.ResponseWriter, r *http.Reques
 		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "an upload says how large its file is", "")
 		return
 	}
-	u, err := a.vayuMail.DriveUploadStart(rd, dir, r.PostFormValue("name"), r.PostFormValue("type"), size, time.Now())
+	var u vmail.DriveUpload
+	if grant, _ := strconv.ParseInt(r.PostFormValue("grant"), 10, 64); grant != 0 {
+		// Into a folder another mailbox here shares with this one to write.
+		u, err = a.vayuMail.DriveGrantUploadStart(rd, grant, dir, r.PostFormValue("name"), r.PostFormValue("type"), size, time.Now())
+	} else {
+		u, err = a.vayuMail.DriveUploadStart(rd, dir, r.PostFormValue("name"), r.PostFormValue("type"), size, time.Now())
+	}
 	if err != nil {
 		uploadRefusal(w, r, err, u)
 		return

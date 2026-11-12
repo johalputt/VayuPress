@@ -586,6 +586,10 @@ var perAddressTables = [][2]string{
 	{"vayumail_drive", "mailbox"},
 	{"vayumail_drive_versions", "mailbox"},
 	{"vayumail_drive_shares", "mailbox"},
+	// Shared with others, and shared with this address: an address issued
+	// again does not inherit what was shared with the one before it.
+	{"vayumail_drive_grants", "mailbox"},
+	{"vayumail_drive_grants", "grantee"},
 	{"vayumail_snooze", "mailbox"},
 	{"vayumail_autoreply_log", "mailbox"},
 	{"vayumail_scheduled", "owner"},

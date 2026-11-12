@@ -28,10 +28,12 @@
   }
 
   // One file, in pieces, as a promise of nothing or of the server's reason.
-  function send(file, dir, n, of) {
+  // grant: a folder another mailbox shares with this one, "" for its own.
+  function send(file, dir, grant, n, of) {
     var which = of > 1 ? " (" + n + " of " + of + ")" : "";
     // As a form is sent, not multipart: the server reads these as one.
     var form = new URLSearchParams({ dir: dir, name: file.name, size: String(file.size), type: file.type || "" });
+    if (grant) form.set("grant", grant);
     say("Uploading " + file.name + which + "…");
     return ask("POST", "/os/vayumail/drive/uploads", form).then(function (up) {
       var url = "/os/vayumail/drive/uploads/" + encodeURIComponent(up.id);
@@ -64,7 +66,7 @@
   }
 
   var busy = false;
-  function sendAll(files, dir) {
+  function sendAll(files, dir, grant) {
     if (busy || !files || !files.length) return;
     busy = true;
     var list = Array.prototype.slice.call(files), i = 0, kept = 0;
@@ -76,7 +78,7 @@
         location.reload();
         return;
       }
-      send(list[i], dir, i + 1, list.length).then(function () { kept++; i++; next(); }, function (why) {
+      send(list[i], dir, grant, i + 1, list.length).then(function () { kept++; i++; next(); }, function (why) {
         busy = false;
         say(why + "." + (kept ? " " + kept + " kept before it." : ""));
         if (status) status.classList.add("drive-status--bad");
@@ -88,7 +90,7 @@
     var input = e.target;
     if (!input.matches || !input.matches("[data-drive-upload]")) return;
     if (status) status.classList.remove("drive-status--bad");
-    sendAll(input.files, input.getAttribute("data-dir"));
+    sendAll(input.files, input.getAttribute("data-dir"), input.getAttribute("data-grant"));
     input.value = "";
   });
 
@@ -107,7 +109,7 @@
       if (!over(e)) return;
       drive.classList.remove("drive--over");
       if (status) status.classList.remove("drive-status--bad");
-      sendAll(e.dataTransfer.files, drive.getAttribute("data-dir"));
+      sendAll(e.dataTransfer.files, drive.getAttribute("data-dir"), drive.getAttribute("data-grant"));
     });
   }
 

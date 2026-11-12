@@ -141,6 +141,20 @@ func (s *AccountStore) ensureDriveTables() error {
 	if err != nil {
 		return err
 	}
+	// A file or folder shared with another mailbox here (drive_grant.go).
+	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS vayumail_drive_grants(
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		mailbox TEXT NOT NULL,
+		file_id INTEGER NOT NULL,
+		grantee TEXT NOT NULL,
+		can_write INTEGER NOT NULL DEFAULT 0,
+		created DATETIME NOT NULL,
+		UNIQUE(mailbox, file_id, grantee))`); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS vayumail_drive_grants_grantee ON vayumail_drive_grants(grantee)`); err != nil {
+		return err
+	}
 	// When each link's downloads were handed out (drive_share.go).
 	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS vayumail_drive_share_downloads(share_id INTEGER NOT NULL, at INTEGER NOT NULL)`); err != nil {
 		return err
@@ -1111,6 +1125,9 @@ func (e *Engine) driveRemove(ctx context.Context, mbox string, id int64) error {
 			return err
 		}
 		if err := e.dropShares(ctx, `SELECT id,mailbox,blob FROM vayumail_drive_shares WHERE mailbox=? AND file_id=?`, mbox, x); err != nil {
+			return err
+		}
+		if _, err := e.accounts.db.ExecContext(ctx, `DELETE FROM vayumail_drive_grants WHERE mailbox=? AND file_id=?`, mbox, x); err != nil {
 			return err
 		}
 		if _, err := e.accounts.db.ExecContext(ctx, `DELETE FROM vayumail_drive WHERE mailbox=? AND id=?`, mbox, x); err != nil {

@@ -29,6 +29,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -75,7 +76,21 @@ func (s *AccountStore) ensureUploadTable() error {
 		content_state BLOB,
 		stored_state BLOB,
 		touched INTEGER NOT NULL);`)
-	return err
+	if err != nil {
+		return err
+	}
+	// An upload into a folder shared with another mailbox (drive_grant.go)
+	// is that mailbox's to go on with: opener is it, grant_id the share,
+	// '' and 0 for the holder's own.
+	for _, add := range []string{
+		"vayumail_drive_uploads ADD COLUMN opener TEXT NOT NULL DEFAULT ''",
+		"vayumail_drive_uploads ADD COLUMN grant_id INTEGER NOT NULL DEFAULT 0",
+	} {
+		if _, err := s.db.Exec(`ALTER TABLE ` + add); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return err
+		}
+	}
+	return nil
 }
 
 // uploadLocks keeps one piece of an upload at a time.
@@ -84,6 +99,17 @@ var uploadLocks sync.Map
 // DriveUploadStart opens an upload of a file of size bytes called name in
 // parent.
 func (e *Engine) DriveUploadStart(rd Reader, parent int64, name, ctype string, size int64, now time.Time) (DriveUpload, error) {
+	return e.driveUploadStart(rd, parent, name, ctype, size, now, uploadOpener{})
+}
+
+// uploadOpener is who goes on with an upload opened for another mailbox's
+// folder: the mailbox it was shared with, and the share.
+type uploadOpener struct {
+	mbox  string
+	grant int64
+}
+
+func (e *Engine) driveUploadStart(rd Reader, parent int64, name, ctype string, size int64, now time.Time, by uploadOpener) (DriveUpload, error) {
 	mbox, err := e.driveOf(rd)
 	if err != nil {
 		return DriveUpload{}, err
@@ -164,8 +190,8 @@ func (e *Engine) DriveUploadStart(rd Reader, parent int64, name, ctype string, s
 	if private {
 		sealed = 1
 	}
-	if _, err := e.accounts.db.ExecContext(ctx, `INSERT INTO vayumail_drive_uploads(id,mailbox,parent,name,ctype,size,blob,fkey,sealed,content_state,stored_state,touched)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, id, mbox, parent, name, oneLine(ctype), size, blob, fkey, sealed, contentState, storedState, now.Unix()); err != nil {
+	if _, err := e.accounts.db.ExecContext(ctx, `INSERT INTO vayumail_drive_uploads(id,mailbox,parent,name,ctype,size,blob,fkey,sealed,content_state,stored_state,touched,opener,grant_id)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, mbox, parent, name, oneLine(ctype), size, blob, fkey, sealed, contentState, storedState, now.Unix(), by.mbox, by.grant); err != nil {
 		_ = os.Remove(path + ".part")
 		return DriveUpload{}, err
 	}
@@ -204,12 +230,25 @@ func (e *Engine) uploadOf(ctx context.Context, rd Reader, id string, now time.Ti
 	if err := e.accounts.ensureUploadTable(); err != nil {
 		return openUpload{}, err
 	}
-	u := openUpload{mbox: mbox}
-	err = e.accounts.db.QueryRowContext(ctx, `SELECT parent,name,ctype,size,received,blob,fkey,sealed,content_state,stored_state FROM vayumail_drive_uploads
-		WHERE id=? AND mailbox=? AND touched>?`, id, mbox, now.Add(-uploadKeptFor).Unix()).
-		Scan(&u.parent, &u.name, &u.ctype, &u.size, &u.received, &u.blob, &u.fkey, &u.sealed, &u.contentState, &u.storedState)
+	// The holder's own uploads, and those it opened in a folder shared with
+	// it, which are kept in the holder's mailbox but are its to go on with.
+	var u openUpload
+	var grant int64
+	var opener string
+	err = e.accounts.db.QueryRowContext(ctx, `SELECT mailbox,parent,name,ctype,size,received,blob,fkey,sealed,content_state,stored_state,grant_id,opener FROM vayumail_drive_uploads
+		WHERE id=? AND (CASE WHEN opener='' THEN mailbox ELSE opener END)=? AND touched>?`, id, mbox, now.Add(-uploadKeptFor).Unix()).
+		Scan(&u.mbox, &u.parent, &u.name, &u.ctype, &u.size, &u.received, &u.blob, &u.fkey, &u.sealed, &u.contentState, &u.storedState, &grant, &opener)
 	if errors.Is(err, sql.ErrNoRows) {
 		return u, ErrUploadGone
+	}
+	if err == nil && grant != 0 {
+		// Still shared, still to write into, and the folder still in it:
+		// a share stopped mid-upload takes no more of it.
+		if g, gerr := e.grantOf(ctx, opener, grant); gerr != nil || !g.Write {
+			return u, ErrUploadGone
+		} else if _, in := e.within(ctx, u.mbox, g.Entry.ID, u.parent); !in {
+			return u, ErrUploadGone
+		}
 	}
 	return u, err
 }

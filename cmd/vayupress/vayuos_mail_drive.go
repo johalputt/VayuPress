@@ -68,12 +68,13 @@ func driveHref(dir int64) string {
 	return "/os/vayumail/drive?dir=" + strconv.FormatInt(dir, 10)
 }
 
-// driveSide is Drive's sidebar: upload, the two views, and the allowance
-// the files share with mail.
-func (a *App) driveSide(ctx context.Context, rd vmail.Reader, dir int64, trash bool) string {
+// driveSide is Drive's sidebar: upload, the three views, and the allowance
+// the files share with mail. upload is where an upload goes (its data-
+// attributes), "" where there is none: Trash, and what is shared to read.
+func (a *App) driveSide(ctx context.Context, rd vmail.Reader, view, upload string) string {
 	var b strings.Builder
-	if !trash {
-		b.WriteString(`<label class="btn btn--primary mx-compose-btn">` + saIcon("upload") + `Upload<input class="vp-sr-only" type="file" multiple data-drive-upload data-dir="` + strconv.FormatInt(dir, 10) + `"></label>`)
+	if upload != "" {
+		b.WriteString(`<label class="btn btn--primary mx-compose-btn">` + saIcon("upload") + `Upload<input class="vp-sr-only" type="file" multiple data-drive-upload` + upload + `></label>`)
 	}
 	item := func(href, icon, label string, on bool) {
 		cur := ""
@@ -82,8 +83,9 @@ func (a *App) driveSide(ctx context.Context, rd vmail.Reader, dir int64, trash b
 		}
 		b.WriteString(`<a class="sa-appside__item" href="` + href + `"` + cur + `>` + saIcon(icon) + `<span class="sa-appside__label">` + label + `</span></a>`)
 	}
-	item("/os/vayumail/drive", "folder", "My files", !trash)
-	item("/os/vayumail/drive?view=trash", "trash", "Trash", trash)
+	item("/os/vayumail/drive", "folder", "My files", view == "files")
+	item(sharedHref(0, 0), "user", "Shared with me", view == "shared")
+	item("/os/vayumail/drive?view=trash", "trash", "Trash", view == "trash")
 	b.WriteString(`<button type="button" class="sa-appside__item" hx-get="/os/vayumail/drive/entry?settings=1" hx-target="#drive-sheet-body" hx-swap="innerHTML">` + saIcon("settings") +
 		`<span class="sa-appside__label">Drive settings</span></button>`)
 	mbox := a.calendarAddress(rd)
@@ -114,6 +116,29 @@ func (a *App) handleVayuOSDrive(w http.ResponseWriter, r *http.Request) {
 	}
 	trash := r.URL.Query().Get("view") == "trash"
 	dir, _ := strconv.ParseInt(r.URL.Query().Get("dir"), 10, 64)
+	if r.URL.Query().Get("view") == "shared" {
+		grant, _ := strconv.ParseInt(r.URL.Query().Get("grant"), 10, 64)
+		body, write, ok := a.driveSharedBody(r, rd, grant, dir)
+		if !ok {
+			// Stopped, left, or a folder no longer in it: the list again.
+			http.Redirect(w, r, sharedHref(0, 0), http.StatusSeeOther)
+			return
+		}
+		upload, attrs := "", ""
+		if write {
+			at := strconv.FormatInt(dir, 10)
+			upload = ` data-dir="` + at + `" data-grant="` + strconv.FormatInt(grant, 10) + `"`
+			attrs = upload
+		}
+		side := a.mailSide(r, rd, "", "", nil)
+		side.Place, side.PlaceSide = "drive", a.driveSide(r.Context(), rd, "shared", upload)
+		cfg.MailSide = side
+		page := `<div class="drive" data-page-kind="app" data-drive` + attrs + `>` + body + `</div>` +
+			string(ui.Sheet("drive-sheet", "File", ui.HTML(`<div id="drive-sheet-body"></div>`))) +
+			`<script nonce="` + nonce + `" src="/os/static/js/admin-os-drive.js?v=` + assetVer("js/admin-os-drive.js") + `"></script>`
+		writeOSHTML(w, r, adminOSLayout(nonce, "Drive", "vayuos", cfg, htmpl.HTML(page)))
+		return
+	}
 	var entries []vmail.DriveEntry
 	var path []vmail.DriveEntry
 	var err error
@@ -130,7 +155,11 @@ func (a *App) handleVayuOSDrive(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	side := a.mailSide(r, rd, "", "", nil)
-	side.Place, side.PlaceSide = "drive", a.driveSide(r.Context(), rd, dir, trash)
+	view, upload := "files", ` data-dir="`+strconv.FormatInt(dir, 10)+`"`
+	if trash {
+		view, upload = "trash", ""
+	}
+	side.Place, side.PlaceSide = "drive", a.driveSide(r.Context(), rd, view, upload)
 	cfg.MailSide = side
 
 	var b strings.Builder
@@ -239,7 +268,10 @@ func (a *App) handleVayuOSDriveEntry(w http.ResponseWriter, r *http.Request) {
 	post := ` hx-post="/os/vayumail/drive/action" hx-target="#drive-sheet-body" hx-swap="innerHTML"`
 	if q.Get("new") == "folder" {
 		dir, _ := strconv.ParseInt(q.Get("dir"), 10, 64)
+		// In a folder shared with this mailbox to write, the share goes too.
+		grant, _ := strconv.ParseInt(q.Get("grant"), 10, 64)
 		writeOSHTML(w, r, `<form class="cal-form" data-sheet-title="New folder"`+post+`><input type="hidden" name="op" value="mkdir"><input type="hidden" name="dir" value="`+strconv.FormatInt(dir, 10)+`">`+
+			`<input type="hidden" name="grant" value="`+strconv.FormatInt(grant, 10)+`">`+
 			`<label class="field"><span class="field-label">Name</span><input type="text" name="name" required maxlength="255" autocomplete="off"></label>`+
 			`<div class="cal-form__acts"><button type="button" class="btn" data-sheet-close>Cancel</button><button type="submit" class="btn btn--primary">Make folder</button></div></form>`)
 		return
@@ -310,6 +342,7 @@ func (a *App) driveSheet(rd vmail.Reader, d vmail.DriveEntry, home *time.Locatio
 		}
 	}
 	b.WriteString(a.driveShareSection(rd, d, home, post))
+	b.WriteString(a.driveGrantSection(rd, d, post))
 	b.WriteString(`<form class="cal-form"` + post + `><input type="hidden" name="op" value="rename"><input type="hidden" name="id" value="` + id + `">` +
 		`<label class="field"><span class="field-label">Name</span><input type="text" name="name" required maxlength="255" value="` + esc(d.Name) + `" autocomplete="off"></label>` +
 		`<div class="cal-form__acts"><button type="submit" class="btn btn--sm">Rename</button></div></form>`)
@@ -428,7 +461,38 @@ func (a *App) handleVayuOSDriveAction(w http.ResponseWriter, r *http.Request) {
 	switch r.PostFormValue("op") {
 	case "mkdir":
 		back, _ = strconv.ParseInt(r.PostFormValue("dir"), 10, 64)
+		if grant, _ := strconv.ParseInt(r.PostFormValue("grant"), 10, 64); grant != 0 {
+			if _, err = a.vayuMail.DriveGrantMkdir(rd, grant, back, r.PostFormValue("name")); err != nil {
+				writeOSHTML(w, r, saCallout("danger", esc(driveRefusal(err))+"."))
+				return
+			}
+			w.Header().Set("HX-Redirect", sharedHref(grant, back))
+			writeOSHTML(w, r, "")
+			return
+		}
 		_, err = a.vayuMail.DriveMkdir(rd, back, r.PostFormValue("name"))
+	case "grant":
+		if err = a.vayuMail.DriveGrantTo(rd, id, r.PostFormValue("who"), r.PostFormValue("write") == "1"); err == nil {
+			if path, perr := a.vayuMail.DrivePath(rd, id); perr == nil && len(path) > 0 {
+				writeOSHTML(w, r, a.driveSheet(rd, path[len(path)-1], a.calendarHome(r), saCallout("ok", "Shared. It is under Shared with me in their Drive.")))
+				return
+			}
+		}
+	case "ungrant":
+		grant, _ := strconv.ParseInt(r.PostFormValue("grant"), 10, 64)
+		if err = a.vayuMail.DriveUngrant(rd, grant); err == nil {
+			if path, perr := a.vayuMail.DrivePath(rd, id); perr == nil && len(path) > 0 {
+				writeOSHTML(w, r, a.driveSheet(rd, path[len(path)-1], a.calendarHome(r), saCallout("ok", "No longer shared with them.")))
+				return
+			}
+		}
+	case "leave":
+		grant, _ := strconv.ParseInt(r.PostFormValue("grant"), 10, 64)
+		if err = a.vayuMail.DriveLeave(rd, grant); err == nil {
+			w.Header().Set("HX-Redirect", sharedHref(0, 0))
+			writeOSHTML(w, r, "")
+			return
+		}
 	case "rename":
 		err = a.vayuMail.DriveRename(rd, id, r.PostFormValue("name"))
 	case "move":
@@ -571,7 +635,11 @@ func (a *App) handleVayuOSDriveFile(w http.ResponseWriter, r *http.Request) {
 	var d vmail.DriveEntry
 	var f io.ReadSeekCloser
 	var err error
-	if v := r.URL.Query().Get("version"); v != "" {
+	if g := r.URL.Query().Get("grant"); g != "" {
+		// A file shared with this mailbox by another here.
+		grant, _ := strconv.ParseInt(g, 10, 64)
+		d, f, err = a.vayuMail.DriveGrantOpen(rd, grant, id)
+	} else if v := r.URL.Query().Get("version"); v != "" {
 		// An earlier version, read without being made the file again.
 		version, _ := strconv.ParseInt(v, 10, 64)
 		d, f, err = a.vayuMail.DriveVersionOpen(rd, id, version)
