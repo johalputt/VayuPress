@@ -45,8 +45,6 @@ import (
 )
 
 const (
-	// maxDriveFile is the largest file kept.
-	maxDriveFile = 100 << 20
 	// maxDriveEntries bounds one mailbox's files and folders together.
 	maxDriveEntries = 50000
 	maxDriveDepth   = 32
@@ -56,13 +54,20 @@ const (
 	sealedAtOnce = 2
 )
 
+// maxDriveFile is the largest file kept: a file is sealed and read in
+// chunks, never whole in memory, so the bound is the disk's and the
+// allowance's, and this one keeps a single file to what a person uploads
+// through a page or a file app. A variable so a test of the bound need not
+// write two gigabytes.
+var maxDriveFile int64 = 2 << 30
+
 var (
 	ErrDriveHolderOnly = errors.New("vayumail: files are opened only by their holder")
 	ErrDriveNotFound   = errors.New("vayumail: there is no such file or folder")
 	ErrDriveName       = errors.New("vayumail: a name is 1 to 255 characters with no slash, and one or two dots alone are not a name")
 	ErrDriveExists     = errors.New("vayumail: something here already has that name")
 	ErrDriveFull       = errors.New("vayumail: this would pass the mailbox's storage allowance")
-	ErrDriveTooLarge   = errors.New("vayumail: a file is at most 100 MB")
+	ErrDriveTooLarge   = errors.New("vayumail: a file is at most 2 GB")
 	ErrDriveLocked     = errors.New("vayumail: this file is sealed; unlock the mailbox to open it")
 	ErrDriveMove       = errors.New("vayumail: a folder cannot be moved into itself")
 	ErrDriveBusy       = errors.New("vayumail: two of this mailbox's sealed files are being kept or opened already; try again when one is done")
@@ -458,18 +463,39 @@ func (e *Engine) DrivePut(rd Reader, parent int64, name, ctype string, r io.Read
 		sealed = 1
 	}
 	sum, blobSum := hex.EncodeToString(contentSum.Sum(nil)), hex.EncodeToString(storedSum.Sum(nil))
-	if quota := e.accounts.QuotaFor(ctx, mbox); quota > 0 && e.mailboxUsage(mbox, false)+size > quota {
+	return e.keepStored(ctx, mbox, parent, name, ctype, tmp, path, storedFile{blob: blob, fkey: fkey, size: size, sealed: sealed, sum: sum, blobSum: blobSum})
+}
+
+// storedFile is a file's bytes as written, ready to be named by a row.
+type storedFile struct {
+	blob, fkey, sum, blobSum string
+	size                     int64
+	sealed                   int
+}
+
+// keepStored makes the bytes written at tmp the file name in parent: a new
+// row, or the file of that name again with what it was kept as a version.
+// The allowance is checked last, when the size is known. A name taken by a
+// folder since the bytes began is refused.
+func (e *Engine) keepStored(ctx context.Context, mbox string, parent int64, name, ctype, tmp, path string, f storedFile) (int64, error) {
+	if quota := e.accounts.QuotaFor(ctx, mbox); quota > 0 && e.mailboxUsage(mbox, false)+f.size > quota {
 		_ = os.Remove(tmp)
 		return 0, ErrDriveFull
+	}
+	old, replacing := e.driveNamed(ctx, mbox, parent, name)
+	if replacing && old.IsDir {
+		_ = os.Remove(tmp)
+		return 0, ErrDriveExists
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
 		return 0, err
 	}
+	defer e.forgetUsage(mbox)
 	now := time.Now().UTC()
 	if !replacing {
 		res, err := e.accounts.db.ExecContext(ctx, `INSERT INTO vayumail_drive(mailbox,parent,name,is_dir,size,blob,sealed,ctype,modified,fkey,sum,blob_sum,checked)
-			VALUES(?,?,?,0,?,?,?,?,?,?,?,?,?)`, mbox, parent, name, size, blob, sealed, oneLine(ctype), now, fkey, sum, blobSum, now.Unix())
+			VALUES(?,?,?,0,?,?,?,?,?,?,?,?,?)`, mbox, parent, name, f.size, f.blob, f.sealed, oneLine(ctype), now, f.fkey, f.sum, f.blobSum, now.Unix())
 		if err != nil {
 			_ = os.Remove(path)
 			return 0, err
@@ -488,7 +514,7 @@ func (e *Engine) DrivePut(rd Reader, parent int64, name, ctype string, r io.Read
 		return 0, err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE vayumail_drive SET size=?, blob=?, sealed=?, ctype=?, modified=?, fkey=?, sum=?, blob_sum=?, checked=?, damaged=0 WHERE id=? AND mailbox=?`,
-		size, blob, sealed, oneLine(ctype), now, fkey, sum, blobSum, now.Unix(), old.ID, mbox); err != nil {
+		f.size, f.blob, f.sealed, oneLine(ctype), now, f.fkey, f.sum, f.blobSum, now.Unix(), old.ID, mbox); err != nil {
 		_ = os.Remove(path)
 		return 0, err
 	}

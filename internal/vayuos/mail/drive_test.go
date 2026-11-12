@@ -146,6 +146,9 @@ func TestFilesCountAgainstTheSameAllowanceAsMail(t *testing.T) {
 // TestAFileTooLargeIsRefused — and its part-written bytes are removed.
 func TestAFileTooLargeIsRefused(t *testing.T) {
 	e, _ := driveEngine(t)
+	was := maxDriveFile
+	maxDriveFile = 3 * driveChunk
+	t.Cleanup(func() { maxDriveFile = was })
 	big := io.LimitReader(neverEnding('x'), maxDriveFile+1)
 	if _, err := e.DrivePut(ankush, 0, "big.bin", "", big); !errors.Is(err, ErrDriveTooLarge) {
 		t.Fatalf("a file past the most: %v", err)

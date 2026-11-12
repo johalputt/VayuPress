@@ -1,38 +1,65 @@
 // SPDX-License-Identifier: Apache-2.0
 // admin-os-drive.js — the Drive page (vayuos_mail_drive.go).
 //
-// Sends the files a holder chooses or drops, one at a time, and says how far
-// along each is; opens the entry sheet when its body arrives. A file goes up
-// as one request the server streams to disk, so nothing here reads it into
-// memory.
+// Sends the files a holder chooses or drops, one at a time, in pieces the
+// server seals as they come (vayuos_mail_drive_upload.go), and says how far
+// along each is. A dropped connection is waited out and the upload goes on
+// from where the server says it stands, so a large file is not sent again
+// from its start. Opens the entry sheet when its body arrives.
 (function () {
   "use strict";
   var drive = document.querySelector("[data-drive]");
   if (!drive) return;
   var status = document.getElementById("drive-status");
   var say = function (text) { if (status) status.textContent = text; };
+  var token = function () { return window.vpCsrf ? window.vpCsrf() : ""; };
 
-  // One file, as a promise of nothing or of the server's reason.
+  // The server's answer as an object, or its words as a refusal.
+  function ask(method, url, body) {
+    return fetch(url, { method: method, body: body, credentials: "same-origin", headers: { "X-CSRF-Token": token() } }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (json) {
+        if (res.ok) return json;
+        var err = new Error((json.error && json.error.message) || "it could not be kept");
+        err.status = res.status;
+        err.received = json.received;
+        throw err;
+      });
+    });
+  }
+
+  // One file, in pieces, as a promise of nothing or of the server's reason.
   function send(file, dir, n, of) {
-    return new Promise(function (done, refused) {
-      var x = new XMLHttpRequest();
-      var form = new FormData();
-      form.append("file", file, file.name);
-      x.open("POST", "/os/vayumail/drive/upload?dir=" + encodeURIComponent(dir));
-      x.setRequestHeader("X-CSRF-Token", window.vpCsrf ? window.vpCsrf() : "");
-      var which = of > 1 ? " (" + n + " of " + of + ")" : "";
-      x.upload.onprogress = function (e) {
-        if (e.lengthComputable) say("Uploading " + file.name + which + ": " + Math.floor(e.loaded * 100 / e.total) + "%");
-      };
-      x.onload = function () {
-        if (x.status >= 200 && x.status < 300) return done();
-        var why = "it could not be kept";
-        try { why = JSON.parse(x.responseText).error.message || why; } catch (e) { /* not the server's words */ }
-        refused(file.name + ": " + why);
-      };
-      x.onerror = function () { refused(file.name + ": the connection was lost"); };
-      say("Uploading " + file.name + which + "…");
-      x.send(form);
+    var which = of > 1 ? " (" + n + " of " + of + ")" : "";
+    // As a form is sent, not multipart: the server reads these as one.
+    var form = new URLSearchParams({ dir: dir, name: file.name, size: String(file.size), type: file.type || "" });
+    say("Uploading " + file.name + which + "…");
+    return ask("POST", "/os/vayumail/drive/uploads", form).then(function (up) {
+      var url = "/os/vayumail/drive/uploads/" + encodeURIComponent(up.id);
+      var tries = 0;
+      function from(at) {
+        var piece = file.slice(at, Math.min(at + up.piece, file.size));
+        say("Uploading " + file.name + which + ": " + (file.size ? Math.floor(at * 100 / file.size) : 0) + "%");
+        return ask("PUT", url + "?offset=" + at, piece).then(function (st) {
+          tries = 0;
+          if (st.file || st.received >= file.size) return;
+          return from(st.received);
+        }, again);
+      }
+      // The server's refusal of a piece stands; a lost connection, or a
+      // piece the server says is not the next, is taken up again from where
+      // the upload stands, after a wait that doubles, five times at most.
+      function again(err) {
+        if (err.status === 409 && typeof err.received === "number") return from(err.received);
+        if (err.status || tries >= 5) throw err;
+        tries++;
+        say("Uploading " + file.name + which + ": the connection was lost; trying again…");
+        return new Promise(function (wait) { setTimeout(wait, 2000 * Math.pow(2, tries - 1)); }).then(function () {
+          return ask("GET", url).then(function (st) { return from(st.received); }, again);
+        });
+      }
+      return from(0);
+    }).catch(function (err) {
+      throw file.name + ": " + (err.status ? err.message : "the connection was lost");
     });
   }
 

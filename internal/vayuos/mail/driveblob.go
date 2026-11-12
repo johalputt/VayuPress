@@ -115,6 +115,19 @@ func newBlobWriter(w io.Writer, key []byte) (*blobWriter, error) {
 	return &blobWriter{w: w, aead: aead, header: header, buf: make([]byte, 0, driveChunk)}, nil
 }
 
+// resumeBlobWriter goes on writing a file whose header and first n
+// chunks are already written (an upload sent in pieces).
+func resumeBlobWriter(w io.Writer, key, header []byte, n uint64) (*blobWriter, error) {
+	aead, err := blobAEAD(key)
+	if err != nil {
+		return nil, err
+	}
+	if len(header) != blobHeader || string(header[:4]) != blobMagic {
+		return nil, errBlobDamaged
+	}
+	return &blobWriter{w: w, aead: aead, header: header, n: n, buf: make([]byte, 0, driveChunk)}, nil
+}
+
 func (b *blobWriter) seal(last bool) error {
 	out := b.aead.Seal(nil, chunkNonce(b.header[8:], b.n), b.buf, chunkAD(last))
 	b.n++

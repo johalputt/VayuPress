@@ -1735,6 +1735,30 @@ test("a file is uploaded to a Drive folder, renamed, and is only ever a download
   await expect(row).toBeVisible();
   await expect(page.locator(".drive-row", { hasText: "page.html" })).toBeVisible();
 
+  // A file of two pieces whose second is lost once on the way: the page
+  // asks where the upload stands and goes on from there, not from the start.
+  let dropped = false;
+  let firstPieces = 0;
+  const pieces = "**/os/vayumail/drive/uploads/*?offset=*";
+  await page.route(pieces, (route) => {
+    if (route.request().url().endsWith("offset=0")) firstPieces++;
+    if (!dropped && !route.request().url().endsWith("offset=0")) {
+      dropped = true;
+      return route.abort();
+    }
+    return route.continue();
+  });
+  const big = Buffer.alloc(9 * 1024 * 1024, 7);
+  await page.locator("[data-drive-upload]").setInputFiles([{ name: "big.bin", mimeType: "application/octet-stream", buffer: big }]);
+  const bigRow = page.locator(".drive-row", { hasText: "big.bin" });
+  await expect(bigRow).toBeVisible({ timeout: 30000 });
+  await page.unroute(pieces);
+  expect(dropped).toBe(true);
+  expect(firstPieces).toBe(1);
+  const bigID = new URL(await bigRow.locator("button.drive-row__name").getAttribute("hx-get"), origin).searchParams.get("id");
+  const bigBack = await page.request.get("/os/vayumail/drive/file?id=" + bigID);
+  expect((await bigBack.body()).equals(big)).toBe(true);
+
   const id = new URL(await page.locator(".drive-row", { hasText: "page.html" }).locator("button.drive-row__name").getAttribute("hx-get"), origin).searchParams.get("id");
   for (const show of ["", "&show=1"]) {
     const got = await page.request.get("/os/vayumail/drive/file?id=" + id + show);

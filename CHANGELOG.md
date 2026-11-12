@@ -28,6 +28,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Large files, and uploads that survive a dropped connection.** A file
+  can be up to 2 GB (it was 100 MB). The page sends a file in pieces, and a
+  connection that drops is waited out and the upload goes on from where it
+  stopped, not from the start. An upload is a file only when its last byte
+  has come; one left a day is cleared away.
 - **Drive files are kept encrypted, and checked.** Every file is kept on
   the server's disk in chunks encrypted with its own key, so the disk, or a
   backup of it, reads as noise without the install's secrets store. In a

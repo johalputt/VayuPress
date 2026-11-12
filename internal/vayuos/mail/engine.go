@@ -1255,6 +1255,7 @@ func (e *Engine) worker() {
 			}
 			e.emptyOldTrash(time.Now())
 			e.sweepShares(context.Background(), time.Now())
+			e.sweepUploads(time.Now())
 			// Drive's upkeep reads files from the disk: beside this loop,
 			// one pass at a time, at most every driveCareGap.
 			if now := time.Now(); now.Unix()-e.driveCareAt.Load() >= int64(driveCareGap/time.Second) && e.driveCaring.CompareAndSwap(false, true) {
