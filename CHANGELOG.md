@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.38] — 2026-11-12
+
+Drive: a place for files beside Mail and Calendar, in one allowance with the mailbox's mail. Share a file by a link, save an attachment to it, attach from it, and open it from a computer's or phone's file app. An administrator's own mailbox is now theirs in Mail.
+
 ### Added
 
 - **Drive.** Every mailbox has a place for files, beside Mail and Calendar:
