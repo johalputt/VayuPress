@@ -68,6 +68,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   body, and the server refused such a request as a body it could not read.
   The Connect a device page no longer says the console has no calendar of
   its own.
+- **An administrator's own mailbox is theirs in Mail.** An administrator
+  who signs in with the address of a mailbox that was never assigned to
+  them, as an install's owner usually does, had their own mail opened as
+  an administrator opens anyone's: no Calendar or Drive beside it, and
+  Mailbox settings led to the administrator's page for it rather than
+  their own. That mailbox is now theirs, as an assigned one is: Calendar
+  and Drive are beside it, and Settings is their own. It is never so for a
+  member who is not an administrator, nor for a mailbox that is switched
+  off or assigned to someone else.
 - **A client account is offered only what it can open.** A client of the
   studio who holds a mailbox is given the mailbox, not the Calendar or
   Drive beside it. Since 3.18.36 its top bar named the Calendar and an
