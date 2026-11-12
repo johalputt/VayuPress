@@ -36,6 +36,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   over https and is kept encrypted by the install's secrets store, never
   in the clear, and is never shown back. Nothing is written to the other
   server.
+- **A series of bookings.** A booking page can let a guest book the same
+  time weekly or every two weeks, up to 2 to 12 times (you choose; pages
+  made before allow single bookings). Every one of its times must be free
+  when it is asked for and when it is confirmed, each counts on its own day,
+  and it comes into your calendar as one repeating event in the page's time
+  zone, so a clock change does not move it. A series is cancelled whole
+  from its link and not moved; the guest's reminder is for its first time.
 - **Booking reminders.** A booking page can remind the guest and you an
   hour or a day before each booking (a day, for a new page). The guest is
   mailed once, from your address, with the time in their own zone; your

@@ -136,7 +136,19 @@ func (a *App) bookingEditor(r *http.Request, p vmail.BookingPage, bookings []vma
 		}
 		opts += `<option value="` + strconv.Itoa(o.v) + `"` + sel + `>` + o.label + `</option>`
 	}
-	b.WriteString(`<div class="cal-two">` + field("Remind the guest and you", `<select name="remind">`+opts+`</select>`) + `</div>`)
+	reps := ""
+	for _, n := range []int{0, 2, 4, 6, 8, 12} {
+		sel, label := "", "Single bookings only"
+		if n == p.Repeats {
+			sel = " selected"
+		}
+		if n > 0 {
+			label = "Up to " + strconv.Itoa(n) + " in a series"
+		}
+		reps += `<option value="` + strconv.Itoa(n) + `"` + sel + `>` + label + `</option>`
+	}
+	b.WriteString(`<div class="cal-two">` + field("Remind the guest and you", `<select name="remind">`+opts+`</select>`) +
+		field("A guest may book the same time weekly or every two weeks", `<select name="repeats">`+reps+`</select>`) + `</div>`)
 	on := ""
 	if p.Enabled || p.ID == 0 {
 		on = " checked"
@@ -235,7 +247,7 @@ func (a *App) handleVayuOSBookingAction(w http.ResponseWriter, r *http.Request) 
 	atoi := func(name string) int { n, _ := strconv.Atoi(strings.TrimSpace(r.PostFormValue(name))); return n }
 	p := vmail.BookingPage{ID: id, Mailbox: mbox, Slug: r.PostFormValue("slug"), Title: r.PostFormValue("title"), Zone: r.PostFormValue("zone"),
 		Before: atoi("before"), After: atoi("after"), Notice: atoi("notice") * 60, Reach: atoi("reach"), PerDay: atoi("perday"),
-		Question: r.PostFormValue("question"), Remind: atoi("remind"), Enabled: r.PostFormValue("enabled") == "1"}
+		Question: r.PostFormValue("question"), Remind: atoi("remind"), Repeats: atoi("repeats"), Enabled: r.PostFormValue("enabled") == "1"}
 	for _, l := range r.PostForm["length"] {
 		if n, err := strconv.Atoi(l); err == nil {
 			p.Lengths = append(p.Lengths, n)

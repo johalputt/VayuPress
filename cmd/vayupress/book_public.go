@@ -242,6 +242,17 @@ func (a *App) bookDetails(p vmail.BookingPage, start time.Time, length int, loc 
 	if p.Question != "" {
 		b.WriteString(`<div class="field"><label class="field-label" for="book-answer">` + esc(p.Question) + `</label><textarea id="book-answer" class="input" name="answer" rows="3" maxlength="2000">` + esc(answer) + `</textarea></div>`)
 	}
+	if p.Repeats > 1 {
+		// A series: the same time weekly or every two weeks, as many times
+		// as the page allows; every one of them must be free.
+		counts := ""
+		for n := 2; n <= p.Repeats; n++ {
+			counts += `<option value="` + strconv.Itoa(n) + `">` + strconv.Itoa(n) + ` times</option>`
+		}
+		b.WriteString(`<div class="field"><label class="field-label" for="book-every">Repeat</label><select id="book-every" class="input" name="every">` +
+			`<option value="0">Just this once</option><option value="1">Every week</option><option value="2">Every two weeks</option></select></div>` +
+			`<div class="field"><label class="field-label" for="book-count">How many times, if it repeats</label><select id="book-count" class="input" name="count">` + counts + `</select></div>`)
+	}
 	b.WriteString(`<button class="btn btn--primary" type="submit">Book this time</button></form></section>`)
 	return b.String()
 }
@@ -262,7 +273,12 @@ func (a *App) bookHold(w http.ResponseWriter, r *http.Request, p vmail.BookingPa
 	}
 	start := time.Unix(t, 0).In(loc)
 	name, email, answer := r.PostFormValue("name"), r.PostFormValue("email"), r.PostFormValue("answer")
-	err = a.vayuMail.HoldBooking(r.Context(), p, start, length, vmail.BookingGuest{Name: name, Email: email, Answer: answer, Zone: loc.String()}, now, a.oauthBaseURL(r)+"/book/confirm?t=")
+	g := vmail.BookingGuest{Name: name, Email: email, Answer: answer, Zone: loc.String()}
+	if every, _ := strconv.Atoi(r.PostFormValue("every")); every > 0 {
+		g.Every = every
+		g.Count, _ = strconv.Atoi(r.PostFormValue("count"))
+	}
+	err = a.vayuMail.HoldBooking(r.Context(), p, start, length, g, now, a.oauthBaseURL(r)+"/book/confirm?t=")
 	self := func(kv ...string) string { return r.URL.Path + "?tz=" + url.QueryEscape(loc.String()) }
 	if err != nil {
 		// A guest's own mistake is said back to them; anything else is the
@@ -376,7 +392,7 @@ func (a *App) handleBookChange(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	head := `<section class="book__intro"><h1 class="login-title">` + esc(p.Title) + `</h1><p class="book__row">` + saIcon("calendar") + `<span>` + esc(when(b.Start)) + `</span></p>` +
+	head := `<section class="book__intro"><h1 class="login-title">` + esc(p.Title) + `</h1><p class="book__row">` + saIcon("calendar") + `<span>` + esc(when(b.Start)+b.Series()) + `</span></p>` +
 		`<p class="book__row">` + saIcon("globe") + `<span>Your time: ` + esc(loc.String()) + `</span></p>` +
 		`<form class="login-form" method="POST"><input type="hidden" name="t" value="` + esc(tok) + `"><input type="hidden" name="op" value="cancel">` +
 		`<button class="btn btn--danger" type="submit">Cancel the booking</button></form></section>`
@@ -384,6 +400,10 @@ func (a *App) handleBookChange(w http.ResponseWriter, r *http.Request) {
 		// The page is switched off: the booking can still be cancelled, not
 		// moved.
 		a.writeBookShell(w, http.StatusOK, p.Title, `<div class="book">`+head+`<section class="book__details"><p class="login-sub">This booking page is switched off, so the booking cannot be moved.</p></section></div>`)
+		return
+	}
+	if b.Count > 1 {
+		a.writeBookShell(w, http.StatusOK, p.Title, `<div class="book">`+head+`<section class="book__details"><p class="login-sub">A series is not moved here: cancel it, and book the times you want from the page.</p></section></div>`)
 		return
 	}
 	if to, err := strconv.ParseInt(r.URL.Query().Get("to"), 10, 64); err == nil {

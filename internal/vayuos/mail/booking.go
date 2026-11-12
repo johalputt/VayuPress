@@ -70,7 +70,10 @@ type BookingPage struct {
 	Question      string
 	// Remind is how many minutes before a booking both the guest and the
 	// holder are reminded of it: 0 (none), 60 or 1440.
-	Remind  int
+	Remind int
+	// Repeats is the most times a guest may book the same time as a series
+	// (weekly or every two weeks): 0 for single bookings only, else 2 to 12.
+	Repeats int
 	Enabled bool
 }
 
@@ -86,12 +89,50 @@ type Booking struct {
 	UID        string // the calendar event's, once confirmed
 	Created    time.Time
 	Zone       string // the guest's own time zone, "" when not known
+	// Every is the weeks between a series' bookings, 0 for one booking;
+	// Count is how many there are, 1 for one.
+	Every, Count int
 }
 
 // BookingGuest is who asks for a time, as the booking page's form gives
 // them: Zone is the time zone the page was shown to them in.
 type BookingGuest struct {
 	Name, Email, Answer, Zone string
+	// Every and Count ask for a series: Count bookings, Every weeks apart
+	// (1 or 2). Count 0 or 1 is one booking.
+	Every, Count int
+}
+
+// seriesStarts is a series' starts: the same clock time in the page's zone,
+// every weeks apart, so a clock change does not move it.
+func seriesStarts(start time.Time, p BookingPage, every, count int) []time.Time {
+	if count < 1 {
+		count = 1
+	}
+	loc := zoneNamed(p.Zone)
+	if loc == nil {
+		loc = time.UTC
+	}
+	at := start.In(loc)
+	out := make([]time.Time, 0, count)
+	for k := 0; k < count; k++ {
+		out = append(out, time.Date(at.Year(), at.Month(), at.Day()+7*every*k, at.Hour(), at.Minute(), 0, 0, loc))
+	}
+	return out
+}
+
+// Series says a booking's series as its guest reads it: "" for one booking.
+func (b Booking) Series() string { return seriesWords(b.Every, b.Count) }
+
+// seriesWords says a series as its guest reads it: "" for one booking.
+func seriesWords(every, count int) string {
+	if count <= 1 {
+		return ""
+	}
+	if every == 2 {
+		return ", every two weeks, " + strconv.Itoa(count) + " times"
+	}
+	return ", every week, " + strconv.Itoa(count) + " times"
 }
 
 // bookingWhen is a booking's time as a guest reads it: in their own zone
@@ -118,6 +159,7 @@ var (
 	ErrSlotTaken       = errors.New("vayumail: that time is no longer free")
 	ErrBookingsWait    = errors.New("vayumail: this page is taking no more bookings for now; try again later")
 	ErrBookingMoves    = errors.New("vayumail: this booking has been moved as often as it can be; cancel it and book again")
+	ErrBookingSeries   = errors.New("vayumail: a series of bookings is not moved; cancel it and book again")
 	errNoBookingPage   = errors.New("vayumail: there is no such booking page")
 	bookingSlugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
 )
@@ -161,9 +203,14 @@ func (s *AccountStore) ensureBookingTables() error {
 	if _, err := s.db.Exec(`ALTER TABLE vayumail_bookings ADD COLUMN moves INTEGER NOT NULL DEFAULT 0`); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 		return err
 	}
-	// Whether the guest has been sent its reminder (sendBookingReminders).
-	if _, err := s.db.Exec(`ALTER TABLE vayumail_bookings ADD COLUMN reminded INTEGER NOT NULL DEFAULT 0`); err != nil && !strings.Contains(err.Error(), "duplicate column") {
-		return err
+	// Whether the guest has been sent its reminder (sendBookingReminders),
+	// and a series: weeks between, how many, and the last one's start and
+	// end, so a range finds a series by any of its bookings.
+	for _, col := range []string{"reminded INTEGER NOT NULL DEFAULT 0", "every INTEGER NOT NULL DEFAULT 0", "count INTEGER NOT NULL DEFAULT 1",
+		"last_start INTEGER NOT NULL DEFAULT 0", "last_end INTEGER NOT NULL DEFAULT 0"} {
+		if _, err := s.db.Exec(`ALTER TABLE vayumail_bookings ADD COLUMN ` + col); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return err
+		}
 	}
 	return nil
 }
@@ -219,6 +266,9 @@ func (p *BookingPage) check() error {
 	}
 	if p.Remind != 0 && p.Remind != 60 && p.Remind != 1440 {
 		return errors.New("a reminder is an hour or a day before, or none")
+	}
+	if p.Repeats != 0 && (p.Repeats < 2 || p.Repeats > 12) {
+		return errors.New("a series is 2 to 12 bookings, or none")
 	}
 	return nil
 }
@@ -385,16 +435,21 @@ func (e *Engine) busy(ctx context.Context, p BookingPage, from, to, now time.Tim
 		}
 		out = append(out, span{ev.Start, ev.End})
 	}
-	rows, err := e.accounts.db.QueryContext(ctx, `SELECT start,end FROM vayumail_bookings WHERE mailbox=? AND status='held' AND created>? AND end>? AND start<?`,
-		p.Mailbox, now.Add(-bookingHoldFor), from.Unix(), to.Unix())
+	rows, err := e.accounts.db.QueryContext(ctx, `SELECT start,end,every,count FROM vayumail_bookings WHERE mailbox=? AND status='held' AND created>?
+		AND MAX(end,last_end)>? AND start<?`, p.Mailbox, now.Add(-bookingHoldFor), from.Unix(), to.Unix())
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var s, en int64
-		if rows.Scan(&s, &en) == nil {
-			out = append(out, span{time.Unix(s, 0), time.Unix(en, 0)})
+		var every, count int
+		if rows.Scan(&s, &en, &every, &count) == nil {
+			// A series held is busy at each of its times, as it will be
+			// once its event repeats in the calendar.
+			for _, at := range seriesStarts(time.Unix(s, 0), p, every, count) {
+				out = append(out, span{at, at.Add(time.Duration(en-s) * time.Second)})
+			}
 		}
 	}
 	return out, rows.Err()
@@ -404,7 +459,7 @@ func (e *Engine) busy(ctx context.Context, p BookingPage, from, to, now time.Tim
 // page's days (dates in its zone) in [from, to).
 func (e *Engine) bookedOn(ctx context.Context, p BookingPage, loc *time.Location, from, to, now time.Time, except int64) map[string]int {
 	out := map[string]int{}
-	rows, err := e.accounts.db.QueryContext(ctx, `SELECT start FROM vayumail_bookings WHERE page_id=? AND id<>? AND start>=? AND start<?
+	rows, err := e.accounts.db.QueryContext(ctx, `SELECT start,every,count FROM vayumail_bookings WHERE page_id=? AND id<>? AND MAX(start,last_start)>=? AND start<?
 		AND (status IN ('confirmed','moving') OR (status='held' AND created>?))`, p.ID, except, from.Unix(), to.Unix(), now.Add(-bookingHoldFor))
 	if err != nil {
 		return out
@@ -412,8 +467,11 @@ func (e *Engine) bookedOn(ctx context.Context, p BookingPage, loc *time.Location
 	defer rows.Close()
 	for rows.Next() {
 		var s int64
-		if rows.Scan(&s) == nil {
-			out[time.Unix(s, 0).In(loc).Format("2006-01-02")]++
+		var every, count int
+		if rows.Scan(&s, &every, &count) == nil {
+			for _, at := range seriesStarts(time.Unix(s, 0), p, every, count) {
+				out[at.In(loc).Format("2006-01-02")]++
+			}
 		}
 	}
 	if rows.Err() != nil {
@@ -545,8 +603,17 @@ func (e *Engine) HoldBooking(ctx context.Context, p BookingPage, start time.Time
 	if email == normEmail(p.Mailbox) {
 		return ErrBookingOwn
 	}
-	if !e.slotFree(p, start, length, now) {
-		return ErrSlotTaken
+	every, count := g.Every, g.Count
+	if count <= 1 {
+		every, count = 0, 1
+	} else if count > p.Repeats || (every != 1 && every != 2) {
+		return ErrBookingDetails
+	}
+	starts := seriesStarts(start, p, every, count)
+	for _, at := range starts {
+		if !e.slotFree(p, at, length, now) {
+			return ErrSlotTaken
+		}
 	}
 	dayAgo := now.Add(-24 * time.Hour)
 	var holds, mails, toAddress int
@@ -559,13 +626,15 @@ func (e *Engine) HoldBooking(ctx context.Context, p BookingPage, start time.Time
 	if err != nil {
 		return err
 	}
-	end := start.Add(time.Duration(length) * time.Minute)
-	if _, err := e.accounts.db.ExecContext(ctx, `INSERT INTO vayumail_bookings(page_id,mailbox,start,end,name,email,answer,status,confirm_hash,created,guest_zone) VALUES(?,?,?,?,?,?,?,'held',?,?,?)`,
-		p.ID, p.Mailbox, start.Unix(), end.Unix(), name, email, answer, hashRecoveryToken(tok), now.UTC(), zone); err != nil {
+	dur := time.Duration(length) * time.Minute
+	last := starts[len(starts)-1]
+	if _, err := e.accounts.db.ExecContext(ctx, `INSERT INTO vayumail_bookings(page_id,mailbox,start,end,name,email,answer,status,confirm_hash,created,guest_zone,every,count,last_start,last_end)
+		VALUES(?,?,?,?,?,?,?,'held',?,?,?,?,?,?,?)`,
+		p.ID, p.Mailbox, start.Unix(), start.Add(dur).Unix(), name, email, answer, hashRecoveryToken(tok), now.UTC(), zone, every, count, last.Unix(), last.Add(dur).Unix()); err != nil {
 		return err
 	}
 	text := "You asked to book " + p.Title + " with " + p.Mailbox + ":\n" +
-		bookingWhen(start, p, zone) + ", " + strconv.Itoa(length) + " minutes.\n\n" +
+		bookingWhen(start, p, zone) + ", " + strconv.Itoa(length) + " minutes" + seriesWords(every, count) + ".\n\n" +
 		"Confirm it here within 15 minutes:\n" + confirmBase + tok + "\n\n" +
 		"If you did not ask for this, do nothing: nothing is booked until the link is confirmed.\n"
 	_, err = e.SendSystemMail(ctx, p.Mailbox, []string{email}, "Confirm your booking: "+p.Title, "", text)
@@ -580,8 +649,8 @@ func (e *Engine) heldBooking(ctx context.Context, column, token string) (Booking
 	var b Booking
 	var s, en int64
 	var mbox string
-	err := e.accounts.db.QueryRowContext(ctx, `SELECT id,page_id,mailbox,start,end,name,email,answer,status,uid,created,guest_zone FROM vayumail_bookings WHERE `+column+`=? AND `+column+`<>''`,
-		hashRecoveryToken(token)).Scan(&b.ID, &b.PageID, &mbox, &s, &en, &b.Name, &b.Email, &b.Answer, &b.Status, &b.UID, &b.Created, &b.Zone)
+	err := e.accounts.db.QueryRowContext(ctx, `SELECT id,page_id,mailbox,start,end,name,email,answer,status,uid,created,guest_zone,every,count FROM vayumail_bookings WHERE `+column+`=? AND `+column+`<>''`,
+		hashRecoveryToken(token)).Scan(&b.ID, &b.PageID, &mbox, &s, &en, &b.Name, &b.Email, &b.Answer, &b.Status, &b.UID, &b.Created, &b.Zone, &b.Every, &b.Count)
 	if err != nil {
 		return Booking{}, "", ErrNoSuchBooking
 	}
@@ -627,9 +696,11 @@ func (e *Engine) ConfirmBooking(ctx context.Context, token string, now time.Time
 		return Booking{}, ErrNoSuchBooking
 	}
 	length := int(b.End.Sub(b.Start) / time.Minute)
-	if !e.slotFree(p, b.Start, length, b.Created) {
-		_, _ = e.accounts.db.ExecContext(ctx, `UPDATE vayumail_bookings SET status='cancelled', confirm_hash='' WHERE id=?`, b.ID)
-		return Booking{}, ErrSlotTaken
+	for _, at := range seriesStarts(b.Start, p, b.Every, b.Count) {
+		if !e.slotFree(p, at, length, b.Created) {
+			_, _ = e.accounts.db.ExecContext(ctx, `UPDATE vayumail_bookings SET status='cancelled', confirm_hash='' WHERE id=?`, b.ID)
+			return Booking{}, ErrSlotTaken
+		}
 	}
 	cancel, err := randomHex(32)
 	if err != nil {
@@ -645,6 +716,11 @@ func (e *Engine) ConfirmBooking(ctx context.Context, token string, now time.Time
 	notes += "\nTo move or cancel this booking: " + cancelBase + cancel + "\n"
 	loc := zoneNamed(p.Zone)
 	in := EventInput{Summary: p.Title + " with " + b.Name, Description: notes, Start: b.Start.In(loc), End: b.End.In(loc), Guests: []string{b.Email}}
+	if b.Count > 1 {
+		// One event that repeats, in the page's zone, as the holder's
+		// hours are: a clock change does not move it.
+		in.Rule = "FREQ=WEEKLY;INTERVAL=" + strconv.Itoa(b.Every) + ";COUNT=" + strconv.Itoa(b.Count)
+	}
 	if p.Remind > 0 {
 		// The holder's reminder, on their devices and by mail, at the time
 		// the guest's comes.
@@ -661,7 +737,7 @@ func (e *Engine) ConfirmBooking(ctx context.Context, token string, now time.Time
 	}
 	b.Status, b.UID = "confirmed", uid
 	e.tellHolder(mbox, "New booking: "+p.Title+" with "+b.Name,
-		b.Name+" <"+b.Email+"> booked "+p.Title+" for "+b.Start.In(loc).Format("Monday 2 January 2006, 15:04")+" ("+p.Zone+").\n")
+		b.Name+" <"+b.Email+"> booked "+p.Title+" for "+b.Start.In(loc).Format("Monday 2 January 2006, 15:04")+" ("+p.Zone+")"+seriesWords(b.Every, b.Count)+".\n")
 	return b, nil
 }
 
@@ -741,6 +817,9 @@ func (e *Engine) MoveBooking(ctx context.Context, token string, start, now time.
 	defer func() {
 		_, _ = e.accounts.db.ExecContext(ctx, `UPDATE vayumail_bookings SET status='confirmed' WHERE id=? AND status='moving'`, b.ID)
 	}()
+	if b.Count > 1 {
+		return Booking{}, ErrBookingSeries
+	}
 	var moves int
 	if err := e.accounts.db.QueryRowContext(ctx, `SELECT moves FROM vayumail_bookings WHERE id=?`, b.ID).Scan(&moves); err != nil {
 		return Booking{}, err
