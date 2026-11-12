@@ -473,8 +473,91 @@ func calSide(v calView, home *time.Location, today time.Time, pages []vmail.Book
 	b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/calendar/booking"` + newCur + `>` + saIcon("plus") + `<span class="sa-appside__label">New booking page</span></a>`)
 	b.WriteString(`<div class="sa-appside__group">Time zone</div><p class="cal-zone">` + saIcon("globe") + `<span>` + esc(home.String()) + `</span></p>`)
 	b.WriteString(`<div class="sa-appside__group">On your phone and computer</div><a class="sa-appside__item" href="/os/vayumail/connect">` + saIcon("phone") + `<span class="sa-appside__label">Add this calendar</span></a>`)
+	b.WriteString(`<button type="button" class="sa-appside__item" hx-get="/os/vayumail/calendar/subs" hx-target="#cal-sheet-body" hx-swap="innerHTML">` + saIcon("refresh") +
+		`<span class="sa-appside__label">Subscribed calendars</span></button>`)
 	b.WriteString(calTransfer())
 	return b.String()
+}
+
+// calSubsSheet is the holder's subscribed calendars, each with how its last
+// read went, and the form that adds one. The address is shown cut to its
+// host: a private feed's address is its key.
+func calSubsSheet(subs []vmail.CalSubscription, said string) string {
+	var b strings.Builder
+	b.WriteString(`<div class="cal-detail" data-sheet-title="Subscribed calendars">`)
+	if said != "" {
+		b.WriteString(`<p class="vm-keys-said" role="status">` + esc(said) + `</p>`)
+	}
+	act := func(op string, id int64, label, cls string) string {
+		return `<form hx-post="/os/vayumail/calendar/subs" hx-target="#cal-sheet-body" hx-swap="innerHTML"><input type="hidden" name="op" value="` + op +
+			`"><input type="hidden" name="id" value="` + strconv.FormatInt(id, 10) + `"><button type="submit" class="btn btn--sm` + cls + `">` + label + `</button></form>`
+	}
+	if len(subs) > 0 {
+		b.WriteString(`<ul class="cal-detail__people">`)
+		for _, c := range subs {
+			host := c.URL
+			if u, err := url.Parse(c.URL); err == nil {
+				host = u.Host
+			}
+			state := "Not read yet"
+			switch {
+			case c.Error != "":
+				state = "Last read failed: " + c.Error
+			case !c.Fetched.IsZero():
+				state = "Read " + c.Fetched.UTC().Format("2 January, 15:04 UTC")
+			}
+			busy := "makes you busy on booking pages"
+			if !c.Busy {
+				busy = "does not make you busy"
+			}
+			b.WriteString(`<li><p class="cal-detail__row">` + saIcon("calendar") + `<span><strong>` + esc(c.Name) + `</strong> · ` + esc(host) + `<br><span class="muted">` +
+				esc(state) + `; ` + busy + `</span></span></p><div class="cal-detail__acts">` + act("refresh", c.ID, "Read again", "") + act("remove", c.ID, "Unsubscribe", " btn--danger") + `</div></li>`)
+		}
+		b.WriteString(`</ul>`)
+	}
+	b.WriteString(`<form class="cal-form" hx-post="/os/vayumail/calendar/subs" hx-target="#cal-sheet-body" hx-swap="innerHTML"><input type="hidden" name="op" value="add">` +
+		`<div class="cal-two"><label class="field"><span class="field-label">Name</span><input type="text" name="name" maxlength="80" placeholder="Team calendar"></label>` +
+		`<label class="field"><span class="field-label">Address (.ics, https or webcal)</span><input type="url" name="url" required placeholder="https://…/basic.ics" autocomplete="off"></label></div>` +
+		`<label class="cal-check"><input type="checkbox" name="busy" value="1" checked> Its events make me busy on my booking pages</label>` +
+		`<p class="cal-note">Its events are shown beside yours and read again every half hour; they are not changed here. Another calendar service's private address in iCalendar format works here, and is kept like a password.</p>` +
+		`<div class="cal-form__acts"><button type="submit" class="btn btn--primary">Subscribe</button></div></form></div>`)
+	return b.String()
+}
+
+// handleVayuOSCalendarSubs shows the subscribed calendars, and on POST adds,
+// reads again or removes one.
+func (a *App) handleVayuOSCalendarSubs(w http.ResponseWriter, r *http.Request) {
+	rd, ok := a.calendarOwner(r)
+	if !ok || !a.mailRunning() {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "A calendar opens only for its holder.", "")
+		return
+	}
+	said := ""
+	if r.Method == http.MethodPost {
+		_ = r.ParseForm()
+		id, _ := strconv.ParseInt(r.PostFormValue("id"), 10, 64)
+		var err error
+		switch r.PostFormValue("op") {
+		case "add":
+			_, err = a.vayuMail.AddCalendarSubscription(rd, r.PostFormValue("name"), r.PostFormValue("url"), r.PostFormValue("busy") == "1", time.Now())
+			said = "Subscribed."
+		case "refresh":
+			err = a.vayuMail.RefreshCalendarSubscription(rd, id, time.Now())
+			said = "Read again."
+		case "remove":
+			err = a.vayuMail.RemoveCalendarSubscription(rd, id)
+			said = "Unsubscribed."
+		}
+		if err != nil {
+			said = "Not done: " + strings.TrimPrefix(err.Error(), "vayumail: ") + "."
+		}
+	}
+	subs, err := a.vayuMail.CalendarSubscriptions(rd)
+	if err != nil {
+		writeOSFragment(w, saCallout("danger", "The subscriptions could not be read."))
+		return
+	}
+	writeOSFragment(w, calSubsSheet(subs, said))
 }
 
 // calTransfer is the calendar out and in as one .ics file: the iCalendar
@@ -778,6 +861,11 @@ func (a *App) handleVayuOSCalendarEvent(w http.ResponseWriter, r *http.Request) 
 	}
 	if ev.Description != "" {
 		b.WriteString(`<p class="cal-detail__notes">` + esc(ev.Description) + `</p>`)
+	}
+	if ev.Sub != "" {
+		b.WriteString(`<p class="cal-detail__row">` + saIcon("refresh") + `<span>From ` + esc(ev.Sub) + `, a subscribed calendar: shown here, changed only where it comes from.</span></p></div>`)
+		writeOSHTML(w, r, b.String())
+		return
 	}
 	ref := calEventRef(ev)
 	edit := func(scope, label string) string {

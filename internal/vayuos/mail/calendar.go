@@ -69,6 +69,10 @@ type CalEvent struct {
 	// Free: the event does not make the holder busy (TRANSP:TRANSPARENT),
 	// so a booking page offers its time.
 	Free bool
+	// Sub is the name of the subscribed calendar the event is read from
+	// (calendar_subs.go), "" for the holder's own: one from a subscription
+	// is shown and never edited.
+	Sub string
 }
 
 // Reminder is how long before an event's start it is called to mind, and
@@ -545,6 +549,7 @@ func (e *Engine) CalendarBetween(rd Reader, from, to time.Time, home *time.Locat
 		c.self = mbox
 		out = append(out, c.occurrences(cal, from, to, &budget)...)
 	}
+	out = append(out, e.subscribedEvents(context.Background(), mbox, from, to, home, &budget)...)
 	sort.SliceStable(out, func(i, j int) bool {
 		if !out[i].Start.Equal(out[j].Start) {
 			return out[i].Start.Before(out[j].Start)

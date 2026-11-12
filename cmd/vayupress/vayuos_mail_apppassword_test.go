@@ -32,6 +32,14 @@ func appWithMailAccounts(t *testing.T) *App { return appWithMailKeys(t, nil) }
 // through the app's own bridge as at boot, so private mailboxes are sealed.
 func appWithMailKeys(t *testing.T, keys *vpgp.Engine) *App {
 	t.Helper()
+	a, _ := appWithMailDB(t, keys)
+	return a
+}
+
+// appWithMailDB is appWithMailKeys with the engine's database, for a test
+// that sets up what only the engine's own work would otherwise put there.
+func appWithMailDB(t *testing.T, keys *vpgp.Engine) (*App, *sql.DB) {
+	t.Helper()
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
@@ -65,7 +73,7 @@ func appWithMailKeys(t *testing.T, keys *vpgp.Engine) *App {
 	}
 	applyMailHandoverSchema(t, db)
 	a.vayuMail = e
-	return a
+	return a, db
 }
 
 // applyMailHandoverSchema runs the SHIPPED migration 081 against a test database.

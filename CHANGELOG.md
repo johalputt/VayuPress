@@ -24,6 +24,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Subscribed calendars.** Calendar's sidebar has Subscribed calendars:
+  give a calendar's address (an .ics address, https or webcal, such as
+  another calendar service's private address for one of yours) and its
+  events are shown beside yours, read again every half hour, and count as
+  busy on your booking pages unless you say not. They are read only here.
+  Up to five; a calendar of up to 4 MB. An address on the server's own
+  network is never read, and the page shows an address only by its host.
 - **Booking reminders.** A booking page can remind the guest and you an
   hour or a day before each booking (a day, for a new page). The guest is
   mailed once, from your address, with the time in their own zone; your

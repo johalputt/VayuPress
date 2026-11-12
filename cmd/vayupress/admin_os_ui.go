@@ -714,6 +714,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/calendar/action", a.handleVayuOSCalendarAction)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/calendar/answer", a.handleVayuOSCalendarAnswer)
 		pr.Get("/os/vayumail/calendar/export", a.handleVayuOSCalendarExport)
+		pr.Get("/os/vayumail/calendar/subs", a.handleVayuOSCalendarSubs)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/calendar/subs", a.handleVayuOSCalendarSubs)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/calendar/import", a.handleVayuOSCalendarImport)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/calendar/booking", a.handleVayuOSBookingPage)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/calendar/booking/action", a.handleVayuOSBookingAction)

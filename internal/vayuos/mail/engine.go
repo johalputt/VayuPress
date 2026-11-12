@@ -88,6 +88,10 @@ type Engine struct {
 	// driveSealing is each mailbox's slots for sealed files held in memory
 	// (drive.go, sealSlot): mailbox to a channel of sealedAtOnce.
 	driveSealing sync.Map
+	// calFetch reads a subscribed calendar's address in tests; nil is
+	// safefetch (calendar_subs.go).
+	calFetch    func(ctx context.Context, addr string) ([]byte, error)
+	subsReading atomic.Bool
 	// sealingStored makes the sealing of stored files one file at a time
 	// (drive.go, sealBlob).
 	sealingStored sync.Mutex
@@ -1231,6 +1235,14 @@ func (e *Engine) worker() {
 			_, _, _ = e.queue.ProcessDue(context.Background(), time.Now())
 			e.sendReminders(time.Now())
 			e.sendBookingReminders(time.Now())
+			// Feeds are read off this loop: five slow addresses would
+			// otherwise hold the queue for minutes. One pass at a time.
+			if e.subsReading.CompareAndSwap(false, true) {
+				go func() {
+					defer e.subsReading.Store(false)
+					e.refreshSubscriptions(time.Now())
+				}()
+			}
 			e.emptyOldTrash(time.Now())
 			e.sweepShares(context.Background(), time.Now())
 		}
