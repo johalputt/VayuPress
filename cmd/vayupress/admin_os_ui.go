@@ -730,6 +730,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/vayumail/drive/uploads/{id}", a.handleVayuOSDriveUploadStop)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/drive/save", a.handleVayuOSDriveSave)
 		pr.Get("/os/vayumail/drive/pick", a.handleVayuOSDrivePick)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/connections/disconnect", a.handleVayuOSMailDisconnect)
 		// Outbox: HTMX auto-refresh fragment + per-message Resend/Delete/Retry-all.
 		pr.Get("/os/vayumail/outbox/fragment", a.handleVayuOSOutboxFragment)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/outbox/action", a.handleVayuOSOutboxAction)

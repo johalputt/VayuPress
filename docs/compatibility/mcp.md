@@ -141,6 +141,39 @@ The VayuShield tools report allow and deny lists as counts, never as values.
   calling key's label (never the secret).
 - **Rotate the key** in VayuOS to revoke a connector instantly.
 
+## Your own mailbox
+
+A mailbox's holder can connect an AI tool to their own mail and calendar.
+When the tool asks to connect, the holder signs in here and chooses **Read my
+mail and calendar** or **My mail and calendar** on the consent page. The
+choice is the holder's own: an administrator connects the site, and connects
+only a mailbox they hold themselves. The key minted for the tool holds no
+site grant at all; what it reaches is the connection recorded for it, so no
+other key opens any mail, a full-control key included.
+
+| Tool | Granted by | What it does |
+|---|---|---|
+| `search_mail` | read | Search the mailbox (words, `from:`, `subject:`, `after:`, `is:unread` and the rest) |
+| `read_message` | read | One message's headers, text and attachment names |
+| `list_threads` | read | A folder's conversations, newest first |
+| `list_events` | read | Events between two times, at most 92 days |
+| `find_free_time` | read | Times with nothing in the calendar, at least so many minutes long |
+| `draft_reply` | My mail and calendar | A reply, threaded, waiting in Drafts |
+| `create_draft` | My mail and calendar | A new message, waiting in Drafts |
+| `file_message` | My mail and calendar | Move to a folder (never to Trash), or put a label on or off |
+| `create_event` | My mail and calendar | An event with no guests |
+| `update_event` | My mail and calendar | Change an event that has no guests |
+| `cancel_event` | My mail and calendar | Take out an event that has no guests |
+
+None sends anything. A draft says in its header which tool wrote it and
+waits for the holder to send it. An event with guests is changed in the
+calendar, because a change mails them. A sealed message is read only while
+the holder's mailbox is unlocked. **Settings › Connected tools** in Mail lists
+each tool with what it may do and when it was last used, the record of its
+calls (the latest 500), and **Disconnect**, which ends the connection and
+revokes its key at once. A connection goes with its mailbox, and gives
+nothing while the mailbox is suspended.
+
 ## History
 
 The connector shipped in stages ([ADR-0139](../adr/ADR-0139-vayu-mcp-connector.md)):

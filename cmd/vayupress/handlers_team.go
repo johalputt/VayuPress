@@ -368,16 +368,37 @@ func mailAddrOf(key, primaryDomain string) string {
 // site password must not open a mailbox whose own password they do not
 // hold.
 func (a *App) ownMailbox(r *http.Request) (local, email string) {
-	u := currentUser(r)
+	return a.mailboxOfUser(r.Context(), currentUser(r))
+}
+
+// mailboxOfUserID is the mailbox the account with this id holds, "" for
+// none: a mailbox session's own address, or a site account's.
+func (a *App) mailboxOfUserID(ctx context.Context, id string) string {
+	if addr, isMail := strings.CutPrefix(id, "vmail:"); isMail {
+		return strings.ToLower(strings.TrimSpace(addr))
+	}
+	if a.userStore == nil {
+		return ""
+	}
+	u, err := a.userStore.GetByID(ctx, id)
+	if err != nil || u == nil {
+		return ""
+	}
+	_, email := a.mailboxOfUser(ctx, u)
+	return email
+}
+
+// mailboxOfUser is the mailbox u holds, as ownMailbox reads it for a session.
+func (a *App) mailboxOfUser(ctx context.Context, u *users.User) (local, email string) {
 	if u == nil || a.userStore == nil {
 		return "", ""
 	}
-	if fresh, err := a.userStore.GetByID(r.Context(), u.ID); err == nil {
+	if fresh, err := a.userStore.GetByID(ctx, u.ID); err == nil {
 		u = fresh
 	}
 	email = strings.TrimSpace(u.MailAddress)
 	if email == "" && u.Role == users.RoleAdmin {
-		email = a.adminSignInMailbox(r.Context(), u)
+		email = a.adminSignInMailbox(ctx, u)
 	}
 	if email == "" {
 		return "", ""

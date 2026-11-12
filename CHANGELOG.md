@@ -28,6 +28,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **AI tools for your own mailbox, which never send.** A mailbox's holder
+  can connect an AI tool over VayuMCP to their own mail and calendar: the
+  tool asks, the holder signs in and chooses whether it may only read or
+  may also write drafts, file mail and keep the calendar. It searches and
+  reads mail, lists conversations, finds free time, drafts replies and new
+  messages into Drafts (marked with the tool's name, for the holder to
+  send), files messages (never to Trash), and makes, changes and cancels
+  events that have no guests. Mail's Settings list each connected tool,
+  what it may do, when it was last used and what it did, with Disconnect.
+  An administrator's keys reach no one's mail.
+- **Share a file or folder with another mailbox here.** A file or folder
+  is shared with an address on the same server, to read, or a folder also
+  to add files and folders to. It appears under Shared with me in the
+  other mailbox's Drive; what they add is kept in yours, and nothing is
+  deleted or moved from their side. Stop it from the sheet, or they can
+  leave it. A private mailbox shares nothing this way.
+- **Links to a folder, and links only to upload into one.** A folder's
+  link opens it and the folders in it, and nothing above or beside it;
+  each file downloaded counts toward the link's limit. An upload link
+  takes files into a folder without showing what is in it, never writes
+  over a file already there, and has an end.
 - **Drive settings, Empty Trash and earlier versions to download.** Drive
   settings choose how many earlier versions of each file are kept (1 to
   20) and how long Trash keeps what you delete (7 to 90 days); Trash has

@@ -804,6 +804,7 @@ func (a *App) buildMCPServer() *mcp.Server {
 	a.registerSiteDocumentTools(srv)
 	a.registerSiteEditTool(srv)
 	a.registerCertificateTools(srv)
+	a.registerMailTools(srv)
 
 	return srv
 }

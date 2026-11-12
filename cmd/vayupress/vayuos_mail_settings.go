@@ -275,10 +275,12 @@ func (a *App) handleVayuOSMySettings(w http.ResponseWriter, r *http.Request) {
 			mailSetting{Name: "Private mailbox", Find: "private privacy administrator admin access handover", HTML: a.privateMailboxBlock(r, ac.Email), Bare: true}) +
 		mailSettingGroup("throwaway", "Throwaway addresses",
 			mailSetting{Name: "Throwaway addresses", Find: "alias disposable website shop sign up", HTML: a.throwawayBlock(a.mailReader(r, "")), Bare: true}) +
+		mailSettingGroup("tools", "Connected tools",
+			mailSetting{Name: "Connected tools", Find: "ai assistant mcp agent connected apps oauth disconnect", HTML: a.connectedToolsHere(r), Bare: true}) +
 		mailSettingGroup("export", "Import and export",
 			mailSetting{Name: "Bring mail in", Find: "import imap mbox", HTML: `<p class="text-sm"><a href="/os/vayumail/import?user=` + qparam(ac.Email) + `">Bring mail in</a> from another mail account or a file.</p>`},
 			mailSetting{Name: "Download all mail", Find: "export backup mbox zip", HTML: `<p class="text-sm"><a href="/os/vayumail/download?user=` + qparam(ac.Email) + `" download>Download all mail</a>, every folder as an mbox file in one zip.</p>`})
-	nav := append(append([][2]string{}, mailSettingsNav...), [2]string{"signin", "Signing in"}, [2]string{"private", "Privacy"}, [2]string{"throwaway", "Throwaway addresses"}, [2]string{"export", "Import and export"})
+	nav := append(append([][2]string{}, mailSettingsNav...), [2]string{"signin", "Signing in"}, [2]string{"private", "Privacy"}, [2]string{"throwaway", "Throwaway addresses"}, [2]string{"tools", "Connected tools"}, [2]string{"export", "Import and export"})
 	body := mailSettingsLayout(head, sec, after, nav) + script +
 		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`
 	writeOSHTML(w, r, adminOSLayout(nonce, "Settings", "vayumail", cfg, htmpl.HTML(body)))

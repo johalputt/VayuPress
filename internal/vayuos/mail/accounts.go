@@ -590,6 +590,9 @@ var perAddressTables = [][2]string{
 	// again does not inherit what was shared with the one before it.
 	{"vayumail_drive_grants", "mailbox"},
 	{"vayumail_drive_grants", "grantee"},
+	// A connected tool, and the record of what it did, go with the mailbox.
+	{"vayumail_connections", "mailbox"},
+	{"vayumail_tool_calls", "mailbox"},
 	{"vayumail_snooze", "mailbox"},
 	{"vayumail_autoreply_log", "mailbox"},
 	{"vayumail_scheduled", "owner"},

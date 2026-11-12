@@ -32,6 +32,8 @@ import (
 	"github.com/johalputt/vayupress/internal/oauth"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/seo"
+	"github.com/johalputt/vayupress/internal/users"
+	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
 // oauthBaseURL returns this site's public origin (scheme://host) — the issuer
@@ -156,6 +158,22 @@ var oauthPresets = map[string]struct {
 	"readonly": {"posts:read,analytics:read", "Read-only", "Read content and analytics. Cannot change anything."},
 }
 
+// oauthMailPresets are what a holder grants a tool over their own mailbox
+// (connections.go in the mail engine). The key minted for one holds no site
+// grant at all; what it reaches is the connection recorded for it.
+var oauthMailPresets = map[string]struct {
+	Scopes []string
+	Label  string
+	Desc   string
+}{
+	"mailbox":      {[]string{vmail.ScopeRead, vmail.ScopeDraft, vmail.ScopeCalendar}, "My mail and calendar", "Search and read your mail, write drafts for you to send, file messages, and keep your calendar. It never sends anything."},
+	"mailbox-read": {[]string{vmail.ScopeRead}, "Read my mail and calendar", "Search and read your mail and your calendar. It changes nothing."},
+}
+
+// oauthMailGrant is the grant a code carries for a holder's mailbox:
+// its scopes and the address, set at consent from the verified approver.
+const oauthMailGrant = "vayumail:"
+
 // handleOAuthAuthorize renders the consent screen for an OAuth authorization
 // request. The client and redirect URI are validated BEFORE any redirect so a
 // bogus/unknown redirect can never be used as an open redirect; only after both
@@ -197,8 +215,12 @@ func (a *App) handleOAuthAuthorize(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/os/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusSeeOther)
 		return
 	}
-	if accessLevelFor(u.Role, false) < accessAdmin {
-		oauthHTMLError(w, "You must be a VayuPress administrator to authorize a connection.")
+	// An administrator connects the site; a mailbox's holder connects their
+	// own mail. Anyone else has nothing here to grant.
+	admin := accessLevelFor(u.Role, false) >= accessAdmin
+	_, mailbox := a.mailboxOfUser(r.Context(), u)
+	if !admin && mailbox == "" {
+		oauthHTMLError(w, "You must be a VayuPress administrator, or hold a mailbox here, to authorize a connection.")
 		return
 	}
 
@@ -230,7 +252,7 @@ func (a *App) handleOAuthAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write([]byte(oauthConsentPage(client, redirectURI, challenge, state, consentTok)))
+	_, _ = w.Write([]byte(oauthConsentPage(client, redirectURI, challenge, state, consentTok, admin, mailbox)))
 }
 
 // redirectCSPSource returns a CSP source-expression that allows a form to POST/
@@ -357,6 +379,39 @@ func (a *App) handleOAuthConsent(w http.ResponseWriter, r *http.Request) {
 		oauthRedirectError(w, r, redirectURI, state, "access_denied")
 		return
 	}
+	// What the approver may grant is read again here, from the account the
+	// signed token names: the consent page is shown to holders as well as to
+	// administrators, and only an administrator grants the site.
+	var approver *users.User
+	if a.userStore != nil {
+		approver, _ = a.userStore.GetByID(r.Context(), ownerID)
+	}
+	if mp, isMail := oauthMailPresets[r.FormValue("grant")]; isMail {
+		mailbox := a.mailboxOfUserID(r.Context(), ownerID)
+		if mailbox == "" {
+			oauthHTMLError(w, "Only a mailbox's holder connects it.")
+			return
+		}
+		label := strings.TrimSpace(client.Name)
+		if label == "" {
+			label = "An MCP client"
+		}
+		code, err := a.oauth.IssueCode(r.Context(), oauth.CodeGrant{
+			ClientID: clientID, RedirectURI: redirectURI, CodeChallenge: challenge,
+			GrantCaps: oauthMailGrant + strings.Join(mp.Scopes, ",") + "|" + mailbox, OwnerUserID: ownerID, Label: label,
+		})
+		if err != nil {
+			oauthHTMLError(w, "Could not complete authorization. Please try again.")
+			return
+		}
+		dbpkg.AuditLog("oauth.authorize", "user:"+ownerID, clientID, "mailbox grant="+strings.Join(mp.Scopes, ","))
+		oauthRedirectSuccess(w, r, redirectURI, state, code)
+		return
+	}
+	if approver == nil || accessLevelFor(approver.Role, false) < accessAdmin {
+		oauthHTMLError(w, "Only an administrator connects the site.")
+		return
+	}
 	preset, ok := oauthPresets[r.FormValue("grant")]
 	if !ok {
 		logging.LogWarn("oauth", fmt.Sprintf("consent: no access level chosen (grant=%q) client_id=%s", r.FormValue("grant"), clientID))
@@ -472,6 +527,10 @@ func (a *App) oauthTokenFromRefresh(w http.ResponseWriter, r *http.Request) {
 // grant, records a refresh token bound to it, and returns the standard token
 // response. Minting here — not at consent — means no bearer token is ever stored.
 func (a *App) oauthIssueTokens(w http.ResponseWriter, r *http.Request, clientID, grantCaps, owner, label string) {
+	if mail, isMail := strings.CutPrefix(grantCaps, oauthMailGrant); isMail {
+		a.oauthIssueMailTokens(w, r, clientID, mail, owner, label)
+		return
+	}
 	perms := apikeys.NewPermissions()
 	for _, capTok := range strings.Split(grantCaps, ",") {
 		if sec, act, ok := apikeys.ParseCapability(strings.TrimSpace(capTok)); ok {
@@ -496,6 +555,34 @@ func (a *App) oauthIssueTokens(w http.ResponseWriter, r *http.Request, clientID,
 		return
 	}
 	dbpkg.AuditLog("oauth.token", "oauth:"+clientID, key.ID, "grant="+grantCaps)
+	oauthWriteJSON(w, http.StatusOK, oauthTokenResponse(raw, refresh))
+}
+
+// oauthIssueMailTokens mints the access token for a holder's mailbox: a key
+// with no site grant, and the connection that is all it reaches.
+func (a *App) oauthIssueMailTokens(w http.ResponseWriter, r *http.Request, clientID, grant, owner, label string) {
+	scopes, mailbox, ok := strings.Cut(grant, "|")
+	if !ok || !a.mailRunning() || a.vayuMail.Accounts() == nil {
+		oauthError(w, http.StatusBadRequest, "invalid_grant", "the mailbox is not available")
+		return
+	}
+	exp := time.Now().Add(oauthAccessTokenTTL)
+	key, raw, err := a.apiKeys.CreateWithPermissions(r.Context(), owner, label+" (mailbox)", apikeys.NewPermissions(), &exp, 0)
+	if err != nil {
+		oauthError(w, http.StatusInternalServerError, "server_error", "could not mint access token")
+		return
+	}
+	if err := a.vayuMail.Connect(mailbox, key.ID, label, strings.Split(scopes, ",")); err != nil {
+		_ = a.apiKeys.Revoke(r.Context(), key.ID)
+		oauthError(w, http.StatusBadRequest, "invalid_grant", "the mailbox is not available")
+		return
+	}
+	refresh, err := a.oauth.IssueRefresh(r.Context(), clientID, key.ID)
+	if err != nil {
+		oauthError(w, http.StatusInternalServerError, "server_error", "could not issue refresh token")
+		return
+	}
+	dbpkg.AuditLog("oauth.token", "oauth:"+clientID, key.ID, "mailbox grant="+scopes)
 	oauthWriteJSON(w, http.StatusOK, oauthTokenResponse(raw, refresh))
 }
 
@@ -610,7 +697,7 @@ func oauthHTMLError(w http.ResponseWriter, msg string) {
 // oauthConsentPage renders the approval screen. All dynamic values are escaped;
 // the form carries the request parameters + CSRF token as hidden fields and POSTs
 // same-origin to /oauth/authorize/consent.
-func oauthConsentPage(client oauth.Client, redirectURI, challenge, state, consent string) string {
+func oauthConsentPage(client oauth.Client, redirectURI, challenge, state, consent string, admin bool, mailbox string) string {
 	name := strings.TrimSpace(client.Name)
 	if name == "" {
 		name = "An MCP client"
@@ -621,17 +708,30 @@ func oauthConsentPage(client oauth.Client, redirectURI, challenge, state, consen
 	// barrier — an aliased sanitizer reads as untrusted flow to the query engine.
 	// Access-level choices (author is pre-selected; full-control is clearly the strongest).
 	choices := ""
-	for _, id := range []string{"full", "author", "readonly"} {
-		p := oauthPresets[id]
-		checked := ""
-		if id == "author" {
-			checked = " checked"
+	choice := func(id, label, desc string, checked bool) {
+		on := ""
+		if checked {
+			on = " checked"
 		}
 		choices += `<label class="oauth-choice">
-      <input type="radio" name="grant" value="` + html.EscapeString(id) + `"` + checked + `>
-      <span class="oauth-choice-title">` + html.EscapeString(p.Label) + `</span>
-      <span class="oauth-choice-desc">` + html.EscapeString(p.Desc) + `</span>
+      <input type="radio" name="grant" value="` + html.EscapeString(id) + `"` + on + `>
+      <span class="oauth-choice-title">` + html.EscapeString(label) + `</span>
+      <span class="oauth-choice-desc">` + html.EscapeString(desc) + `</span>
     </label>`
+	}
+	if admin {
+		for _, id := range []string{"full", "author", "readonly"} {
+			p := oauthPresets[id]
+			choice(id, p.Label, p.Desc, id == "author")
+		}
+	}
+	if mailbox != "" {
+		// The holder's own mailbox, never anyone else's: an administrator
+		// connects only the mailbox they hold themselves.
+		for _, id := range []string{"mailbox-read", "mailbox"} {
+			p := oauthMailPresets[id]
+			choice(id, p.Label+" ("+mailbox+")", p.Desc, !admin && id == "mailbox-read")
+		}
 	}
 	escName := html.EscapeString(name)
 	// Anti-phishing (audit M9): show WHERE the authorization code will be delivered.
@@ -645,7 +745,7 @@ func oauthConsentPage(client oauth.Client, redirectURI, challenge, state, consen
 	inner := `
   <div class="login-card oauth-consent">
     <h1 class="login-title">Connect ` + escName + `?</h1>
-    <p class="login-sub"><strong>` + escName + `</strong> is asking to connect to your VayuPress site. Choose how much access to grant. You can revoke it anytime from <a href="/os/apikeys">API&nbsp;Keys</a>.</p>
+    <p class="login-sub"><strong>` + escName + `</strong> is asking to connect. Choose how much access to grant. You can revoke a site connection from <a href="/os/apikeys">API&nbsp;Keys</a>, and one to your mailbox from Mail's Settings.</p>
     <p class="login-sub oauth-dest" role="note">Approving sends your authorization code to <strong>` + html.EscapeString(destHost) + `</strong>. This app registered itself and its name is <em>not verified</em> by VayuPress — approve only if that address is where you expect <strong>` + escName + `</strong> to receive it.</p>
     <form method="POST" action="/oauth/authorize/consent" class="oauth-form">
       <input type="hidden" name="client_id" value="` + html.EscapeString(client.ID) + `">
