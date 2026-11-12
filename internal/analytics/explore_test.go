@@ -159,8 +159,12 @@ func TestTheExplorerComparesTheRangeBefore(t *testing.T) {
 // low it ranked there.
 func TestTheRangeBeforeIsCountedForTheValuesShown(t *testing.T) {
 	s := newExtStore(t)
-	yesterday := time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02 12:00:00")
-	today := time.Now().UTC().Format("2006-01-02 00:00:01")
+	// The days are the store's own: its clock runs an hour behind this
+	// one's, so for the first hour after midnight UTC the two disagree about
+	// which day today is, and rows dated by one were counted by the other.
+	now := s.now().UTC()
+	yesterday := now.AddDate(0, 0, -1).Format("2006-01-02 12:00:00")
+	today := now.Format("2006-01-02 00:00:01")
 	exec := func(q string, args ...any) {
 		t.Helper()
 		if _, err := s.db.Exec(q, args...); err != nil {
