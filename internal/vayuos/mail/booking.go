@@ -48,6 +48,8 @@ const (
 	// maxBookingMoves is how many times a guest may move one booking: each
 	// move mails them the change and tells the holder.
 	maxBookingMoves = 5
+	// maxBookingSeries is the most bookings one series holds.
+	maxBookingSeries = 12
 	// maxBookingReach is the furthest ahead a page may offer times.
 	maxBookingReach = 180
 )
@@ -106,9 +108,10 @@ type BookingGuest struct {
 // seriesStarts is a series' starts: the same clock time in the page's zone,
 // every weeks apart, so a clock change does not move it.
 func seriesStarts(start time.Time, p BookingPage, every, count int) []time.Time {
-	if count < 1 {
-		count = 1
-	}
+	// Bounded here as well as where a series is asked for: a count read
+	// back from a row, or passed by a later caller, never sizes more than a
+	// series can be.
+	count = max(1, min(count, maxBookingSeries))
 	loc := zoneNamed(p.Zone)
 	if loc == nil {
 		loc = time.UTC
@@ -267,7 +270,7 @@ func (p *BookingPage) check() error {
 	if p.Remind != 0 && p.Remind != 60 && p.Remind != 1440 {
 		return errors.New("a reminder is an hour or a day before, or none")
 	}
-	if p.Repeats != 0 && (p.Repeats < 2 || p.Repeats > 12) {
+	if p.Repeats != 0 && (p.Repeats < 2 || p.Repeats > maxBookingSeries) {
 		return errors.New("a series is 2 to 12 bookings, or none")
 	}
 	return nil

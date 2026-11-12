@@ -10,6 +10,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **A booking series is bounded where its times are worked out.** The
+  number of times in a series was checked where a guest asks for one, and
+  trusted wherever else it was read; it is now held to twelve where its
+  times are made too.
 - **A booking page's hours on the days the clock changes.** A page open
   09:00 to 17:00 offered 10:00 to 18:00 on the day the clock goes forward
   and 08:00 to 16:00 on the day it goes back, and a window holding the

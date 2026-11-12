@@ -148,6 +148,18 @@ func TestASeriesFillsEachOfItsDays(t *testing.T) {
 	}
 }
 
+// TestASeriesIsNeverLongerThanASeriesCanBe — whatever count it is handed,
+// a series is at most maxBookingSeries times, and at least one.
+func TestASeriesIsNeverLongerThanASeriesCanBe(t *testing.T) {
+	p := BookingPage{Zone: "UTC"}
+	start := time.Date(2026, 11, 10, 10, 0, 0, 0, time.UTC)
+	for count, want := range map[int]int{100: maxBookingSeries, 13: maxBookingSeries, 12: 12, 0: 1, -5: 1} {
+		if got := len(seriesStarts(start, p, 1, count)); got != want {
+			t.Errorf("a count of %d made %d", count, got)
+		}
+	}
+}
+
 // TestASeriesKeepsItsClockAcrossTheChange — weekly 09:00 in London is 09:00
 // before and after the clock goes forward.
 func TestASeriesKeepsItsClockAcrossTheChange(t *testing.T) {
