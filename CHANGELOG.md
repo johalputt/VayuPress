@@ -21,6 +21,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   now gives it in the zone the page was shown to the guest in, with the
   host's clock beside it.
 
+### Added
+
+- **A calendar out and in as one .ics file.** Calendar's sidebar has
+  Export as .ics, the whole calendar in the iCalendar file other calendar
+  programs and services import, and Import a .ics file, which brings one
+  of theirs in (up to 20 MB). An import adds and never replaces: an event the
+  calendar already holds is left as it is, so the same file twice adds
+  nothing. It invites nobody, and says what it kept, what was already
+  there and what it could not keep.
+
 ## [3.18.38] — 2026-11-12
 
 Drive: a place for files beside Mail and Calendar, in one allowance with the mailbox's mail. Share a file by a link, save an attachment to it, attach from it, and open it from a computer's or phone's file app. An administrator's own mailbox is now theirs in Mail.

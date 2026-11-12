@@ -18,6 +18,7 @@ package main
 import (
 	"errors"
 	"html"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
@@ -472,7 +473,98 @@ func calSide(v calView, home *time.Location, today time.Time, pages []vmail.Book
 	b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/calendar/booking"` + newCur + `>` + saIcon("plus") + `<span class="sa-appside__label">New booking page</span></a>`)
 	b.WriteString(`<div class="sa-appside__group">Time zone</div><p class="cal-zone">` + saIcon("globe") + `<span>` + esc(home.String()) + `</span></p>`)
 	b.WriteString(`<div class="sa-appside__group">On your phone and computer</div><a class="sa-appside__item" href="/os/vayumail/connect">` + saIcon("phone") + `<span class="sa-appside__label">Add this calendar</span></a>`)
+	b.WriteString(calTransfer())
 	return b.String()
+}
+
+// calTransfer is the calendar out and in as one .ics file: the iCalendar
+// file other calendar programs and services export and import.
+func calTransfer() string {
+	return `<a class="sa-appside__item" href="/os/vayumail/calendar/export" download>` + saIcon("download") + `<span class="sa-appside__label">Export as .ics</span></a>` +
+		`<form hx-post="/os/vayumail/calendar/import" hx-encoding="multipart/form-data" hx-trigger="change" hx-target="#cal-import-said" hx-swap="innerHTML">` +
+		`<label class="sa-appside__item">` + saIcon("upload") + `<span class="sa-appside__label">Import a .ics file</span>` +
+		`<input class="vp-sr-only" type="file" name="file" accept=".ics,text/calendar"></label></form>` +
+		`<p class="vm-keys-said" id="cal-import-said" role="status"></p>`
+}
+
+// handleVayuOSCalendarExport sends the holder's calendar as one .ics file.
+func (a *App) handleVayuOSCalendarExport(w http.ResponseWriter, r *http.Request) {
+	rd, ok := a.calendarOwner(r)
+	if !ok || !a.mailRunning() {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "A calendar opens only for its holder.", "")
+		return
+	}
+	addr := a.calendarAddress(rd)
+	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+mailSafeFilename(addr+".ics")+`"`)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "private, no-store")
+	if err := a.vayuMail.CalendarExport(rd, addr, w); err != nil {
+		// Once the file has begun there is no other answer to give; before
+		// it, the error is the answer.
+		slog.Warn("vayumail: calendar export", "err", err)
+	}
+}
+
+// handleVayuOSCalendarImport keeps a .ics file's events in the holder's
+// calendar and says what it did.
+func (a *App) handleVayuOSCalendarImport(w http.ResponseWriter, r *http.Request) {
+	rd, ok := a.calendarOwner(r)
+	if !ok || !a.mailRunning() {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "A calendar opens only for its holder.", "")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, vmail.MaxCalendarImport+(64<<10))
+	mr, err := r.MultipartReader()
+	if err != nil {
+		writeOSFragment(w, esc("Not imported: no file was chosen."))
+		return
+	}
+	for {
+		part, err := mr.NextPart()
+		if err != nil {
+			writeOSFragment(w, esc("Not imported: no file was chosen, or it is larger than 20 MB."))
+			return
+		}
+		if part.FormName() != "file" {
+			continue
+		}
+		res, err := a.vayuMail.CalendarImport(rd, part, time.Now())
+		writeOSFragment(w, calImportSaid(res, err))
+		return
+	}
+}
+
+// calImportSaid is what an import did, in words.
+func calImportSaid(res vmail.CalImport, err error) string {
+	switch {
+	case errors.Is(err, vmail.ErrICSTooLarge):
+		return "Not imported: a calendar file is at most 20 MB."
+	case errors.Is(err, vmail.ErrICSUnreadable):
+		return "Not imported: the file is not a calendar (.ics) file."
+	case err != nil:
+		return "Not imported: the file could not be read."
+	}
+	said := "Imported " + strconv.Itoa(res.Added) + " " + pluralWord(res.Added, "event", "events") + "."
+	if res.Added > 0 {
+		said = `Imported ` + strconv.Itoa(res.Added) + ` ` + pluralWord(res.Added, "event", "events") + `. <a href="/os/vayumail/calendar">Show the calendar</a>.`
+	}
+	switch {
+	case res.Already > 0 && res.Added == 0:
+		said = "Nothing new: " + strconv.Itoa(res.Already) + " already in the calendar, left as they are."
+	case res.Already > 0:
+		said += " " + strconv.Itoa(res.Already) + " already in the calendar, left as they are."
+	}
+	if res.Refused > 0 {
+		said += " " + strconv.Itoa(res.Refused) + " could not be kept: another kind of entry, or larger than a megabyte."
+	}
+	if res.Full {
+		said += " The calendar is full, so the rest of the file was not read."
+	}
+	if res.Damaged {
+		said += " The file broke off or stopped making sense part way; what came before is kept."
+	}
+	return said
 }
 
 func (a *App) handleVayuOSCalendar(w http.ResponseWriter, r *http.Request) {
