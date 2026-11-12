@@ -39,6 +39,21 @@ func TestTheBellCarriesItsOwnSignature(t *testing.T) {
 // stream. cookie, when given, is sent as the console's session.
 func bellStream(t *testing.T, a *App, sig string, cookie ...string) <-chan bellOut {
 	t.Helper()
+	// The watcher the stream starts reads the database until it sees its
+	// stop, a moment after the stream ends; the test's database is closed by
+	// a cleanup. Each run is recorded, and the cleanup waits for it to end
+	// before anything is closed under it (it raced ClosePools under -race).
+	runs := make(chan chan struct{}, 8)
+	a.bellLive.mu.Lock()
+	if a.bellLive.watch == nil {
+		a.bellLive.watch = func(stop <-chan struct{}) {
+			done := make(chan struct{})
+			runs <- done
+			defer close(done)
+			a.watchBell(stop)
+		}
+	}
+	a.bellLive.mu.Unlock()
 	srv := httptest.NewServer(http.HandlerFunc(a.handleOSNotificationsStream))
 	ctx, cancel := context.WithCancel(context.Background())
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/os/api/notifications/stream?sig="+sig, nil)
@@ -52,7 +67,24 @@ func bellStream(t *testing.T, a *App, sig string, cookie ...string) <-chan bellO
 	if ct := res.Header.Get("Content-Type"); ct != "text/event-stream" {
 		t.Fatalf("the stream answered %d %q", res.StatusCode, ct)
 	}
-	t.Cleanup(func() { cancel(); _ = res.Body.Close(); srv.Close() })
+	t.Cleanup(func() {
+		cancel()
+		_ = res.Body.Close()
+		srv.Close()
+		for {
+			select {
+			case done := <-runs:
+				select {
+				case <-done:
+				case <-time.After(5 * time.Second):
+					t.Error("the bell's watcher did not stop when its last stream ended")
+				}
+				continue
+			case <-time.After(100 * time.Millisecond):
+			}
+			return
+		}
+	})
 	out := make(chan bellOut, 8)
 	go func() {
 		defer close(out)
