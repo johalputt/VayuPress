@@ -48,6 +48,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
+- **Dependencies.** `golang.org/x/crypto` 0.59.0, `golang.org/x/sys` 0.50.0
+  and `golang.org/x/text` 0.44.0, the latest of each.
+
 - **Making a mailbox private seals its files as well as its mail.** Files
   already in Drive, and their earlier versions, are sealed to your key when
   the mailbox becomes private. A file over 25 MB kept from before is left
