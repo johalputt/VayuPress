@@ -68,7 +68,10 @@ type BookingPage struct {
 	Reach         int // days: the furthest ahead
 	PerDay        int // the most bookings in a day, 0 for no limit
 	Question      string
-	Enabled       bool
+	// Remind is how many minutes before a booking both the guest and the
+	// holder are reminded of it: 0 (none), 60 or 1440.
+	Remind  int
+	Enabled bool
 }
 
 // Booking is one time booked, or held, on a page.
@@ -158,6 +161,10 @@ func (s *AccountStore) ensureBookingTables() error {
 	if _, err := s.db.Exec(`ALTER TABLE vayumail_bookings ADD COLUMN moves INTEGER NOT NULL DEFAULT 0`); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 		return err
 	}
+	// Whether the guest has been sent its reminder (sendBookingReminders).
+	if _, err := s.db.Exec(`ALTER TABLE vayumail_bookings ADD COLUMN reminded INTEGER NOT NULL DEFAULT 0`); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+		return err
+	}
 	return nil
 }
 
@@ -209,6 +216,9 @@ func (p *BookingPage) check() error {
 	p.Question = strings.TrimSpace(oneLine(p.Question))
 	if len(p.Question) > 300 {
 		return errors.New("the question for the guest is at most 300 characters")
+	}
+	if p.Remind != 0 && p.Remind != 60 && p.Remind != 1440 {
+		return errors.New("a reminder is an hour or a day before, or none")
 	}
 	return nil
 }
@@ -634,8 +644,13 @@ func (e *Engine) ConfirmBooking(ctx context.Context, token string, now time.Time
 	}
 	notes += "\nTo move or cancel this booking: " + cancelBase + cancel + "\n"
 	loc := zoneNamed(p.Zone)
-	uid, err := e.SaveEvent(ReadAsSystem(mbox, "booking"), EventInput{Summary: p.Title + " with " + b.Name, Description: notes,
-		Start: b.Start.In(loc), End: b.End.In(loc), Guests: []string{b.Email}}, ScopeAll, time.Time{})
+	in := EventInput{Summary: p.Title + " with " + b.Name, Description: notes, Start: b.Start.In(loc), End: b.End.In(loc), Guests: []string{b.Email}}
+	if p.Remind > 0 {
+		// The holder's reminder, on their devices and by mail, at the time
+		// the guest's comes.
+		in.Remind, in.SetRemind = &Reminder{Before: time.Duration(p.Remind) * time.Minute, ByMail: true}, true
+	}
+	uid, err := e.SaveEvent(ReadAsSystem(mbox, "booking"), in, ScopeAll, time.Time{})
 	if err != nil && !errors.Is(err, ErrInvitationsNotSent) {
 		release()
 		return Booking{}, err
@@ -750,7 +765,7 @@ func (e *Engine) MoveBooking(ctx context.Context, token string, start, now time.
 			return Booking{}, err
 		}
 	}
-	if _, err := e.accounts.db.ExecContext(ctx, `UPDATE vayumail_bookings SET start=?, end=?, moves=moves+1, status='confirmed' WHERE id=?`, b.Start.Unix(), b.End.Unix(), b.ID); err != nil {
+	if _, err := e.accounts.db.ExecContext(ctx, `UPDATE vayumail_bookings SET start=?, end=?, moves=moves+1, reminded=0, status='confirmed' WHERE id=?`, b.Start.Unix(), b.End.Unix(), b.ID); err != nil {
 		return Booking{}, err
 	}
 	loc := zoneNamed(p.Zone)
@@ -784,6 +799,73 @@ func (e *Engine) moveEvent(ctx context.Context, mbox, uid string, start, end tim
 		return err
 	}
 	return e.sendInvitations(ctx, mbox, o.Data, data)
+}
+
+// maxBookingReminders bounds the guests reminded in one pass of the worker.
+const maxBookingReminders = 200
+
+// sendBookingReminders mails each guest whose booking's reminder time came
+// in the last reminderLate, once, from the holder's address: the time in the
+// guest's own zone. A booking made or moved after its reminder time is not
+// reminded; the guest has just chosen it.
+func (e *Engine) sendBookingReminders(now time.Time) {
+	if e.accounts == nil || e.accounts.ensureBookingTables() != nil {
+		return
+	}
+	ctx := context.Background()
+	rows, err := e.accounts.db.QueryContext(ctx, `SELECT b.id,b.mailbox,b.start,b.end,b.email,b.guest_zone,p.page FROM vayumail_bookings b
+		JOIN vayumail_booking_pages p ON p.id=b.page_id WHERE b.status='confirmed' AND b.reminded=0 AND b.start>? AND b.start<=?
+		ORDER BY b.start LIMIT ?`, now.Unix(), now.Add(24*time.Hour+reminderLate).Unix(), maxBookingReminders)
+	if err != nil {
+		return
+	}
+	type due struct {
+		id         int64
+		mbox       string
+		start, end int64
+		email      string
+		zone, page string
+	}
+	var all []due
+	for rows.Next() {
+		var d due
+		if rows.Scan(&d.id, &d.mbox, &d.start, &d.end, &d.email, &d.zone, &d.page) == nil {
+			all = append(all, d)
+		}
+	}
+	if rows.Err() != nil || rows.Close() != nil {
+		return
+	}
+	for _, d := range all {
+		var p BookingPage
+		// A page with no reminder has its time at the start, which a booking
+		// still to come has not reached.
+		if json.Unmarshal([]byte(d.page), &p) != nil {
+			continue
+		}
+		// A page switched off still has its bookings, and they are still
+		// reminded; a mailbox switched off sends nothing.
+		p.Mailbox, p.Enabled = d.mbox, true
+		if !e.accounts.BookingOffered(ctx, p) {
+			continue
+		}
+		start := time.Unix(d.start, 0)
+		at := start.Add(-time.Duration(p.Remind) * time.Minute)
+		if now.Before(at) || now.Sub(at) > reminderLate {
+			continue
+		}
+		// Claimed before it is sent: two passes at once send it once.
+		res, err := e.accounts.db.ExecContext(ctx, `UPDATE vayumail_bookings SET reminded=1 WHERE id=? AND reminded=0`, d.id)
+		if err != nil {
+			continue
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			continue
+		}
+		text := "A reminder of " + p.Title + " with " + p.Mailbox + ":\n" + bookingWhen(start, p, d.zone) + ", " +
+			strconv.FormatInt((d.end-d.start)/60, 10) + " minutes.\n\nTo move or cancel it, use the link in the invitation you were sent.\n"
+		_, _ = e.SendSystemMail(ctx, p.Mailbox, []string{d.email}, "Reminder: "+p.Title+", "+start.In(zoneNamed(p.Zone)).Format("Monday 2 January, 15:04"), "", text)
+	}
 }
 
 // tellHolder delivers a short notice into the holder's own Inbox, where the

@@ -1230,6 +1230,7 @@ func (e *Engine) worker() {
 		case <-ticker.C:
 			_, _, _ = e.queue.ProcessDue(context.Background(), time.Now())
 			e.sendReminders(time.Now())
+			e.sendBookingReminders(time.Now())
 			e.emptyOldTrash(time.Now())
 			e.sweepShares(context.Background(), time.Now())
 		}

@@ -24,6 +24,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Booking reminders.** A booking page can remind the guest and you an
+  hour or a day before each booking (a day, for a new page). The guest is
+  mailed once, from your address, with the time in their own zone; your
+  event carries the same reminder on your devices and by mail. A moved
+  booking is reminded for its new time. Pages made before this have no
+  reminder until you choose one.
 - **A guest moves their own booking.** The link in a booking's
   invitation, which cancelled it, now opens the booking: its time in the
   guest's zone, the page's free times to move it to, and Cancel. A chosen

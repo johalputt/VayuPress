@@ -121,6 +121,22 @@ func (a *App) bookingEditor(r *http.Request, p vmail.BookingPage, bookings []vma
 	b.WriteString(`<div class="cal-two">` + field("At least this many hours ahead", num("notice", p.Notice/60, 720)) + field("Up to this many days out", num("reach", p.Reach, 180)) + `</div>`)
 	b.WriteString(`<div class="cal-two">` + field("Most bookings in a day (0 for no limit)", num("perday", p.PerDay, 100)) +
 		field("A question for the guest", `<input type="text" name="question" maxlength="300" value="`+esc(p.Question)+`" placeholder="What would you like to talk about?">`) + `</div>`)
+	remind := p.Remind
+	if p.ID == 0 {
+		remind = 1440
+	}
+	opts := ""
+	for _, o := range []struct {
+		v     int
+		label string
+	}{{0, "No reminder"}, {60, "An hour before"}, {1440, "A day before"}} {
+		sel := ""
+		if o.v == remind {
+			sel = " selected"
+		}
+		opts += `<option value="` + strconv.Itoa(o.v) + `"` + sel + `>` + o.label + `</option>`
+	}
+	b.WriteString(`<div class="cal-two">` + field("Remind the guest and you", `<select name="remind">`+opts+`</select>`) + `</div>`)
 	on := ""
 	if p.Enabled || p.ID == 0 {
 		on = " checked"
@@ -219,7 +235,7 @@ func (a *App) handleVayuOSBookingAction(w http.ResponseWriter, r *http.Request) 
 	atoi := func(name string) int { n, _ := strconv.Atoi(strings.TrimSpace(r.PostFormValue(name))); return n }
 	p := vmail.BookingPage{ID: id, Mailbox: mbox, Slug: r.PostFormValue("slug"), Title: r.PostFormValue("title"), Zone: r.PostFormValue("zone"),
 		Before: atoi("before"), After: atoi("after"), Notice: atoi("notice") * 60, Reach: atoi("reach"), PerDay: atoi("perday"),
-		Question: r.PostFormValue("question"), Enabled: r.PostFormValue("enabled") == "1"}
+		Question: r.PostFormValue("question"), Remind: atoi("remind"), Enabled: r.PostFormValue("enabled") == "1"}
 	for _, l := range r.PostForm["length"] {
 		if n, err := strconv.Atoi(l); err == nil {
 			p.Lengths = append(p.Lengths, n)
