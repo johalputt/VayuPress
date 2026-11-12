@@ -21,8 +21,10 @@ func bookingRouter(a *App) http.Handler {
 	r := chi.NewRouter()
 	r.Get("/book/confirm", a.handleBookConfirm)
 	r.Post("/book/confirm", a.handleBookConfirm)
-	r.Get("/book/cancel", a.handleBookCancel)
-	r.Post("/book/cancel", a.handleBookCancel)
+	r.Get("/book/change", a.handleBookChange)
+	r.Post("/book/change", a.handleBookChange)
+	r.Get("/book/cancel", a.handleBookChange)
+	r.Post("/book/cancel", a.handleBookChange)
 	r.Get("/book/{owner}/{slug}", a.handleBookPage)
 	r.Post("/book/{owner}/{slug}", a.handleBookPage)
 	return r

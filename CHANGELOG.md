@@ -19,10 +19,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - **A guest's booking mail is in the guest's own time zone.** The mail
   that asks a guest to confirm gave the time in the host's zone only; it
   now gives it in the zone the page was shown to the guest in, with the
-  host's clock beside it.
+  host's clock beside it. The page that says a booking is made gives it
+  in the guest's zone too, not in UTC.
 
 ### Added
 
+- **A guest moves their own booking.** The link in a booking's
+  invitation, which cancelled it, now opens the booking: its time in the
+  guest's zone, the page's free times to move it to, and Cancel. A chosen
+  time asks before it moves; the event moves in your calendar, the guest
+  is sent the change, and you are told. A booking moves at most five
+  times, and one on a page you have switched off can still be cancelled
+  but not moved. Links in invitations sent before keep working.
 - **A calendar out and in as one .ics file.** Calendar's sidebar has
   Export as .ics, the whole calendar in the iCalendar file other calendar
   programs and services import, and Import a .ics file, which brings one

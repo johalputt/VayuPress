@@ -723,6 +723,11 @@ func fill(comp *ical.Component, in EventInput, now time.Time, edit bool) {
 	setText(comp, ical.PropLocation, in.Location)
 	setText(comp, ical.PropDescription, in.Description)
 	setWhen(comp, in)
+	stamp(comp, now, edit)
+}
+
+// stamp marks a VEVENT written at now, raising its SEQUENCE for an edit.
+func stamp(comp *ical.Component, now time.Time, edit bool) {
 	comp.Props.SetDateTime(ical.PropDateTimeStamp, now)
 	comp.Props.SetDateTime(ical.PropLastModified, now)
 	seq := 0

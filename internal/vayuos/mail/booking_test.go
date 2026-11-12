@@ -92,7 +92,7 @@ func TestFreeTimesRespectNoticeReachAndDays(t *testing.T) {
 	}
 }
 
-var linkToken = regexp.MustCompile(`/book/(?:confirm|cancel)\?t=([0-9a-f]{64})`)
+var linkToken = regexp.MustCompile(`/book/(?:confirm|cancel|change)\?t=([0-9a-f]{64})`)
 
 // tokenIn is the token of the booking link in a mail or an event's notes,
 // as the guest has it.

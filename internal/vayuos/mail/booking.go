@@ -23,6 +23,7 @@ package mail
 // single-purpose and stored hashed.
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -34,6 +35,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/emersion/go-ical"
 )
 
 const (
@@ -42,6 +45,9 @@ const (
 	maxBookingMailsPerDay     = 50
 	maxBookingMailsPerAddress = 3
 	maxBookingPages           = 20
+	// maxBookingMoves is how many times a guest may move one booking: each
+	// move mails them the change and tells the holder.
+	maxBookingMoves = 5
 	// maxBookingReach is the furthest ahead a page may offer times.
 	maxBookingReach = 180
 )
@@ -108,6 +114,7 @@ var (
 	ErrNoSuchBooking   = errors.New("vayumail: that link is not valid, was already used, or has expired")
 	ErrSlotTaken       = errors.New("vayumail: that time is no longer free")
 	ErrBookingsWait    = errors.New("vayumail: this page is taking no more bookings for now; try again later")
+	ErrBookingMoves    = errors.New("vayumail: this booking has been moved as often as it can be; cancel it and book again")
 	errNoBookingPage   = errors.New("vayumail: there is no such booking page")
 	bookingSlugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
 )
@@ -145,6 +152,10 @@ func (s *AccountStore) ensureBookingTables() error {
 	// The guest's own time zone, for the mail they are sent; added in place
 	// on an install that made the table before it was kept.
 	if _, err := s.db.Exec(`ALTER TABLE vayumail_bookings ADD COLUMN guest_zone TEXT NOT NULL DEFAULT ''`); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+		return err
+	}
+	// How many times the guest has moved it (MoveBooking).
+	if _, err := s.db.Exec(`ALTER TABLE vayumail_bookings ADD COLUMN moves INTEGER NOT NULL DEFAULT 0`); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 		return err
 	}
 	return nil
@@ -350,22 +361,22 @@ func (s *AccountStore) BookingsFor(ctx context.Context, mailbox string, pageID i
 type span struct{ from, to time.Time }
 
 // busy is the holder's busy time around [from, to): timed events not marked
-// free, and times held for bookings not yet confirmed. except is a booking
-// left out (the one being confirmed).
-func (e *Engine) busy(ctx context.Context, p BookingPage, from, to, now time.Time, except int64) ([]span, error) {
+// free, and times held for bookings not yet confirmed. except is a
+// confirmed booking whose event is left out (the one being moved).
+func (e *Engine) busy(ctx context.Context, p BookingPage, from, to, now time.Time, except Booking) ([]span, error) {
 	evs, err := e.CalendarBetween(ReadAsSystem(p.Mailbox, "booking"), from, to, time.UTC)
 	if err != nil {
 		return nil, err
 	}
 	var out []span
 	for _, ev := range evs {
-		if ev.AllDay || ev.Free {
+		if ev.AllDay || ev.Free || (except.UID != "" && ev.UID == except.UID) {
 			continue
 		}
 		out = append(out, span{ev.Start, ev.End})
 	}
-	rows, err := e.accounts.db.QueryContext(ctx, `SELECT start,end FROM vayumail_bookings WHERE mailbox=? AND status='held' AND created>? AND id<>? AND end>? AND start<?`,
-		p.Mailbox, now.Add(-bookingHoldFor), except, from.Unix(), to.Unix())
+	rows, err := e.accounts.db.QueryContext(ctx, `SELECT start,end FROM vayumail_bookings WHERE mailbox=? AND status='held' AND created>? AND end>? AND start<?`,
+		p.Mailbox, now.Add(-bookingHoldFor), from.Unix(), to.Unix())
 	if err != nil {
 		return nil, err
 	}
@@ -384,7 +395,7 @@ func (e *Engine) busy(ctx context.Context, p BookingPage, from, to, now time.Tim
 func (e *Engine) bookedOn(ctx context.Context, p BookingPage, loc *time.Location, from, to, now time.Time, except int64) map[string]int {
 	out := map[string]int{}
 	rows, err := e.accounts.db.QueryContext(ctx, `SELECT start FROM vayumail_bookings WHERE page_id=? AND id<>? AND start>=? AND start<?
-		AND (status='confirmed' OR (status='held' AND created>?))`, p.ID, except, from.Unix(), to.Unix(), now.Add(-bookingHoldFor))
+		AND (status IN ('confirmed','moving') OR (status='held' AND created>?))`, p.ID, except, from.Unix(), to.Unix(), now.Add(-bookingHoldFor))
 	if err != nil {
 		return out
 	}
@@ -408,6 +419,13 @@ func (e *Engine) bookedOn(ctx context.Context, p BookingPage, loc *time.Location
 // notice and before its reach, under its most per day, and with its gap free
 // on each side.
 func (e *Engine) FreeSlots(p BookingPage, length int, from, to, now time.Time) ([]time.Time, error) {
+	return e.freeSlots(p, length, from, to, now, Booking{})
+}
+
+// freeSlots is FreeSlots with one booking left out: its hold, its count on
+// its day and its event in the calendar, so a booking being moved does not
+// stand in its own way.
+func (e *Engine) freeSlots(p BookingPage, length int, from, to, now time.Time, except Booking) ([]time.Time, error) {
 	if e.accounts == nil {
 		return nil, errNoBookingPage
 	}
@@ -430,11 +448,11 @@ func (e *Engine) FreeSlots(p BookingPage, length int, from, to, now time.Time) (
 	}
 	ctx := context.Background()
 	gapB, gapA := time.Duration(p.Before)*time.Minute, time.Duration(p.After)*time.Minute
-	busy, err := e.busy(ctx, p, from.Add(-gapB-24*time.Hour), to.Add(gapA+24*time.Hour), now, 0)
+	busy, err := e.busy(ctx, p, from.Add(-gapB-24*time.Hour), to.Add(gapA+24*time.Hour), now, except)
 	if err != nil {
 		return nil, err
 	}
-	perDay := e.bookedOn(ctx, p, loc, from.Add(-24*time.Hour), to.Add(24*time.Hour), now, 0)
+	perDay := e.bookedOn(ctx, p, loc, from.Add(-24*time.Hour), to.Add(24*time.Hour), now, except.ID)
 	dur := time.Duration(length) * time.Minute
 	var out []time.Time
 	for day := midnightIn(from, loc); day.Before(to); day = day.AddDate(0, 0, 1) {
@@ -563,8 +581,8 @@ func (e *Engine) heldBooking(ctx context.Context, column, token string) (Booking
 
 // ConfirmBooking makes the held booking a link names an event in the
 // holder's calendar, with the guest invited, once, while it is held and the
-// time is still free. The event carries the link that cancels it:
-// cancelBase with the cancel token after it.
+// time is still free. The event carries the link that moves or cancels it:
+// cancelBase with the token after it.
 func (e *Engine) ConfirmBooking(ctx context.Context, token string, now time.Time, cancelBase string) (Booking, error) {
 	if e.accounts == nil || e.accounts.ensureBookingTables() != nil || token == "" {
 		return Booking{}, ErrNoSuchBooking
@@ -614,7 +632,7 @@ func (e *Engine) ConfirmBooking(ctx context.Context, token string, now time.Time
 		}
 		notes += b.Answer + "\n"
 	}
-	notes += "\nTo cancel this booking: " + cancelBase + cancel + "\n"
+	notes += "\nTo move or cancel this booking: " + cancelBase + cancel + "\n"
 	loc := zoneNamed(p.Zone)
 	uid, err := e.SaveEvent(ReadAsSystem(mbox, "booking"), EventInput{Summary: p.Title + " with " + b.Name, Description: notes,
 		Start: b.Start.In(loc), End: b.End.In(loc), Guests: []string{b.Email}}, ScopeAll, time.Time{})
@@ -659,6 +677,113 @@ func (e *Engine) CancelBooking(ctx context.Context, token string) (Booking, erro
 	}
 	e.tellHolder(mbox, "Booking cancelled: "+b.Name, b.Name+" <"+b.Email+"> cancelled the booking for "+when+".\n")
 	return b, nil
+}
+
+// BookingByLink is the confirmed booking a move-or-cancel link names, with
+// its page.
+func (e *Engine) BookingByLink(ctx context.Context, token string) (Booking, BookingPage, error) {
+	// A link's token is cleared when its booking is cancelled, so what it
+	// names is confirmed, or being moved this moment.
+	b, mbox, err := e.heldBooking(ctx, "cancel_hash", token)
+	if err != nil {
+		return Booking{}, BookingPage{}, ErrNoSuchBooking
+	}
+	p, err := e.accounts.BookingPage(ctx, mbox, b.PageID, "")
+	if err != nil {
+		return Booking{}, BookingPage{}, ErrNoSuchBooking
+	}
+	return b, p, nil
+}
+
+// MovingSlots is the times a booking may be moved to in [from, to): its
+// page's free times, its own time not standing in its way.
+func (e *Engine) MovingSlots(b Booking, p BookingPage, from, to, now time.Time) ([]time.Time, error) {
+	return e.freeSlots(p, int(b.End.Sub(b.Start)/time.Minute), from, to, now, b)
+}
+
+// MoveBooking moves the confirmed booking a link names to start, while the
+// page offers it: the event moves in the holder's calendar, the guest is
+// sent the change, and the holder is told. The link stays the booking's.
+// A booking moves at most maxBookingMoves times; a page switched off
+// moves none, though its bookings can still be cancelled.
+func (e *Engine) MoveBooking(ctx context.Context, token string, start, now time.Time) (Booking, error) {
+	if e.accounts == nil || e.accounts.ensureBookingTables() != nil || token == "" {
+		return Booking{}, ErrNoSuchBooking
+	}
+	// Claimed first, as a confirm is: of two moves at once only one goes
+	// on, and a cancel meanwhile finds nothing to cancel until it is done.
+	res, err := e.accounts.db.ExecContext(ctx, `UPDATE vayumail_bookings SET status='moving' WHERE cancel_hash=? AND cancel_hash<>'' AND status='confirmed'`, hashRecoveryToken(token))
+	if err != nil {
+		return Booking{}, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return Booking{}, ErrNoSuchBooking
+	}
+	b, mbox, err := e.heldBooking(ctx, "cancel_hash", token)
+	if err != nil {
+		return Booking{}, ErrNoSuchBooking
+	}
+	defer func() {
+		_, _ = e.accounts.db.ExecContext(ctx, `UPDATE vayumail_bookings SET status='confirmed' WHERE id=? AND status='moving'`, b.ID)
+	}()
+	var moves int
+	if err := e.accounts.db.QueryRowContext(ctx, `SELECT moves FROM vayumail_bookings WHERE id=?`, b.ID).Scan(&moves); err != nil {
+		return Booking{}, err
+	}
+	if moves >= maxBookingMoves {
+		return Booking{}, ErrBookingMoves
+	}
+	p, err := e.accounts.BookingPage(ctx, mbox, b.PageID, "")
+	if err != nil || !e.accounts.BookingOffered(ctx, p) {
+		return Booking{}, ErrNoSuchBooking
+	}
+	length := b.End.Sub(b.Start)
+	slots, err := e.MovingSlots(b, p, start, start.Add(time.Minute), now)
+	if err != nil || len(slots) != 1 || !slots[0].Equal(start) || start.Equal(b.Start) {
+		return Booking{}, ErrSlotTaken
+	}
+	was := b.Start
+	b.Start, b.End = start.UTC(), start.Add(length).UTC()
+	if b.UID != "" {
+		if err := e.moveEvent(ctx, mbox, b.UID, b.Start.In(zoneNamed(p.Zone)), b.End.In(zoneNamed(p.Zone))); err != nil &&
+			!errors.Is(err, errNoSuchEvent) && !errors.Is(err, ErrInvitationsNotSent) {
+			return Booking{}, err
+		}
+	}
+	if _, err := e.accounts.db.ExecContext(ctx, `UPDATE vayumail_bookings SET start=?, end=?, moves=moves+1, status='confirmed' WHERE id=?`, b.Start.Unix(), b.End.Unix(), b.ID); err != nil {
+		return Booking{}, err
+	}
+	loc := zoneNamed(p.Zone)
+	e.tellHolder(mbox, "Booking moved: "+p.Title+" with "+b.Name, b.Name+" <"+b.Email+"> moved "+p.Title+" from "+
+		was.In(loc).Format("Monday 2 January 2006, 15:04")+" to "+b.Start.In(loc).Format("Monday 2 January 2006, 15:04")+" ("+p.Zone+").\n")
+	return b, nil
+}
+
+// moveEvent moves an event's start and end, keeping all else, and sends its
+// guests the change.
+func (e *Engine) moveEvent(ctx context.Context, mbox, uid string, start, end time.Time) error {
+	o, err := e.accounts.eventByUID(ctx, mbox, uid)
+	if err != nil {
+		return err
+	}
+	cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
+	if err != nil {
+		return err
+	}
+	master, _ := parts(cal)
+	if master == nil {
+		return errNoSuchEvent
+	}
+	setWhen(master, EventInput{Start: start, End: end})
+	stamp(master, time.Now().UTC().Truncate(time.Second), true)
+	data, err := encodeCal(cal)
+	if err != nil {
+		return err
+	}
+	if _, err := e.accounts.davPut(ctx, mbox, davEvent, o.Name, uid, data, davCondition{ifMatch: o.ETag}); err != nil {
+		return err
+	}
+	return e.sendInvitations(ctx, mbox, o.Data, data)
 }
 
 // tellHolder delivers a short notice into the holder's own Inbox, where the
