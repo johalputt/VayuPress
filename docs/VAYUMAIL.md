@@ -117,12 +117,80 @@ card-like numbers are replaced, and encrypted or confidential messages are
 never sent. Every answer is a suggestion: **Reply with this** opens a reply
 holding it (ADR-0173).
 
+## Calendar
+
+**Calendar** beside Mail holds the mailbox's events, the same ones a phone
+or desktop program reads and writes over CalDAV. An event may repeat, in
+its own time zone; guests get an invitation by mail and their answers come
+back into it; a reminder shows on your devices or comes by mail.
+
+- **Export and import.** The calendar's menu exports every event as one
+  `.ics` file and imports one: an event you already have (the same UID) is
+  left as it is, nothing is sent to anyone, and a file cut off part way is
+  said to be.
+- **Subscribe.** Another calendar's address (`.ics`, https or webcal) is
+  read every half hour and shown beside yours, unchanged here; it can make
+  you busy on your booking pages. To show a Google Calendar, copy its
+  "Secret address in iCal format" from that calendar's settings and
+  subscribe to it; the address is kept like a password and shown by its
+  host only.
+- **Another CalDAV server.** A calendar on a server you sign in to is read
+  the same way, with an app password from that server, kept sealed.
+
+## Booking pages
+
+A booking page lets anyone with its link pick a free time from your
+calendar. You set its hours, length, gaps, notice and reach; the times it
+offers leave out your events. A guest confirms by mail, the time becomes an
+event with them as its guest, and both of you get a reminder before it.
+The guest's mail carries a link to move or cancel; a page can let a guest
+book a series (every week or every other week, up to twelve times), which
+is cancelled whole.
+
+## Drive
+
+**Drive** keeps files beside the mail, in the mailbox's one allowance.
+
+- **Kept safe.** Every file is encrypted on the server's disk under a key of
+  its own, and a private mailbox's files are sealed to its holder's key.
+  Each file's SHA-256 is kept (on its sheet, to compare with a copy
+  elsewhere) and checked every week; a file whose bytes no longer match is
+  marked damaged and said so, never handed out as sound. A backup of the
+  data directory brings every file and version back.
+- **Uploads.** A file can be up to 2 GB. It goes up in pieces, and a
+  connection that drops is waited out and the upload goes on from where it
+  stopped.
+- **Versions and Trash.** Saving over a file keeps what it was; Drive
+  settings choose how many versions (1 to 20) and how long Trash keeps
+  things (7 to 90 days). An earlier version downloads without becoming the
+  file again.
+- **Links.** A file's link may have a password, an end and a most number of
+  downloads, and says when it was last downloaded. A folder's link opens it
+  and the folders in it, and nothing above or beside it. An upload link
+  takes files into a folder without showing what is there, never writes
+  over a file, and has an end.
+- **Shared with someone here.** A file or folder is shared with another
+  mailbox on this server, to read, or a folder also to add to. They find it
+  under **Shared with me**; what they add is kept in your Drive, and they
+  delete and move nothing. A private mailbox shares by sending instead.
+- **Apps.** Drive is served over WebDAV to file managers and phones, with
+  an app password.
+
+## AI tools
+
+An AI tool can be connected to your own mail and calendar over VayuMCP: it
+asks, you sign in and choose what it may do. It searches and reads, drafts
+into Drafts for you to send, files mail and keeps events without guests; it
+never sends. **Settings › Connected tools** lists each one, what it did,
+and Disconnect. The tools are listed in
+[compatibility/mcp.md](compatibility/mcp.md).
+
 ## Settings
 
 Mail's Settings is one page of sections, listed on the left under a field
 that finds any setting by name: General, Addresses, Rules and replies,
-Privacy and security, and for a mailbox's holder Signing in and Import and
-export. The name on mail you send and the forwarding address save as they
+Privacy and security, and for a mailbox's holder Signing in, Connected
+tools and Import and export. The name on mail you send and the forwarding address save as they
 change, with "Saved. Undo" for ten seconds.
 
 ## Signing in, and keeping it yours
