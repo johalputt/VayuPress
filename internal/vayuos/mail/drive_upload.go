@@ -333,7 +333,7 @@ func (e *Engine) uploadKept(ctx context.Context, id string, u openUpload, n int6
 	if err != nil {
 		return state, err
 	}
-	fileID, err := e.keepStored(ctx, u.mbox, u.parent, u.name, u.ctype, path+".part", path, storedFile{
+	fileID, _, err := e.keepStored(ctx, u.mbox, u.parent, u.name, u.ctype, path+".part", path, storedFile{
 		blob: u.blob, fkey: u.fkey, size: u.size, sealed: u.sealed,
 		sum: hex.EncodeToString(contentSum.Sum(nil)), blobSum: hex.EncodeToString(storedSum.Sum(nil)),
 	})

@@ -87,19 +87,26 @@ func (a *App) handleDriveShare(w http.ResponseWriter, r *http.Request) {
 		shareGone(w)
 		return
 	}
+	f, err := a.vayuMail.DriveShared(token)
+	if err != nil {
+		shareGone(w)
+		return
+	}
+	switch f.Kind {
+	case vmail.ShareFolder:
+		a.shareFolderVisit(w, r, token, f)
+		return
+	case vmail.ShareUpload:
+		a.shareUploadVisit(w, r, token, f)
+		return
+	}
 	if r.Method != http.MethodPost {
-		f, err := a.vayuMail.DriveShared(token)
-		if err != nil {
-			shareGone(w)
-			return
-		}
 		writeGuestPage(w, http.StatusOK, f.Name, shareCard(f, ""))
 		return
 	}
 	done, ok := shareSlot(token)
 	if !ok {
-		w.Header().Set("Retry-After", "30")
-		writeGuestPage(w, http.StatusServiceUnavailable, "Busy", `<div class="login-card"><h1 class="login-title">Busy</h1><p class="login-sub">This link is busy. Try again in a moment.</p></div>`)
+		shareBusy(w)
 		return
 	}
 	defer done()
@@ -118,6 +125,17 @@ func (a *App) handleDriveShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer body.Close()
+	sendShared(w, f, body)
+}
+
+// shareBusy says a link has no place free for one more sending.
+func shareBusy(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", "30")
+	writeGuestPage(w, http.StatusServiceUnavailable, "Busy", `<div class="login-card"><h1 class="login-title">Busy</h1><p class="login-sub">This link is busy. Try again in a moment.</p></div>`)
+}
+
+// sendShared sends a file a link handed out.
+func sendShared(w http.ResponseWriter, f vmail.SharedFile, body io.Reader) {
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(driveTransferFor))
 	h := w.Header()
 	h.Set("X-Content-Type-Options", "nosniff")

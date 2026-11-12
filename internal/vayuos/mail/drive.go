@@ -166,6 +166,9 @@ func (s *AccountStore) ensureDriveTables() error {
 		"vayumail_drive_versions ADD COLUMN checked INTEGER NOT NULL DEFAULT 0",
 		"vayumail_drive_versions ADD COLUMN damaged INTEGER NOT NULL DEFAULT 0",
 		"vayumail_drive_shares ADD COLUMN fkey TEXT NOT NULL DEFAULT ''",
+		// What a link opens (drive_share_folder.go): a file, a folder to
+		// look through, or a folder to upload into.
+		"vayumail_drive_shares ADD COLUMN kind TEXT NOT NULL DEFAULT 'file'",
 	} {
 		if _, err := s.db.Exec(`ALTER TABLE ` + add); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return err
@@ -396,47 +399,54 @@ func (e *Engine) DriveMkdir(rd Reader, parent int64, name string) (int64, error)
 // DrivePut keeps r as the file name in parent. A file of that name already
 // there is written over, and what it was is kept as a version.
 func (e *Engine) DrivePut(rd Reader, parent int64, name, ctype string, r io.Reader) (int64, error) {
+	id, _, err := e.drivePut(rd, parent, name, ctype, r, false)
+	return id, err
+}
+
+// drivePut keeps r as the file name in parent: over a file of that name,
+// or, fresh, under a name of its own (DriveKeepNew). It answers the name.
+func (e *Engine) drivePut(rd Reader, parent int64, name, ctype string, r io.Reader, fresh bool) (int64, string, error) {
 	mbox, err := e.driveOf(rd)
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	if name, err = driveName(name); err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	defer e.forgetUsage(mbox)
 	ctx := context.Background()
 	if err := e.driveFolder(ctx, mbox, parent); err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	old, replacing := e.driveNamed(ctx, mbox, parent, name)
-	if replacing && old.IsDir {
-		return 0, ErrDriveExists
+	if replacing && old.IsDir && !fresh {
+		return 0, "", ErrDriveExists
 	}
-	if !replacing {
+	if !replacing || fresh {
 		if err := e.driveRoom(ctx, mbox); err != nil {
-			return 0, err
+			return 0, "", err
 		}
 	}
 	private := e.maildir != nil && e.maildir.keys != nil && e.maildir.keys.HolderKeeps(mbox)
 	key, fkey, err := e.newFileKey(mbox, private)
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	blob, err := randomHex(16)
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	path, err := e.blobPath(mbox, blob)
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	tmp := path + ".part"
 	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600) // #nosec G304 -- path is the mailbox's own directory and a random hex name
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	discard := func() { _ = f.Close(); _ = os.Remove(tmp) }
 	// The content is sealed chunk by chunk as it arrives, so a file of any
@@ -446,31 +456,31 @@ func (e *Engine) DrivePut(rd Reader, parent int64, name, ctype string, r io.Read
 	bw, err := newBlobWriter(io.MultiWriter(f, storedSum), key)
 	if err != nil {
 		discard()
-		return 0, err
+		return 0, "", err
 	}
 	size, err := io.Copy(io.MultiWriter(bw, contentSum), io.LimitReader(r, maxDriveFile+1))
 	if err != nil {
 		discard()
-		return 0, err
+		return 0, "", err
 	}
 	if size > maxDriveFile {
 		discard()
-		return 0, ErrDriveTooLarge
+		return 0, "", ErrDriveTooLarge
 	}
 	if err := bw.Close(); err != nil {
 		discard()
-		return 0, err
+		return 0, "", err
 	}
 	if err := f.Close(); err != nil {
 		_ = os.Remove(tmp)
-		return 0, err
+		return 0, "", err
 	}
 	sealed := 0
 	if private {
 		sealed = 1
 	}
 	sum, blobSum := hex.EncodeToString(contentSum.Sum(nil)), hex.EncodeToString(storedSum.Sum(nil))
-	return e.keepStored(ctx, mbox, parent, name, ctype, tmp, path, storedFile{blob: blob, fkey: fkey, size: size, sealed: sealed, sum: sum, blobSum: blobSum})
+	return e.keepStored(ctx, mbox, parent, name, ctype, tmp, path, storedFile{blob: blob, fkey: fkey, size: size, sealed: sealed, sum: sum, blobSum: blobSum, fresh: fresh})
 }
 
 // storedFile is a file's bytes as written, ready to be named by a row.
@@ -478,25 +488,36 @@ type storedFile struct {
 	blob, fkey, sum, blobSum string
 	size                     int64
 	sealed                   int
+	// fresh: never over a file already there; a name taken is numbered
+	// when the row is made, so a name taken while the bytes were arriving
+	// is not written over either.
+	fresh bool
 }
 
 // keepStored makes the bytes written at tmp the file name in parent: a new
 // row, or the file of that name again with what it was kept as a version.
 // The allowance is checked last, when the size is known. A name taken by a
-// folder since the bytes began is refused.
-func (e *Engine) keepStored(ctx context.Context, mbox string, parent int64, name, ctype, tmp, path string, f storedFile) (int64, error) {
+// folder since the bytes began is refused. It answers the name kept under.
+func (e *Engine) keepStored(ctx context.Context, mbox string, parent int64, name, ctype, tmp, path string, f storedFile) (int64, string, error) {
 	if quota := e.accounts.QuotaFor(ctx, mbox); quota > 0 && e.mailboxUsage(mbox, false)+f.size > quota {
 		_ = os.Remove(tmp)
-		return 0, ErrDriveFull
+		return 0, "", ErrDriveFull
+	}
+	if f.fresh {
+		var ok bool
+		if name, ok = e.freeName(ctx, mbox, parent, name); !ok {
+			_ = os.Remove(tmp)
+			return 0, "", ErrDriveExists
+		}
 	}
 	old, replacing := e.driveNamed(ctx, mbox, parent, name)
 	if replacing && old.IsDir {
 		_ = os.Remove(tmp)
-		return 0, ErrDriveExists
+		return 0, "", ErrDriveExists
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
-		return 0, err
+		return 0, "", err
 	}
 	defer e.forgetUsage(mbox)
 	now := time.Now().UTC()
@@ -505,32 +526,33 @@ func (e *Engine) keepStored(ctx context.Context, mbox string, parent int64, name
 			VALUES(?,?,?,0,?,?,?,?,?,?,?,?,?)`, mbox, parent, name, f.size, f.blob, f.sealed, oneLine(ctype), now, f.fkey, f.sum, f.blobSum, now.Unix())
 		if err != nil {
 			_ = os.Remove(path)
-			return 0, err
+			return 0, "", err
 		}
-		return res.LastInsertId()
+		id, err := res.LastInsertId()
+		return id, name, err
 	}
 	tx, err := e.accounts.db.BeginTx(ctx, nil)
 	if err != nil {
 		_ = os.Remove(path)
-		return 0, err
+		return 0, "", err
 	}
 	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, `INSERT INTO vayumail_drive_versions(mailbox,file_id,size,blob,sealed,saved,fkey,sum,blob_sum,checked,damaged)
 		SELECT mailbox,id,size,blob,sealed,modified,fkey,sum,blob_sum,checked,damaged FROM vayumail_drive WHERE id=? AND mailbox=?`, old.ID, mbox); err != nil {
 		_ = os.Remove(path)
-		return 0, err
+		return 0, "", err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE vayumail_drive SET size=?, blob=?, sealed=?, ctype=?, modified=?, fkey=?, sum=?, blob_sum=?, checked=?, damaged=0 WHERE id=? AND mailbox=?`,
 		f.size, f.blob, f.sealed, oneLine(ctype), now, f.fkey, f.sum, f.blobSum, now.Unix(), old.ID, mbox); err != nil {
 		_ = os.Remove(path)
-		return 0, err
+		return 0, "", err
 	}
 	if err := tx.Commit(); err != nil {
 		_ = os.Remove(path)
-		return 0, err
+		return 0, "", err
 	}
 	e.pruneVersions(ctx, mbox, old.ID)
-	return old.ID, nil
+	return old.ID, name, nil
 }
 
 // DriveKeepNew keeps r as a new file in parent, never over one already
@@ -538,25 +560,20 @@ func (e *Engine) keepStored(ctx context.Context, mbox string, parent int64, name
 // saves comes by a sender's name for it, and two messages' "invoice.pdf"
 // are two files, not one written over. It answers the name it used.
 func (e *Engine) DriveKeepNew(rd Reader, parent int64, name, ctype string, r io.Reader) (int64, string, error) {
-	mbox, err := e.driveOf(rd)
-	if err != nil {
-		return 0, "", err
-	}
-	if name, err = driveName(name); err != nil {
-		return 0, "", err
-	}
+	return e.drivePut(rd, parent, name, ctype, r, true)
+}
+
+// freeName is name, or the first numbered name after it, that nothing in
+// parent has.
+func (e *Engine) freeName(ctx context.Context, mbox string, parent int64, name string) (string, bool) {
 	free := name
-	for n := 2; ; n++ {
-		if _, taken := e.driveNamed(context.Background(), mbox, parent, free); !taken {
-			break
-		}
-		if n > 999 {
-			return 0, "", ErrDriveExists
+	for n := 2; n <= 1000; n++ {
+		if _, taken := e.driveNamed(ctx, mbox, parent, free); !taken {
+			return free, true
 		}
 		free = numberedName(name, n)
 	}
-	id, err := e.DrivePut(rd, parent, free, ctype, r)
-	return id, free, err
+	return "", false
 }
 
 // numberedName is name with (n) before its extension, kept inside the 255

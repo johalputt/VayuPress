@@ -68,6 +68,9 @@ type DriveShare struct {
 	Most      int // 0: any number
 	Downloads int
 	Copy      bool // an unsealed copy of a sealed file is kept for it
+	// Kind is ShareFile, ShareFolder or ShareUpload; Downloads counts the
+	// files an upload link has taken.
+	Kind string
 	// Recent is when the link's latest downloads were handed out, newest
 	// first: at most maxShareRecord.
 	Recent []time.Time
@@ -82,13 +85,21 @@ type SharedFile struct {
 	Size     int64
 	From     string // the mailbox that shared it
 	Password bool
+	Kind     string // ShareFile, ShareFolder or ShareUpload
 }
 
 // driveLive reports whether a file is one a link may hand out: a file, not
 // in Trash, and in no folder that is.
 func (e *Engine) driveLive(ctx context.Context, mbox string, id int64) (DriveEntry, bool) {
+	file, ok := e.driveLiveEntry(ctx, mbox, id)
+	return file, ok && !file.IsDir
+}
+
+// driveLiveEntry reports whether an entry, file or folder, is out of Trash
+// and in no folder that is.
+func (e *Engine) driveLiveEntry(ctx context.Context, mbox string, id int64) (DriveEntry, bool) {
 	file, err := e.driveEntry(ctx, mbox, id)
-	if err != nil || file.IsDir || !file.Trashed.IsZero() {
+	if err != nil || !file.Trashed.IsZero() {
 		return file, false
 	}
 	for n, up := 0, file.Parent; up != 0; n++ {
@@ -141,13 +152,9 @@ func (e *Engine) DriveShareFile(rd Reader, id int64, password string, ttl time.D
 			return "", err
 		}
 	}
-	var expires any
 	now := time.Now().UTC()
-	if ttl > 0 {
-		expires = now.Add(ttl)
-	}
 	if _, err := e.accounts.db.ExecContext(ctx, `INSERT INTO vayumail_drive_shares(mailbox,file_id,token_hash,pass_hash,created,expires,most,blob,size,fkey) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-		mbox, id, hashRecoveryToken(token), passHash, now, expires, most, copyBlob, copySize, copyKey); err != nil {
+		mbox, id, hashRecoveryToken(token), passHash, now, expiresAt(now, ttl), most, copyBlob, copySize, copyKey); err != nil {
 		if copyBlob != "" {
 			e.removeBlob(mbox, copyBlob)
 		}
@@ -220,7 +227,7 @@ func (e *Engine) DriveShares(rd Reader, id int64) ([]DriveShare, error) {
 	}
 	ctx := context.Background()
 	e.sweepShares(ctx, time.Now())
-	rows, err := e.accounts.db.QueryContext(ctx, `SELECT id,file_id,created,expires,pass_hash<>'',most,downloads,blob<>'' FROM vayumail_drive_shares WHERE mailbox=? AND file_id=? ORDER BY id DESC`, mbox, id)
+	rows, err := e.accounts.db.QueryContext(ctx, `SELECT id,file_id,created,expires,pass_hash<>'',most,downloads,blob<>'',kind FROM vayumail_drive_shares WHERE mailbox=? AND file_id=? ORDER BY id DESC`, mbox, id)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +236,7 @@ func (e *Engine) DriveShares(rd Reader, id int64) ([]DriveShare, error) {
 	for rows.Next() {
 		var s DriveShare
 		var expires sql.NullTime
-		if err := rows.Scan(&s.ID, &s.File, &s.Created, &expires, &s.Password, &s.Most, &s.Downloads, &s.Copy); err != nil {
+		if err := rows.Scan(&s.ID, &s.File, &s.Created, &expires, &s.Password, &s.Most, &s.Downloads, &s.Copy, &s.Kind); err != nil {
 			return nil, err
 		}
 		if expires.Valid {
@@ -327,41 +334,99 @@ type shareRow struct {
 	id                   int64
 	mbox, passHash, blob string
 	fkey                 string // the copy's key, '' for none
+	kind                 string
 	file                 int64
 	most, downloads      int
 	size                 int64
 }
 
-// shareByToken is the open link a token names, with its live file.
-func (e *Engine) shareByToken(ctx context.Context, token string) (shareRow, DriveEntry, error) {
+// shareByToken is the open link a token names, of the kind asked for, with
+// its live file or folder.
+func (e *Engine) shareByToken(ctx context.Context, token, kind string) (shareRow, DriveEntry, error) {
 	var s shareRow
 	if e.accounts == nil || len(token) != 64 || e.accounts.ensureDriveTables() != nil {
 		return s, DriveEntry{}, ErrShareGone
 	}
 	e.sweepShares(ctx, time.Now())
-	if err := e.accounts.db.QueryRowContext(ctx, `SELECT id,mailbox,file_id,pass_hash,most,downloads,blob,size,fkey FROM vayumail_drive_shares WHERE token_hash=?`, hashRecoveryToken(token)).
-		Scan(&s.id, &s.mbox, &s.file, &s.passHash, &s.most, &s.downloads, &s.blob, &s.size, &s.fkey); err != nil {
+	if err := e.accounts.db.QueryRowContext(ctx, `SELECT id,mailbox,file_id,pass_hash,most,downloads,blob,size,fkey,kind FROM vayumail_drive_shares WHERE token_hash=?`, hashRecoveryToken(token)).
+		Scan(&s.id, &s.mbox, &s.file, &s.passHash, &s.most, &s.downloads, &s.blob, &s.size, &s.fkey, &s.kind); err != nil {
 		return s, DriveEntry{}, ErrShareGone
 	}
 	// A suspended mailbox shares nothing, as it books nothing.
 	var active int
 	_ = e.accounts.db.QueryRowContext(ctx, `SELECT active FROM vayumail_accounts WHERE email=?`, s.mbox).Scan(&active)
-	file, live := e.driveLive(ctx, s.mbox, s.file)
-	// A sealed file is handed out only as the copy made for this link.
-	if active != 1 || !live || (file.Sealed && s.blob == "") {
+	file, live := e.driveLiveEntry(ctx, s.mbox, s.file)
+	// A sealed file is handed out only as the copy made for this link. A
+	// link's kind was fixed by what it was made on, which stays a file or a
+	// folder, so the kind alone says which it opens.
+	if active != 1 || !live || (kind != "" && s.kind != kind) || (file.Sealed && s.blob == "") {
 		return s, DriveEntry{}, ErrShareGone
 	}
 	return s, file, nil
 }
 
-// DriveShared is what a link's page shows before anything is handed out.
+// shareAdmits checks a link's password, counting a wrong one: at
+// shareMaxFailures the link is gone.
+func (e *Engine) shareAdmits(ctx context.Context, s shareRow, password string) error {
+	if s.passHash == "" || auth.VerifySecretArgon2id(password, s.passHash) {
+		return nil
+	}
+	_, _ = e.accounts.db.ExecContext(ctx, `UPDATE vayumail_drive_shares SET failures=failures+1 WHERE id=?`, s.id)
+	_ = e.dropShares(ctx, `SELECT id,mailbox,blob FROM vayumail_drive_shares WHERE id=? AND failures>=?`, s.id, shareMaxFailures)
+	return ErrSharePassword
+}
+
+// shareTake counts one use of a link (a download, or a file an upload link
+// took) and records when, or reports that the link is used up. The count is
+// taken before the bytes move, so two people at the last use do not both
+// get it.
+func (e *Engine) shareTake(ctx context.Context, s shareRow) error {
+	res, err := e.accounts.db.ExecContext(ctx, `UPDATE vayumail_drive_shares SET downloads=downloads+1 WHERE id=? AND (most=0 OR downloads<most)`, s.id)
+	if err != nil {
+		return ErrShareGone
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return ErrShareGone
+	}
+	// When it was used, the latest maxShareRecord kept; nothing of who
+	// asked, whom the holder cannot be told about by a link anyway.
+	now := time.Now().Unix()
+	_, _ = e.accounts.db.ExecContext(ctx, `INSERT INTO vayumail_drive_share_downloads(share_id,at) VALUES(?,?)`, s.id, now)
+	_, _ = e.accounts.db.ExecContext(ctx, `DELETE FROM vayumail_drive_share_downloads WHERE share_id=? AND rowid NOT IN
+		(SELECT rowid FROM vayumail_drive_share_downloads WHERE share_id=? ORDER BY at DESC, rowid DESC LIMIT ?)`, s.id, s.id, maxShareRecord)
+	return nil
+}
+
+// sharedBytes opens a file's bytes as kept (blob, fkey, size) for a link.
+func (e *Engine) sharedBytes(mbox, blob, fkey string, size int64) (io.ReadCloser, error) {
+	if fkey != "" {
+		r, err := e.openBlob(mbox, blob, fkey, size, func() { e.markDamaged(mbox, blob) })
+		if err != nil {
+			return nil, ErrShareGone
+		}
+		return r, nil
+	}
+	// A file, or a copy, kept before files were kept in chunks.
+	path, err := e.blobPath(mbox, blob)
+	if err != nil {
+		return nil, ErrShareGone
+	}
+	f, err := os.Open(path) // #nosec G304 -- blobPath admits only this package's hex names under the mailbox's directory
+	if err != nil {
+		return nil, ErrShareGone
+	}
+	return f, nil
+}
+
+// DriveShared is what a link's page shows before anything is handed out:
+// for a folder or an upload link, the folder's name.
 func (e *Engine) DriveShared(token string) (SharedFile, error) {
-	s, file, err := e.shareByToken(context.Background(), token)
+	s, file, err := e.shareByToken(context.Background(), token, "")
 	if err != nil {
 		return SharedFile{}, err
 	}
 	// Used up: the page says so before a press finds out. The press itself
-	// is decided by the count it takes (DriveSharedOpen), not by this.
+	// is decided by the count it takes (shareTake), not by this.
 	if s.most > 0 && s.downloads >= s.most {
 		return SharedFile{}, ErrShareGone
 	}
@@ -369,37 +434,23 @@ func (e *Engine) DriveShared(token string) (SharedFile, error) {
 	if s.blob != "" {
 		size = s.size
 	}
-	return SharedFile{Name: file.Name, Size: size, From: s.mbox, Password: s.passHash != ""}, nil
+	return SharedFile{Name: file.Name, Size: size, From: s.mbox, Password: s.passHash != "", Kind: s.kind}, nil
 }
 
-// DriveSharedOpen hands out a link's file, counted as one download. A wrong
-// password is counted, and at shareMaxFailures the link is gone. The count
-// of downloads is taken before the bytes are opened, so two people at the
-// last download do not both get it.
+// DriveSharedOpen hands out a file link's file, counted as one download. A
+// wrong password is counted, and at shareMaxFailures the link is gone.
 func (e *Engine) DriveSharedOpen(token, password string) (SharedFile, io.ReadCloser, error) {
 	ctx := context.Background()
-	s, file, err := e.shareByToken(ctx, token)
+	s, file, err := e.shareByToken(ctx, token, ShareFile)
 	if err != nil {
 		return SharedFile{}, nil, err
 	}
-	if s.passHash != "" && !auth.VerifySecretArgon2id(password, s.passHash) {
-		_, _ = e.accounts.db.ExecContext(ctx, `UPDATE vayumail_drive_shares SET failures=failures+1 WHERE id=?`, s.id)
-		_ = e.dropShares(ctx, `SELECT id,mailbox,blob FROM vayumail_drive_shares WHERE id=? AND failures>=?`, s.id, shareMaxFailures)
-		return SharedFile{}, nil, ErrSharePassword
+	if err := e.shareAdmits(ctx, s, password); err != nil {
+		return SharedFile{}, nil, err
 	}
-	res, err := e.accounts.db.ExecContext(ctx, `UPDATE vayumail_drive_shares SET downloads=downloads+1 WHERE id=? AND (most=0 OR downloads<most)`, s.id)
-	if err != nil {
-		return SharedFile{}, nil, ErrShareGone
+	if err := e.shareTake(ctx, s); err != nil {
+		return SharedFile{}, nil, err
 	}
-	if n, _ := res.RowsAffected(); n != 1 {
-		return SharedFile{}, nil, ErrShareGone
-	}
-	// When it was handed out, the latest maxShareRecord kept; nothing of
-	// who asked, whom the holder cannot be told about by a link anyway.
-	now := time.Now().Unix()
-	_, _ = e.accounts.db.ExecContext(ctx, `INSERT INTO vayumail_drive_share_downloads(share_id,at) VALUES(?,?)`, s.id, now)
-	_, _ = e.accounts.db.ExecContext(ctx, `DELETE FROM vayumail_drive_share_downloads WHERE share_id=? AND rowid NOT IN
-		(SELECT rowid FROM vayumail_drive_share_downloads WHERE share_id=? ORDER BY at DESC, rowid DESC LIMIT ?)`, s.id, s.id, maxShareRecord)
 	blob, fkey, size := s.blob, s.fkey, s.size
 	if blob == "" {
 		size = file.Size
@@ -407,22 +458,9 @@ func (e *Engine) DriveSharedOpen(token, password string) (SharedFile, io.ReadClo
 			return SharedFile{}, nil, ErrShareGone
 		}
 	}
-	var f io.ReadCloser
-	if fkey != "" {
-		r, err := e.openBlob(s.mbox, blob, fkey, size, func() { e.markDamaged(s.mbox, blob) })
-		if err != nil {
-			return SharedFile{}, nil, ErrShareGone
-		}
-		f = r
-	} else {
-		// A file, or a copy, kept before files were kept in chunks.
-		path, err := e.blobPath(s.mbox, blob)
-		if err != nil {
-			return SharedFile{}, nil, ErrShareGone
-		}
-		if f, err = os.Open(path); err != nil { // #nosec G304 -- blobPath admits only this package's hex names under the mailbox's directory
-			return SharedFile{}, nil, ErrShareGone
-		}
+	f, err := e.sharedBytes(s.mbox, blob, fkey, size)
+	if err != nil {
+		return SharedFile{}, nil, err
 	}
-	return SharedFile{Name: file.Name, Size: size, From: s.mbox, Password: s.passHash != ""}, f, nil
+	return SharedFile{Name: file.Name, Size: size, From: s.mbox, Password: s.passHash != "", Kind: ShareFile}, f, nil
 }
