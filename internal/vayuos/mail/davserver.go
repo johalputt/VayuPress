@@ -19,6 +19,7 @@ package mail
 //
 //	/dav/card/<mailbox>/books/contacts/<card>
 //	/dav/cal/<mailbox>/calendars/calendar/<event>
+//	/dav/files/<folder>/<file> (davfiles.go)
 //
 // /.well-known/carddav and /.well-known/caldav lead an app to the start of
 // each (RFC 6764), so the server's name is all a person types.
@@ -27,6 +28,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"path"
 	"strings"
@@ -75,6 +77,7 @@ func davFrom(ctx context.Context) davRequest {
 func (e *Engine) DAVHandler(signIn func(user, password string) (string, bool)) http.Handler {
 	books := &carddav.Handler{Backend: davBooks{e.accounts}, Prefix: davCardRoot}
 	cals := &caldav.Handler{Backend: davCals{e.accounts}, Prefix: davCalRoot}
+	files := &webdav.Handler{FileSystem: davFiles{e}}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/.well-known/carddav":
@@ -90,6 +93,8 @@ func (e *Engine) DAVHandler(signIn func(user, password string) (string, bool)) h
 			h = books
 		case r.URL.Path == davCalRoot || strings.HasPrefix(r.URL.Path, davCalRoot+"/"):
 			h = cals
+		case r.URL.Path == davFilesRoot || strings.HasPrefix(r.URL.Path, davFilesRoot+"/"):
+			h = files
 		default:
 			http.NotFound(w, r)
 			return
@@ -104,14 +109,51 @@ func (e *Engine) DAVHandler(signIn func(user, password string) (string, bool)) h
 			http.Error(w, "Sign in with the mailbox's address and an app password.", http.StatusUnauthorized)
 			return
 		}
+		if h == files {
+			// A file is a body as large as Drive takes, and it goes back as
+			// bytes to keep: /dav/files is on the site's own origin, and a
+			// browser led to an uploaded page there is not shown one.
+			r.Body = davBounded(w, r.Body, maxDriveFile+1)
+			if r.Method == http.MethodGet || r.Method == http.MethodHead {
+				hd := w.Header()
+				hd.Set("X-Content-Type-Options", "nosniff")
+				hd.Set("Content-Security-Policy", "default-src 'none'; sandbox")
+				hd.Set("Content-Disposition", "attachment")
+				hd.Set("Cache-Control", "private, no-store")
+			}
+			rq := davRequest{mailbox: mailbox}
+			h.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), davCtxKey{}, rq)))
+			return
+		}
 		if r.Method == "MKCOL" || r.Method == "MKCALENDAR" {
 			http.Error(w, errDAVFixed.Error(), http.StatusForbidden)
 			return
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, maxDAVRequest)
+		r.Body = davBounded(w, r.Body, maxDAVRequest)
 		rq := davRequest{mailbox: mailbox, cond: davConditionOf(webdav.ConditionalMatch(r.Header.Get("If-Match")), webdav.ConditionalMatch(r.Header.Get("If-None-Match")))}
 		h.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), davCtxKey{}, rq)))
 	})
+}
+
+// davBounded is a request body cut off at limit, as http.MaxBytesReader
+// does, that still says when it is empty. The protocol lets an app ask
+// for everything by sending no body, and the handler finds that out with a
+// read of nothing; MaxBytesReader answers that read with no end of file,
+// so every bodiless PROPFIND was refused as a body that is not XML.
+func davBounded(w http.ResponseWriter, body io.ReadCloser, limit int64) io.ReadCloser {
+	return davBody{ReadCloser: http.MaxBytesReader(w, body, limit), raw: body}
+}
+
+type davBody struct {
+	io.ReadCloser
+	raw io.Reader
+}
+
+func (b davBody) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return b.raw.Read(p)
+	}
+	return b.ReadCloser.Read(p)
 }
 
 // davConditionOf reads If-Match and If-None-Match. A tag that does not parse

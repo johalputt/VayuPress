@@ -1606,15 +1606,17 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 			ui.Row{Label: "Password", Hint: "An app password for a device; the mailbox password works too", Control: ui.Text("App password")},
 		)))))
 
-	// Contacts and calendar (vayuos_mail_dav.go), on this site's own address:
-	// Apple's and DAVx5's setup find the rest from the server's name.
+	// Contacts, calendar and files (vayuos_mail_dav.go), on this site's own
+	// address: Apple's and DAVx5's setup find the first two from the
+	// server's name; a file app is given the files address itself.
 	origin := publicOrigin(r)
-	sections = append(sections, ui.Section("Contacts and calendar", "CardDAV and CalDAV, for phones and desktop apps",
-		ui.HTML(`<p class="sa-list__note">Add a CardDAV or CalDAV account with the server below, your address and an app password. The contacts are the ones in Mail, and a change on either side reaches the other.`+
-			string(ui.Tip("Groups stay in Mail and do not travel to the phone. The calendar is kept for your apps; the console has no calendar of its own."))+`</p>`+string(ui.Rows(
+	sections = append(sections, ui.Section("Contacts, calendar and files", "CardDAV, CalDAV and WebDAV, for phones and desktop apps",
+		ui.HTML(`<p class="sa-list__note">Add a CardDAV or CalDAV account with the server below, your address and an app password. The contacts are the ones in Mail and the calendar is the one in Calendar, and a change on either side reaches the other. A computer's or phone's file app opens Drive as a folder at the files address.`+
+			string(ui.Tip("Groups stay in Mail and do not travel to the phone. A file deleted from a file app goes to Drive's Trash, where it stays thirty days."))+`</p>`+string(ui.Rows(
 			ui.Row{Label: "Server", Hint: "Enough for Apple devices and DAVx5", Control: val(origin)},
 			ui.Row{Label: "Contacts · CardDAV", Control: val(origin + "/dav/card/")},
 			ui.Row{Label: "Calendar · CalDAV", Control: val(origin + "/dav/cal/")},
+			ui.Row{Label: "Files · WebDAV", Hint: "Connect to server in Finder, Map network drive in Windows, or a phone's file app", Control: val(origin + "/dav/files/")},
 			ui.Row{Label: "Username", Control: ui.Text("Your full address, such as you@" + mc.Domain)},
 			ui.Row{Label: "Password", Hint: "The same app password a mail app uses", Control: ui.Text("App password")},
 		)))))

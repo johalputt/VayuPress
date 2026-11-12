@@ -545,3 +545,16 @@ func TestCardsAndEventsGoWithTheirMailbox(t *testing.T) {
 		}
 	}
 }
+
+// TestAPropfindWithNoBodyIsAnswered — the protocol lets an app ask for
+// everything by sending no body at all, and some do. The body's bound
+// answered a zero-length read without its end, which read as "a body is
+// here" and was refused as one that is not XML.
+func TestAPropfindWithNoBodyIsAnswered(t *testing.T) {
+	f := newDAV(t)
+	for _, p := range []string{"/dav/card/" + groupOwner + "/books/contacts/", "/dav/cal/" + groupOwner + "/calendars/calendar/"} {
+		if code, _, body := f.req("PROPFIND", p, "", "Depth", "0"); code != http.StatusMultiStatus {
+			t.Errorf("a bodiless PROPFIND of %s: %d %s", p, code, body)
+		}
+	}
+}

@@ -227,7 +227,7 @@ Entry points, assets and every mitigation's mechanism are in the
 | `github.com/alecthomas/chroma/v2` | Code highlighting |
 | `github.com/ProtonMail/go-crypto` | OpenPGP |
 | `github.com/emersion/go-msgauth`, `blitiri.com.ar/go/spf` | DKIM, DMARC, SPF |
-| `github.com/emersion/go-webdav`, `go-ical`, `go-vcard` | Contacts and calendars over DAV |
+| `github.com/emersion/go-webdav`, `go-ical`, `go-vcard` | Contacts, calendars and Drive's files over DAV |
 | `github.com/digitorus/pkcs7`, `software.sslmate.com/src/go-pkcs12` | S/MIME |
 | `github.com/sigstore/sigstore-go` | Verifying signed releases |
 | `gitlab.torproject.org/…/goptlib`, `…/lyrebird` | Tor pluggable transports (obfs4) |

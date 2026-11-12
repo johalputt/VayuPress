@@ -805,19 +805,11 @@ func (e *Engine) DriveRename(rd Reader, id int64, name string) error {
 	if err != nil {
 		return err
 	}
-	if name, err = driveName(name); err != nil {
-		return err
-	}
-	ctx := context.Background()
-	d, err := e.driveEntry(ctx, mbox, id)
+	d, err := e.driveEntry(context.Background(), mbox, id)
 	if err != nil {
 		return err
 	}
-	if other, taken := e.driveNamed(ctx, mbox, d.Parent, name); taken && other.ID != id {
-		return ErrDriveExists
-	}
-	_, err = e.accounts.db.ExecContext(ctx, `UPDATE vayumail_drive SET name=? WHERE id=? AND mailbox=?`, name, id, mbox)
-	return err
+	return e.DriveMoveAs(rd, id, d.Parent, name)
 }
 
 // DriveMove puts an entry in another folder (0 for the top).
@@ -826,9 +818,26 @@ func (e *Engine) DriveMove(rd Reader, id, to int64) error {
 	if err != nil {
 		return err
 	}
-	ctx := context.Background()
-	d, err := e.driveEntry(ctx, mbox, id)
+	d, err := e.driveEntry(context.Background(), mbox, id)
 	if err != nil {
+		return err
+	}
+	return e.DriveMoveAs(rd, id, to, d.Name)
+}
+
+// DriveMoveAs puts an entry in folder to (0 for the top) under name, in one
+// step: an app's MOVE renames and moves at once, and two steps would leave
+// the entry half done when the second is refused.
+func (e *Engine) DriveMoveAs(rd Reader, id, to int64, name string) error {
+	mbox, err := e.driveOf(rd)
+	if err != nil {
+		return err
+	}
+	if name, err = driveName(name); err != nil {
+		return err
+	}
+	ctx := context.Background()
+	if _, err := e.driveEntry(ctx, mbox, id); err != nil {
 		return err
 	}
 	if err := e.driveFolder(ctx, mbox, to); err != nil {
@@ -846,10 +855,10 @@ func (e *Engine) DriveMove(rd Reader, id, to int64) error {
 		}
 		at = up.Parent
 	}
-	if _, taken := e.driveNamed(ctx, mbox, to, d.Name); taken {
+	if other, taken := e.driveNamed(ctx, mbox, to, name); taken && other.ID != id {
 		return ErrDriveExists
 	}
-	_, err = e.accounts.db.ExecContext(ctx, `UPDATE vayumail_drive SET parent=? WHERE id=? AND mailbox=?`, to, id, mbox)
+	_, err = e.accounts.db.ExecContext(ctx, `UPDATE vayumail_drive SET parent=?, name=? WHERE id=? AND mailbox=?`, to, name, id, mbox)
 	return err
 }
 

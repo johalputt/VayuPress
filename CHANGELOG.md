@@ -21,6 +21,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   site, and only PNG, JPEG, GIF and WebP pictures are shown in place. Drive
   opens for the mailbox's holder alone; an administrator who opens someone's
   mailbox does not see their files.
+- **Drive in a computer's or phone's file app (WebDAV).** Drive opens as a
+  folder at `/dav/files/` on your site's address, signed in with your
+  address and an app password, as contacts and calendar sync are: Connect
+  to server in Finder, Map network drive in Windows, or a phone's file app.
+  The Connect a device page shows the address. It is the same Drive as the
+  page: the allowance, sizes, sealing and versions hold, and a file deleted
+  from an app goes to Drive's Trash. A file is handed back as bytes to
+  keep, never shown as a page of your site.
 - **Drive inside Mail.** An attachment has **Save to Drive** beside its
   download: the file goes into your Drive under its own name, and beside a
   file of that name rather than over it. The composer has **Attach from
@@ -52,6 +60,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Contacts and calendar apps that ask with no request body are
+  answered.** The protocol lets an app ask for everything by sending no
+  body, and the server refused such a request as a body it could not read.
+  The Connect a device page no longer says the console has no calendar of
+  its own.
 - **A client account is offered only what it can open.** A client of the
   studio who holds a mailbox is given the mailbox, not the Calendar or
   Drive beside it. Since 3.18.36 its top bar named the Calendar and an

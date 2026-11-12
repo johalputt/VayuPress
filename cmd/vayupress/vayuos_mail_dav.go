@@ -2,13 +2,15 @@
 
 package main
 
-// vayuos_mail_dav.go — contacts and calendar sync for a mailbox's apps
-// (internal/vayuos/mail/davserver.go), signed in as the mail protocols are.
+// vayuos_mail_dav.go — contacts, calendar and files for a mailbox's apps
+// (internal/vayuos/mail/davserver.go, davfiles.go), signed in as the mail
+// protocols are.
 
 import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -33,6 +35,13 @@ func (a *App) handleMailDAV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ip := auth.ClientIP(r)
+	// A file kept or fetched by a file app can be a hundred megabytes; the
+	// server's deadlines suit a page. Contacts and events keep them.
+	if r.URL.Path == "/dav/files" || strings.HasPrefix(r.URL.Path, "/dav/files/") {
+		rc := http.NewResponseController(w)
+		_ = rc.SetReadDeadline(time.Now().Add(driveTransferFor))
+		_ = rc.SetWriteDeadline(time.Now().Add(driveTransferFor))
+	}
 	a.vayuMail.DAVHandler(func(user, password string) (string, bool) { return a.davSignIn(user, password, ip) }).ServeHTTP(w, r)
 }
 
