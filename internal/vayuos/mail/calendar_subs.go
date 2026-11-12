@@ -57,6 +57,9 @@ type CalSubscription struct {
 	ID   int64
 	Name string
 	URL  string
+	// User is the name it is signed in to another CalDAV server with, ""
+	// for an address read as it is.
+	User string
 	// Busy: its events make the holder busy on their booking pages.
 	Busy    bool
 	Fetched time.Time // the last read, good or not; zero before the first
@@ -77,7 +80,18 @@ func (s *AccountStore) ensureCalSubTable() error {
 		fetched INTEGER NOT NULL DEFAULT 0,
 		error TEXT NOT NULL DEFAULT '',
 		data BLOB);`)
-	return err
+	if err != nil {
+		return err
+	}
+	// A calendar on another CalDAV server is signed in to: its user name,
+	// and its password sealed (calendar_caldav.go). Added in place on an
+	// install that made the table before.
+	for _, col := range []string{"user", "secret"} {
+		if _, err := s.db.Exec(`ALTER TABLE vayumail_cal_subs ADD COLUMN ` + col + ` TEXT NOT NULL DEFAULT ''`); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return err
+		}
+	}
+	return nil
 }
 
 // calSubURL is a feed's address as it is fetched: webcal is https.
@@ -139,11 +153,16 @@ func parseFeed(data []byte) ([]*ical.Calendar, error) {
 // reads it once. The subscription is kept whether or not that first read
 // works; the page says how it went.
 func (e *Engine) AddCalendarSubscription(rd Reader, name, rawURL string, busy bool, now time.Time) (int64, error) {
-	mbox, err := e.calendarOf(rd)
+	addr, err := calSubURL(rawURL)
 	if err != nil {
 		return 0, err
 	}
-	addr, err := calSubURL(rawURL)
+	return e.addSubscription(rd, name, addr, "", "", busy, now)
+}
+
+// addSubscription keeps a subscription of rd's calendar and reads it once.
+func (e *Engine) addSubscription(rd Reader, name, addr, user, sealed string, busy bool, now time.Time) (int64, error) {
+	mbox, err := e.calendarOf(rd)
 	if err != nil {
 		return 0, err
 	}
@@ -165,18 +184,28 @@ func (e *Engine) AddCalendarSubscription(rd Reader, name, rawURL string, busy bo
 	if n >= maxCalSubs {
 		return 0, ErrCalSubsFull
 	}
-	res, err := e.accounts.db.ExecContext(ctx, `INSERT INTO vayumail_cal_subs(mailbox,name,url,busy) VALUES(?,?,?,?)`, mbox, name, addr, busy)
+	res, err := e.accounts.db.ExecContext(ctx, `INSERT INTO vayumail_cal_subs(mailbox,name,url,busy,user,secret) VALUES(?,?,?,?,?,?)`, mbox, name, addr, busy, user, sealed)
 	if err != nil {
 		return 0, err
 	}
 	id, _ := res.LastInsertId()
-	e.readSubscription(ctx, id, addr, now)
+	e.readSubscription(ctx, id, now)
 	return id, nil
 }
 
 // readSubscription reads one feed and keeps it if it is a calendar.
-func (e *Engine) readSubscription(ctx context.Context, id int64, addr string, now time.Time) {
-	data, err := e.fetchCalendar(ctx, addr)
+func (e *Engine) readSubscription(ctx context.Context, id int64, now time.Time) {
+	var addr, user, sealed string
+	if err := e.accounts.db.QueryRowContext(ctx, `SELECT url,user,secret FROM vayumail_cal_subs WHERE id=?`, id).Scan(&addr, &user, &sealed); err != nil {
+		return
+	}
+	var data []byte
+	var err error
+	if user != "" {
+		data, err = e.fetchCalDAV(ctx, addr, user, sealed)
+	} else {
+		data, err = e.fetchCalendar(ctx, addr)
+	}
 	if err == nil {
 		_, err = parseFeed(data)
 	}
@@ -202,7 +231,7 @@ func (e *Engine) CalendarSubscriptions(rd Reader) ([]CalSubscription, error) {
 	if err := e.accounts.ensureCalSubTable(); err != nil {
 		return nil, err
 	}
-	rows, err := e.accounts.db.QueryContext(context.Background(), `SELECT id,name,url,busy,fetched,error,COALESCE(LENGTH(data),0) FROM vayumail_cal_subs WHERE mailbox=? ORDER BY name,id`, mbox)
+	rows, err := e.accounts.db.QueryContext(context.Background(), `SELECT id,name,url,user,busy,fetched,error,COALESCE(LENGTH(data),0) FROM vayumail_cal_subs WHERE mailbox=? ORDER BY name,id`, mbox)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +240,7 @@ func (e *Engine) CalendarSubscriptions(rd Reader) ([]CalSubscription, error) {
 	for rows.Next() {
 		var c CalSubscription
 		var at int64
-		if err := rows.Scan(&c.ID, &c.Name, &c.URL, &c.Busy, &at, &c.Error, &c.Size); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.URL, &c.User, &c.Busy, &at, &c.Error, &c.Size); err != nil {
 			return nil, err
 		}
 		if at > 0 {
@@ -252,15 +281,14 @@ func (e *Engine) RefreshCalendarSubscription(rd Reader, id int64, now time.Time)
 		return err
 	}
 	ctx := context.Background()
-	var addr string
 	var at int64
-	if err := e.accounts.db.QueryRowContext(ctx, `SELECT url,fetched FROM vayumail_cal_subs WHERE id=? AND mailbox=?`, id, mbox).Scan(&addr, &at); err != nil {
+	if err := e.accounts.db.QueryRowContext(ctx, `SELECT fetched FROM vayumail_cal_subs WHERE id=? AND mailbox=?`, id, mbox).Scan(&at); err != nil {
 		return errNoSuchCalSub
 	}
 	if now.Sub(time.Unix(at, 0)) < calSubAgain {
 		return nil
 	}
-	e.readSubscription(ctx, id, addr, now)
+	e.readSubscription(ctx, id, now)
 	return nil
 }
 
@@ -271,26 +299,22 @@ func (e *Engine) refreshSubscriptions(now time.Time) {
 		return
 	}
 	ctx := context.Background()
-	rows, err := e.accounts.db.QueryContext(ctx, `SELECT id,url FROM vayumail_cal_subs WHERE fetched<=? ORDER BY fetched LIMIT ?`, now.Add(-calSubEvery).Unix(), calSubsPerPass)
+	rows, err := e.accounts.db.QueryContext(ctx, `SELECT id FROM vayumail_cal_subs WHERE fetched<=? ORDER BY fetched LIMIT ?`, now.Add(-calSubEvery).Unix(), calSubsPerPass)
 	if err != nil {
 		return
 	}
-	type due struct {
-		id   int64
-		addr string
-	}
-	var all []due
+	var all []int64
 	for rows.Next() {
-		var d due
-		if rows.Scan(&d.id, &d.addr) == nil {
-			all = append(all, d)
+		var id int64
+		if rows.Scan(&id) == nil {
+			all = append(all, id)
 		}
 	}
 	if rows.Err() != nil || rows.Close() != nil {
 		return
 	}
-	for _, d := range all {
-		e.readSubscription(ctx, d.id, d.addr, now)
+	for _, id := range all {
+		e.readSubscription(ctx, id, now)
 	}
 }
 

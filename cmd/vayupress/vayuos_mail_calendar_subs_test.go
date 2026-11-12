@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/secrets"
 	"github.com/johalputt/vayupress/internal/users"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
@@ -53,6 +54,17 @@ func TestSubscribedCalendarsFromTheCalendarsSide(t *testing.T) {
 	}
 	if got := calSubsPost(a, url.Values{"op": {"add"}, "name": {"Holidays"}, "url": {srv.URL + "/h.ics"}}); !strings.Contains(got, "does not make you busy") {
 		t.Errorf("a calendar subscribed as not busy: %s", got)
+	}
+
+	// Signed in to another server: a password goes only over https, and is
+	// kept by the install's secrets store, never shown back.
+	signedIn := url.Values{"op": {"add"}, "url": {srv.URL + "/dav/"}, "user": {"dana"}, "password": {"hunter2"}}
+	if got := calSubsPost(a, signedIn); !strings.Contains(got, "no secrets store to keep a password in") {
+		t.Errorf("a password with no store to keep it: %s", got)
+	}
+	a.vayuMail.UseTOTPCodec(secrets.New(db, []byte("test-kek"), ""))
+	if got := calSubsPost(a, signedIn); !strings.Contains(got, "is reached over https") {
+		t.Errorf("a password over http: %s", got)
 	}
 
 	// A copy the engine read, put in place: its event is read only.

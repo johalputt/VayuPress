@@ -31,6 +31,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   busy on your booking pages unless you say not. They are read only here.
   Up to five; a calendar of up to 4 MB. An address on the server's own
   network is never read, and the page shows an address only by its host.
+  A calendar on another CalDAV server you sign in to is read the same way,
+  with your user name and an app password there: the password goes only
+  over https and is kept encrypted by the install's secrets store, never
+  in the clear, and is never shown back. Nothing is written to the other
+  server.
 - **Booking reminders.** A booking page can remind the guest and you an
   hour or a day before each booking (a day, for a new page). The guest is
   mailed once, from your address, with the time in their own zone; your

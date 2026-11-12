@@ -480,8 +480,9 @@ func calSide(v calView, home *time.Location, today time.Time, pages []vmail.Book
 }
 
 // calSubsSheet is the holder's subscribed calendars, each with how its last
-// read went, and the form that adds one. The address is shown cut to its
-// host: a private feed's address is its key.
+// read went, and the form that adds one: by its address, or signed in to
+// another CalDAV server. The address is shown cut to its host (a private
+// feed's address is its key), and a password is never shown back.
 func calSubsSheet(subs []vmail.CalSubscription, said string) string {
 	var b strings.Builder
 	b.WriteString(`<div class="cal-detail" data-sheet-title="Subscribed calendars">`)
@@ -510,6 +511,9 @@ func calSubsSheet(subs []vmail.CalSubscription, said string) string {
 			if !c.Busy {
 				busy = "does not make you busy"
 			}
+			if c.User != "" {
+				host = c.User + " at " + host
+			}
 			b.WriteString(`<li><p class="cal-detail__row">` + saIcon("calendar") + `<span><strong>` + esc(c.Name) + `</strong> · ` + esc(host) + `<br><span class="muted">` +
 				esc(state) + `; ` + busy + `</span></span></p><div class="cal-detail__acts">` + act("refresh", c.ID, "Read again", "") + act("remove", c.ID, "Unsubscribe", " btn--danger") + `</div></li>`)
 		}
@@ -518,6 +522,9 @@ func calSubsSheet(subs []vmail.CalSubscription, said string) string {
 	b.WriteString(`<form class="cal-form" hx-post="/os/vayumail/calendar/subs" hx-target="#cal-sheet-body" hx-swap="innerHTML"><input type="hidden" name="op" value="add">` +
 		`<div class="cal-two"><label class="field"><span class="field-label">Name</span><input type="text" name="name" maxlength="80" placeholder="Team calendar"></label>` +
 		`<label class="field"><span class="field-label">Address (.ics, https or webcal)</span><input type="url" name="url" required placeholder="https://…/basic.ics" autocomplete="off"></label></div>` +
+		`<fieldset class="cal-repeat"><legend>On another CalDAV server you sign in to (leave empty for an address anyone with it can read)</legend><div class="cal-two">` +
+		`<label class="field"><span class="field-label">User name there</span><input type="text" name="user" maxlength="200" autocomplete="off"></label>` +
+		`<label class="field"><span class="field-label">App password there</span><input type="password" name="password" maxlength="500" autocomplete="new-password"></label></div></fieldset>` +
 		`<label class="cal-check"><input type="checkbox" name="busy" value="1" checked> Its events make me busy on my booking pages</label>` +
 		`<p class="cal-note">Its events are shown beside yours and read again every half hour; they are not changed here. Another calendar service's private address in iCalendar format works here, and is kept like a password.</p>` +
 		`<div class="cal-form__acts"><button type="submit" class="btn btn--primary">Subscribe</button></div></form></div>`)
@@ -539,7 +546,12 @@ func (a *App) handleVayuOSCalendarSubs(w http.ResponseWriter, r *http.Request) {
 		var err error
 		switch r.PostFormValue("op") {
 		case "add":
-			_, err = a.vayuMail.AddCalendarSubscription(rd, r.PostFormValue("name"), r.PostFormValue("url"), r.PostFormValue("busy") == "1", time.Now())
+			name, addr, busy := r.PostFormValue("name"), r.PostFormValue("url"), r.PostFormValue("busy") == "1"
+			if user := strings.TrimSpace(r.PostFormValue("user")); user != "" {
+				_, err = a.vayuMail.AddCalDAVSubscription(rd, name, addr, user, r.PostFormValue("password"), busy, time.Now())
+			} else {
+				_, err = a.vayuMail.AddCalendarSubscription(rd, name, addr, busy, time.Now())
+			}
 			said = "Subscribed."
 		case "refresh":
 			err = a.vayuMail.RefreshCalendarSubscription(rd, id, time.Now())

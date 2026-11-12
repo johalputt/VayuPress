@@ -69,7 +69,8 @@ type Engine struct {
 	// delivered is told each time a message is filed into a mailbox (nil-safe;
 	// see SetDeliveredHook).
 	delivered func()
-	// totpCodec seals mailbox TOTP seeds at rest (audit); stashed here by
+	// totpCodec seals mailbox TOTP seeds at rest (audit), and the passwords
+	// of calendars on other servers (calendar_caldav.go); stashed here by
 	// UseTOTPCodec and handed to the account store when it is created.
 	totpCodec SecretCodec
 	// queueRetention is the operator-settable auto-clear window (days) for
@@ -92,6 +93,9 @@ type Engine struct {
 	// safefetch (calendar_subs.go).
 	calFetch    func(ctx context.Context, addr string) ([]byte, error)
 	subsReading atomic.Bool
+	// calDAVTransport reaches other CalDAV servers in tests; nil is
+	// safefetch's guarded transport (calendar_caldav.go).
+	calDAVTransport http.RoundTripper
 	// sealingStored makes the sealing of stored files one file at a time
 	// (drive.go, sealBlob).
 	sealingStored sync.Mutex
