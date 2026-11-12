@@ -498,8 +498,10 @@ func mailReadingChoices(m *osMailSide) string {
 // keyboard sheet, which ? also opens, and the settings people change most
 // (where a message opens, the colour scheme), then the way to all of them.
 func mailTopTools(m *osMailSide, theme string) string {
+	// The holder's own Settings, an administrator's included; an
+	// administrator in someone else's mailbox gets that mailbox's page.
 	settings := "/os/vayumail/settings"
-	if m.Admin {
+	if m.Admin && !m.Own {
 		settings = "/os/vayumail/accounts/settings?user=" + qparam(m.Address)
 	}
 	reading := ""

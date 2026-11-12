@@ -333,6 +333,19 @@ func (a *App) ownMailboxKey(r *http.Request) string {
 	return local
 }
 
+// adminSignInMailbox is the mailbox at an administrator's sign-in address
+// when it is theirs to hold: active, and assigned to nobody else.
+func (a *App) adminSignInMailbox(ctx context.Context, u *users.User) string {
+	addr := strings.ToLower(strings.TrimSpace(u.Email))
+	if addr == "" || a.vayuMail == nil || a.vayuMail.Accounts() == nil || a.vayuMail.Accounts().HashFor(ctx, addr) == "" {
+		return ""
+	}
+	if holder, err := a.userStore.MailAddressHolder(ctx, addr); err != nil || (holder != "" && holder != u.ID) {
+		return ""
+	}
+	return addr
+}
+
 // mailAddrOf turns an engine mailbox key into a full display address: a key that
 // already carries a domain (a secondary mailbox) is returned as-is; a bare local
 // part is qualified with the primary domain (unchanged from before).
@@ -343,9 +356,17 @@ func mailAddrOf(key, primaryDomain string) string {
 	return key + "@" + primaryDomain
 }
 
-// ownMailbox returns the signed-in user's assigned mailbox local part and full
-// address, or ("","") when none is assigned (or the caller is an API-key
-// session with no user).
+// ownMailbox returns the signed-in user's own mailbox local part and full
+// address, or ("","") when they have none (or the caller is an API-key
+// session with no user). It is the mailbox assigned to them; or, for an
+// administrator with none assigned, the active mailbox at the address they
+// sign in with, unless it is assigned to someone else. An install's owner
+// signs in as admin@ and holds the mailbox admin@ that nobody "assigned",
+// and without this their own mail was an operator read, with no Calendar,
+// no Drive and no Settings of their own. A member who is not an
+// administrator is never given a mailbox by their address alone: their
+// site password must not open a mailbox whose own password they do not
+// hold.
 func (a *App) ownMailbox(r *http.Request) (local, email string) {
 	u := currentUser(r)
 	if u == nil || a.userStore == nil {
@@ -355,6 +376,9 @@ func (a *App) ownMailbox(r *http.Request) (local, email string) {
 		u = fresh
 	}
 	email = strings.TrimSpace(u.MailAddress)
+	if email == "" && u.Role == users.RoleAdmin {
+		email = a.adminSignInMailbox(r.Context(), u)
+	}
 	if email == "" {
 		return "", ""
 	}

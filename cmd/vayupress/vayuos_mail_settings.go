@@ -234,23 +234,13 @@ func (a *App) handleVayuOSMySettings(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	_, own := a.ownMailbox(r)
 	ac, ok := a.mailAccountByEmail(r.Context(), own)
-	if a.isAdminRequest(r) {
-		// An administrator manages every mailbox, so theirs is its full page:
-		// the one assigned to them, or else the mailbox at the address they
-		// sign in with, which on most installs is the owner's only one and is
-		// never "assigned". Without either, the page lists the mailboxes.
-		// It sent them to the inbox, which for an administrator is the
-		// mailbox directory: Mailbox settings opened a list of mailboxes with
-		// no settings on it (3cr).
-		if !ok {
-			if u := currentUser(r); u != nil {
-				ac, ok = a.mailAccountByEmail(r.Context(), u.Email)
-			}
-		}
-		if ok {
-			http.Redirect(w, r, "/os/vayumail/accounts/settings?user="+qparam(ac.Email), http.StatusSeeOther)
-			return
-		}
+	if a.isAdminRequest(r) && !ok {
+		// An administrator with no mailbox of their own (ownMailbox) is given
+		// the mailboxes to choose from; each opens its administrator's page.
+		// One with a mailbox of their own has the holder's page for it, as
+		// every holder does: its Signing in, Private mailbox and Throwaway
+		// addresses are a holder's, and the administrator's page for the
+		// same mailbox is under Accounts.
 		writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox settings", "vayumail", cfg, htmpl.HTML(a.mailboxSettingsPicker(r.Context()))))
 		return
 	}

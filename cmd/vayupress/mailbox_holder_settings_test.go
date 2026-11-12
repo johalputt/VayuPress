@@ -190,6 +190,11 @@ func TestMailboxSettingsAlwaysOpensSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(`CREATE TABLE users(id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,name TEXT NOT NULL DEFAULT '',password_hash TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'author',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,last_login DATETIME,avatar_url TEXT NOT NULL DEFAULT '',bio TEXT NOT NULL DEFAULT '',socials TEXT NOT NULL DEFAULT '{}',mail_address TEXT NOT NULL DEFAULT '',must_change_password INTEGER NOT NULL DEFAULT 0,username TEXT NOT NULL DEFAULT '',client_domain_id TEXT NOT NULL DEFAULT '');
+		CREATE VIEW user_profiles AS SELECT id, email, name, role, avatar_url, bio, socials, mail_address, created_at, last_login, must_change_password AS must_change_signin, username, client_domain_id FROM users;`); err != nil {
+		t.Fatal(err)
+	}
 	a.userStore = users.New(db)
 	get := func(u *users.User) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
@@ -198,10 +203,33 @@ func TestMailboxSettingsAlwaysOpensSettings(t *testing.T) {
 	}
 
 	// The owner signs in with the address of a mailbox no one assigned to
-	// them: that mailbox's full page.
+	// them: it is theirs, and Settings is its holder's page, as every
+	// holder's is (Signing in, Private mailbox and Throwaway addresses are a
+	// holder's; the administrator's page for it is under Accounts).
 	owner := &users.User{ID: "u1", Email: "dana@example.com", Role: users.RoleAdmin}
-	if rec := get(owner); rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/os/vayumail/accounts/settings?user=dana%40example.com" {
-		t.Errorf("the owner whose sign-in address is a mailbox = %d → %q, want that mailbox's settings", rec.Code, rec.Header().Get("Location"))
+	if rec := get(owner); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `vm-mbox-head__email">dana@example.com<`) ||
+		!strings.Contains(rec.Body.String(), "Signing in") || !strings.Contains(rec.Body.String(), "Throwaway addresses") {
+		t.Errorf("the owner whose sign-in address is a mailbox = %d → %q, want that mailbox's own Settings:\n%s", rec.Code, rec.Header().Get("Location"), rec.Body.String())
+	}
+	// Not when that mailbox is assigned to someone else: it is theirs.
+	if _, err := db.Exec(`INSERT INTO users(id,email,password_hash,mail_address) VALUES('u9','other@home.test','x','dana@example.com')`); err != nil {
+		t.Fatal(err)
+	}
+	if rec := get(owner); strings.Contains(rec.Body.String(), `vm-mbox-head__email">dana@example.com<`) {
+		t.Error("an administrator was given, by their address, a mailbox assigned to another member")
+	}
+	if _, err := db.Exec(`DELETE FROM users WHERE id='u9'`); err != nil {
+		t.Fatal(err)
+	}
+	// Nor when the mailbox is switched off.
+	if err := a.vayuMail.Accounts().SetActive(context.Background(), "dana@example.com", false); err != nil {
+		t.Fatal(err)
+	}
+	if rec := get(owner); strings.Contains(rec.Body.String(), `vm-mbox-head__email">dana@example.com<`) {
+		t.Error("an administrator was given, by their address, a mailbox that is switched off")
+	}
+	if err := a.vayuMail.Accounts().SetActive(context.Background(), "dana@example.com", true); err != nil {
+		t.Fatal(err)
 	}
 
 	// An administrator with no mailbox: the mailboxes, each to its settings.

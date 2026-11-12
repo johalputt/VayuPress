@@ -18,6 +18,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/mail"
 	"net/url"
@@ -455,6 +456,17 @@ func (s *Store) SetMailAddress(ctx context.Context, id, addr string) error {
 		return fmt.Errorf("no user with that id")
 	}
 	return nil
+}
+
+// MailAddressHolder is the id of the user a mailbox address is assigned to,
+// "" when it is assigned to nobody.
+func (s *Store) MailAddressHolder(ctx context.Context, addr string) (string, error) {
+	var id string
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM users WHERE mail_address=? LIMIT 1`, strings.TrimSpace(strings.ToLower(addr))).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return id, err
 }
 
 // SetRole changes a user's role by email. The role must be recognised.
