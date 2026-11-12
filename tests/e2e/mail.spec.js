@@ -1277,12 +1277,16 @@ for (const scheme of ["light", "dark"]) {
       await page.locator(".mx-row", { hasText: "Newsletter draft, October" }).locator(".mx-row__open").click();
       await expect(page.locator("#vm-readpane .mx-seal")).toBeVisible();
       // A label is drawn on the selected row and under the subject; it is put
-      // on here and taken off at the end so no other test sees it.
+      // on here and taken off at the end so no other test sees it. Each
+      // scheme has a label of its own: the two run at once on the same
+      // message, and one's taking its label off took the other's away
+      // while it was still being looked for (failed under load, 2026-11-12).
+      const ink = "Ink " + scheme;
       const pane = page.locator("#vm-readpane");
       await pane.locator('summary[aria-label="Label"]').click();
-      await pane.locator('.mx-labelmenu__new input[name="label"]').fill("Ink");
+      await pane.locator('.mx-labelmenu__new input[name="label"]').fill(ink);
       await pane.locator('.mx-labelmenu__new input[name="label"]').press("Enter");
-      await expect(page.locator("#vm-inbox-list .mx-row.vm-active .mx-label", { hasText: "Ink" })).toBeVisible();
+      await expect(page.locator("#vm-inbox-list .mx-row.vm-active .mx-label", { hasText: ink })).toBeVisible();
       // The selection fades in over --duration-micro while its text turns at
       // once, so a reading inside those 90 ms is white on near-white. What is
       // judged is the colour the row settles on: wait out its transitions.
@@ -1318,8 +1322,8 @@ for (const scheme of ["light", "dark"]) {
         expect(r, `${name} is ${r}:1 in ${scheme}, under 4.5:1`).toBeGreaterThanOrEqual(4.5);
       }
       await pane.locator('summary[aria-label="Label"]').click();
-      await pane.locator('.mx-labelmenu [role="menuitemcheckbox"]', { hasText: "Ink" }).click();
-      await expect(pane.locator(".mx-rbody .mx-label")).toHaveCount(0);
+      await pane.locator('.mx-labelmenu [role="menuitemcheckbox"]', { hasText: ink }).click();
+      await expect(pane.locator(".mx-rbody .mx-label", { hasText: ink })).toHaveCount(0);
     });
   });
 }
