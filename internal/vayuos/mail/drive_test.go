@@ -21,7 +21,10 @@ func driveEngine(t *testing.T) (*Engine, *AccountStore) {
 	cfg := DefaultConfig()
 	cfg.Domain = "example.com"
 	cfg.StorageDir = t.TempDir()
-	return &Engine{cfg: cfg, maildir: NewMaildir(filepath.Join(cfg.StorageDir, "maildir")), accounts: s, db: s.db}, s
+	e := &Engine{cfg: cfg, maildir: NewMaildir(filepath.Join(cfg.StorageDir, "maildir")), accounts: s, db: s.db}
+	// As the app gives it one at boot, from its secrets store.
+	e.UseDriveKey(bytes.Repeat([]byte{7}, 32))
+	return e, s
 }
 
 var ankush = ReadAsOwner("ankush")
@@ -332,9 +335,63 @@ func TestAPrivateMailboxsFilesAreSealedOnDisk(t *testing.T) {
 	if _, _, err := e.DriveOpen(dana, id); !errors.Is(err, ErrDriveLocked) {
 		t.Fatalf("with the key locked: %v", err)
 	}
-	if _, err := e.DrivePut(dana, 0, "big.bin", "", io.LimitReader(neverEnding('x'), maxSealedFile+1)); !errors.Is(err, ErrDriveTooLarge) {
-		t.Fatalf("a sealed file past its most: %v", err)
+	// Its key is sealed to the holder, not wrapped by the install's.
+	var fkey string
+	_ = s.db.QueryRow(`SELECT fkey FROM vayumail_drive WHERE id=?`, id).Scan(&fkey)
+	if !strings.HasPrefix(fkey, "p1:") {
+		t.Errorf("a private file's key is kept as %.8q", fkey)
 	}
+	// Sealed in chunks, a private file is as large as any other: one past
+	// the 25 MB that sealing whole allowed is kept and comes back whole.
+	makePrivate(t, keys)
+	big := io.LimitReader(neverEnding('x'), 26<<20)
+	bigID, err := e.DrivePut(dana, 0, "big.bin", "", big)
+	if err != nil {
+		t.Fatalf("a 26 MB private file: %v", err)
+	}
+	_, f, err := e.DriveOpen(dana, bigID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := io.Copy(io.Discard, f)
+	_ = f.Close()
+	if err != nil || n != 26<<20 {
+		t.Errorf("the 26 MB private file read back %d bytes: %v", n, err)
+	}
+}
+
+// legacyFile keeps a file as files were kept before chunks: its bytes as
+// they are, or sealed whole to the holder, with no key in its row.
+func legacyFile(t *testing.T, e *Engine, mbox, name, body string, sealedWhole bool) int64 {
+	t.Helper()
+	blob, _ := randomHex(16)
+	path, err := e.blobPath(mbox, blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	data, sealed := []byte(body), 0
+	if sealedWhole {
+		if data, err = e.maildir.keys.SealTo(mbox, data); err != nil {
+			t.Fatal(err)
+		}
+		sealed = 1
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.accounts.ensureDriveTables(); err != nil {
+		t.Fatal(err)
+	}
+	res, err := e.accounts.db.Exec(`INSERT INTO vayumail_drive(mailbox,parent,name,is_dir,size,blob,sealed,ctype,modified) VALUES(?,0,?,0,?,?,?,'',?)`,
+		mbox, name, len(body), blob, sealed, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _ := res.LastInsertId()
+	return id
 }
 
 // TestADeletedMailboxsFilesAreSetAside — rows gone, bytes moved out of the
@@ -464,10 +521,9 @@ func TestAMailboxHasTwoSealedFilesInMemoryAtOnce(t *testing.T) {
 	}
 	makePrivate(t, keys)
 	dana := ReadAsOwner("dana")
-	id, err := e.DrivePut(dana, 0, "secret.txt", "", strings.NewReader("sealed"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Only a file sealed whole, as files were before chunks, is held in
+	// memory when it is opened.
+	id := legacyFile(t, e, "dana@example.com", "secret.txt", "sealed", true)
 	_, one, err := e.DriveOpen(dana, id)
 	if err != nil {
 		t.Fatal(err)
@@ -479,17 +535,21 @@ func TestAMailboxHasTwoSealedFilesInMemoryAtOnce(t *testing.T) {
 	if _, _, err := e.DriveOpen(dana, id); !errors.Is(err, ErrDriveBusy) {
 		t.Fatalf("a third sealed file opened at once: %v", err)
 	}
-	if _, err := e.DrivePut(dana, 0, "more.txt", "", strings.NewReader("x")); !errors.Is(err, ErrDriveBusy) {
-		t.Fatalf("a sealed file kept while two are open: %v", err)
+	// A file kept in chunks, private or not, is read from the disk as it is
+	// sent, and is not counted.
+	chunked, err := e.DrivePut(dana, 0, "more.txt", "", strings.NewReader("x"))
+	if err != nil {
+		t.Fatalf("a private file kept while two old ones are open: %v", err)
 	}
-	// A plain mailbox's files are streamed from disk and are not counted.
 	plain := put(t, e, 0, "plain.txt", "p")
 	for i := 0; i < 4; i++ {
-		_, f, err := e.DriveOpen(ankush, plain)
-		if err != nil {
-			t.Fatalf("a plain file, opened %d times at once: %v", i+1, err)
+		for who, fid := range map[Reader]int64{ankush: plain, dana: chunked} {
+			_, f, err := e.DriveOpen(who, fid)
+			if err != nil {
+				t.Fatalf("a file kept in chunks, opened %d times at once: %v", i+1, err)
+			}
+			defer f.Close()
 		}
-		defer f.Close()
 	}
 	_ = one.Close()
 	_ = one.Close() // closing twice gives one place back, not two
@@ -510,16 +570,12 @@ func TestAMailboxHasTwoSealedFilesInMemoryAtOnce(t *testing.T) {
 			t.Fatalf("locked, open %d: %v", i+1, err)
 		}
 	}
-	for i := 0; i < 5; i++ {
-		if _, err := e.DrivePut(dana, 0, "kept.txt", "", strings.NewReader("y")); err != nil {
-			t.Fatalf("sealed put %d after the others finished: %v", i+1, err)
-		}
-	}
 }
 
-// TestGoingPrivateSealsTheFilesAlreadyKept — the file, what it was before,
-// and nothing twice; a file too large to seal is left and stays marked so;
-// a link made while a file was readable ends.
+// TestGoingPrivateSealsTheFilesAlreadyKept — a file kept in chunks has
+// its key sealed to the holder; one kept in the clear before chunks is
+// rewritten in chunks under such a key; each version too, whatever its
+// size, nothing twice; a link made while a file was readable ends.
 func TestGoingPrivateSealsTheFilesAlreadyKept(t *testing.T) {
 	e, s := driveEngine(t)
 	md, keys := sealedMaildir(t)
@@ -539,44 +595,45 @@ func TestGoingPrivateSealsTheFilesAlreadyKept(t *testing.T) {
 	keep("plan.txt", "the first words")
 	plan := keep("plan.txt", "the second words")
 	other := keep("other.txt", "other words")
-	big := keep("big.bin", "words too many to seal")
-	if _, err := s.db.Exec(`UPDATE vayumail_drive SET size=? WHERE id=?`, maxSealedFile+1, big); err != nil {
-		t.Fatal(err)
-	}
+	old := legacyFile(t, e, "dana@example.com", "old.txt", "words kept in the clear", false)
 	token, err := e.DriveShareFile(dana, other, "", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	makePrivate(t, keys)
 	sealed, left, err := e.SealStored("dana@example.com")
-	if err != nil || sealed != 3 || left != 0 {
-		t.Fatalf("sealed %d, left %d, %v; want the file, its earlier version and the other file", sealed, left, err)
+	if err != nil || sealed != 4 || left != 0 {
+		t.Fatalf("sealed %d, left %d, %v; want the file, its earlier version, the other file and the old one", sealed, left, err)
 	}
-	onDisk := func(word string) bool {
-		for _, p := range diskFiles(t, e) {
-			if b, _ := os.ReadFile(p); bytes.Contains(b, []byte(word)) {
-				return true
-			}
-		}
-		return false
-	}
-	for _, word := range []string{"first words", "second words", "other words"} {
-		if onDisk(word) {
-			t.Errorf("%q is still readable on the disk", word)
+	for _, p := range diskFiles(t, e) {
+		if b, _ := os.ReadFile(p); bytes.Contains(b, []byte("kept in the clear")) {
+			t.Errorf("the old file is still readable on the disk at %s", p)
 		}
 	}
-	if !onDisk("too many to seal") {
-		t.Error("a file past the most that is sealed was rewritten")
+	rows, _ := s.db.Query(`SELECT fkey FROM vayumail_drive WHERE is_dir=0 UNION ALL SELECT fkey FROM vayumail_drive_versions`)
+	for rows.Next() {
+		var fkey string
+		_ = rows.Scan(&fkey)
+		if !strings.HasPrefix(fkey, "p1:") {
+			t.Errorf("a file's key is kept as %.8q after going private", fkey)
+		}
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	_ = rows.Close()
 	list, _ := e.DriveList(dana, 0)
 	for _, d := range list {
-		if d.Sealed == (d.ID == big) {
-			t.Errorf("%s: sealed is %v", d.Name, d.Sealed)
+		if !d.Sealed {
+			t.Errorf("%s is not marked sealed", d.Name)
 		}
 	}
 	// A second run finds nothing to do, and seals nothing twice.
 	if again, _, _ := e.SealStored("dana@example.com"); again != 0 {
 		t.Errorf("a second run sealed %d more", again)
+	}
+	if got := read(t, e, dana, old); got != "words kept in the clear" {
+		t.Errorf("the old file opens as %q", got)
 	}
 	if got := read(t, e, dana, plan); got != "the second words" {
 		t.Fatalf("the file opens as %q", got)
@@ -595,13 +652,16 @@ func TestGoingPrivateSealsTheFilesAlreadyKept(t *testing.T) {
 		t.Errorf("a link made while the file was readable: %v", err)
 	}
 	keys.CloseHeld("dana@example.com")
-	if _, _, err := e.DriveOpen(dana, plan); !errors.Is(err, ErrDriveLocked) {
-		t.Errorf("with the key closed: %v", err)
+	for _, id := range []int64{plan, old} {
+		if _, _, err := e.DriveOpen(dana, id); !errors.Is(err, ErrDriveLocked) {
+			t.Errorf("with the key closed: %v", err)
+		}
 	}
 }
 
 // TestAFileIsNotSealedTwice — a run that listed a file as unsealed, and
-// reaches it after another run sealed it, leaves it alone.
+// reaches it after another run sealed it, leaves it alone: a key sealed
+// once, a file rewritten once.
 func TestAFileIsNotSealedTwice(t *testing.T) {
 	e, s := driveEngine(t)
 	md, keys := sealedMaildir(t)
@@ -614,16 +674,26 @@ func TestAFileIsNotSealedTwice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var blob string
-	_ = s.db.QueryRow(`SELECT blob FROM vayumail_drive WHERE id=?`, id).Scan(&blob)
+	old := legacyFile(t, e, "dana@example.com", "old.txt", "the old plan", false)
+	blobOf := func(id int64) string {
+		var blob string
+		_ = s.db.QueryRow(`SELECT blob FROM vayumail_drive WHERE id=?`, id).Scan(&blob)
+		return blob
+	}
+	blob, oldBlob := blobOf(id), blobOf(old)
 	makePrivate(t, keys)
 	for i := 0; i < 2; i++ {
-		if err := e.sealBlob(context.Background(), "dana@example.com", blob); err != nil {
-			t.Fatalf("seal %d: %v", i+1, err)
+		for _, b := range []string{blob, oldBlob} {
+			if err := e.sealBlob(context.Background(), "dana@example.com", b); err != nil {
+				t.Fatalf("seal %d: %v", i+1, err)
+			}
 		}
 	}
 	if got := read(t, e, dana, id); got != "the plan" {
-		t.Fatalf("after two runs reached it the file opens as %d bytes that are not its own", len(got))
+		t.Fatalf("after two runs reached it the file opens as %q", got)
+	}
+	if got := read(t, e, dana, old); got != "the old plan" {
+		t.Fatalf("after two runs reached it the old file opens as %q", got)
 	}
 }
 

@@ -136,7 +136,7 @@ func davInfo(p string, d DriveEntry) webdav.FileInfo {
 		return webdav.FileInfo{Path: p + "/", IsDir: true, ModTime: d.Modified}
 	}
 	return webdav.FileInfo{Path: p, Size: d.Size, ModTime: d.Modified, MIMEType: "application/octet-stream",
-		ETag: fmt.Sprintf("%x-%x-%x", d.ID, d.Modified.UnixNano(), d.Size)}
+		ETag: davETagOf(d)}
 }
 
 func (f davFiles) Stat(ctx context.Context, name string) (*webdav.FileInfo, error) {
@@ -340,4 +340,14 @@ func (f davFiles) Move(ctx context.Context, name, dest string, opts *webdav.Move
 		return false, davFileErr(err)
 	}
 	return !taken, nil
+}
+
+// davETagOf is a file's ETag: its content's SHA-256 when it has one, so an
+// app that kept a copy can tell it is the same bytes; else its number, its
+// time and its size, as for a file kept before sums were.
+func davETagOf(d DriveEntry) string {
+	if d.Sum != "" {
+		return d.Sum
+	}
+	return fmt.Sprintf("%x-%x-%x", d.ID, d.Modified.UnixNano(), d.Size)
 }

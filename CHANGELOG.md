@@ -24,6 +24,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Drive files are kept encrypted, and checked.** Every file is kept on
+  the server's disk in chunks encrypted with its own key, so the disk, or a
+  backup of it, reads as noise without the install's secrets store. In a
+  private mailbox each file's key is sealed to your key, so a private file
+  of any size is sealed now (the 25 MB limit is gone), and making a mailbox
+  private seals every file kept before it, whatever its size. A file's
+  sheet shows its SHA-256, to compare with a copy you keep. The server
+  reads every file against what it kept once a week, and a file whose
+  bytes the disk changed or damaged is not handed out as if it were sound:
+  its sheet and the Drive page say so. Files kept before this are
+  encrypted in the background, a few at a time. A link's copy of a private
+  file is kept encrypted too. A computer's or phone's file app that asks
+  whether a file changed is given its SHA-256.
 - **Subscribed calendars.** Calendar's sidebar has Subscribed calendars:
   give a calendar's address (an .ics address, https or webcal, such as
   another calendar service's private address for one of yours) and its

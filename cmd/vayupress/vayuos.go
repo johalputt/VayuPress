@@ -613,6 +613,14 @@ func (a *App) bootVayuOS() {
 	// The key that seals the From domain's check onto inbound mail, so the
 	// reader can say a domain confirmed a message (verdict.go). Without it
 	// nothing reads as confirmed, which is the safe way to be wrong.
+	// The key that wraps each Drive file's own key, so the files on the disk
+	// (and in backups of it) read as noise without the secrets store.
+	// Without it Drive keeps no file rather than keep one in the clear.
+	if key, err := a.secrets.Derive("vayumail-drive-v1"); err == nil {
+		a.vayuMail.UseDriveKey(key)
+	} else {
+		logging.LogError("vayumail", "no Drive key; Drive will keep no files", err.Error())
+	}
 	if key, err := a.secrets.Derive("mail-verdict-v1"); err == nil {
 		a.vayuMail.UseVerdictKey(key)
 	} else {

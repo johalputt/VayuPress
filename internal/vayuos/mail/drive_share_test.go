@@ -3,9 +3,11 @@
 package mail
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -261,6 +263,13 @@ func TestASealedFilesLinkIsAnUnsealedCopyCountedAndRemoved(t *testing.T) {
 	}
 	if got := len(diskFiles(t, e)); got != before+1 {
 		t.Fatalf("%d files on disk, want the sealed file and one copy", got)
+	}
+	// The copy is readable to the link, not to a copy of the disk: it is
+	// kept in chunks under its own key, wrapped by the install's.
+	for _, p := range diskFiles(t, e) {
+		if b, _ := os.ReadFile(p); bytes.Contains(b, []byte("launch codes")) {
+			t.Fatalf("the link's copy is in the clear on the disk at %s", p)
+		}
 	}
 	if now := s.DriveUsed(context.Background(), "dana@example.com"); now != used+16 {
 		t.Errorf("the copy is not counted: %d bytes, want %d", now, used+16)

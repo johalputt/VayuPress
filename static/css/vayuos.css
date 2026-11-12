@@ -7718,6 +7718,8 @@
 .vp-os[data-ui="still-air"] .drive-row__meta { font: var(--type-small); color: var(--text-3); white-space: nowrap; }
 .vp-os[data-ui="still-air"] .drive-kind { flex: none; min-width: 36px; padding: 1px var(--space-1); border: 1px solid var(--border-1); border-radius: var(--radius-small); font: var(--type-meta); color: var(--text-3); text-align: center; }
 .vp-os[data-ui="still-air"] .drive-preview { display: block; max-width: 100%; max-height: 320px; margin: 0 auto; border-radius: var(--radius-control); }
+/* A file's SHA-256 is one 64-character token; on a phone it breaks anywhere. */
+.vp-os[data-ui="still-air"] .drive-sum { overflow-wrap: anywhere; }
 @media (max-width: 640px) {
   .vp-os[data-ui="still-air"] .drive { padding: var(--space-3) var(--space-4) var(--space-6); }
   .vp-os[data-ui="still-air"] .drive-row { grid-template-columns: minmax(0, 1fr) auto auto; }

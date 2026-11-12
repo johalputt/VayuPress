@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"net/http"
@@ -72,6 +73,8 @@ func appWithMailDB(t *testing.T, keys *vpgp.Engine) (*App, *sql.DB) {
 		t.Fatalf("create account: %v", err)
 	}
 	applyMailHandoverSchema(t, db)
+	// As boot gives it one, from the secrets store.
+	e.UseDriveKey(bytes.Repeat([]byte{9}, 32))
 	a.vayuMail = e
 	return a, db
 }

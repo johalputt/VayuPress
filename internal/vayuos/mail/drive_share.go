@@ -129,9 +129,9 @@ func (e *Engine) DriveShareFile(rd Reader, id int64, password string, ttl time.D
 	if err != nil {
 		return "", err
 	}
-	copyBlob, copySize := "", int64(0)
+	copyBlob, copyKey, copySize := "", "", int64(0)
 	if file.Sealed {
-		if copyBlob, copySize, err = e.unsealedCopy(rd, mbox, id); err != nil {
+		if copyBlob, copyKey, copySize, err = e.unsealedCopy(rd, mbox, id); err != nil {
 			return "", err
 		}
 	}
@@ -140,8 +140,8 @@ func (e *Engine) DriveShareFile(rd Reader, id int64, password string, ttl time.D
 	if ttl > 0 {
 		expires = now.Add(ttl)
 	}
-	if _, err := e.accounts.db.ExecContext(ctx, `INSERT INTO vayumail_drive_shares(mailbox,file_id,token_hash,pass_hash,created,expires,most,blob,size) VALUES(?,?,?,?,?,?,?,?,?)`,
-		mbox, id, hashRecoveryToken(token), passHash, now, expires, most, copyBlob, copySize); err != nil {
+	if _, err := e.accounts.db.ExecContext(ctx, `INSERT INTO vayumail_drive_shares(mailbox,file_id,token_hash,pass_hash,created,expires,most,blob,size,fkey) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+		mbox, id, hashRecoveryToken(token), passHash, now, expires, most, copyBlob, copySize, copyKey); err != nil {
 		if copyBlob != "" {
 			e.removeBlob(mbox, copyBlob)
 		}
@@ -153,28 +153,41 @@ func (e *Engine) DriveShareFile(rd Reader, id int64, password string, ttl time.D
 
 // unsealedCopy writes a sealed file's opened bytes as a blob of its own.
 // The key must be held open, as for any reading of the file.
-func (e *Engine) unsealedCopy(rd Reader, mbox string, id int64) (string, int64, error) {
+func (e *Engine) unsealedCopy(rd Reader, mbox string, id int64) (string, string, int64, error) {
 	_, f, err := e.DriveOpen(rd, id)
 	if err != nil {
-		return "", 0, err
+		return "", "", 0, err
 	}
 	defer f.Close()
+	// The copy is kept in chunks like any file, under its own key wrapped by
+	// the install's: readable to the link, never in the clear on the disk.
+	key, fkey, err := e.newFileKey(mbox, false)
+	if err != nil {
+		return "", "", 0, err
+	}
 	blob, err := randomHex(16)
 	if err != nil {
-		return "", 0, err
+		return "", "", 0, err
 	}
 	path, err := e.blobPath(mbox, blob)
 	if err != nil {
-		return "", 0, err
+		return "", "", 0, err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return "", 0, err
+		return "", "", 0, err
 	}
 	out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- blobPath admits only this package's hex names under the mailbox's directory
 	if err != nil {
-		return "", 0, err
+		return "", "", 0, err
 	}
-	size, err := io.Copy(out, f)
+	bw, err := newBlobWriter(out, key)
+	var size int64
+	if err == nil {
+		size, err = io.Copy(bw, f)
+	}
+	if err == nil {
+		err = bw.Close()
+	}
 	if cerr := out.Close(); err == nil {
 		err = cerr
 	}
@@ -185,9 +198,9 @@ func (e *Engine) unsealedCopy(rd Reader, mbox string, id int64) (string, int64, 
 	}
 	if err != nil {
 		_ = os.Remove(path)
-		return "", 0, err
+		return "", "", 0, err
 	}
-	return blob, size, nil
+	return blob, fkey, size, nil
 }
 
 // DriveShares is a file's links, newest first.
@@ -278,6 +291,7 @@ func (e *Engine) sweepShares(ctx context.Context, now time.Time) {
 type shareRow struct {
 	id                   int64
 	mbox, passHash, blob string
+	fkey                 string // the copy's key, '' for none
 	file                 int64
 	most, downloads      int
 	size                 int64
@@ -290,8 +304,8 @@ func (e *Engine) shareByToken(ctx context.Context, token string) (shareRow, Driv
 		return s, DriveEntry{}, ErrShareGone
 	}
 	e.sweepShares(ctx, time.Now())
-	if err := e.accounts.db.QueryRowContext(ctx, `SELECT id,mailbox,file_id,pass_hash,most,downloads,blob,size FROM vayumail_drive_shares WHERE token_hash=?`, hashRecoveryToken(token)).
-		Scan(&s.id, &s.mbox, &s.file, &s.passHash, &s.most, &s.downloads, &s.blob, &s.size); err != nil {
+	if err := e.accounts.db.QueryRowContext(ctx, `SELECT id,mailbox,file_id,pass_hash,most,downloads,blob,size,fkey FROM vayumail_drive_shares WHERE token_hash=?`, hashRecoveryToken(token)).
+		Scan(&s.id, &s.mbox, &s.file, &s.passHash, &s.most, &s.downloads, &s.blob, &s.size, &s.fkey); err != nil {
 		return s, DriveEntry{}, ErrShareGone
 	}
 	// A suspended mailbox shares nothing, as it books nothing.
@@ -345,20 +359,29 @@ func (e *Engine) DriveSharedOpen(token, password string) (SharedFile, io.ReadClo
 	if n, _ := res.RowsAffected(); n != 1 {
 		return SharedFile{}, nil, ErrShareGone
 	}
-	blob, size := s.blob, s.size
+	blob, fkey, size := s.blob, s.fkey, s.size
 	if blob == "" {
 		size = file.Size
-		if err := e.accounts.db.QueryRowContext(ctx, `SELECT blob FROM vayumail_drive WHERE id=? AND mailbox=?`, s.file, s.mbox).Scan(&blob); err != nil {
+		if err := e.accounts.db.QueryRowContext(ctx, `SELECT blob,fkey FROM vayumail_drive WHERE id=? AND mailbox=?`, s.file, s.mbox).Scan(&blob, &fkey); err != nil {
 			return SharedFile{}, nil, ErrShareGone
 		}
 	}
-	path, err := e.blobPath(s.mbox, blob)
-	if err != nil {
-		return SharedFile{}, nil, ErrShareGone
-	}
-	f, err := os.Open(path) // #nosec G304 -- blobPath admits only this package's hex names under the mailbox's directory
-	if err != nil {
-		return SharedFile{}, nil, ErrShareGone
+	var f io.ReadCloser
+	if fkey != "" {
+		r, err := e.openBlob(s.mbox, blob, fkey, size, func() { e.markDamaged(s.mbox, blob) })
+		if err != nil {
+			return SharedFile{}, nil, ErrShareGone
+		}
+		f = r
+	} else {
+		// A file, or a copy, kept before files were kept in chunks.
+		path, err := e.blobPath(s.mbox, blob)
+		if err != nil {
+			return SharedFile{}, nil, ErrShareGone
+		}
+		if f, err = os.Open(path); err != nil { // #nosec G304 -- blobPath admits only this package's hex names under the mailbox's directory
+			return SharedFile{}, nil, ErrShareGone
+		}
 	}
 	return SharedFile{Name: file.Name, Size: size, From: s.mbox, Password: s.passHash != ""}, f, nil
 }

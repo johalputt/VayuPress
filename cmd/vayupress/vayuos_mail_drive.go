@@ -160,6 +160,10 @@ func (a *App) handleVayuOSDrive(w http.ResponseWriter, r *http.Request) {
 	if trash && len(entries) > 0 {
 		b.WriteString(`<p class="cal-note">A file stays here thirty days, then it is deleted for good.</p>`)
 	}
+	if n, _ := a.vayuMail.DriveDamaged(rd); n > 0 {
+		b.WriteString(saCallout("danger", strconv.Itoa(n)+" "+pluralWord(n, "file or version", "files or versions")+
+			" in this Drive "+pluralWord(n, "no longer matches", "no longer match")+" what was kept: the server's disk changed or damaged "+pluralWord(n, "it", "them")+". Each says so on its sheet."))
+	}
 	if len(entries) == 0 && err == nil {
 		what := "This folder is empty. Upload a file, or drop one here."
 		if trash {
@@ -260,10 +264,18 @@ func (a *App) driveSheet(rd vmail.Reader, d vmail.DriveEntry, home *time.Locatio
 			meta += " · sealed"
 		}
 		b.WriteString(`<p class="cal-note">` + esc(meta) + `</p>`)
+		if d.Damaged {
+			b.WriteString(saCallout("danger", "This file's bytes on the server are not what was kept: the disk changed or damaged them, and the file is not handed out as if it were sound. Bring back an earlier version below, or keep it again from your own copy or from a backup."))
+		}
+		if d.Sum != "" {
+			// The content's SHA-256, to compare with a copy kept elsewhere
+			// (sha256sum, shasum -a 256, Get-FileHash).
+			b.WriteString(`<p class="cal-note">SHA-256 <span class="mono drive-sum">` + esc(d.Sum) + `</span></p>`)
+		}
 		if !d.Sealed && a.vayuPGP != nil && a.vayuPGP.HolderKeeps(a.calendarAddress(rd)) {
 			// A private mailbox's holder was told their files are sealed; the
 			// one that is not says so itself.
-			b.WriteString(`<p class="cal-note">This file is not sealed. A private mailbox seals files up to 25 MB; a larger one kept from before it was private stays as it was. To leave nothing readable on the server, download it and delete it here.</p>`)
+			b.WriteString(`<p class="cal-note">This file is not sealed yet: it could not be when the mailbox was made private. Making it private again seals it; or download it and delete it here.</p>`)
 		}
 		b.WriteString(`<div class="cal-detail__acts"><a class="btn btn--sm" href="/os/vayumail/drive/file?id=` + id + `" download>` + saIcon("download") + `Download</a></div>`)
 	}
@@ -273,7 +285,11 @@ func (a *App) driveSheet(rd vmail.Reader, d vmail.DriveEntry, home *time.Locatio
 			// one back swaps it with the file as it is, so that is kept too.
 			b.WriteString(`<h3 class="cal-booking__h">Earlier versions</h3><ul class="drive-versions">`)
 			for _, v := range vs {
-				b.WriteString(`<li><span>` + esc(v.Saved.In(home).Format("2 January 2006, 15:04")) + ` · ` + esc(humanBytes(v.Size)) + `</span>` +
+				damaged := ""
+				if v.Damaged {
+					damaged = " · damaged"
+				}
+				b.WriteString(`<li><span>` + esc(v.Saved.In(home).Format("2 January 2006, 15:04")) + ` · ` + esc(humanBytes(v.Size)) + damaged + `</span>` +
 					`<button type="button" class="btn btn--sm"` + post + hxVals("op", "version", "id", id, "version", strconv.FormatInt(v.ID, 10)) + `>Bring back</button></li>`)
 			}
 			b.WriteString(`</ul>`)

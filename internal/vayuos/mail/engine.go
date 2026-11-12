@@ -96,6 +96,12 @@ type Engine struct {
 	// calDAVTransport reaches other CalDAV servers in tests; nil is
 	// safefetch's guarded transport (calendar_caldav.go).
 	calDAVTransport http.RoundTripper
+	// driveKey wraps each Drive file's own key (drivekeys.go); without it
+	// Drive keeps no file.
+	driveKey []byte
+	// driveCaring and driveCareAt pace Drive's upkeep (drivecare.go).
+	driveCaring atomic.Bool
+	driveCareAt atomic.Int64
 	// sealingStored makes the sealing of stored files one file at a time
 	// (drive.go, sealBlob).
 	sealingStored sync.Mutex
@@ -1249,6 +1255,15 @@ func (e *Engine) worker() {
 			}
 			e.emptyOldTrash(time.Now())
 			e.sweepShares(context.Background(), time.Now())
+			// Drive's upkeep reads files from the disk: beside this loop,
+			// one pass at a time, at most every driveCareGap.
+			if now := time.Now(); now.Unix()-e.driveCareAt.Load() >= int64(driveCareGap/time.Second) && e.driveCaring.CompareAndSwap(false, true) {
+				e.driveCareAt.Store(now.Unix())
+				go func() {
+					defer e.driveCaring.Store(false)
+					e.careForDrive(now)
+				}()
+			}
 		}
 	}
 }

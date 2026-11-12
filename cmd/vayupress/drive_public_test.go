@@ -148,10 +148,10 @@ func TestALinksRefusalIsSaidInTheSheet(t *testing.T) {
 }
 
 // TestAPrivateMailboxsSheetsSayWhatIsSealedAndWhatALinkNeeds — the files
-// kept before the mailbox was private are sealed with it; one too large to
-// seal says it is not; and a sealed file's sheet says a link needs a
-// readable copy before the holder makes one, since that copy lies on the
-// server's disk as the file does not.
+// kept before the mailbox was private are sealed with it, whatever their
+// size; and a sealed file's sheet says a link needs a readable copy before
+// the holder makes one, since that copy is readable to the server as the
+// file is not.
 func TestAPrivateMailboxsSheetsSayWhatIsSealedAndWhatALinkNeeds(t *testing.T) {
 	a, _, dana := sealedMailApp(t)
 	driveUpload(a, dana, 0, "before.txt", "kept before it was private")
@@ -171,16 +171,13 @@ func TestAPrivateMailboxsSheetsSayWhatIsSealedAndWhatALinkNeeds(t *testing.T) {
 		return calGet(a, a.handleVayuOSDriveEntry, "/os/vayumail/drive/entry?id="+strconv.FormatInt(ids[name], 10), dana, "").Body.String()
 	}
 	const copyNeeded = "A link needs a copy that is not sealed, kept on the server until the link ends or you stop it."
-	const notSealed = "This file is not sealed."
-	for _, name := range []string{"before.txt", "after.txt"} {
+	const notSealed = "This file is not sealed yet"
+	for _, name := range []string{"before.txt", "after.txt", "big.bin"} {
 		if got := sheet(name); !strings.Contains(got, copyNeeded) || strings.Contains(got, notSealed) || !strings.Contains(got, "· sealed") {
 			t.Errorf("%s, a sealed file's sheet:\n%s", name, got)
 		}
 	}
-	if got := sheet("big.bin"); !strings.Contains(got, notSealed) || strings.Contains(got, copyNeeded) || strings.Contains(got, "· sealed") {
-		t.Errorf("the sheet of a file too large to seal:\n%s", got)
-	}
-	if card := a.privateMailboxBlock(withUser(httptest.NewRequest(http.MethodGet, "/", nil), dana), "dana@example.com"); !strings.Contains(card, "Files in Drive are sealed, each up to 25 MB") {
+	if card := a.privateMailboxBlock(withUser(httptest.NewRequest(http.MethodGet, "/", nil), dana), "dana@example.com"); !strings.Contains(card, "Files in Drive are sealed, whatever their size.") {
 		t.Errorf("the private card does not say what of Drive is sealed:\n%s", card)
 	}
 	rec := postForm(a.handleVayuOSDriveAction, "/os/vayumail/drive/action", url.Values{"op": {"share"}, "id": {strconv.FormatInt(ids["after.txt"], 10)}, "ends": {"1"}}.Encode(), dana)
