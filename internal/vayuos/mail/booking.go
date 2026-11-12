@@ -76,6 +76,28 @@ type Booking struct {
 	Status     string // held, confirmed, cancelled
 	UID        string // the calendar event's, once confirmed
 	Created    time.Time
+	Zone       string // the guest's own time zone, "" when not known
+}
+
+// BookingGuest is who asks for a time, as the booking page's form gives
+// them: Zone is the time zone the page was shown to them in.
+type BookingGuest struct {
+	Name, Email, Answer, Zone string
+}
+
+// bookingWhen is a booking's time as a guest reads it: in their own zone
+// when it is known and not the page's, with the host's clock beside it.
+func bookingWhen(start time.Time, p BookingPage, guestZone string) string {
+	host := zoneNamed(p.Zone)
+	if host == nil {
+		host = time.UTC
+	}
+	at := start.In(host).Format("Monday 2 January 2006, 15:04") + " (" + p.Zone + ")"
+	if g := zoneNamed(guestZone); g != nil && g.String() != host.String() {
+		at = start.In(g).Format("Monday 2 January 2006, 15:04") + " (" + g.String() + "), which is " +
+			start.In(host).Format("15:04 on Monday") + " for " + p.Mailbox + " (" + p.Zone + ")"
+	}
+	return at
 }
 
 var (
@@ -117,7 +139,15 @@ func (s *AccountStore) ensureBookingTables() error {
 		cancel_hash TEXT NOT NULL DEFAULT '',
 		uid TEXT NOT NULL DEFAULT '',
 		created DATETIME NOT NULL);`)
-	return err
+	if err != nil {
+		return err
+	}
+	// The guest's own time zone, for the mail they are sent; added in place
+	// on an install that made the table before it was kept.
+	if _, err := s.db.Exec(`ALTER TABLE vayumail_bookings ADD COLUMN guest_zone TEXT NOT NULL DEFAULT ''`); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+		return err
+	}
+	return nil
 }
 
 // check puts a page in its stored shape, or says what is wrong with it.
@@ -298,7 +328,7 @@ func (s *AccountStore) BookingsFor(ctx context.Context, mailbox string, pageID i
 	if err := s.ensureBookingTables(); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id,page_id,start,end,name,email,answer,status,uid,created FROM vayumail_bookings
+	rows, err := s.db.QueryContext(ctx, `SELECT id,page_id,start,end,name,email,answer,status,uid,created,guest_zone FROM vayumail_bookings
 		WHERE mailbox=? AND page_id=? ORDER BY created DESC LIMIT ?`, normEmail(mailbox), pageID, limit)
 	if err != nil {
 		return nil, err
@@ -308,7 +338,7 @@ func (s *AccountStore) BookingsFor(ctx context.Context, mailbox string, pageID i
 	for rows.Next() {
 		var b Booking
 		var s, e int64
-		if err := rows.Scan(&b.ID, &b.PageID, &s, &e, &b.Name, &b.Email, &b.Answer, &b.Status, &b.UID, &b.Created); err != nil {
+		if err := rows.Scan(&b.ID, &b.PageID, &s, &e, &b.Name, &b.Email, &b.Answer, &b.Status, &b.UID, &b.Created, &b.Zone); err != nil {
 			return nil, err
 		}
 		b.Start, b.End = time.Unix(s, 0).UTC(), time.Unix(e, 0).UTC()
@@ -469,17 +499,21 @@ func (e *Engine) slotFree(p BookingPage, start time.Time, length int, now time.T
 // it a booking, from the holder's address: confirmBase with the token after
 // it (the token is hex, so it needs no escaping). The link works for
 // bookingHoldFor.
-func (e *Engine) HoldBooking(ctx context.Context, p BookingPage, start time.Time, length int, name, email, answer string, now time.Time, confirmBase string) error {
+func (e *Engine) HoldBooking(ctx context.Context, p BookingPage, start time.Time, length int, g BookingGuest, now time.Time, confirmBase string) error {
 	if !e.accounts.BookingOffered(ctx, p) {
 		return errNoBookingPage
 	}
-	name = strings.TrimSpace(oneLine(name))
-	answer = strings.TrimSpace(answer)
-	addr, err := netmail.ParseAddress(strings.TrimSpace(email))
+	name := strings.TrimSpace(oneLine(g.Name))
+	answer := strings.TrimSpace(g.Answer)
+	zone := ""
+	if loc := zoneNamed(g.Zone); loc != nil {
+		zone = loc.String()
+	}
+	addr, err := netmail.ParseAddress(strings.TrimSpace(g.Email))
 	if err != nil || name == "" || len(name) > 120 || len(answer) > 2000 || !strings.Contains(addr.Address, "@") {
 		return ErrBookingDetails
 	}
-	email = normEmail(addr.Address)
+	email := normEmail(addr.Address)
 	if email == normEmail(p.Mailbox) {
 		return ErrBookingOwn
 	}
@@ -498,13 +532,12 @@ func (e *Engine) HoldBooking(ctx context.Context, p BookingPage, start time.Time
 		return err
 	}
 	end := start.Add(time.Duration(length) * time.Minute)
-	if _, err := e.accounts.db.ExecContext(ctx, `INSERT INTO vayumail_bookings(page_id,mailbox,start,end,name,email,answer,status,confirm_hash,created) VALUES(?,?,?,?,?,?,?,'held',?,?)`,
-		p.ID, p.Mailbox, start.Unix(), end.Unix(), name, email, answer, hashRecoveryToken(tok), now.UTC()); err != nil {
+	if _, err := e.accounts.db.ExecContext(ctx, `INSERT INTO vayumail_bookings(page_id,mailbox,start,end,name,email,answer,status,confirm_hash,created,guest_zone) VALUES(?,?,?,?,?,?,?,'held',?,?,?)`,
+		p.ID, p.Mailbox, start.Unix(), end.Unix(), name, email, answer, hashRecoveryToken(tok), now.UTC(), zone); err != nil {
 		return err
 	}
-	loc := zoneNamed(p.Zone)
 	text := "You asked to book " + p.Title + " with " + p.Mailbox + ":\n" +
-		start.In(loc).Format("Monday 2 January 2006, 15:04") + " (" + p.Zone + "), " + strconv.Itoa(length) + " minutes.\n\n" +
+		bookingWhen(start, p, zone) + ", " + strconv.Itoa(length) + " minutes.\n\n" +
 		"Confirm it here within 15 minutes:\n" + confirmBase + tok + "\n\n" +
 		"If you did not ask for this, do nothing: nothing is booked until the link is confirmed.\n"
 	_, err = e.SendSystemMail(ctx, p.Mailbox, []string{email}, "Confirm your booking: "+p.Title, "", text)
@@ -519,8 +552,8 @@ func (e *Engine) heldBooking(ctx context.Context, column, token string) (Booking
 	var b Booking
 	var s, en int64
 	var mbox string
-	err := e.accounts.db.QueryRowContext(ctx, `SELECT id,page_id,mailbox,start,end,name,email,answer,status,uid,created FROM vayumail_bookings WHERE `+column+`=? AND `+column+`<>''`,
-		hashRecoveryToken(token)).Scan(&b.ID, &b.PageID, &mbox, &s, &en, &b.Name, &b.Email, &b.Answer, &b.Status, &b.UID, &b.Created)
+	err := e.accounts.db.QueryRowContext(ctx, `SELECT id,page_id,mailbox,start,end,name,email,answer,status,uid,created,guest_zone FROM vayumail_bookings WHERE `+column+`=? AND `+column+`<>''`,
+		hashRecoveryToken(token)).Scan(&b.ID, &b.PageID, &mbox, &s, &en, &b.Name, &b.Email, &b.Answer, &b.Status, &b.UID, &b.Created, &b.Zone)
 	if err != nil {
 		return Booking{}, "", ErrNoSuchBooking
 	}

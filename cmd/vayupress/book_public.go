@@ -258,7 +258,7 @@ func (a *App) bookHold(w http.ResponseWriter, r *http.Request, p vmail.BookingPa
 	}
 	start := time.Unix(t, 0).In(loc)
 	name, email, answer := r.PostFormValue("name"), r.PostFormValue("email"), r.PostFormValue("answer")
-	err = a.vayuMail.HoldBooking(r.Context(), p, start, length, name, email, answer, now, a.oauthBaseURL(r)+"/book/confirm?t=")
+	err = a.vayuMail.HoldBooking(r.Context(), p, start, length, vmail.BookingGuest{Name: name, Email: email, Answer: answer, Zone: loc.String()}, now, a.oauthBaseURL(r)+"/book/confirm?t=")
 	self := func(kv ...string) string { return r.URL.Path + "?tz=" + url.QueryEscape(loc.String()) }
 	if err != nil {
 		// A guest's own mistake is said back to them; anything else is the

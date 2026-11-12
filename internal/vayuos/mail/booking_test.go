@@ -111,7 +111,7 @@ func bookTuesday(t *testing.T, e *Engine, flush func() []sentMail, p BookingPage
 	t.Helper()
 	start, _ := time.Parse(time.RFC3339, "2026-11-10T"+at+":00Z")
 	flush()
-	if err := e.HoldBooking(context.Background(), p, start, 30, "Kenji Mori", who, "Pricing", now, "https://site.example/book/confirm?t="); err != nil {
+	if err := e.HoldBooking(context.Background(), p, start, 30, BookingGuest{Name: "Kenji Mori", Email: who, Answer: "Pricing"}, now, "https://site.example/book/confirm?t="); err != nil {
 		return "", err
 	}
 	sent := flush()
@@ -130,12 +130,16 @@ func TestABookingIsHeldConfirmedAndCancelled(t *testing.T) {
 	p := introPage(t, s)
 	ctx := context.Background()
 	start := time.Date(2026, 11, 10, 10, 0, 0, 0, time.UTC)
-	if err := e.HoldBooking(ctx, p, start, 30, "Kenji Mori", "Kenji <kenji@guest.example>", "Pricing", bookingNow, "https://site.example/book/confirm?t="); err != nil {
+	if err := e.HoldBooking(ctx, p, start, 30, BookingGuest{Name: "Kenji Mori", Email: "Kenji <kenji@guest.example>", Answer: "Pricing", Zone: "Asia/Tokyo"}, bookingNow, "https://site.example/book/confirm?t="); err != nil {
 		t.Fatal(err)
 	}
 	sent := flush()
 	if len(sent) != 1 || sent[0].to[0] != "kenji@guest.example" || !strings.Contains(sent[0].raw, "Subject: Confirm your booking: Intro call") {
 		t.Fatalf("the confirmation mail: %+v", sent)
+	}
+	// In the zone the guest booked in, with the host's clock beside it.
+	if !strings.Contains(sent[0].raw, "Tuesday 10 November 2026, 19:00 (Asia/Tokyo), which is 10:00 on Tuesday for ankush@example.com (Europe/London), 30 minutes.") {
+		t.Errorf("the guest's mail does not give the time in their zone:\n%s", sent[0].raw)
 	}
 	confirm := tokenIn(t, sent[0].raw)
 	if got := tuesday(t, e, p, bookingNow); strings.Contains(got, "10:00") || strings.Contains(got, "10:30") {

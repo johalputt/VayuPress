@@ -16,6 +16,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   changed hour could offer a time past its close. The hours are now the
   holder's clock times on every day. The holder is told of a cancellation
   in the page's time zone, as of the booking, not in UTC.
+- **A guest's booking mail is in the guest's own time zone.** The mail
+  that asks a guest to confirm gave the time in the host's zone only; it
+  now gives it in the zone the page was shown to the guest in, with the
+  host's clock beside it.
 
 ## [3.18.38] — 2026-11-12
 
