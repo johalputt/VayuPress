@@ -21,6 +21,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/johalputt/vayupress/internal/i18n"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
@@ -64,49 +65,57 @@ func shareSlot(token string) (func(), bool) {
 	}, true
 }
 
-func shareGone(w http.ResponseWriter) {
-	writeGuestPage(w, http.StatusNotFound, "Not here", `<div class="login-card"><h1 class="login-title">This link is not open</h1><p class="login-sub">It may have ended or been stopped. Ask whoever sent it to you.</p></div>`)
+func shareGone(w http.ResponseWriter, lang string) {
+	writeGuestPageIn(w, lang, http.StatusNotFound, i18n.T(lang, "Not here"), `<div class="login-card"><h1 class="login-title">`+esc(i18n.T(lang, "This link is not open"))+
+		`</h1><p class="login-sub">`+esc(i18n.T(lang, "It may have ended or been stopped. Ask whoever sent it to you."))+`</p></div>`)
 }
 
-func shareCard(f vmail.SharedFile, said string) string {
-	inner := `<div class="login-card"><h1 class="login-title">` + esc(f.Name) + `</h1><p class="login-sub">` + esc(humanBytes(f.Size)) + `, shared by ` + esc(f.From) + `</p>`
+// sharePasswordField is a link's password field, in lang.
+func sharePasswordField(lang string) string {
+	return `<div class="field"><label class="field-label" for="share-password">` + esc(i18n.T(lang, "Password")) +
+		`</label><input id="share-password" class="input" type="password" name="password" required autocomplete="off"></div>`
+}
+
+func shareCard(lang string, f vmail.SharedFile, said string) string {
+	inner := `<div class="login-card"><h1 class="login-title">` + esc(f.Name) + `</h1><p class="login-sub">` + esc(i18n.T(lang, "{size}, shared by {who}", "size", humanBytes(f.Size), "who", f.From)) + `</p>`
 	if said != "" {
 		inner += `<div class="login-error" role="alert">` + esc(said) + `</div>`
 	}
 	inner += `<form class="login-form" method="POST">`
 	if f.Password {
-		inner += `<div class="field"><label class="field-label" for="share-password">Password</label><input id="share-password" class="input" type="password" name="password" required autocomplete="off"></div>`
+		inner += sharePasswordField(lang)
 	}
-	return inner + `<button class="btn btn--primary" type="submit">Download</button></form></div>`
+	return inner + `<button class="btn btn--primary" type="submit">` + esc(i18n.T(lang, "Download")) + `</button></form></div>`
 }
 
 // handleDriveShare is GET (the page) and POST (the file) of one link.
 func (a *App) handleDriveShare(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
+	lang := requestLang(w, r)
 	if !a.mailRunning() || a.vayuMail.Accounts() == nil {
-		shareGone(w)
+		shareGone(w, lang)
 		return
 	}
 	f, err := a.vayuMail.DriveShared(token)
 	if err != nil {
-		shareGone(w)
+		shareGone(w, lang)
 		return
 	}
 	switch f.Kind {
 	case vmail.ShareFolder:
-		a.shareFolderVisit(w, r, token, f)
+		a.shareFolderVisit(w, r, lang, token, f)
 		return
 	case vmail.ShareUpload:
-		a.shareUploadVisit(w, r, token, f)
+		a.shareUploadVisit(w, r, lang, token, f)
 		return
 	}
 	if r.Method != http.MethodPost {
-		writeGuestPage(w, http.StatusOK, f.Name, shareCard(f, ""))
+		writeGuestPageIn(w, lang, http.StatusOK, f.Name, shareCard(lang, f, ""))
 		return
 	}
 	done, ok := shareSlot(token)
 	if !ok {
-		shareBusy(w)
+		shareBusy(w, lang)
 		return
 	}
 	defer done()
@@ -116,12 +125,12 @@ func (a *App) handleDriveShare(w http.ResponseWriter, r *http.Request) {
 	if errors.Is(err, vmail.ErrSharePassword) {
 		// The page again, unless that was the wrong password that closed it.
 		if again, lerr := a.vayuMail.DriveShared(token); lerr == nil {
-			writeGuestPage(w, http.StatusForbidden, again.Name, shareCard(again, "That is not the password for this link."))
+			writeGuestPageIn(w, lang, http.StatusForbidden, again.Name, shareCard(lang, again, i18n.T(lang, "That is not the password for this link.")))
 			return
 		}
 	}
 	if err != nil {
-		shareGone(w)
+		shareGone(w, lang)
 		return
 	}
 	defer body.Close()
@@ -129,9 +138,10 @@ func (a *App) handleDriveShare(w http.ResponseWriter, r *http.Request) {
 }
 
 // shareBusy says a link has no place free for one more sending.
-func shareBusy(w http.ResponseWriter) {
+func shareBusy(w http.ResponseWriter, lang string) {
 	w.Header().Set("Retry-After", "30")
-	writeGuestPage(w, http.StatusServiceUnavailable, "Busy", `<div class="login-card"><h1 class="login-title">Busy</h1><p class="login-sub">This link is busy. Try again in a moment.</p></div>`)
+	writeGuestPageIn(w, lang, http.StatusServiceUnavailable, i18n.T(lang, "Busy"), `<div class="login-card"><h1 class="login-title">`+esc(i18n.T(lang, "Busy"))+
+		`</h1><p class="login-sub">`+esc(i18n.T(lang, "This link is busy. Try again in a moment."))+`</p></div>`)
 }
 
 // sendShared sends a file a link handed out.

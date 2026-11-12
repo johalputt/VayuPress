@@ -48,6 +48,19 @@ func writeGuestPage(w http.ResponseWriter, status int, title, body string) {
 	_, _ = w.Write([]byte(authPageShell(title, body)))
 }
 
+// writeGuestPageIn is writeGuestPage for a page in lang, with the menu that
+// changes it under the card.
+func writeGuestPageIn(w http.ResponseWriter, lang string, status int, title, body string) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Language", lang)
+	w.Header().Add("Vary", "Accept-Language, Cookie")
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte(authPageShellIn(lang, title, body+languageMenu(lang))))
+}
+
 // publicBookingPage is the page a link names, when it is taking bookings.
 func (a *App) publicBookingPage(r *http.Request) (vmail.BookingPage, bool) {
 	if !a.mailRunning() || a.vayuMail.Accounts() == nil {

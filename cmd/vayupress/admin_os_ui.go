@@ -2435,8 +2435,13 @@ func loginTOTPOpen(errHTML string) string {
 }
 
 func authPageShell(title, inner string) string {
+	return authPageShellIn("en", title, inner)
+}
+
+// authPageShellIn is authPageShell for a page in lang.
+func authPageShellIn(lang, title, inner string) string {
 	return `<!DOCTYPE html>
-<html lang="en">
+<html lang="` + html.EscapeString(lang) + `">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
