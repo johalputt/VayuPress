@@ -412,8 +412,13 @@ func (e *Engine) FreeSlots(p BookingPage, length int, from, to, now time.Time) (
 			continue
 		}
 		for _, w := range p.Hours[(int(day.Weekday())+6)%7] {
-			wEnd := day.Add(time.Duration(w[1]) * time.Minute)
-			for t := day.Add(time.Duration(w[0]) * time.Minute); !t.Add(dur).After(wEnd); t = t.Add(dur) {
+			// The hours are clock times in the page's zone. Adding them to
+			// midnight as real time put them an hour off on the days the
+			// clock changes; slots then step in real time, so the hour that
+			// does not exist is not offered and the one that comes twice is
+			// offered as the two instants it is.
+			wEnd := clockOn(day, w[1])
+			for t := clockOn(day, w[0]); !t.Add(dur).After(wEnd); t = t.Add(dur) {
 				if t.Before(from) || !t.Before(to) {
 					continue
 				}
@@ -431,6 +436,13 @@ func (e *Engine) FreeSlots(p BookingPage, length int, from, to, now time.Time) (
 		}
 	}
 	return out, nil
+}
+
+// clockOn is the instant the clock in day's zone reads minutes after
+// midnight on day; 24:00 is the next midnight.
+func clockOn(day time.Time, minutes int) time.Time {
+	y, m, d := day.Date()
+	return time.Date(y, m, d, minutes/60, minutes%60, 0, 0, day.Location())
 }
 
 func midnightIn(t time.Time, loc *time.Location) time.Time {
@@ -604,7 +616,15 @@ func (e *Engine) CancelBooking(ctx context.Context, token string) (Booking, erro
 		}
 	}
 	b.Status = "cancelled"
-	e.tellHolder(mbox, "Booking cancelled: "+b.Name, b.Name+" <"+b.Email+"> cancelled the booking for "+b.Start.UTC().Format("Monday 2 January 2006, 15:04 UTC")+".\n")
+	// In the page's zone, as the holder was told of the booking; UTC only
+	// when the page is gone.
+	when := b.Start.UTC().Format("Monday 2 January 2006, 15:04") + " (UTC)"
+	if p, err := e.accounts.BookingPage(ctx, mbox, b.PageID, ""); err == nil {
+		if loc := zoneNamed(p.Zone); loc != nil {
+			when = b.Start.In(loc).Format("Monday 2 January 2006, 15:04") + " (" + p.Zone + ")"
+		}
+	}
+	e.tellHolder(mbox, "Booking cancelled: "+b.Name, b.Name+" <"+b.Email+"> cancelled the booking for "+when+".\n")
 	return b, nil
 }
 

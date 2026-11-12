@@ -8,6 +8,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **A booking page's hours on the days the clock changes.** A page open
+  09:00 to 17:00 offered 10:00 to 18:00 on the day the clock goes forward
+  and 08:00 to 16:00 on the day it goes back, and a window holding the
+  changed hour could offer a time past its close. The hours are now the
+  holder's clock times on every day. The holder is told of a cancellation
+  in the page's time zone, as of the booking, not in UTC.
+
 ## [3.18.38] — 2026-11-12
 
 Drive: a place for files beside Mail and Calendar, in one allowance with the mailbox's mail. Share a file by a link, save an attachment to it, attach from it, and open it from a computer's or phone's file app. An administrator's own mailbox is now theirs in Mail.

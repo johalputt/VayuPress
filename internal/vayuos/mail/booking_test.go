@@ -177,6 +177,18 @@ func TestABookingIsHeldConfirmedAndCancelled(t *testing.T) {
 	if _, err := e.CancelBooking(ctx, cancelTok); !errors.Is(err, ErrNoSuchBooking) {
 		t.Fatalf("the cancel link worked twice: %v", err)
 	}
+	// The holder is told in the page's zone, as of the booking itself.
+	msgs, _ = e.maildir.ListFolder("example.com", "ankush", "Inbox")
+	var told string
+	for _, m := range msgs {
+		if m.Subject == "Booking cancelled: Kenji Mori" {
+			raw, _ := e.maildir.ReadRawFolder("example.com", "ankush", "Inbox", m.ID)
+			told = string(raw)
+		}
+	}
+	if !strings.Contains(told, "cancelled the booking for Tuesday 10 November 2026, 10:00 (Europe/London).") {
+		t.Errorf("the holder was told of the cancellation as:\n%s", told)
+	}
 }
 
 // TestAConfirmLinkPastItsHoldBooksNothing — and a time taken meanwhile is
