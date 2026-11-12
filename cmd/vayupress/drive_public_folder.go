@@ -100,7 +100,7 @@ func shareUploadCard(lang string, f vmail.SharedFile, kept []string, said string
 func (a *App) shareFolderVisit(w http.ResponseWriter, r *http.Request, lang, token string, f vmail.SharedFile) {
 	if r.Method != http.MethodPost {
 		if f.Password {
-			writeGuestPageIn(w, lang, http.StatusOK, f.Name, sharePasswordCard(lang, f, ""))
+			writeGuestPage(w, lang, http.StatusOK, f.Name, sharePasswordCard(lang, f, ""))
 			return
 		}
 		a.shareFolderPage(w, lang, token, "", 0)
@@ -138,7 +138,7 @@ func (a *App) shareFolderPage(w http.ResponseWriter, lang, token, password strin
 		a.shareFolderRefused(w, lang, token, f, err)
 		return
 	}
-	writeGuestPageIn(w, lang, http.StatusOK, sf.Path[len(sf.Path)-1].Name, shareFolderCard(lang, sf, password))
+	writeGuestPage(w, lang, http.StatusOK, sf.Path[len(sf.Path)-1].Name, shareFolderCard(lang, sf, password))
 }
 
 // shareFolderRefused says why a folder link gave nothing: its password
@@ -148,11 +148,11 @@ func (a *App) shareFolderRefused(w http.ResponseWriter, lang, token string, f vm
 	case errors.Is(err, vmail.ErrSharePassword):
 		// The page again, unless that was the wrong password that closed it.
 		if again, lerr := a.vayuMail.DriveShared(token); lerr == nil {
-			writeGuestPageIn(w, lang, http.StatusForbidden, again.Name, sharePasswordCard(lang, again, i18n.T(lang, "That is not the password for this link.")))
+			writeGuestPage(w, lang, http.StatusForbidden, again.Name, sharePasswordCard(lang, again, i18n.T(lang, "That is not the password for this link.")))
 			return
 		}
 	case errors.Is(err, vmail.ErrDriveNotFound):
-		writeGuestPageIn(w, lang, http.StatusNotFound, f.Name, `<div class="login-card"><h1 class="login-title">`+esc(i18n.T(lang, "Not in this folder"))+
+		writeGuestPage(w, lang, http.StatusNotFound, f.Name, `<div class="login-card"><h1 class="login-title">`+esc(i18n.T(lang, "Not in this folder"))+
 			`</h1><p class="login-sub">`+esc(i18n.T(lang, "It may have been moved or deleted. Open the link again to see what is there now."))+`</p></div>`)
 		return
 	}
@@ -164,7 +164,7 @@ func (a *App) shareFolderRefused(w http.ResponseWriter, lang, token string, f vm
 // counts as one of the link's uses.
 func (a *App) shareUploadVisit(w http.ResponseWriter, r *http.Request, lang, token string, f vmail.SharedFile) {
 	if r.Method != http.MethodPost {
-		writeGuestPageIn(w, lang, http.StatusOK, f.Name, shareUploadCard(lang, f, nil, ""))
+		writeGuestPage(w, lang, http.StatusOK, f.Name, shareUploadCard(lang, f, nil, ""))
 		return
 	}
 	done, ok := shareSlot(token)
@@ -178,7 +178,7 @@ func (a *App) shareUploadVisit(w http.ResponseWriter, r *http.Request, lang, tok
 	r.Body = http.MaxBytesReader(w, r.Body, shareUploadBody)
 	mr, err := r.MultipartReader()
 	if err != nil {
-		writeGuestPageIn(w, lang, http.StatusBadRequest, f.Name, shareUploadCard(lang, f, nil, i18n.T(lang, "Choose a file to send.")))
+		writeGuestPage(w, lang, http.StatusBadRequest, f.Name, shareUploadCard(lang, f, nil, i18n.T(lang, "Choose a file to send.")))
 		return
 	}
 	var kept []string
@@ -189,7 +189,7 @@ func (a *App) shareUploadVisit(w http.ResponseWriter, r *http.Request, lang, tok
 			break
 		}
 		if err != nil {
-			writeGuestPageIn(w, lang, http.StatusBadRequest, f.Name, shareUploadCard(lang, f, kept, i18n.T(lang, "The upload did not arrive whole; at most 100 MB at a time.")))
+			writeGuestPage(w, lang, http.StatusBadRequest, f.Name, shareUploadCard(lang, f, kept, i18n.T(lang, "The upload did not arrive whole; at most 100 MB at a time.")))
 			return
 		}
 		switch part.FormName() {
@@ -209,10 +209,10 @@ func (a *App) shareUploadVisit(w http.ResponseWriter, r *http.Request, lang, tok
 		}
 	}
 	if len(kept) == 0 {
-		writeGuestPageIn(w, lang, http.StatusBadRequest, f.Name, shareUploadCard(lang, f, nil, i18n.T(lang, "Choose a file to send.")))
+		writeGuestPage(w, lang, http.StatusBadRequest, f.Name, shareUploadCard(lang, f, nil, i18n.T(lang, "Choose a file to send.")))
 		return
 	}
-	writeGuestPageIn(w, lang, http.StatusOK, f.Name, shareUploadCard(lang, f, kept, ""))
+	writeGuestPage(w, lang, http.StatusOK, f.Name, shareUploadCard(lang, f, kept, ""))
 }
 
 // shareUploadRefused says why an upload link did not keep a file, with
@@ -233,7 +233,7 @@ func (a *App) shareUploadRefused(w http.ResponseWriter, lang, token string, f vm
 	}
 	// The page again while the link is open; gone, it says so.
 	if again, lerr := a.vayuMail.DriveShared(token); lerr == nil && said != "" {
-		writeGuestPageIn(w, lang, status, again.Name, shareUploadCard(lang, again, kept, said))
+		writeGuestPage(w, lang, status, again.Name, shareUploadCard(lang, again, kept, said))
 		return
 	}
 	shareGone(w, lang)

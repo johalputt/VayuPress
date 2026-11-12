@@ -3,6 +3,7 @@
 package main
 
 import (
+	"encoding/json"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -14,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -27,6 +29,14 @@ import (
 // that nobody reads. T's first argument is always a literal, so it can be
 // read here.
 func TestEverySentenceGivenToTIsInTheCatalogue(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "internal", "i18n", "locales", "en.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalogue := map[string]string{}
+	if err := json.Unmarshal(b, &catalogue); err != nil {
+		t.Fatal(err)
+	}
 	used := map[string]bool{}
 	fset := token.NewFileSet()
 	files, _ := filepath.Glob("*.go")
@@ -57,19 +67,16 @@ func TestEverySentenceGivenToTIsInTheCatalogue(t *testing.T) {
 			}
 			msg, _ := strconv.Unquote(lit.Value)
 			used[msg] = true
-			if !i18n.Known(msg) {
+			if _, ok := catalogue[msg]; !ok {
 				t.Errorf("%s: %q is not in locales/en.json", fset.Position(call.Pos()), msg)
 			}
 			return true
 		})
 	}
-	for msg := range i18n.Catalogue("en") {
+	for msg := range catalogue {
 		if !used[msg] {
 			t.Errorf("locales/en.json has %q, which no code says", msg)
 		}
-	}
-	if _, err := os.Stat(filepath.Join("..", "..", "internal", "i18n", "locales", "en.json")); err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -116,6 +123,25 @@ func TestALinksPageIsInTheVisitorsLanguage(t *testing.T) {
 	for _, english := range []string{">Download<", "shared by", ">Language<", ">Change<"} {
 		if strings.Contains(pseudo, english) {
 			t.Errorf("the pseudo-language left %q in English", english)
+		}
+	}
+}
+
+// TestABookingPageIsInTheGuestsLanguage — its words, its month and the
+// heads of its days.
+func TestABookingPageIsInTheGuestsLanguage(t *testing.T) {
+	a := calendarApp(t)
+	danaAllDay(t, a)
+	h := bookingRouter(a)
+	req := httptest.NewRequest(http.MethodGet, "/book/dana/intro?tz=UTC", nil)
+	req.Header.Set("Accept-Language", "ja-JP,ja;q=0.9")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	body := rec.Body.String()
+	month := i18n.Date("ja", time.Now().UTC(), i18n.MonthYear)
+	for _, want := range []string{`<html lang="ja">`, "あなたの時間帯：UTC", ">" + month + "<", `aria-hidden="true">月</span>`, "確認用のリンクをメールでお送りします。"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the Japanese page has no %q", want)
 		}
 	}
 }

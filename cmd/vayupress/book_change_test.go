@@ -99,7 +99,7 @@ func TestABookingIsMovedFromItsOwnLink(t *testing.T) {
 		t.Errorf("the calendar after the move: %s", got)
 	}
 	busy := visit(h, http.MethodPost, "/book/change", url.Values{"t": {tok}, "op": {"move"}, "to": {itoa64(noon.Unix())}}.Encode())
-	if busy.Code != http.StatusConflict || !strings.Contains(busy.Body.String(), "that time is no longer free") {
+	if busy.Code != http.StatusConflict || !strings.Contains(busy.Body.String(), "That time is no longer free.") {
 		t.Errorf("a move onto a busy time: %d %s", busy.Code, busy.Body.String())
 	}
 	// A link made before moves were offered opens the same page.

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/text/language"
 )
@@ -72,19 +73,19 @@ func TestALanguageIsChosenByThePersonThenTheBrowser(t *testing.T) {
 // TestEveryLanguageHasEverySentenceWithItsPlaceholders — a lost {who} or a
 // dropped plural fails here, not on a visitor's screen.
 func TestEveryLanguageHasEverySentenceWithItsPlaceholders(t *testing.T) {
-	en := Catalogue("en")
+	en := catalogues["en"]
 	if len(en) == 0 {
 		t.Fatal("en.json is empty")
 	}
 	for _, l := range Languages[1:] {
-		cat := Catalogue(l.Tag)
+		cat := catalogues[l.Tag]
 		for msg := range en {
 			tr, ok := cat[msg]
 			if !ok || strings.TrimSpace(tr) == "" {
 				t.Errorf("%s has no translation of %q", l.Tag, msg)
 				continue
 			}
-			want, got := Placeholders(msg), Placeholders(tr)
+			want, got := placeholders(msg), placeholders(tr)
 			slices.Sort(want)
 			slices.Sort(got)
 			if !slices.Equal(want, got) {
@@ -100,3 +101,65 @@ func TestEveryLanguageHasEverySentenceWithItsPlaceholders(t *testing.T) {
 }
 
 func mustTag(s string) language.Tag { return language.MustParse(s) }
+
+// TestDatesAreWrittenAsEachLanguageWritesThem — a month standing alone and
+// in a date (Russian's two forms), the day before the month, the year
+// first, and English as it was.
+func TestDatesAreWrittenAsEachLanguageWritesThem(t *testing.T) {
+	at := time.Date(2026, 11, 20, 15, 4, 0, 0, time.UTC)
+	for _, c := range []struct {
+		lang string
+		form DateForm
+		want string
+	}{
+		{"en", DayMonthYearAt, "Friday 20 November 2026, 15:04"},
+		{"en", MonthYear, "November 2026"},
+		{"ru", MonthYear, "ноябрь 2026"},
+		{"ru", DayMonthAt, "пятница, 20 ноября, 15:04"},
+		{"de", DayMonth, "Freitag, 20. November"},
+		{"es", DayMonthYearAt, "viernes, 20 de noviembre de 2026, 15:04"},
+		{"ja", DayMonthAt, "11月20日 金曜日 15:04"},
+		{"ko", MonthYear, "2026년 11월"},
+		{"tr", Day, "20 Cuma"},
+		{"xx", Day, "Friday 20"},
+	} {
+		if got := Date(c.lang, at, c.form); got != c.want {
+			t.Errorf("%s %d: %q, not %q", c.lang, c.form, got, c.want)
+		}
+	}
+	if heads := WeekdayHeads("de"); heads[0] != "Mo" || heads[6] != "So" {
+		t.Errorf("German heads: %v", heads)
+	}
+}
+
+// placeholders is the argument names a message uses, plurals included, in
+// a canonical form for comparing a translation with its English.
+func placeholders(msg string) []string {
+	var out []string
+	var walk func(s string)
+	walk = func(s string) {
+		for i := 0; i < len(s); i++ {
+			if s[i] != '{' {
+				continue
+			}
+			end := closing(s, i)
+			if end < 0 {
+				return
+			}
+			inner := s[i+1 : end]
+			name, rest, isChoice := strings.Cut(inner, ",")
+			if isChoice {
+				out = append(out, strings.TrimSpace(name)+":plural")
+				_, branches, _ := strings.Cut(rest, ",")
+				for _, t := range pluralBranches(branches) {
+					walk(t)
+				}
+			} else {
+				out = append(out, strings.TrimSpace(name))
+			}
+			i = end
+		}
+	}
+	walk(msg)
+	return out
+}

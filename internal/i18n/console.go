@@ -231,38 +231,6 @@ func abs(n int) int {
 	return n
 }
 
-// Placeholders is the argument names a message uses, plurals included, in
-// a canonical form for comparing a translation with its English.
-func Placeholders(msg string) []string {
-	var out []string
-	var walk func(s string)
-	walk = func(s string) {
-		for i := 0; i < len(s); i++ {
-			if s[i] != '{' {
-				continue
-			}
-			end := closing(s, i)
-			if end < 0 {
-				return
-			}
-			inner := s[i+1 : end]
-			name, rest, isChoice := strings.Cut(inner, ",")
-			if isChoice {
-				out = append(out, strings.TrimSpace(name)+":plural")
-				_, branches, _ := strings.Cut(rest, ",")
-				for _, t := range pluralBranches(branches) {
-					walk(t)
-				}
-			} else {
-				out = append(out, strings.TrimSpace(name))
-			}
-			i = end
-		}
-	}
-	walk(msg)
-	return out
-}
-
 // pseudo is msg accented and lengthened, its placeholders kept as written.
 func pseudo(msg string) string {
 	accent := strings.NewReplacer("a", "á", "e", "é", "i", "í", "o", "ö", "u", "ü", "A", "Å", "E", "É", "O", "Ö", "c", "ç", "n", "ñ")
@@ -296,13 +264,3 @@ func pseudo(msg string) string {
 	out := b.String()
 	return "[" + out + strings.Repeat("~", len(msg)*2/5) + "]"
 }
-
-// Known reports whether msg is one of en.json's sentences.
-func Known(msg string) bool {
-	_, ok := catalogues["en"][msg]
-	return ok
-}
-
-// Catalogue is one language's translations, for tests that hold the files
-// to each other.
-func Catalogue(tag string) map[string]string { return catalogues[tag] }
