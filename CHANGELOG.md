@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.39] — 2026-11-12
+
+Calendar and booking that work with other calendars, Drive that keeps files encrypted, checked and shareable, AI tools for your own mailbox that never send, and the pages a visitor reads in thirteen languages.
+
 ### Fixed
 
 - **A booking series is bounded where its times are worked out.** The
@@ -28,6 +32,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **The pages a visitor reads, in thirteen languages.** A shared link's
+  pages and a booking page are in the visitor's language: English,
+  Español, Português (Brasil), Français, Deutsch, Italiano, Русский,
+  Türkçe, 中文（简体）, 日本語, 한국어, Bahasa Indonesia or हिन्दी, chosen
+  from the page's menu or by the browser, with dates written as each
+  language writes them. Mail, sign-in and the console are English for now.
 - **AI tools for your own mailbox, which never send.** A mailbox's holder
   can connect an AI tool over VayuMCP to their own mail and calendar: the
   tool asks, the holder signs in and chooses whether it may only read or
