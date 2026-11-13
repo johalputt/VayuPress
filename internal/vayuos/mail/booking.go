@@ -117,7 +117,10 @@ func seriesStarts(start time.Time, p BookingPage, every, count int) []time.Time 
 		loc = time.UTC
 	}
 	at := start.In(loc)
-	out := make([]time.Time, 0, count)
+	// Grown by append, not made to count: at most twelve, and an allocation
+	// sized by a number that came from a request is one a reader has to
+	// trace back to the bound above to trust.
+	var out []time.Time
 	for k := 0; k < count; k++ {
 		out = append(out, time.Date(at.Year(), at.Month(), at.Day()+7*every*k, at.Hour(), at.Minute(), 0, 0, loc))
 	}
