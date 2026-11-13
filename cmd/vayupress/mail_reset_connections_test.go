@@ -6,6 +6,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -23,7 +26,12 @@ func TestAPasswordResetDisconnectsEveryAITool(t *testing.T) {
 	sum := sha256.Sum256([]byte(verifier))
 	rec := consentAs(a, client, "vmail:dana@example.com", "mailbox", base64.RawURLEncoding.EncodeToString(sum[:]))
 	loc, _ := url.Parse(rec.Header().Get("Location"))
-	if tok := oauthExchange(a, client, loc.Query().Get("code"), verifier); tok.Code != 200 {
+	tok := oauthExchange(a, client, loc.Query().Get("code"), verifier)
+	var granted struct {
+		Access  string `json:"access_token"`
+		Refresh string `json:"refresh_token"`
+	}
+	if tok.Code != 200 || json.Unmarshal(tok.Body.Bytes(), &granted) != nil || granted.Refresh == "" || !a.apiKeys.Verify(granted.Access) {
 		t.Fatalf("connecting: %d %s", tok.Code, tok.Body.String())
 	}
 	cs, _ := a.vayuMail.Connections(vmail.ReadAsOwner("dana"))
@@ -52,6 +60,19 @@ func TestAPasswordResetDisconnectsEveryAITool(t *testing.T) {
 	}
 	if !strings.Contains(notice, "1 AI tool disconnected") {
 		t.Errorf("the notice does not say the tool was disconnected:\n%s", notice)
+	}
+	// What the tool holds is worth nothing now: its token is refused, and
+	// renewing it, which keeps a key's id, does not bring the key back.
+	if a.apiKeys.Verify(granted.Access) {
+		t.Error("the tool's token still works after the reset")
+	}
+	form := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {granted.Refresh}, "client_id": {client.ID}}
+	r := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	renewed := httptest.NewRecorder()
+	a.handleOAuthToken(renewed, r)
+	if renewed.Code != http.StatusBadRequest || !strings.Contains(renewed.Body.String(), "invalid_grant") {
+		t.Errorf("the tool renewed its way back in: %d %s", renewed.Code, renewed.Body.String())
 	}
 }
 
