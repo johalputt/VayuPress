@@ -1775,11 +1775,11 @@ func (a *App) handleVayuOSAccountDelete(w http.ResponseWriter, r *http.Request) 
 		writeMailSessionRequired(w, r)
 		return
 	}
-	// DeleteMailbox, never Accounts().Delete: the store only clears SQLite, and a
+	// deleteMailbox, never Accounts().Delete: the store only clears SQLite, and a
 	// mailbox whose messages stay on disk is inherited whole by whoever is given
 	// the address next. The engine owns the ordering (rows first, so nothing is
 	// still delivering) and reports where the mail was set aside.
-	retired, err := a.vayuMail.DeleteMailbox(r.Context(), in.Email)
+	retired, err := a.deleteMailbox(r.Context(), in.Email)
 	if err != nil {
 		writeAPIError(w, r, 500, "delete-failed", err.Error(), "")
 		return

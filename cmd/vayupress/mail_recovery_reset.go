@@ -57,6 +57,7 @@ type mailResetOutcome struct {
 	AppPasswordsRevoked int
 	SessionsRevoked     int
 	ToolsDisconnected   int
+	PasskeysRemoved     int
 	QueueHeld           int
 	// Exits is what keeps leaving the mailbox on its own (forwarding, rules
 	// that forward, file links, shares), left as it is and named in the
@@ -89,7 +90,11 @@ type mailResetDeps struct {
 	// every sign-in by design (it renews itself), so without this step a tool
 	// connected by whoever had the mailbox kept reading it after the reset.
 	RevokeConnections func(ctx context.Context, email string) (int, error)
-	InvalidateTokens  func(ctx context.Context, email string)
+	// RemovePasskeys removes the mailbox's passkeys. A passkey signs in with
+	// no password at all, so one added by whoever had the mailbox signed them
+	// straight back in after the reset that was meant to shut them out.
+	RemovePasskeys   func(ctx context.Context, email string) (int, error)
+	InvalidateTokens func(ctx context.Context, email string)
 	// Exits reads what keeps leaving the mailbox on its own, for the notice.
 	Exits           func(ctx context.Context, email string) vmail.MailboxExits
 	HoldQueue       func(ctx context.Context, email string) (int, error)
@@ -230,7 +235,16 @@ func applyMailPasswordReset(ctx context.Context, d mailResetDeps, email, newPass
 			out.ToolsDisconnected = n
 		}
 	}
-	// 3d. A private mailbox's key held open by one of those sign-ins.
+	// 3d. Every passkey, the holder's own among them: which one an intruder
+	//     added cannot be told, and the holder adds theirs again.
+	if d.RemovePasskeys != nil {
+		if n, err := d.RemovePasskeys(ctx, email); err != nil {
+			fail("remove passkeys", err)
+		} else {
+			out.PasskeysRemoved = n
+		}
+	}
+	// 3e. A private mailbox's key held open by one of those sign-ins.
 	if d.CloseHeldKey != nil {
 		d.CloseHeldKey(email)
 	}
@@ -276,8 +290,8 @@ func applyMailPasswordReset(ctx context.Context, d mailResetDeps, email, newPass
 	// 7. Audit last, with the outcome, so the record says what was destroyed and
 	//    not merely that something happened.
 	if d.Audit != nil {
-		detail := fmt.Sprintf("reason=%s app_passwords_revoked=%d sessions_revoked=%d tools_disconnected=%d queue_held=%d",
-			reason, out.AppPasswordsRevoked, out.SessionsRevoked, out.ToolsDisconnected, out.QueueHeld)
+		detail := fmt.Sprintf("reason=%s app_passwords_revoked=%d sessions_revoked=%d tools_disconnected=%d passkeys_removed=%d queue_held=%d",
+			reason, out.AppPasswordsRevoked, out.SessionsRevoked, out.ToolsDisconnected, out.PasskeysRemoved, out.QueueHeld)
 		if len(out.Problems) > 0 {
 			detail += " problems=" + strings.Join(out.Problems, "; ")
 		}
@@ -316,6 +330,9 @@ func mailResetNotice(email string, reason mailResetReason, actor string,
 	fmt.Fprintf(&b, "  - %d web session%s ended\n", out.SessionsRevoked, plural(out.SessionsRevoked))
 	if out.ToolsDisconnected > 0 {
 		fmt.Fprintf(&b, "  - %d AI tool%s disconnected\n", out.ToolsDisconnected, plural(out.ToolsDisconnected))
+	}
+	if out.PasskeysRemoved > 0 {
+		fmt.Fprintf(&b, "  - %d passkey%s removed (add yours again in Settings)\n", out.PasskeysRemoved, plural(out.PasskeysRemoved))
 	}
 	if out.QueueHeld > 0 {
 		fmt.Fprintf(&b, "  - %d message%s waiting to be sent %s been held for review\n",
@@ -393,6 +410,11 @@ func (a *App) mailResetDepsFor() (mailResetDeps, bool) {
 			}
 		}
 		return len(keys), err
+	}
+	if a.passkeys != nil {
+		d.RemovePasskeys = func(ctx context.Context, email string) (int, error) {
+			return a.passkeys.RemoveAll(ctx, "vmail:"+strings.ToLower(strings.TrimSpace(email)))
+		}
 	}
 	d.Exits = a.vayuMail.StandingExits
 	d.HoldQueue = a.vayuMail.HoldOutboundFor

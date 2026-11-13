@@ -21,6 +21,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   other mailboxes all outlive a reset, and each may as well be the holder's
   own, so none is removed. The reset's notice now lists those it found, for
   the holder to look at.
+- **A password reset removes the mailbox's passkeys.** A passkey signs in
+  with no password, so one added by whoever had the mailbox signed them
+  back in after the reset. Every passkey is removed, and passkey-only
+  sign-in with them so the new password works; the notice counts them, and
+  the holder adds theirs again in Settings.
+- **A deleted mailbox's ways in do not pass to the address's next holder.**
+  Passkeys, console sessions and keys for connected tools were held under
+  the address and checked only for an account there, so giving the address
+  out again let its last holder sign in to the new mailbox. Deleting a
+  mailbox now ends all three first, and stops if any of them cannot be
+  ended.
 - **A file name cannot turn its own letters around.** A name carrying a
   right-to-left override, such as `invoice<U+202E>fdp.exe`, was drawn as
   `invoiceexe.pdf` in the reader and saved under that disguise by the

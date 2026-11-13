@@ -216,6 +216,31 @@ func (s *Store) Delete(ctx context.Context, principal string, id int64) error {
 	return err
 }
 
+// RemoveAll removes every passkey of principal, and passkey only with them,
+// and gives how many passkeys went. For when a principal's passkeys can no
+// longer be trusted to be its holder's: a password reset, where one may be
+// an intruder's, and a mailbox deleted, whose address names the next holder.
+// Passkey only goes too, or the new password would sign in no one.
+func (s *Store) RemoveAll(ctx context.Context, principal string) (int, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx, `DELETE FROM passkeys WHERE principal = ?`, principal)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM passkey_only WHERE principal = ?`, principal); err != nil {
+		return 0, err
+	}
+	return int(n), tx.Commit()
+}
+
 // ── Passkey only ─────────────────────────────────────────────────────────────
 
 // OnlyNeeds is how many passkeys a principal must hold to sign in by passkey

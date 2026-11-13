@@ -578,13 +578,13 @@ func (a *App) handleVayuOSAccountsAction(w http.ResponseWriter, r *http.Request)
 	case "handover":
 		opErr = a.handOverMailbox(r, email)
 	case "delete":
-		// DeleteMailbox, NOT the store's Delete. The store clears SQLite rows only,
+		// deleteMailbox, NOT the store's Delete. The store clears SQLite rows only,
 		// and mail still sitting on disk is inherited whole by whoever is given the
 		// address next — the panel's button and the JSON endpoint must not disagree
 		// about that. The engine orders it (rows first, so nothing is still
 		// delivering, then the mail is set aside) and reports what was retained.
 		var retired string
-		if retired, opErr = a.vayuMail.DeleteMailbox(r.Context(), email); opErr == nil {
+		if retired, opErr = a.deleteMailbox(r.Context(), email); opErr == nil {
 			dbpkg.AuditLog("vayumail.account.delete", dbpkg.AuditActor(r), email, retired)
 			if retired != "" {
 				deleteNote = "The mailbox was deleted. Its messages were moved out of the delivery tree and kept aside, so the address can be reissued without the new holder seeing them."
