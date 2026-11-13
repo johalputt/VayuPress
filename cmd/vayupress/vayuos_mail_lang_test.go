@@ -299,3 +299,14 @@ func TestARuleIsSaidInThePersonsLanguage(t *testing.T) {
 		t.Errorf("the confirmation page is not in Japanese: %s", page)
 	}
 }
+
+// TestModelHelpSaysWhereInThePersonsLanguage — where the model runs, as the
+// buttons say it, in Japanese and German.
+func TestModelHelpSaysWhereInThePersonsLanguage(t *testing.T) {
+	if got := (mailModel{local: true}).whereIn("ja"); got != "このサーバー上" {
+		t.Errorf("a local model, in Japanese: %q", got)
+	}
+	if got := (mailModel{provider: "Example"}).whereIn("de"); got != "an Example gesendet" {
+		t.Errorf("a model outside, in German: %q", got)
+	}
+}

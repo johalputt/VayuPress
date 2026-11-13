@@ -116,7 +116,7 @@ func TestAModelOutsideGetsLess(t *testing.T) {
 	for _, m := range msgs {
 		idOf[m.Subject] = m.ID
 	}
-	outside := mailModel{b: aiassist.Backend{Kind: aiassist.KindOllama, Endpoint: srv.URL, Model: "m"}, where: "sent to Example"}
+	outside := mailModel{b: aiassist.Backend{Kind: aiassist.KindOllama, Endpoint: srv.URL, Model: "m"}, where: "sent to Example", provider: "Example"}
 	out, err := a.runModelHelp(t.Context(), rd, outside, "reply", "Inbox", idOf["Plain"], "say yes")
 	if err != nil {
 		t.Fatal(err)
@@ -211,7 +211,7 @@ func TestAModelOutsideGetsNoEarlierSecret(t *testing.T) {
 			last = m.ID
 		}
 	}
-	outside := mailModel{b: aiassist.Backend{Kind: aiassist.KindOllama, Endpoint: srv.URL, Model: "m"}, where: "sent to Example"}
+	outside := mailModel{b: aiassist.Backend{Kind: aiassist.KindOllama, Endpoint: srv.URL, Model: "m"}, where: "sent to Example", provider: "Example"}
 	if _, err := a.runModelHelp(t.Context(), rd, outside, "summary", "Inbox", last, ""); err != nil {
 		t.Fatal(err)
 	}

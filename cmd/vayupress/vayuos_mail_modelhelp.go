@@ -21,6 +21,7 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"net"
 	"net/http"
 	"net/url"
@@ -40,9 +41,19 @@ import (
 // mailModel is the model a mailbox's help would use, where its text would
 // go, in words, and whether that is this server.
 type mailModel struct {
-	b     aiassist.Backend
-	where string
-	local bool
+	b aiassist.Backend
+	// where is the English phrase the administrator's count keeps ("on this
+	// server", "sent to …"); provider is who outside the server is sent to.
+	where, provider string
+	local           bool
+}
+
+// whereIn is where the model runs, as the buttons say it, in lang.
+func (mm mailModel) whereIn(lang string) string {
+	if mm.local {
+		return i18n.T(lang, "on this server")
+	}
+	return i18n.T(lang, "sent to {provider}", "provider", mm.provider)
 }
 
 // loopbackEndpoint reports an endpoint whose host is this machine.
@@ -86,7 +97,7 @@ func (a *App) mailModelFor(ctx context.Context, mailbox string) (mailModel, bool
 					label = u.Hostname()
 				}
 			}
-			outside = &mailModel{b: b, where: "sent to " + label}
+			outside = &mailModel{b: b, where: "sent to " + label, provider: label}
 		}
 	}
 	if outside != nil && mh.Outside {
@@ -164,11 +175,12 @@ func (a *App) modelHelpBar(ctx context.Context, rd vmail.Reader, folder, id stri
 	if !ok || (!mm.local && (cur.Encrypted || mailConfidential(raw, subject))) {
 		return ""
 	}
+	lang := rd.Lang()
 	post := ` hx-post="/os/vayumail/model" hx-target="#vm-ai-out" hx-swap="innerHTML"`
 	vals := func(op string) string { return hxVals("op", op, "user", rd.Key(), "folder", folder, "id", id) }
-	return `<div class="mx-ai"><button type="button" class="btn btn--ghost btn--sm"` + post + vals("summary") + `>` + saIcon("sparkle") + `Summarise <span class="mx-ai__where">(` + esc(mm.where) + `)</span></button>` +
-		`<form class="mx-ai__draft"` + post + vals("reply") + `><input class="input input--sm" name="line" maxlength="300" placeholder="Draft an answer that says…" aria-label="What the answer should say" autocomplete="off">` +
-		`<button type="submit" class="btn btn--ghost btn--sm">Draft <span class="mx-ai__where">(` + esc(mm.where) + `)</span></button></form>` +
+	return `<div class="mx-ai"><button type="button" class="btn btn--ghost btn--sm"` + post + vals("summary") + `>` + saIcon("sparkle") + esc(i18n.T(lang, "Summarise")) + ` <span class="mx-ai__where">(` + esc(mm.whereIn(lang)) + `)</span></button>` +
+		`<form class="mx-ai__draft"` + post + vals("reply") + `><input class="input input--sm" name="line" maxlength="300" placeholder="` + esc(i18n.T(lang, "Draft an answer that says…")) + `" aria-label="` + esc(i18n.T(lang, "What the answer should say")) + `" autocomplete="off">` +
+		`<button type="submit" class="btn btn--ghost btn--sm">` + esc(i18n.T(lang, "Draft")) + ` <span class="mx-ai__where">(` + esc(mm.whereIn(lang)) + `)</span></button></form>` +
 		`<div id="vm-ai-out" aria-live="polite"></div></div>`
 }
 
@@ -181,19 +193,20 @@ func (a *App) mailboxOf(rd vmail.Reader) string {
 // mailbox and answers with the suggestion.
 func (a *App) handleVayuOSMailModel(w http.ResponseWriter, r *http.Request) {
 	say := func(s string) { writeOSFragment(w, `<p class="mx-ai__note">`+esc(s)+`</p>`) }
+	lang := i18n.Lang(r.Context())
 	if !a.mailRunning() {
-		say("Mail is not running.")
+		say(i18n.T(lang, "Mail is not running."))
 		return
 	}
 	rd := a.mailReader(r, r.PostFormValue("user"))
 	if rd.Key() == "" || !rd.IsOwner() {
-		say("Model help is only for your own mailbox.")
+		say(i18n.T(lang, "Model help is only for your own mailbox."))
 		return
 	}
 	mailbox := a.mailboxOf(rd)
 	mm, ok := a.mailModelFor(r.Context(), mailbox)
 	if !ok {
-		say("Model help is off for this mailbox.")
+		say(i18n.T(lang, "Model help is off for this mailbox."))
 		return
 	}
 	out, err := a.runModelHelp(r.Context(), rd, mm, r.PostFormValue("op"), r.PostFormValue("folder"), r.PostFormValue("id"), r.PostFormValue("line"))
@@ -214,7 +227,7 @@ func (e errModelHelp) Error() string { return string(e) }
 func (a *App) runModelHelp(ctx context.Context, rd vmail.Reader, mm mailModel, op, folder, id, line string) (string, error) {
 	raw, err := a.vayuMail.ReadFolderMessage(rd, folder, id)
 	if err != nil {
-		return "", errModelHelp("That message is not here.")
+		return "", errModelHelp(i18n.T(rd.Lang(), "That message is not here."))
 	}
 	pm := vmail.ParseMessage(raw)
 	msgs, _ := a.vayuMail.ListFolder(rd, folder)
@@ -227,7 +240,7 @@ func (a *App) runModelHelp(ctx context.Context, rd vmail.Reader, mm mailModel, o
 	// Whether it is encrypted is read from the message as stored (the
 	// listing's summary), not from the copy decrypted for reading.
 	if !mm.local && (cur.Encrypted || mailConfidential(raw, pm.Subject)) {
-		return "", errModelHelp("This message is encrypted or marked confidential, so it is not sent to a model outside this server.")
+		return "", errModelHelp(i18n.T(rd.Lang(), "This message is encrypted or marked confidential, so it is not sent to a model outside this server."))
 	}
 	// The conversation open: up to four earlier messages of its thread, then
 	// this one, each cut to what a model needs.
@@ -272,16 +285,20 @@ func (a *App) runModelHelp(ctx context.Context, rd vmail.Reader, mm mailModel, o
 		// a transport error carries the endpoint, which may be internal.
 		var pe *aiassist.ProviderError
 		if errors.As(err, &pe) {
-			return "", errModelHelp("The model did not answer: " + pe.Error())
+			return "", errModelHelp(i18n.T(rd.Lang(), "The model did not answer: {reason}", "reason", pe.Error()))
 		}
-		return "", errModelHelp("The model could not be reached.")
+		return "", errModelHelp(i18n.T(rd.Lang(), "The model could not be reached."))
 	}
 	out = strings.TrimSpace(unmaskPersonal(out, back))
 	var b strings.Builder
-	b.WriteString(`<div class="mx-ai__out"><p class="mx-ai__note">A suggestion, ` + esc(mm.where) + `. Nothing has been sent or changed.</p><div class="mx-ai__text">` + esc(out) + `</div>`)
+	note := i18n.T(rd.Lang(), "A suggestion, on this server. Nothing has been sent or changed.")
+	if !mm.local {
+		note = i18n.T(rd.Lang(), "A suggestion, sent to {provider}. Nothing has been sent or changed.", "provider", mm.provider)
+	}
+	b.WriteString(`<div class="mx-ai__out"><p class="mx-ai__note">` + esc(note) + `</p><div class="mx-ai__text">` + esc(out) + `</div>`)
 	if aop == aiassist.OpMailReply {
 		u := "/os/vayumail/compose?reply=1&user=" + qparam(rd.Key()) + "&folder=" + qparam(folder) + "&id=" + qparam(id) + "&body=" + url.QueryEscape(out)
-		b.WriteString(`<a class="btn btn--sm" href="` + esc(u) + `">Reply with this</a>`)
+		b.WriteString(`<a class="btn btn--sm" href="` + esc(u) + `">` + esc(i18n.T(rd.Lang(), "Reply with this")) + `</a>`)
 	}
 	b.WriteString(`</div>`)
 	return b.String(), nil
@@ -305,6 +322,7 @@ func (a *App) modelHelpSetting(ctx context.Context, ac vmail.Account, forHolder 
 		return ""
 	}
 	mh := a.vayuMail.Accounts().ModelHelpFor(ctx, ac.Email)
+	lang := i18n.Lang(ctx)
 	box := func(op, label string, on bool) string {
 		checked := ""
 		if on {
@@ -312,24 +330,29 @@ func (a *App) modelHelpSetting(ctx context.Context, ac vmail.Account, forHolder 
 		}
 		return autosaveAttrs + ` class="vm-row" hx-post="/os/vayumail/model/settings" hx-target="#vm-mbox-settings" hx-swap="innerHTML">` +
 			`<input type="hidden" name="email" value="` + esc(ac.Email) + `"><input type="hidden" name="op" value="` + op + `">` +
-			`<label class="field--check"><input type="checkbox" name="on" value="1"` + checked + `> ` + label + `</label><button class="btn btn--sm" type="submit">Save</button></form>`
+			`<label class="field--check"><input type="checkbox" name="on" value="1"` + checked + `> ` + esc(label) + `</label><button class="btn btn--sm" type="submit">` + esc(i18n.T(lang, "Save")) + `</button></form>`
 	}
 	if forHolder {
-		where := "Nothing is sent anywhere until you turn this on."
+		where := i18n.T(lang, "Nothing is sent anywhere until you turn this on.")
 		if mm, ok := a.mailModelFor(ctx, ac.Email); ok {
-			where = "It runs " + mm.where + "."
+			where = i18n.T(lang, "It runs on this server.")
 			if !mm.local {
-				where = "Your text is " + mm.where + ", with addresses and numbers withheld. Encrypted and confidential messages are never sent."
+				where = i18n.T(lang, "Your text is sent to {provider}, with addresses and numbers withheld. Encrypted and confidential messages are never sent.", "provider", mm.provider)
 			}
 		}
-		return box("help", "Offer to summarise a conversation and draft an answer", mh.On) + `<p class="text-sm muted">` + esc(where) + ` Every answer is a suggestion you use or throw away.</p>`
+		return box("help", i18n.T(lang, "Offer to summarise a conversation and draft an answer"), mh.On) + `<p class="text-sm muted">` + esc(where) + ` ` + esc(i18n.T(lang, "Every answer is a suggestion you use or throw away.")) + `</p>`
 	}
-	sent := "No request yet."
+	// The count keeps where the last request went in English (mailModel.where).
+	sent := i18n.T(lang, "No request yet.")
 	if mh.Sent > 0 {
-		sent = itoaSafe(mh.Sent) + map[bool]string{true: " request", false: " requests"}[mh.Sent == 1] + ", the last " + mh.SentTo + "."
+		sent = i18n.T(lang, "{n, plural, one {# request, the last {where}.} other {# requests, the last {where}.}}", "n", mh.Sent, "where", mh.SentTo)
 	}
-	return box("outside", "May use a model outside this server", mh.Outside) +
-		`<p class="text-sm muted">Its holder turns model help on for themselves (now ` + map[bool]string{true: "on", false: "off"}[mh.On] + `). ` + esc(sent) + ` Only the count is kept, never the text.</p>`
+	holder := i18n.T(lang, "Its holder turns model help on for themselves (now off).")
+	if mh.On {
+		holder = i18n.T(lang, "Its holder turns model help on for themselves (now on).")
+	}
+	return box("outside", i18n.T(lang, "May use a model outside this server"), mh.Outside) +
+		`<p class="text-sm muted">` + esc(holder) + ` ` + esc(sent) + ` ` + esc(i18n.T(lang, "Only the count is kept, never the text.")) + `</p>`
 }
 
 // handleVayuOSMailModelSettings is the holder's switch and the
@@ -338,23 +361,24 @@ func (a *App) modelHelpSetting(ctx context.Context, ac vmail.Account, forHolder 
 // outside the server.
 func (a *App) handleVayuOSMailModelSettings(w http.ResponseWriter, r *http.Request) {
 	email := strings.TrimSpace(r.PostFormValue("email"))
+	lang := i18n.Lang(r.Context())
 	on := r.PostFormValue("on") == "1"
 	var err error
 	switch r.PostFormValue("op") {
 	case "help":
 		if !a.isMailboxHolder(r, email) {
-			writeAPIError(w, r, http.StatusForbidden, "forbidden", "Only the mailbox's holder turns model help on or off.", "")
+			writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(lang, "Only the mailbox's holder turns model help on or off."), "")
 			return
 		}
 		err = a.vayuMail.Accounts().SetModelHelp(r.Context(), email, on)
 	case "outside":
 		if !a.isAdminRequest(r) {
-			writeAPIError(w, r, http.StatusForbidden, "forbidden", "Only an administrator allows a model outside this server.", "")
+			writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(lang, "Only an administrator allows a model outside this server."), "")
 			return
 		}
 		err = a.vayuMail.Accounts().SetModelOutside(r.Context(), email, on)
 	default:
-		writeAPIError(w, r, http.StatusBadRequest, "bad-op", "Unknown setting.", "")
+		writeAPIError(w, r, http.StatusBadRequest, "bad-op", i18n.T(lang, "Unknown setting."), "")
 		return
 	}
 	if err != nil {
