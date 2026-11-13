@@ -37,6 +37,9 @@ var i18nExempt = map[string]bool{
 var i18nNames = []string{"VayuPress", "VayuMail", "VayuOS"}
 
 var (
+	i18nReadAttr = regexp.MustCompile(`(?:title|placeholder|aria-label|alt|hx-confirm|data-confirm)="([^"]*)`)
+	// i18nPhrase is words a person reads: two of them at least, apart.
+	i18nPhrase   = regexp.MustCompile(`\p{L}{2,}\s+\p{L}{2,}`)
 	i18nTag      = regexp.MustCompile(`<[^>]*>|&[a-z]+;|&#[0-9]+;`)
 	i18nWord     = regexp.MustCompile(`\p{L}{2,}`)
 	i18nSentence = regexp.MustCompile(`^\p{Lu}\p{Ll}*(\s+\S+){1,}[.?!:]?$`)
@@ -46,6 +49,19 @@ var (
 // "": the text between tags of an HTML fragment, or a literal that is a
 // sentence on its own.
 func i18nEnglishIn(lit string) string {
+	// What a person reads inside a tag: a confirmation, a placeholder, a
+	// tooltip, a label for a screen reader. A value may run past the end of
+	// the literal, cut off by a value spliced in.
+	for _, m := range i18nReadAttr.FindAllStringSubmatch(lit, -1) {
+		if i18nPhrase.MatchString(m[1]) {
+			return m[1]
+		}
+	}
+	// A literal that begins inside such a value, after a value spliced in:
+	// `? Mail to them is then sent readable.">`.
+	if i := strings.Index(lit, `"`); i > 0 && strings.Contains(lit[i:], ">") && !strings.ContainsAny(lit[:i], "<>=") && i18nPhrase.MatchString(lit[:i]) {
+		return lit[:i]
+	}
 	if strings.ContainsAny(lit, "<>") {
 		// A literal is often a piece of a tag: it may begin inside one
 		// (` required>`) or end inside one (`<input value="`), and that part
@@ -150,6 +166,11 @@ func TestTheEnglishLintSeesEnglish(t *testing.T) {
 		{`" autocomplete="current-password" required>`, false},
 		{`<span>VayuPress</span>`, false},
 		{`" required><span>Sign in</span>`, true},
+		{`hx-confirm="Remove the key for `, true},
+		{`? Mail to them is then sent readable, unless they publish a key.">`, true},
+		{`<input placeholder="you@example.com" aria-label="`, false},
+		{`<input placeholder="Your password">`, true},
+		{`width:12px">`, false},
 	} {
 		if got := i18nEnglishIn(c.lit) != ""; got != c.want {
 			t.Errorf("%q read as English: %v, want %v", c.lit, got, c.want)
