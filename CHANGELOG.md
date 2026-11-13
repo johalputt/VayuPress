@@ -25,7 +25,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   later, templates and signature, the search suggestions, and the
   addresses made for websites. Settings too: its sections, the field that
   finds a setting (by words in the language), the password change, the
-  connected tools and the mailbox switcher. The rest of Mail follows.
+  connected tools, the mailbox switcher, and the cards for the name on
+  mail, forwarding, the vacation reply and the PGP key. The rest of Mail
+  follows.
 
 ## [3.18.41] — 2026-11-13
 

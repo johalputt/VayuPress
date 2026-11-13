@@ -244,12 +244,12 @@ func TestSettingsAreInThePersonsLanguage(t *testing.T) {
 	rec := httptest.NewRecorder()
 	a.handleVayuOSMySettings(rec, req.WithContext(i18n.WithLang(req.Context(), "de")))
 	page := rec.Body.String()
-	for _, want := range []string{">Einstellungen</h1>", `placeholder="Einstellung suchen"`, ">Allgemein<", ">Passwort ändern<", `Sie wird unter <a href="/members/account">Ihrem Konto auf der Website</a> eingerichtet`, `data-mx-set="abwesenheitsnotiz automatische antwort abwesend urlaub"`} {
+	for _, want := range []string{">Einstellungen</h1>", `placeholder="Einstellung suchen"`, ">Allgemein<", ">Passwort ändern<", `Sie wird unter <a href="/members/account">Ihrem Konto auf der Website</a> eingerichtet`, `data-mx-set="abwesenheitsnotiz automatische antwort abwesend urlaub"`, `placeholder="Nicht im Büro"`, `placeholder="Ich bin bis … nicht erreichbar"`, ">Erster Tag (optional)<"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the German Settings page has no %q", want)
 		}
 	}
-	for _, english := range []string{">Settings</h1>", "Find a setting", ">General<", "Change password", "&lt;nil&gt;", "It is set on"} {
+	for _, english := range []string{">Settings</h1>", "Find a setting", ">General<", "Change password", "&lt;nil&gt;", "It is set on", "Out of office", "I am away until", "First day"} {
 		if strings.Contains(page, english) {
 			t.Errorf("the German Settings page says %q", english)
 		}

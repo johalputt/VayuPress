@@ -56,9 +56,9 @@ func (a *App) mailboxSettingsSections(ctx context.Context, email string, forHold
 	lang := i18n.Lang(ctx)
 	var b strings.Builder
 	b.WriteString(mailSettingGroup("general", i18n.T(lang, "General"),
-		mailSetting{Name: i18n.T(lang, "Name on mail you send"), HTML: autosaveForm(vayuCardName(ac))},
+		mailSetting{Name: i18n.T(lang, "Name on mail you send"), HTML: autosaveForm(vayuCardName(lang, ac))},
 		mailSetting{Name: i18n.T(lang, "Picture"), Find: i18n.T(lang, "avatar photo"), HTML: a.mailboxAvatarSettings(lang, ac), Bare: true}))
-	addresses := []mailSetting{{Name: i18n.T(lang, "Forward a copy to"), Find: i18n.T(lang, "forwarding auto-forward"), HTML: autosaveForm(vayuCardForwarding(ac))}}
+	addresses := []mailSetting{{Name: i18n.T(lang, "Forward a copy to"), Find: i18n.T(lang, "forwarding auto-forward"), HTML: autosaveForm(vayuCardForwarding(lang, ac))}}
 	if !forHolder {
 		addresses = append(addresses, mailSetting{Name: i18n.T(lang, "Aliases"), Find: i18n.T(lang, "other addresses"), HTML: a.vayuCardAliases(ctx, ac), Bare: true})
 	}
@@ -68,7 +68,7 @@ func (a *App) mailboxSettingsSections(ctx context.Context, email string, forHold
 		mailSetting{Name: i18n.T(lang, "Rules"), Find: i18n.T(lang, "rules filters sort move forward reject label"), HTML: a.vayuCardFilters(ctx, ac), Bare: true}))
 	privacy := []mailSetting{
 		{Name: i18n.T(lang, "Sign-in attempts"), Find: i18n.T(lang, "sign-in name login security"), HTML: a.vayuCardSignins(ctx, ac), Bare: true},
-		{Name: i18n.T(lang, "Encryption keys"), Find: i18n.T(lang, "pgp openpgp key"), HTML: a.vayuCardPGP(ac), Bare: true},
+		{Name: i18n.T(lang, "Encryption keys"), Find: i18n.T(lang, "pgp openpgp key"), HTML: a.vayuCardPGP(lang, ac), Bare: true},
 		{Name: i18n.T(lang, "S/MIME certificate"), Find: i18n.T(lang, "smime certificate signing"), HTML: a.vayuCardSMIME(ctx, ac), Bare: true},
 	}
 	if !forHolder {

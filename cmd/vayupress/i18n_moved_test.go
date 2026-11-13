@@ -40,6 +40,7 @@ var i18nMoved = map[string][]string{
 	"vayuos_mail_connections.go":      nil,
 	"vayuos_mail_switch.go":           nil,
 	"vayuos_mail_notify.go":           nil,
+	"vayuos_mail_accounts.go":         {"vayuCardName", "vayuCardForwarding", "vayuCardVacation", "vayuCardPGP"},
 	"vayuos_mail_list.go":             nil,
 	"vayuos_mail_scheduled.go":        nil,
 	"vayuos_mail_unsubscribe.go":      nil,

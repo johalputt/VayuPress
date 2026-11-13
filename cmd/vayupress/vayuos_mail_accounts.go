@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"html"
 	"net/http"
 	"sort"
@@ -143,33 +144,34 @@ func (a *App) vayuAccountsList(ctx context.Context) string {
 // vayuCardForwarding renders a mailbox's auto-forward control inside its card.
 // It posts op=forward-set to the alias action endpoint and refreshes the whole
 // accounts list so the change is reflected everywhere.
-func vayuCardForwarding(ac vmail.Account) string {
+func vayuCardForwarding(lang string, ac vmail.Account) string {
 	he := html.EscapeString(ac.Email)
 	return `<form class="vm-row vm-card-fwd" hx-post="/os/vayumail/aliases/action" hx-target="#vm-accounts-list" hx-swap="innerHTML">` +
 		`<input type="hidden" name="op" value="forward-set"><input type="hidden" name="email" value="` + he + `">` +
-		`<input class="input input--sm vm-grow" type="email" name="forward" value="` + html.EscapeString(ac.ForwardTo) + `" placeholder="someone@elsewhere.com — blank to turn off" aria-label="Forward address for ` + he + `">` +
-		`<button class="btn btn--sm" type="submit">Save</button></form>`
+		`<input class="input input--sm vm-grow" type="email" name="forward" value="` + html.EscapeString(ac.ForwardTo) + `" placeholder="` + esc(i18n.T(lang, "someone@elsewhere.com — blank to turn off")) + `" aria-label="` + esc(i18n.T(lang, "Forward address for {address}", "address", ac.Email)) + `">` +
+		`<button class="btn btn--sm" type="submit">` + esc(i18n.T(lang, "Save")) + `</button></form>`
 }
 
 // vayuCardName is the name the mailbox's mail goes out under. It is the
 // holder's name on the site too: setPersonName writes both (3cs).
-func vayuCardName(ac vmail.Account) string {
+func vayuCardName(lang string, ac vmail.Account) string {
 	he := html.EscapeString(ac.Email)
 	return `<form class="vm-row vm-card-fwd" hx-post="/os/vayumail/aliases/action" hx-target="#vm-accounts-list" hx-swap="innerHTML">` +
 		`<input type="hidden" name="op" value="name-set"><input type="hidden" name="email" value="` + he + `">` +
-		`<input class="input input--sm vm-grow" type="text" name="name" maxlength="120" value="` + html.EscapeString(ac.FullName) + `" placeholder="Your name" aria-label="Name on mail sent from ` + he + `">` +
-		`<button class="btn btn--sm" type="submit">Save</button></form>`
+		`<input class="input input--sm vm-grow" type="text" name="name" maxlength="120" value="` + html.EscapeString(ac.FullName) + `" placeholder="` + esc(i18n.T(lang, "Your name")) + `" aria-label="` + esc(i18n.T(lang, "Name on mail sent from {address}", "address", ac.Email)) + `">` +
+		`<button class="btn btn--sm" type="submit">` + esc(i18n.T(lang, "Save")) + `</button></form>`
 }
 
 // vayuCardVacation renders a mailbox's vacation autoresponder inside its card (a
 // collapsible form), posting to the autoreply endpoint and refreshing the list.
 func (a *App) vayuCardVacation(ctx context.Context, ac vmail.Account) string {
+	lang := i18n.Lang(ctx)
 	ar := a.vayuMail.Accounts().AutoreplyFor(ctx, ac.Email)
-	state := `<span class="muted text-xs">off</span>`
+	state := `<span class="muted text-xs">` + esc(i18n.T(lang, "off")) + `</span>`
 	if ar.Active(time.Now()) {
-		state = string(ui.State("ok", "Active"))
+		state = string(ui.State("ok", i18n.T(lang, "Active")))
 	} else if ar.Enabled {
-		state = string(ui.State("warn", "Scheduled"))
+		state = string(ui.State("warn", i18n.T(lang, "Scheduled")))
 	}
 	checked := ""
 	if ar.Enabled {
@@ -184,17 +186,17 @@ func (a *App) vayuCardVacation(ctx context.Context, ac vmail.Account) string {
 	}
 	he := html.EscapeString(ac.Email)
 	var b strings.Builder
-	b.WriteString(`<details class="vm-ooo vm-acct__sub"><summary><span class="field-label">Vacation autoresponder</span> ` + state + `</summary>`)
+	b.WriteString(`<details class="vm-ooo vm-acct__sub"><summary><span class="field-label">` + esc(i18n.T(lang, "Vacation autoresponder")) + `</span> ` + state + `</summary>`)
 	b.WriteString(`<form class="vm-ooo-form" hx-post="/os/vayumail/autoreply/action" hx-target="#vm-accounts-list" hx-swap="innerHTML">`)
 	b.WriteString(`<input type="hidden" name="email" value="` + he + `">`)
-	b.WriteString(`<label class="vm-row text-sm"><input type="checkbox" name="enabled" value="1"` + checked + `> Enabled</label>`)
+	b.WriteString(`<label class="vm-row text-sm"><input type="checkbox" name="enabled" value="1"` + checked + `> ` + esc(i18n.T(lang, "Enabled")) + `</label>`)
 	b.WriteString(`<div class="vm-row vm-row--end">`)
-	b.WriteString(`<label class="field vm-grow"><span class="field-label">Subject</span><input class="input input--sm" type="text" name="subject" value="` + html.EscapeString(ar.Subject) + `" placeholder="Out of office"></label>`)
-	b.WriteString(`<label class="field"><span class="field-label">First day (optional)</span><input class="input input--sm" type="date" name="from" value="` + fromVal + `"></label>`)
-	b.WriteString(`<label class="field"><span class="field-label">Last day (optional)</span><input class="input input--sm" type="date" name="until" value="` + untilVal + `"></label>`)
+	b.WriteString(`<label class="field vm-grow"><span class="field-label">` + esc(i18n.T(lang, "Subject")) + `</span><input class="input input--sm" type="text" name="subject" value="` + html.EscapeString(ar.Subject) + `" placeholder="` + esc(i18n.T(lang, "Out of office")) + `"></label>`)
+	b.WriteString(`<label class="field"><span class="field-label">` + esc(i18n.T(lang, "First day (optional)")) + `</span><input class="input input--sm" type="date" name="from" value="` + fromVal + `"></label>`)
+	b.WriteString(`<label class="field"><span class="field-label">` + esc(i18n.T(lang, "Last day (optional)")) + `</span><input class="input input--sm" type="date" name="until" value="` + untilVal + `"></label>`)
 	b.WriteString(`</div>`)
-	b.WriteString(`<label class="field"><span class="field-label">Message</span><textarea class="input" name="body" rows="3" placeholder="I am away until …">` + html.EscapeString(ar.Body) + `</textarea></label>`)
-	b.WriteString(`<button class="btn btn--primary btn--sm" type="submit">Save</button>`)
+	b.WriteString(`<label class="field"><span class="field-label">` + esc(i18n.T(lang, "Message")) + `</span><textarea class="input" name="body" rows="3" placeholder="` + esc(i18n.T(lang, "I am away until …")) + `">` + html.EscapeString(ar.Body) + `</textarea></label>`)
+	b.WriteString(`<button class="btn btn--primary btn--sm" type="submit">` + esc(i18n.T(lang, "Save")) + `</button>`)
 	b.WriteString(`</form></details>`)
 	return b.String()
 }
@@ -263,31 +265,27 @@ func (a *App) vayuCardAliases(ctx context.Context, ac vmail.Account) string {
 // (/api/v1/members/vayumail-privkey), which authenticates as the mailbox itself
 // under the MAIL-SYNC device scope. Article: a key you can read on a web page is
 // a key that is in a browser cache, a screenshot, and a support ticket.
-func (a *App) vayuCardPGP(ac vmail.Account) string {
+func (a *App) vayuCardPGP(lang string, ac vmail.Account) string {
 	if a.vayuPGP == nil {
 		return ""
 	}
-	email := esc(ac.Email)
 
 	pk, err := a.vayuPGP.GetPublicKey(ac.Email)
 	if err != nil || pk == nil || strings.TrimSpace(pk.Armor) == "" {
 		// A mailbox created before VayuPGP was enabled has no key yet. Say so
 		// plainly rather than showing an empty box that looks broken.
-		return `<details class="vm-ooo vm-acct__sub"><summary><span class="field-label">PGP public key</span> ` +
-			string(ui.State("neutral", "No key")) + `</summary>` +
-			`<span class="muted text-sm">No key yet for this mailbox. Keys are generated automatically on account creation; ` +
-			`enable VayuPGP and re-create or re-save this account to mint one.</span></details>`
+		return `<details class="vm-ooo vm-acct__sub"><summary><span class="field-label">` + esc(i18n.T(lang, "PGP public key")) + `</span> ` +
+			string(ui.State("neutral", i18n.T(lang, "No key"))) + `</summary>` +
+			`<span class="muted text-sm">` + esc(i18n.T(lang, "No key yet for this mailbox. Keys are made when an account is created; turn on VayuPGP and save this account again to make one.")) + `</span></details>`
 	}
 
 	wkd := pgp.WKDURL(ac.Email)
 	wkdRow := ""
 	if wkd != "" {
-		wkdRow = `<div class="vm-row"><span class="field-label">Web Key Directory</span>` +
+		wkdRow = `<div class="vm-row"><span class="field-label">` + esc(i18n.T(lang, "Web Key Directory")) + `</span>` +
 			`<code class="mono text-xs vm-pgp__wkd">` + esc(wkd) + `</code></div>` +
-			`<span class="text-xs muted">Correspondents' clients (GnuPG, Thunderbird, the VayuMail app) fetch this ` +
-			`automatically — no key exchange needed. It answers once <code>openpgpkey.` +
-			esc(emailDomain(ac.Email, a.vayuMail.Config().Domain)) + `</code> is pointed at this server ` +
-			`(<code>scripts/setup-openpgpkey-subdomain.sh</code>).</span>`
+			`<span class="text-xs muted">` + esc(i18n.T(lang, "Correspondents' mail apps (GnuPG, Thunderbird, the VayuMail app) fetch it on their own, with no exchange of keys. It answers once {host} points at this server ({script}).",
+			"host", "openpgpkey."+emailDomain(ac.Email, a.vayuMail.Config().Domain), "script", "scripts/setup-openpgpkey-subdomain.sh")) + `</span>`
 	}
 
 	// Collapsed by default, like every other per-mailbox section (vacation,
@@ -295,21 +293,19 @@ func (a *App) vayuCardPGP(ac vmail.Account) string {
 	// nobody reads inline, so leaving it expanded pushed the actions below it off
 	// the screen on every card.
 	return `<details class="vm-ooo vm-acct__sub vm-pgp">` +
-		`<summary><span class="field-label">PGP public key</span> ` +
-		string(ui.State("ok", "Key active")) + `</summary>` +
-		`<div class="vm-row"><span class="field-label">Fingerprint</span>` +
+		`<summary><span class="field-label">` + esc(i18n.T(lang, "PGP public key")) + `</span> ` +
+		string(ui.State("ok", i18n.T(lang, "Key active"))) + `</summary>` +
+		`<div class="vm-row"><span class="field-label">` + esc(i18n.T(lang, "Fingerprint")) + `</span>` +
 		`<code class="mono text-xs">` + esc(pk.Fingerprint) + `</code></div>` +
 		`<textarea class="input vm-pgp__armor mono text-xs" readonly rows="6" ` +
-		`aria-label="PGP public key for ` + email + `" data-pgp-armor>` + esc(pk.Armor) + `</textarea>` +
+		`aria-label="` + esc(i18n.T(lang, "PGP public key for {address}", "address", ac.Email)) + `" data-pgp-armor>` + esc(pk.Armor) + `</textarea>` +
 		`<div class="vm-row">` +
-		`<button type="button" class="btn btn--sm" data-pgp-copy>Copy public key</button>` +
+		`<button type="button" class="btn btn--sm" data-pgp-copy>` + esc(i18n.T(lang, "Copy public key")) + `</button>` +
 		`<a class="btn btn--sm btn--ghost" href="/os/vayumail/accounts/pubkey?email=` + qparam(ac.Email) +
-		`" download>Download .asc</a>` +
+		`" download>` + esc(i18n.T(lang, "Download .asc")) + `</a>` +
 		`</div>` +
 		wkdRow +
-		`<span class="text-xs muted">This is the <strong>public</strong> half — safe to publish anywhere. ` +
-		`The private key is never shown here and is not downloadable by an administrator; only the ` +
-		`mailbox's own signed-in device can retrieve it.</span>` +
+		`<span class="text-xs muted">` + esc(i18n.T(lang, "This is the public half, safe to publish anywhere. The private key is never shown here and an administrator cannot download it; only the mailbox's own signed-in device can fetch it.")) + `</span>` +
 		`</details>`
 }
 
