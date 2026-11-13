@@ -112,11 +112,28 @@ func signinIPFrom(ctx context.Context) string {
 	return ip
 }
 
-// signinDoorNames are the doors as the pages and the alarm name them.
-var signinDoorNames = map[string]string{
-	signin.DoorWeb: "the site's sign-in", signin.DoorConsole: "the console", signin.DoorIMAP: "IMAP",
-	signin.DoorPOP3: "POP3", signin.DoorSMTP: "SMTP", signin.DoorDAV: "contacts and calendars",
-	signin.DoorTalk: "VayuTalk", signin.DoorRecovery: "a recovery code",
+// signinDoorName is a door as the pages and the alarm name it, in lang, or
+// "" for a door it does not know.
+func signinDoorName(lang, door string) string {
+	switch door {
+	case signin.DoorWeb:
+		return i18n.T(lang, "the site's sign-in")
+	case signin.DoorConsole:
+		return i18n.T(lang, "the console")
+	case signin.DoorIMAP:
+		return "IMAP"
+	case signin.DoorPOP3:
+		return "POP3"
+	case signin.DoorSMTP:
+		return "SMTP"
+	case signin.DoorDAV:
+		return i18n.T(lang, "contacts and calendars")
+	case signin.DoorTalk:
+		return "VayuTalk"
+	case signin.DoorRecovery:
+		return i18n.T(lang, "a recovery code")
+	}
+	return ""
 }
 
 // notifySigninAlarm tells a holder at once that their password was right and
@@ -141,7 +158,7 @@ func (a *App) notifySigninAlarm(al signin.Alarm) {
 			to = append(to, c)
 		}
 	}
-	door := signinDoorNames[al.Door]
+	door := signinDoorName("en", al.Door) // the alarm is mail, written in English
 	if door == "" {
 		door = al.Door
 	}

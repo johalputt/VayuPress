@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"html"
 	"net/http"
 	"net/url"
@@ -38,10 +39,19 @@ var signinWindows = []struct {
 	days  int
 }{{"24 hours", 1}, {"7 days", 7}, {"30 days", 30}}
 
-// signinStageWords says what an attempt reached.
-var signinStageWords = map[string]string{
-	signin.StagePassword: "Wrong password", signin.StageCode: "Password right, code wrong",
-	signin.StagePaused: "Tried while paused", signin.StageOK: "Signed in",
+// signinStageWord says what an attempt reached, in lang.
+func signinStageWord(lang, stage string) string {
+	switch stage {
+	case signin.StagePassword:
+		return i18n.T(lang, "Wrong password")
+	case signin.StageCode:
+		return i18n.T(lang, "Password right, code wrong")
+	case signin.StagePaused:
+		return i18n.T(lang, "Tried while paused")
+	case signin.StageOK:
+		return i18n.T(lang, "Signed in")
+	}
+	return ""
 }
 
 func (a *App) handleOSSignins(w http.ResponseWriter, r *http.Request) {
@@ -146,7 +156,7 @@ func signinWhere(masked, country string) string {
 func signinDoorList(doors []string) string {
 	names := make([]string, 0, len(doors))
 	for _, d := range doors {
-		if n := signinDoorNames[d]; n != "" {
+		if n := signinDoorName("en", d); n != "" {
 			names = append(names, n)
 		} else {
 			names = append(names, d)
@@ -253,11 +263,11 @@ func signinAttemptsTable(rows []signin.Row, withAccount bool) string {
 	}
 	out := make([][]ui.HTML, 0, len(rows))
 	for _, x := range rows {
-		what := signinStageWords[x.Stage]
+		what := signinStageWord("en", x.Stage)
 		if x.N > 1 {
 			what += " ×" + strconv.Itoa(x.N)
 		}
-		door := signinDoorNames[x.Door]
+		door := signinDoorName("en", x.Door)
 		if door == "" {
 			door = x.Door
 		}
@@ -274,10 +284,11 @@ func signinBars(list []signin.Count, doors bool) []osChartBar {
 	out := make([]osChartBar, 0, len(list))
 	for _, c := range list {
 		label := c.Name
-		if doors && signinDoorNames[c.Name] != "" {
+		if doors && signinDoorName("en", c.Name) != "" {
 			// A row's label starts the line, so it starts with a capital;
 			// the same names run on in a sentence elsewhere.
-			label = strings.ToUpper(signinDoorNames[c.Name][:1]) + signinDoorNames[c.Name][1:]
+			n := signinDoorName("en", c.Name)
+			label = strings.ToUpper(n[:1]) + n[1:]
 		}
 		out = append(out, osChartBar{Label: label, Value: c.N})
 	}

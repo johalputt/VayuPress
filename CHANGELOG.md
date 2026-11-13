@@ -29,7 +29,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   mail, forwarding, the vacation reply and the PGP key. Rules too: each
   rule is said as sentences of the language, the editor and its answers,
   and the page where an address confirms it wants a rule's copies follows
-  the language of that person's browser. The rest of Mail follows.
+  the language of that person's browser. So are the sign-in attempts and
+  sign-in name, the S/MIME certificate and the private mailbox, whose
+  promises are said in whole sentences in every language. The rest of
+  Mail follows.
 
 ## [3.18.41] — 2026-11-13
 

@@ -32,30 +32,30 @@ func (a *App) vayuCardSignins(ctx context.Context, ac vmail.Account) string {
 	if a.signin == nil {
 		return a.signinNameBlock(ctx, ac)
 	}
+	lang := i18n.Lang(ctx)
 	account := auth.AccountKey(ac.Email)
 	rows, _ := a.signin.Attempts(ctx, "", account, mailboxSigninRows)
 	var b strings.Builder
-	b.WriteString(`<div class="vm-acct__sub"><span class="field-label">Sign-in attempts</span>`)
+	b.WriteString(`<div class="vm-acct__sub"><span class="field-label">` + esc(i18n.T(lang, "Sign-in attempts")) + `</span>`)
 	cutoff := time.Now().Add(-signin.Retention)
 	for _, x := range rows {
 		if x.Stage == signin.StageCode && x.At.After(cutoff) {
-			b.WriteString(saCallout("warn", `Your password was right but the code was wrong on `+
-				html.EscapeString(config.FormatSite(x.At, "2 January at 15:04"))+`, from `+html.EscapeString(signinWhere(x.Masked, x.Country))+
-				`. If that was not you, someone knows your password: change it.`))
+			b.WriteString(saCallout("warn", esc(i18n.T(lang, "Your password was right but the code was wrong on {when}, from {where}. If that was not you, someone knows your password: change it.",
+				"when", i18n.Date(lang, config.InSite(x.At), i18n.DayMonthAt), "where", signinWhere(x.Masked, x.Country)))))
 			break
 		}
 	}
 	if len(rows) == 0 {
-		b.WriteString(`<p class="text-sm muted">No attempt in the last ` + itoaSafe(int(signin.Retention.Hours()/24)) + ` days.</p>`)
+		b.WriteString(`<p class="text-sm muted">` + esc(i18n.T(lang, "No attempt in the last {n} days.", "n", int(signin.Retention.Hours()/24))) + `</p>`)
 	} else {
-		b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>When</th><th>From</th><th>Door</th><th>What happened</th><th></th></tr></thead><tbody>`)
+		b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>` + esc(i18n.T(lang, "When")) + `</th><th>` + esc(i18n.T(lang, "From")) + `</th><th>` + esc(i18n.T(lang, "Door")) + `</th><th>` + esc(i18n.T(lang, "What happened")) + `</th><th></th></tr></thead><tbody>`)
 		done := map[string]bool{}
 		for _, x := range rows {
-			what := signinStageWords[x.Stage]
+			what := signinStageWord(lang, x.Stage)
 			if x.N > 1 {
 				what += " ×" + itoaSafe(x.N)
 			}
-			door := signinDoorNames[x.Door]
+			door := signinDoorName(lang, x.Door)
 			if door == "" {
 				door = x.Door
 			}
@@ -63,48 +63,49 @@ func (a *App) vayuCardSignins(ctx context.Context, ac vmail.Account) string {
 			if x.Stage != signin.StageOK && !done[x.FP] {
 				done[x.FP] = true
 				mine = `<button type="button" class="btn btn--ghost btn--sm" hx-post="/os/vayumail/accounts/signin"` +
-					hxVals("email", ac.Email, "op", "mine", "fp", x.FP) + ` hx-target="#vm-accounts-list" hx-swap="innerHTML">It was me</button>`
+					hxVals("email", ac.Email, "op", "mine", "fp", x.FP) + ` hx-target="#vm-accounts-list" hx-swap="innerHTML">` + esc(i18n.T(lang, "It was me")) + `</button>`
 			}
-			b.WriteString(`<tr><td>` + html.EscapeString(config.FormatSite(x.At, "2 Jan 15:04")) + `</td><td>` + html.EscapeString(signinWhere(x.Masked, x.Country)) +
+			b.WriteString(`<tr><td>` + html.EscapeString(i18n.Date(lang, config.InSite(x.At), i18n.WeekdayDayMonthAt)) + `</td><td>` + html.EscapeString(signinWhere(x.Masked, x.Country)) +
 				`</td><td>` + html.EscapeString(door) + `</td><td>` + html.EscapeString(what) + `</td><td>` + mine + `</td></tr>`)
 		}
 		b.WriteString(`</tbody></table></div>`)
 	}
-	b.WriteString(`<span class="text-xs muted">Addresses are shown with their last part hidden.</span></div>`)
+	b.WriteString(`<span class="text-xs muted">` + esc(i18n.T(lang, "Addresses are shown with their last part hidden.")) + `</span></div>`)
 
 	b.WriteString(a.signinNameBlock(ctx, ac))
 
 	fence := strings.Join(a.signin.Fence(account), ", ")
-	b.WriteString(`<div class="vm-acct__sub"><span class="field-label">Sign in only from these countries</span>` +
+	b.WriteString(`<div class="vm-acct__sub"><span class="field-label">` + esc(i18n.T(lang, "Sign in only from these countries")) + `</span>` +
 		`<form class="vm-row" hx-post="/os/vayumail/accounts/signin" hx-target="#vm-accounts-list" hx-swap="innerHTML">` +
 		`<input type="hidden" name="email" value="` + html.EscapeString(ac.Email) + `"><input type="hidden" name="op" value="fence">` +
-		`<input class="input input--sm" name="countries" value="` + html.EscapeString(fence) + `" placeholder="Anywhere" aria-label="Country codes, such as IN, DE">` +
-		`<button class="btn btn--sm" type="submit">Save</button></form>` +
-		`<span class="text-xs muted">Two-letter codes, such as IN, DE. Empty means anywhere. A sign-in from elsewhere is refused before its password is checked; an address whose country is not known is let through.</span></div>`)
+		`<input class="input input--sm" name="countries" value="` + html.EscapeString(fence) + `" placeholder="` + esc(i18n.T(lang, "Anywhere")) + `" aria-label="` + esc(i18n.T(lang, "Country codes, such as IN, DE")) + `">` +
+		`<button class="btn btn--sm" type="submit">` + esc(i18n.T(lang, "Save")) + `</button></form>` +
+		`<span class="text-xs muted">` + esc(i18n.T(lang, "Two-letter codes, such as IN, DE. Empty means anywhere. A sign-in from elsewhere is refused before its password is checked; an address whose country is not known is let through.")) + `</span></div>`)
 	return b.String()
 }
 
 // signinNameBlock is the mailbox's sign-in name, and whether mail apps take
 // its own password.
 func (a *App) signinNameBlock(ctx context.Context, ac vmail.Account) string {
+	lang := i18n.Lang(ctx)
 	var b strings.Builder
 	name := a.vayuMail.Accounts().SigninName(ctx, ac.Email)
-	nameNote := "Empty: the address signs in, as it always has."
+	nameNote := i18n.T(lang, "Empty: the address signs in, as it always has.")
 	if name != "" {
-		nameNote = "Sign in with " + name + ", not the address, everywhere: the site, the console, the app and mail apps' own passwords. App passwords keep working with the address. An administrator can clear it."
+		nameNote = i18n.T(lang, "Sign in with {name}, not the address, everywhere: the site, the console, the app and mail apps' own passwords. App passwords keep working with the address. An administrator can clear it.", "name", name)
 	}
-	b.WriteString(`<div class="vm-acct__sub"><span class="field-label">Sign-in name</span>` +
+	b.WriteString(`<div class="vm-acct__sub"><span class="field-label">` + esc(i18n.T(lang, "Sign-in name")) + `</span>` +
 		`<form class="vm-row" hx-post="/os/vayumail/accounts/signin" hx-target="#vm-accounts-list" hx-swap="innerHTML">` +
 		`<input type="hidden" name="email" value="` + html.EscapeString(ac.Email) + `"><input type="hidden" name="op" value="name">` +
-		`<input class="input input--sm" name="name" value="` + html.EscapeString(name) + `" placeholder="None" autocomplete="off" aria-label="Sign-in name">` +
-		`<button class="btn btn--sm" type="submit">Save</button></form>` +
-		`<span class="text-xs muted">The address people write to is public, so it is guessed at. With a sign-in name it no longer signs in, and a guesser who has it has nothing. ` +
+		`<input class="input input--sm" name="name" value="` + html.EscapeString(name) + `" placeholder="` + esc(i18n.T(lang, "None")) + `" autocomplete="off" aria-label="` + esc(i18n.T(lang, "Sign-in name")) + `">` +
+		`<button class="btn btn--sm" type="submit">` + esc(i18n.T(lang, "Save")) + `</button></form>` +
+		`<span class="text-xs muted">` + esc(i18n.T(lang, "The address people write to is public, so it is guessed at. With a sign-in name it no longer signs in, and a guesser who has it has nothing.")) + ` ` +
 		html.EscapeString(nameNote) + `</span></div>`)
-	mailApps := "Mail apps sign in with app passwords only; this mailbox's own password is refused over IMAP, POP3 and SMTP."
+	mailApps := i18n.T(lang, "Mail apps sign in with app passwords only; this mailbox's own password is refused over IMAP, POP3 and SMTP.")
 	if !ac.RequireDeviceApproval {
-		mailApps = "Mail apps may sign in with this mailbox's own password. An administrator can require app passwords only."
+		mailApps = i18n.T(lang, "Mail apps may sign in with this mailbox's own password. An administrator can require app passwords only.")
 	}
-	b.WriteString(`<div class="vm-acct__sub"><span class="field-label">Mail apps</span><span class="text-sm">` + html.EscapeString(mailApps) + `</span></div>`)
+	b.WriteString(`<div class="vm-acct__sub"><span class="field-label">` + esc(i18n.T(lang, "Mail apps")) + `</span><span class="text-sm">` + html.EscapeString(mailApps) + `</span></div>`)
 
 	return b.String()
 }
@@ -119,9 +120,10 @@ func (a *App) handleVayuOSAccountSignin(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	_ = r.ParseForm()
+	lang := i18n.Lang(r.Context())
 	email := strings.TrimSpace(r.FormValue("email"))
 	if !a.mayChangeMailboxSettings(r, email) {
-		code, msg := a.settingsRefusal(i18n.Lang(r.Context()), email)
+		code, msg := a.settingsRefusal(lang, email)
 		writeAPIError(w, r, http.StatusForbidden, code, msg, "")
 		return
 	}
@@ -129,7 +131,7 @@ func (a *App) handleVayuOSAccountSignin(w http.ResponseWriter, r *http.Request) 
 	var opErr error
 	op := r.FormValue("op")
 	if a.signin == nil && op != "name" {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "unavailable", "Sign-in attempts are not recorded on this install.", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "unavailable", i18n.T(lang, "Sign-in attempts are not recorded on this install."), "")
 		return
 	}
 	switch op {
@@ -138,7 +140,7 @@ func (a *App) handleVayuOSAccountSignin(w http.ResponseWriter, r *http.Request) 
 		// Only a source that tried this mailbox: "It was me" teaches the
 		// mailbox a place it was actually signed in from.
 		if rows, err := a.signin.Attempts(r.Context(), fp, account, 1); err != nil || len(rows) == 0 || fp == "" {
-			opErr = errors.New("that source has not tried this mailbox")
+			opErr = errors.New(i18n.T(lang, "That source has not tried this mailbox."))
 		} else if opErr = a.signin.ItWasMe(r.Context(), account, fp); opErr == nil {
 			dbpkg.AuditLog("signin.mine", dbpkg.AuditActor(r), account, rows[0].Masked)
 		}
@@ -146,7 +148,7 @@ func (a *App) handleVayuOSAccountSignin(w http.ResponseWriter, r *http.Request) 
 		var list []string
 		for _, c := range strings.FieldsFunc(r.FormValue("countries"), func(r rune) bool { return r == ',' || r == ' ' }) {
 			if c = strings.ToUpper(strings.TrimSpace(c)); len(c) != 2 {
-				opErr = errors.New(`"` + c + `" is not a two-letter country code`)
+				opErr = errors.New(i18n.T(lang, "“{code}” is not a two-letter country code.", "code", c))
 				break
 			}
 			list = append(list, c)
@@ -159,7 +161,7 @@ func (a *App) handleVayuOSAccountSignin(w http.ResponseWriter, r *http.Request) 
 				self = auth.ClientIP(r)
 			}
 			if opErr = a.signin.SetFence(r.Context(), account, list, self); errors.Is(opErr, signin.ErrSelf) {
-				opErr = errors.New("you are signing in from a country that is not on the list, so it was not saved")
+				opErr = errors.New(i18n.T(lang, "You are signing in from a country that is not on the list, so it was not saved."))
 			} else if opErr == nil {
 				dbpkg.AuditLog("signin.fence", dbpkg.AuditActor(r), account, strings.Join(list, ","))
 			}
@@ -170,7 +172,7 @@ func (a *App) handleVayuOSAccountSignin(w http.ResponseWriter, r *http.Request) 
 			dbpkg.AuditLog("signin.name", dbpkg.AuditActor(r), account, map[bool]string{true: "cleared", false: "set"}[strings.TrimSpace(name) == ""])
 		}
 	default:
-		opErr = errors.New("unknown action")
+		opErr = errors.New(i18n.T(lang, "That is not something this page does."))
 	}
 	card := a.acctRefresh(r, email)
 	if opErr != nil {

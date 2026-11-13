@@ -43,6 +43,9 @@ var i18nMoved = map[string][]string{
 	"vayuos_mail_accounts.go":         {"vayuCardName", "vayuCardForwarding", "vayuCardVacation", "vayuCardPGP"},
 	// ruleForwardMail goes to someone outside the install, in English.
 	"vayuos_mail_rules.go":       {"ruleFieldNames", "ruleOpNames", "ruleActionNames", "ruleWords", "ruleDomID", "vayuCardFilters", "ruleEditor", "option", "ruleFromForm", "handleVayuOSFilterAction", "ruleTestResult", "askRuleForwards", "handleRuleForwardConfirm"},
+	"vayuos_mail_signin.go":      nil,
+	"vayuos_mail_smime.go":       nil,
+	"vayuos_mail_private.go":     nil,
 	"vayuos_mail_list.go":        nil,
 	"vayuos_mail_scheduled.go":   nil,
 	"vayuos_mail_unsubscribe.go": nil,
