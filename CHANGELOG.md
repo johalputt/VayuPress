@@ -20,6 +20,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   decisions; and History's breakdown is counted in the background, its
   last count shown while the next is made. A million events: from over
   seventeen seconds to a hundredth of one.
+- **A site's sitemap, feed and robots.txt answer at once.** On an install
+  with more than one site, a stale sitemap was rebuilt inside the request
+  that found it stale, every post of the site, and every crawler arriving
+  meanwhile rebuilt it again beside the first; one sitemap took twelve
+  seconds. The file there is now served as it is and rebuilt once in the
+  background; only a file never yet written is waited for, once, however
+  many crawlers ask.
 - **Monitoring's slowest routes leave out event streams.** The console's
   notifications are a connection held open, and each one read there as a
   thirty-second request, above the pages that really were slow.

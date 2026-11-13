@@ -3,14 +3,17 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/logging"
 )
 
 // seo_domain.go — VayuDomains Stage 2c: per-domain sitemap / feed / robots.
@@ -51,14 +54,56 @@ func domArtefactStale(rel string) bool {
 	return time.Since(fi.ModTime()) > domSEOFreshWindow
 }
 
+// domRebuilding holds the artefacts being rebuilt in the background now, and
+// domBuilding a lock for each one built while a request waits.
+var domRebuilding, domBuilding sync.Map
+
+// freshDomArtefact makes the artefact at rel current without making a crawler
+// wait for it. A file there is served as it is, and when it is older than the
+// freshness window one rebuild starts in the background; requests that come
+// while it runs start none. A file never yet written is built while the
+// request waits, once, however many ask for it at that moment.
+//
+// The rebuild was made inside the request, and every request that found the
+// file stale made its own: a site's sitemap is every post it has, and on a
+// large site one sitemap took twelve seconds while crawlers arriving together
+// rebuilt it side by side. The cache writes it beside the old file and renames
+// it over, so serving the old one meanwhile is safe.
+func freshDomArtefact(rel string, build func()) {
+	if !domArtefactStale(rel) {
+		return
+	}
+	if _, err := os.Stat(filepath.Join(config.Cfg.CacheDir, rel)); err == nil {
+		if _, running := domRebuilding.LoadOrStore(rel, struct{}{}); !running {
+			go func() {
+				defer domRebuilding.Delete(rel)
+				// A failed rebuild leaves last time's file, which is still served;
+				// a panic here must not take the process, and every site, down.
+				defer func() {
+					if v := recover(); v != nil {
+						logging.LogError("seo", "rebuilding "+rel+" failed", fmt.Sprint(v))
+					}
+				}()
+				build()
+			}()
+		}
+		return
+	}
+	mu, _ := domBuilding.LoadOrStore(rel, &sync.Mutex{})
+	mu.(*sync.Mutex).Lock()
+	defer mu.(*sync.Mutex).Unlock()
+	if domArtefactStale(rel) {
+		build()
+	}
+}
+
 func (a *App) handleSitemap(w http.ResponseWriter, r *http.Request) {
 	rel := "sitemap.xml"
 	if a.multiDomain(r) {
 		scope := a.contentScope(r)
 		rel = "sitemap_d_" + domCacheDir(scope) + ".xml"
-		if domArtefactStale(rel) {
-			writeSitemapScoped(a.activeHost(r), scope, true, rel)
-		}
+		host := a.activeHost(r)
+		freshDomArtefact(rel, func() { writeSitemapScoped(host, scope, true, rel) })
 	}
 	http.ServeFile(w, r, filepath.Join(config.Cfg.CacheDir, rel))
 }
@@ -76,9 +121,8 @@ func (a *App) handleSitemapChild(w http.ResponseWriter, r *http.Request) {
 	if a.multiDomain(r) {
 		scope := a.contentScope(r)
 		rel = "sitemap_d_" + domCacheDir(scope) + ".xml"
-		if domArtefactStale(rel) {
-			writeSitemapScoped(a.activeHost(r), scope, true, rel)
-		}
+		host := a.activeHost(r)
+		freshDomArtefact(rel, func() { writeSitemapScoped(host, scope, true, rel) })
 	}
 	var child string
 	if part == "tags" {
@@ -108,9 +152,8 @@ func (a *App) handleFeed(w http.ResponseWriter, r *http.Request) {
 	if a.multiDomain(r) {
 		scope := a.contentScope(r)
 		rel = "feed_d_" + domCacheDir(scope) + ".xml"
-		if domArtefactStale(rel) {
-			writeRSSScoped(a.activeHost(r), scope, true, rel)
-		}
+		host := a.activeHost(r)
+		freshDomArtefact(rel, func() { writeRSSScoped(host, scope, true, rel) })
 	}
 	http.ServeFile(w, r, filepath.Join(config.Cfg.CacheDir, rel))
 }
@@ -128,9 +171,8 @@ func (a *App) handleRobots(w http.ResponseWriter, r *http.Request) {
 	rel := "robots.txt"
 	if a.multiDomain(r) {
 		rel = "robots_d_" + domCacheDir(a.contentScope(r)) + ".txt"
-		if domArtefactStale(rel) {
-			writeRobotsScoped(a.activeHost(r), rel)
-		}
+		host := a.activeHost(r)
+		freshDomArtefact(rel, func() { writeRobotsScoped(host, rel) })
 	}
 	http.ServeFile(w, r, filepath.Join(config.Cfg.CacheDir, rel))
 }
