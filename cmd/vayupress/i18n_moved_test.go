@@ -81,7 +81,9 @@ func i18nEnglishIn(lit string) string {
 		}
 		return ""
 	}
-	s := strings.TrimSpace(lit)
+	// A sentence spliced after a value begins with the punctuation that ends
+	// it: ". Their mail will be refused."
+	s := strings.TrimLeft(strings.TrimSpace(lit), ".,;:!? ")
 	if i18nSentence.MatchString(s) && !strings.ContainsAny(s, "=/{}()") {
 		return s
 	}
@@ -171,6 +173,8 @@ func TestTheEnglishLintSeesEnglish(t *testing.T) {
 		{`<input placeholder="you@example.com" aria-label="`, false},
 		{`<input placeholder="Your password">`, true},
 		{`width:12px">`, false},
+		{`. Their mail will be refused, or put straight in Trash.`, true},
+		{`.`, false},
 	} {
 		if got := i18nEnglishIn(c.lit) != ""; got != c.want {
 			t.Errorf("%q read as English: %v, want %v", c.lit, got, c.want)
