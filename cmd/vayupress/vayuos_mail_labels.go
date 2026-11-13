@@ -79,7 +79,7 @@ func labelMenu(lang, user, folder, id string, all, mine []string) string {
 	}
 	post := ` hx-post="/os/vayumail/labels/action" hx-target="#vm-readpane" hx-swap="innerHTML"`
 	var b strings.Builder
-	b.WriteString(`<details class="sa-pop"><summary class="mx-tool mx-tool--word" title="` + esc(i18n.T(lang, "Label (l)")) + `" aria-label="` + esc(i18n.T(lang, "Label")) + `">` + saIcon("tag") + `<span class="mx-tool__word">` + esc(i18n.T(lang, "Label")) + `</span></summary><div class="sa-pop__panel sa-menu mx-labelmenu" role="menu">`)
+	b.WriteString(`<details class="sa-pop"><summary class="mx-tool mx-tool--word" title="` + esc(i18n.T(lang, "Label (l)")) + `" aria-label="` + esc(i18n.T(lang, "Label")) + `" aria-keyshortcuts="l">` + saIcon("tag") + `<span class="mx-tool__word">` + esc(i18n.T(lang, "Label")) + `</span></summary><div class="sa-pop__panel sa-menu mx-labelmenu" role="menu">`)
 	for _, l := range all {
 		on := slices.ContainsFunc(mine, func(m string) bool { return strings.EqualFold(m, l) })
 		next, checked := "1", "false"
@@ -149,7 +149,7 @@ func (a *App) storedMessageID(rd vmail.Reader, folder, id string) (string, error
 // list's own action.
 func selLabelMenu(lang string, all []string, inc string) string {
 	var b strings.Builder
-	b.WriteString(`<details class="sa-pop mx-selpanel__menu"><summary class="btn mx-selpanel__act">` + saIcon("tag") + esc(i18n.T(lang, "Label…")) + `</summary><div class="sa-pop__panel sa-menu mx-labelmenu" role="menu">`)
+	b.WriteString(`<details class="sa-pop mx-selpanel__menu"><summary class="btn mx-selpanel__act" aria-keyshortcuts="l">` + saIcon("tag") + esc(i18n.T(lang, "Label…")) + `</summary><div class="sa-pop__panel sa-menu mx-labelmenu" role="menu">`)
 	for _, l := range all {
 		b.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" hx-post="/os/vayumail/inbox/action"` + hxVals("action", "label", "label", l, "on", "1") + inc + `>` +
 			saIcon("tag") + `<span class="sa-menu__text">` + esc(l) + `</span></button>`)

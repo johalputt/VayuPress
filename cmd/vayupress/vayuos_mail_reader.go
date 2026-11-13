@@ -7,7 +7,6 @@ import (
 	"github.com/johalputt/vayupress/internal/i18n"
 	"net/http"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -40,7 +39,7 @@ type readerView struct {
 // view is a peek, marks it read (received folders only). ok is false when the
 // message cannot be read.
 func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (string, bool) {
-	user := rd.Key()
+	user, lang := rd.Key(), rd.Lang()
 	// A read-only mailbox is offered no control the engine would refuse: no
 	// reply or forward (a send), no Junk, Trash, Restore or Move, no Delete.
 	readOnly := a.vayuMail.ReaderReadOnly(rd)
@@ -85,7 +84,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 	pm := vmail.ParseMessage(raw)
 	subj := strings.TrimSpace(pm.Subject)
 	if subj == "" {
-		subj = "(no subject)"
+		subj = i18n.T(lang, "(no subject)")
 	}
 	fromName, fromAddr := mailParseFrom(pm.From)
 	who := fromName
@@ -124,6 +123,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		}
 		return `<span class="mx-tool__word">` + esc(word) + `</span>`
 	}
+	here := i18n.T(lang, "This message")
 	tool := func(icon, label, key, paneArgs, pageAttr string, danger bool, word string) {
 		title := label
 		if key != "" {
@@ -140,9 +140,9 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		if pane {
 			attrs = hxPost + paneArgs
 		}
-		c.WriteString(`<button type="button" class="` + cls + `" title="` + esc(title) + `" aria-label="` + esc(label) + `"` + mailCmd(label, "This message", key) + ` ` + attrs + `>` + saIcon(icon) + words(word) + `</button>`)
+		c.WriteString(`<button type="button" class="` + cls + `" title="` + esc(title) + `" aria-label="` + esc(label) + `"` + mailCmd(label, here, key) + ` ` + attrs + `>` + saIcon(icon) + words(word) + `</button>`)
 	}
-	c.WriteString(`<div class="mx-rtools" role="toolbar" aria-label="Message"`)
+	c.WriteString(`<div class="mx-rtools" role="toolbar" aria-label="` + esc(i18n.T(lang, "Message")) + `"`)
 	if !pane {
 		// admin-os-mail.js reads the message it acts on from here.
 		c.WriteString(` data-mail-actions data-user="` + esc(user) + `" data-folder="` + esc(folder) + `" data-id="` + esc(id) + `"`)
@@ -154,45 +154,47 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 	if pane {
 		// Narrower than three columns the message is pushed over the list,
 		// and this goes back to it (admin-os-mail.js).
-		c.WriteString(`<button type="button" class="mx-back" data-mx-go="list">` + saIcon("chev-l") + esc(folder) + `</button>`)
+		c.WriteString(`<button type="button" class="mx-back" data-mx-go="list">` + saIcon("chev-l") + esc(mailFolderLabel(lang, folder)) + `</button>`)
 	}
 	link := func(icon, label, key, href, cls string) {
-		c.WriteString(`<a class="mx-tool mx-tool--word ` + cls + `" href="` + esc(href) + `" title="` + esc(label+" ("+key+")") + `" aria-label="` + esc(label) + `"` + mailCmd(label, "This message", key) + `>` + saIcon(icon) + words(label) + `</a>`)
+		c.WriteString(`<a class="mx-tool mx-tool--word ` + cls + `" href="` + esc(href) + `" title="` + esc(label+" ("+key+")") + `" aria-label="` + esc(label) + `"` + mailCmd(label, here, key) + `>` + saIcon(icon) + words(label) + `</a>`)
 	}
 	if !readOnly {
 		// What is done to a message most: answer it. First, with its words;
 		// Reply keeps its word the longest (vayuos.css).
-		link("reply", "Reply", "r", "/os/vayumail/compose?reply=1&"+q, "mx-tool--answer mx-tool--reply")
-		link("reply-all", "Reply all", "a", "/os/vayumail/compose?replyall=1&"+q, "mx-tool--answer")
-		link("forward", "Forward", "f", "/os/vayumail/compose?forward=1&"+q, "mx-tool--answer")
+		link("reply", i18n.T(lang, "Reply"), "r", "/os/vayumail/compose?reply=1&"+q, "mx-tool--answer mx-tool--reply")
+		link("reply-all", i18n.T(lang, "Reply all"), "a", "/os/vayumail/compose?replyall=1&"+q, "mx-tool--answer")
+		link("forward", i18n.T(lang, "Forward"), "f", "/os/vayumail/compose?forward=1&"+q, "mx-tool--answer")
 		c.WriteString(`<span class="mx-rtools__sep" aria-hidden="true"></span>`)
 	}
 	if !readOnly {
 		// In Junk the first thing offered is to say it is not (pipeline 3ab),
 		// on the key that files a message there everywhere else.
 		if strings.EqualFold(folder, "Junk") {
-			tool("inbox", "Not junk", "!", paneVals("notjunk", "1"), `data-mail-notjunk`, false, "Not junk")
+			tool("inbox", i18n.T(lang, "Not junk"), "!", paneVals("notjunk", "1"), `data-mail-notjunk`, false, i18n.T(lang, "Not junk"))
 		}
 		if !strings.EqualFold(folder, "Archive") {
-			tool("archive", "Archive", "e", paneVals("to", "Archive"), `data-mail-move="Archive"`, false, "Archive")
+			tool("archive", i18n.T(lang, "Archive"), "e", paneVals("to", "Archive"), `data-mail-move="Archive"`, false, i18n.T(lang, "Archive"))
 		}
 		if strings.EqualFold(folder, "Trash") {
-			tool("inbox", "Restore to Inbox", "", paneVals("to", "Inbox"), `data-mail-move="Inbox"`, false, "Restore")
-			tool("trash", "Delete for good", "#", paneVals("delete", "1")+` hx-confirm="Delete this message for good?"`, `data-mail-delete`, true, "Delete for good")
+			tool("inbox", i18n.T(lang, "Restore to Inbox"), "", paneVals("to", "Inbox"), `data-mail-move="Inbox"`, false, i18n.T(lang, "Restore"))
+			tool("trash", i18n.T(lang, "Delete for good"), "#", paneVals("delete", "1")+` hx-confirm="`+esc(i18n.T(lang, "Delete this message for good?"))+`"`, `data-mail-delete`, true, i18n.T(lang, "Delete for good"))
 		} else {
-			tool("trash", "Move to Trash", "#", paneVals("to", "Trash"), `data-mail-move="Trash"`, false, "Delete")
+			tool("trash", i18n.T(lang, "Move to Trash"), "#", paneVals("to", "Trash"), `data-mail-move="Trash"`, false, i18n.T(lang, "Delete"))
 		}
 		if !strings.EqualFold(folder, "Junk") {
-			tool("spam", "Junk", "!", paneVals("to", "Junk"), `data-mail-move="Junk"`, false, "")
+			tool("spam", i18n.T(lang, "Junk"), "!", paneVals("to", "Junk"), `data-mail-move="Junk"`, false, "")
 		}
 		// Move: a menu of the folders this message can go to.
-		c.WriteString(`<details class="sa-pop"><summary class="mx-tool mx-tool--word" title="Move to… (v)" aria-label="Move to">` + saIcon("move") + words("Move") + `</summary><div class="sa-pop__panel sa-menu" role="menu">`)
+		// A menu's key is on its summary, which is how the keys find it
+		// (admin-os-mail.js), in whatever language its words are.
+		c.WriteString(`<details class="sa-pop"><summary class="mx-tool mx-tool--word" title="` + esc(i18n.T(lang, "Move to… (v)")) + `" aria-label="` + esc(i18n.T(lang, "Move to")) + `" aria-keyshortcuts="v">` + saIcon("move") + words(i18n.T(lang, "Move")) + `</summary><div class="sa-pop__panel sa-menu" role="menu">`)
 		for _, f := range a.moveTargets(rd, folder) {
 			attrs := `data-mail-move="` + esc(f) + `"`
 			if pane {
 				attrs = hxPost + paneVals("to", f)
 			}
-			c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" ` + attrs + `>` + saIcon(mailFolderIcon(f)) + `<span class="sa-menu__text">` + esc(f) + `</span></button>`)
+			c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" ` + attrs + `>` + saIcon(mailFolderIcon(f)) + `<span class="sa-menu__text">` + esc(mailFolderLabel(lang, f)) + `</span></button>`)
 		}
 		c.WriteString(`</div></details>`)
 		if pane && cur.MessageID != "" {
@@ -204,41 +206,41 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 	if pane && received && !readOnly && !strings.EqualFold(folder, "Snoozed") {
 		// "Later" (+4h) existed in the engine but had no button, so the
 		// fastest snooze the product could offer was "tomorrow".
-		c.WriteString(`<details class="sa-pop"><summary class="mx-tool mx-tool--word" title="Snooze (b)" aria-label="Snooze">` + saIcon("timer") + words("Snooze") + `</summary><div class="sa-pop__panel sa-menu" role="menu">`)
-		for _, s := range [][2]string{{"later", "Later today"}, {"tomorrow", "Tomorrow, 8:00"}, {"nextweek", "Next week, Monday 8:00"}} {
-			c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem"` + hxPost + paneVals("snooze", s[0]) + `><span class="sa-menu__text">` + s[1] + `</span></button>`)
+		c.WriteString(`<details class="sa-pop"><summary class="mx-tool mx-tool--word" title="` + esc(i18n.T(lang, "Snooze (b)")) + `" aria-label="` + esc(i18n.T(lang, "Snooze")) + `" aria-keyshortcuts="b">` + saIcon("timer") + words(i18n.T(lang, "Snooze")) + `</summary><div class="sa-pop__panel sa-menu" role="menu">`)
+		for _, s := range [][2]string{{"later", i18n.T(lang, "Later today")}, {"tomorrow", i18n.T(lang, "Tomorrow, 8:00")}, {"nextweek", i18n.T(lang, "Next week, Monday 8:00")}} {
+			c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem"` + hxPost + paneVals("snooze", s[0]) + `><span class="sa-menu__text">` + esc(s[1]) + `</span></button>`)
 		}
 		c.WriteString(`</div></details>`)
 	}
-	pinArgs, pinPage, pinLabel := paneVals("pin", "1"), `data-mail-pin="1"`, "Pin"
+	pinArgs, pinPage, pinLabel := paneVals("pin", "1"), `data-mail-pin="1"`, i18n.T(lang, "Pin")
 	if cur.Flagged {
-		pinArgs, pinPage, pinLabel = paneVals("pin", "0"), `data-mail-pin="0"`, "Unpin"
+		pinArgs, pinPage, pinLabel = paneVals("pin", "0"), `data-mail-pin="0"`, i18n.T(lang, "Unpin")
 	}
 	tool("pin", pinLabel, "s", pinArgs, pinPage, false, "")
 	c.WriteString(`</div><span class="mx-rtools__fill"></span><div class="mx-rtools__group">`)
 	if pos >= 0 {
-		c.WriteString(`<span class="mx-rtools__pos">` + strconv.Itoa(pos+1) + ` of ` + strconv.Itoa(len(msgs)) + `</span>`)
+		c.WriteString(`<span class="mx-rtools__pos">` + esc(i18n.T(lang, "{n} of {total}", "n", pos+1, "total", len(msgs))) + `</span>`)
 	}
 	nav := func(mid, icon, label, key, travel string) {
 		if mid == "" {
-			c.WriteString(`<span class="mx-tool" aria-disabled="true" aria-label="` + label + `">` + saIcon(icon) + `</span>`)
+			c.WriteString(`<span class="mx-tool" aria-disabled="true" aria-label="` + esc(label) + `">` + saIcon(icon) + `</span>`)
 			return
 		}
 		if pane {
-			c.WriteString(`<button type="button" class="mx-tool" data-mx-travel="` + travel + `" hx-get="` + esc(msgURL(mid)) + `&amp;pane=1" hx-target="#vm-readpane" hx-swap="innerHTML" title="` + label + ` (` + key + `)" aria-label="` + label + `">` + saIcon(icon) + `</button>`)
+			c.WriteString(`<button type="button" class="mx-tool" data-mx-travel="` + travel + `" hx-get="` + esc(msgURL(mid)) + `&amp;pane=1" hx-target="#vm-readpane" hx-swap="innerHTML" title="` + esc(label) + ` (` + key + `)" aria-label="` + esc(label) + `" aria-keyshortcuts="` + key + `">` + saIcon(icon) + `</button>`)
 			return
 		}
-		c.WriteString(`<a class="mx-tool" href="` + esc(msgURL(mid)) + `" title="` + label + ` (` + key + `)" aria-label="` + label + `">` + saIcon(icon) + `</a>`)
+		c.WriteString(`<a class="mx-tool" href="` + esc(msgURL(mid)) + `" title="` + esc(label) + ` (` + key + `)" aria-label="` + esc(label) + `" aria-keyshortcuts="` + key + `">` + saIcon(icon) + `</a>`)
 	}
-	nav(newerID, "chev-u", "Newer message", "k", "newer")
-	nav(olderID, "chev-d", "Older message", "j", "older")
+	nav(newerID, "chev-u", i18n.T(lang, "Newer message"), "k", "newer")
+	nav(olderID, "chev-d", i18n.T(lang, "Older message"), "j", "older")
 
 	if pane {
 		// Full width (pipeline 3y): the message is pushed over the list and
 		// takes its place, as compose's Expand does, and the bar's back button
 		// (shown whenever a message covers the list) returns to the columns.
 		// Hidden whenever the message already covers the list (admin-os-mail.js).
-		c.WriteString(`<button type="button" class="mx-tool mx-widen" data-mx-widen title="Full width (w)" aria-label="Full width"` + mailCmd("Full width", "This message", "w") + `>` + saIcon("expand") + `</button>`)
+		c.WriteString(`<button type="button" class="mx-tool mx-widen" data-mx-widen title="` + esc(i18n.T(lang, "Full width (w)")) + `" aria-label="` + esc(i18n.T(lang, "Full width")) + `"` + mailCmd(i18n.T(lang, "Full width"), here, "w") + `>` + saIcon("expand") + `</button>`)
 	}
 
 	// More: the rarer things, folded.
@@ -257,53 +259,53 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		if pane {
 			hx = ` hx-get="` + esc(u) + `" hx-target="#vm-readpane" hx-swap="innerHTML"`
 		}
-		return `<a class="sa-menu__item" role="menuitem" href="` + esc(u) + `"` + hx + `><span class="sa-menu__text">` + label + `</span></a>`
+		return `<a class="sa-menu__item" role="menuitem" href="` + esc(u) + `"` + hx + `><span class="sa-menu__text">` + esc(label) + `</span></a>`
 	}
 	hasHTML := strings.TrimSpace(pm.HTML) != ""
-	c.WriteString(`<details class="sa-pop"><summary class="mx-tool" title="More" aria-label="More">` + saIcon("more") + `</summary><div class="sa-pop__panel sa-menu" role="menu">`)
+	c.WriteString(`<details class="sa-pop"><summary class="mx-tool" title="` + esc(i18n.T(lang, "More")) + `" aria-label="` + esc(i18n.T(lang, "More")) + `">` + saIcon("more") + `</summary><div class="sa-pop__panel sa-menu" role="menu">`)
 	if hasHTML && !v.HTML && strings.TrimSpace(pm.Text) != "" {
-		c.WriteString(view("Show as the sender styled it", true, false))
+		c.WriteString(view(i18n.T(lang, "Show as the sender styled it"), true, false))
 	}
 	if hasHTML && v.HTML {
-		c.WriteString(view("Show as plain text", false, false))
+		c.WriteString(view(i18n.T(lang, "Show as plain text"), false, false))
 	}
 	if hasHTML && !v.Images {
-		c.WriteString(view("Load images", true, true))
+		c.WriteString(view(i18n.T(lang, "Load images"), true, true))
 	}
 	if received {
 		attrs := `data-mail-mark="unread"`
 		if pane {
 			attrs = hxPost + paneVals("mark", "unread")
 		}
-		c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" ` + attrs + `><span class="sa-menu__text">Mark unread</span><kbd class="sa-menu__key">⇧U</kbd></button>`)
+		c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" ` + attrs + `><span class="sa-menu__text">` + esc(i18n.T(lang, "Mark unread")) + `</span><kbd class="sa-menu__key">⇧U</kbd></button>`)
 	}
-	c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" data-vm-print><span class="sa-menu__text">Print</span></button>`)
+	c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" data-vm-print><span class="sa-menu__text">` + esc(i18n.T(lang, "Print")) + `</span></button>`)
 	if !readOnly && received && fromAddr != "" {
 		// Block (blocked.go): what it does is said before it is done.
 		c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" hx-post="/os/vayumail/blocked/action" hx-swap="none"` +
 			hxVals("user", user, "action", "block", "sender", fromAddr) +
-			` hx-confirm="Block ` + esc(fromAddr) + `? Their mail will be refused, or put straight in Trash."><span class="sa-menu__text">Block ` + esc(fromAddr) + `</span></button>`)
+			` hx-confirm="` + esc(i18n.T(lang, "Block {sender}? Their mail will be refused, or put straight in Trash.", "sender", fromAddr)) + `"><span class="sa-menu__text">` + esc(i18n.T(lang, "Block {sender}", "sender", fromAddr)) + `</span></button>`)
 	}
 	if !readOnly && !strings.EqualFold(folder, "Trash") {
 		attrs := `data-mail-delete`
 		if pane {
-			attrs = hxPost + paneVals("delete", "1") + ` hx-confirm="Delete this message for good?"`
+			attrs = hxPost + paneVals("delete", "1") + ` hx-confirm="` + esc(i18n.T(lang, "Delete this message for good?")) + `"`
 		}
-		c.WriteString(`<button type="button" class="sa-menu__item sa-menu__item--danger" role="menuitem" ` + attrs + `><span class="sa-menu__text">Delete for good</span></button>`)
+		c.WriteString(`<button type="button" class="sa-menu__item sa-menu__item--danger" role="menuitem" ` + attrs + `><span class="sa-menu__text">` + esc(i18n.T(lang, "Delete for good")) + `</span></button>`)
 	}
 	if pane {
-		c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" hx-get="/os/vayumail/inbox/readpane" hx-target="#vm-readpane" hx-swap="innerHTML"><span class="sa-menu__text">Close</span></button>`)
+		c.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" hx-get="/os/vayumail/inbox/readpane" hx-target="#vm-readpane" hx-swap="innerHTML"><span class="sa-menu__text">` + esc(i18n.T(lang, "Close")) + `</span></button>`)
 	} else {
-		c.WriteString(`<a class="sa-menu__item" role="menuitem" href="/os/vayumail/inbox?user=` + qparam(user) + `&amp;folder=` + qparam(folder) + `"><span class="sa-menu__text">Back to ` + esc(folder) + `</span></a>`)
+		c.WriteString(`<a class="sa-menu__item" role="menuitem" href="/os/vayumail/inbox?user=` + qparam(user) + `&amp;folder=` + qparam(folder) + `"><span class="sa-menu__text">` + esc(i18n.T(lang, "Back to {folder}", "folder", mailFolderLabel(lang, folder))) + `</span></a>`)
 	}
 	c.WriteString(`</div></details></div></div>`)
 
 	// ── The message itself, scrolling under the tools.
 	c.WriteString(`<div class="mx-rbody">`)
 	n := len(convo) + 1
-	c.WriteString(`<header><h2 class="mx-subject">` + esc(subj) + `</h2><p class="mx-subline">` + esc(folder))
+	c.WriteString(`<header><h2 class="mx-subject">` + esc(subj) + `</h2><p class="mx-subline">` + esc(mailFolderLabel(lang, folder)))
 	if n > 1 {
-		c.WriteString(` <span aria-hidden="true">·</span> ` + strconv.Itoa(n) + ` messages`)
+		c.WriteString(` <span aria-hidden="true">·</span> ` + esc(i18n.T(lang, "{n, plural, one {# message} other {# messages}}", "n", n)))
 	}
 	c.WriteString(`</p>` + readerLabels(user, msgLabels) + `</header>`)
 
@@ -333,7 +335,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		c.WriteString(` <span class="mx-msg__addr">` + esc(fromAddr) + `</span>`)
 	}
 	c.WriteString(` ` + contactSaveButton(user, pm.From) + `</div>`)
-	if to := mailRecipientsLine(pm.To, pm.Cc, mbox); to != "" {
+	if to := mailRecipientsLine(lang, pm.To, pm.Cc, mbox); to != "" {
 		c.WriteString(`<div class="mx-msg__to">` + esc(to) + `</div>`)
 	}
 	c.WriteString(`</div>`)
@@ -359,11 +361,11 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		if strings.TrimSpace(pm.HTML) != "" {
 			sanitized = mailHTMLPolicyImages.Sanitize(pm.HTML)
 		}
-		trust := mailTrustFor(a.vayuMail.CheckedDomain(stored), sanitized, pm.From, !a.vayuMail.IsContact(rd, fromAddr))
+		trust := mailTrustFor(lang, a.vayuMail.CheckedDomain(stored), sanitized, pm.From, !a.vayuMail.IsContact(rd, fromAddr))
 		if !received {
 			trust.Warning = "" // mail this mailbox wrote warns no one
 		}
-		c.WriteString(mailTrustLine(trust))
+		c.WriteString(mailTrustLine(lang, trust))
 		if pane {
 			c.WriteString(a.modelHelpBar(context.Background(), rd, folder, id, cur, raw, pm.Subject))
 		}
@@ -371,7 +373,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		if bounces, _ := a.vayuMail.Bounces(rd, cur.MessageID); len(bounces) > 0 {
 			c.WriteString(`<ul class="mx-bounces">`)
 			for _, b := range bounces {
-				c.WriteString(`<li>` + saIcon("alert") + `<span><strong>Not delivered to ` + esc(b.Recipient) + `.</strong> ` + esc(b.Reason) + ` <span class="mx-bounces__code">` + esc(b.Status) + `</span></span></li>`)
+				c.WriteString(`<li>` + saIcon("alert") + `<span><strong>` + esc(i18n.T(lang, "Not delivered to {recipient}.", "recipient", b.Recipient)) + `</strong> ` + esc(b.Reason) + ` <span class="mx-bounces__code">` + esc(b.Status) + `</span></span></li>`)
 			}
 			c.WriteString(`</ul>`)
 		}
@@ -386,7 +388,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		}
 		c.WriteString(a.inviteCard(rd, folder, id, raw, home, ""))
 	}
-	c.WriteString(`<div class="mx-msg__body">` + a.mailBodyHTML(pm, raw, v) + `</div>`)
+	c.WriteString(`<div class="mx-msg__body">` + a.mailBodyHTML(lang, pm, raw, v) + `</div>`)
 
 	// Attachments as cards: a type tile, the name, the size, and download.
 	if len(pm.Attachments) > 0 {
@@ -402,7 +404,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		if thumbs.Len() > 0 {
 			c.WriteString(`<div class="mx-previews">` + thumbs.String() + `</div>`)
 		}
-		c.WriteString(`<ul class="mx-files" aria-label="Attachments">`)
+		c.WriteString(`<ul class="mx-files" aria-label="` + esc(i18n.T(lang, "Attachments")) + `">`)
 		for _, att := range pm.Attachments {
 			dl := "/os/vayumail/attachment?" + q + "&idx=" + itoaSafe(att.Index)
 			// The tile carries a ring the download fills and the tick it settles
@@ -410,43 +412,43 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 			c.WriteString(`<li><a class="mx-file" href="` + esc(dl) + `" download data-mx-file><span class="mx-file__type" aria-hidden="true">` + esc(mailFileType(att.Filename, att.ContentType)) +
 				`<svg class="mx-file__ring" viewBox="0 0 36 36"><circle cx="18" cy="18" r="16" pathLength="100"/></svg><span class="mx-file__tick">` + saIcon("check") + `</span></span>` +
 				`<span class="mx-file__meta"><span class="mx-file__name">` + esc(vmail.PlainName(att.Filename)) + `</span><span class="mx-file__size">` + esc(humanBytes(att.Size)) + `</span></span>` +
-				`<span class="mx-file__dl" aria-hidden="true">` + saIcon("download") + `</span><span class="vp-sr-only">Download</span></a>`)
+				`<span class="mx-file__dl" aria-hidden="true">` + saIcon("download") + `</span><span class="vp-sr-only">` + esc(i18n.T(lang, "Download")) + `</span></a>`)
 			if _, ok := mailPreviewable(att.ContentType); ok {
-				c.WriteString(`<a class="mx-file__open" href="` + esc(dl+"&inline=1") + `" target="_blank" rel="noopener">Open<span class="vp-sr-only"> ` + esc(vmail.PlainName(att.Filename)) + `</span></a>`)
+				c.WriteString(`<a class="mx-file__open" href="` + esc(dl+"&inline=1") + `" target="_blank" rel="noopener">` + esc(i18n.T(lang, "Open")) + `<span class="vp-sr-only"> ` + esc(vmail.PlainName(att.Filename)) + `</span></a>`)
 			}
 			// Into the holder's own Drive (vayuos_mail_drive.go): for the
 			// mailbox's holder, not an administrator reading it, and where
 			// the session has a Drive. The button is replaced by what happened.
 			if rd.IsOwner() && v.Places.Drive {
 				c.WriteString(`<button type="button" class="mx-file__open" hx-post="/os/vayumail/drive/save"` + hxVals("folder", folder, "id", id, "idx", itoaSafe(att.Index)) +
-					` hx-swap="outerHTML">Save to Drive<span class="vp-sr-only"> ` + esc(vmail.PlainName(att.Filename)) + `</span></button>`)
+					` hx-swap="outerHTML">` + esc(i18n.T(lang, "Save to Drive")) + `<span class="vp-sr-only"> ` + esc(vmail.PlainName(att.Filename)) + `</span></button>`)
 			}
 			c.WriteString(`</li>`)
 		}
 		c.WriteString(`</ul>`)
 	}
 	// The message as it arrived, for the rare day it is needed.
-	c.WriteString(`<details class="mx-source"><summary>Show the original</summary><pre class="vm-pre vm-raw">` + esc(string(raw)) + `</pre></details>`)
+	c.WriteString(`<details class="mx-source"><summary>` + esc(i18n.T(lang, "Show the original")) + `</summary><pre class="vm-pre vm-raw">` + esc(string(raw)) + `</pre></details>`)
 	c.WriteString(`</article></div>`)
 
 	// A phone's message screen has its own bar in place of the tab bar
 	// (render 05): what a message most needs, at the thumb.
 	if pane && !readOnly {
-		c.WriteString(`<nav class="mx-phonebar" aria-label="Message">`)
+		c.WriteString(`<nav class="mx-phonebar" aria-label="` + esc(i18n.T(lang, "Message")) + `">`)
 		if strings.EqualFold(folder, "Junk") {
-			c.WriteString(`<button type="button" class="mx-tool"` + hxPost + paneVals("notjunk", "1") + ` aria-label="Not junk">` + saIcon("inbox") + `</button>`)
+			c.WriteString(`<button type="button" class="mx-tool"` + hxPost + paneVals("notjunk", "1") + ` aria-label="` + esc(i18n.T(lang, "Not junk")) + `">` + saIcon("inbox") + `</button>`)
 		}
 		if received && !strings.EqualFold(folder, "Archive") {
-			c.WriteString(`<button type="button" class="mx-tool"` + hxPost + paneVals("to", "Archive") + ` aria-label="Archive">` + saIcon("archive") + `</button>`)
+			c.WriteString(`<button type="button" class="mx-tool"` + hxPost + paneVals("to", "Archive") + ` aria-label="` + esc(i18n.T(lang, "Archive")) + `">` + saIcon("archive") + `</button>`)
 		}
 		if !strings.EqualFold(folder, "Trash") {
-			c.WriteString(`<button type="button" class="mx-tool"` + hxPost + paneVals("to", "Trash") + ` aria-label="Move to Trash">` + saIcon("trash") + `</button>`)
+			c.WriteString(`<button type="button" class="mx-tool"` + hxPost + paneVals("to", "Trash") + ` aria-label="` + esc(i18n.T(lang, "Move to Trash")) + `">` + saIcon("trash") + `</button>`)
 		}
-		c.WriteString(`<button type="button" class="mx-tool" data-mx-menu="Move to" aria-label="Move to">` + saIcon("move") + `</button>`)
+		c.WriteString(`<button type="button" class="mx-tool" data-mx-menu="v" aria-label="` + esc(i18n.T(lang, "Move to")) + `">` + saIcon("move") + `</button>`)
 		if received {
-			c.WriteString(`<a class="mx-tool" href="/os/vayumail/compose?reply=1&amp;` + esc(q) + `" aria-label="Reply">` + saIcon("reply") + `</a>`)
+			c.WriteString(`<a class="mx-tool" href="/os/vayumail/compose?reply=1&amp;` + esc(q) + `" aria-label="` + esc(i18n.T(lang, "Reply")) + `">` + saIcon("reply") + `</a>`)
 		}
-		c.WriteString(`<a class="mx-tool" href="/os/vayumail/compose?user=` + qparam(user) + `" aria-label="Write a message">` + saIcon("pencil") + `</a></nav>`)
+		c.WriteString(`<a class="mx-tool" href="/os/vayumail/compose?user=` + qparam(user) + `" aria-label="` + esc(i18n.T(lang, "Write a message")) + `">` + saIcon("pencil") + `</a></nav>`)
 	}
 
 	// Reply, docked: a field that opens the reply with nothing lost.
@@ -458,10 +460,10 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		}
 		// A field, not a link (Mail plan §3.3, pipeline 3z): what is typed in
 		// it becomes the reply, carried into the compose sheet it opens.
-		c.WriteString(`<div class="mx-dock"><input class="mx-dock__field" type="text" autocomplete="off" data-mx-quick-reply data-href="/os/vayumail/compose?reply=1&amp;` + esc(q) + `" placeholder="Reply to ` + esc(name) + `…" aria-label="Reply to ` + esc(name) + `">`)
+		c.WriteString(`<div class="mx-dock"><input class="mx-dock__field" type="text" autocomplete="off" data-mx-quick-reply data-href="/os/vayumail/compose?reply=1&amp;` + esc(q) + `" placeholder="` + esc(i18n.T(lang, "Reply to {name}…", "name", name)) + `" aria-label="` + esc(i18n.T(lang, "Reply to {name}", "name", name)) + `">`)
 		if a.vayuPGP != nil {
 			if _, err := a.vayuPGP.GetPublicKey(fromAddr); err == nil {
-				c.WriteString(`<span class="mx-dock__enc">` + saIcon("lock") + ` Encrypted</span>`)
+				c.WriteString(`<span class="mx-dock__enc">` + saIcon("lock") + ` ` + esc(i18n.T(lang, "Encrypted")) + `</span>`)
 			}
 		}
 		c.WriteString(`</div>`)
@@ -474,9 +476,9 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 // the default (it is what the sender's words actually are); a message that is
 // only HTML, or one the reader asked to see styled, goes through the mail
 // sanitiser with remote images off unless asked for.
-func (a *App) mailBodyHTML(pm vmail.ParsedMessage, raw []byte, v readerView) string {
+func (a *App) mailBodyHTML(lang string, pm vmail.ParsedMessage, raw []byte, v readerView) string {
 	hasHTML := strings.TrimSpace(pm.HTML) != ""
-	note := `<p class="mx-images-off">Pictures stay off until you ask. They load through this server, so the sender learns that the message was opened, but not your address or device.</p>`
+	note := `<p class="mx-images-off">` + esc(i18n.T(lang, "Pictures stay off until you ask. They load through this server, so the sender learns that the message was opened, but not your address or device.")) + `</p>`
 	switch {
 	case hasHTML && v.HTML:
 		if v.Images {
@@ -487,7 +489,7 @@ func (a *App) mailBodyHTML(pm vmail.ParsedMessage, raw []byte, v readerView) str
 		main, quoted := splitQuoted(pm.Text)
 		out := `<div class="mx-text">` + esc(strings.TrimSpace(main)) + `</div>`
 		if quoted != "" {
-			out += `<details class="mx-quote"><summary>Show the quoted message</summary><div class="mx-text mx-text--quoted">` + esc(quoted) + `</div></details>`
+			out += `<details class="mx-quote"><summary>` + esc(i18n.T(lang, "Show the quoted message")) + `</summary><div class="mx-text mx-text--quoted">` + esc(quoted) + `</div></details>`
 		}
 		return out
 	case hasHTML:
@@ -542,11 +544,11 @@ func (a *App) mailConversation(rd vmail.Reader, folder string, cur vmail.StoredM
 
 // mailRecipientsLine says who a message went to in the reader's terms:
 // "to me, cc Mehul Shah", the mailbox reading it called "me".
-func mailRecipientsLine(to, cc, me string) string {
+func mailRecipientsLine(lang, to, cc, me string) string {
 	name := func(s string) string {
 		n, addr := mailParseFrom(s)
 		if strings.EqualFold(addr, me) {
-			return "me"
+			return i18n.T(lang, "me")
 		}
 		if n != "" {
 			return n
@@ -564,13 +566,13 @@ func mailRecipientsLine(to, cc, me string) string {
 	}
 	line := ""
 	if t := list(to); len(t) > 0 {
-		line = "to " + strings.Join(t, ", ")
+		line = i18n.T(lang, "to {people}", "people", strings.Join(t, ", "))
 	}
 	if c := list(cc); len(c) > 0 {
 		if line != "" {
 			line += ", "
 		}
-		line += "cc " + strings.Join(c, ", ")
+		line += i18n.T(lang, "cc {people}", "people", strings.Join(c, ", "))
 	}
 	return line
 }
@@ -616,10 +618,10 @@ func (a *App) handleVayuOSMessageBody(w http.ResponseWriter, r *http.Request) {
 	}
 	raw, err := a.vayuMail.ReadFolderMessage(rd, folder, mailIDParam(r))
 	if rd.Key() == "" || err != nil {
-		writeOSFragment(w, `<p class="mx-empty">This message could not be read.</p>`)
+		writeOSFragment(w, `<p class="mx-empty">`+esc(i18n.T(rd.Lang(), "This message could not be read."))+`</p>`)
 		return
 	}
-	writeOSFragment(w, a.mailBodyHTML(vmail.ParseMessage(raw), raw, readerView{Pane: true}))
+	writeOSFragment(w, a.mailBodyHTML(rd.Lang(), vmail.ParseMessage(raw), raw, readerView{Pane: true}))
 }
 
 // mailCmd marks a control for the command bar, which offers what the page
@@ -639,11 +641,11 @@ func mailCmd(label, where, key string) string {
 func (a *App) handleVayuOSMailLayout(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	if u == nil || a.userStore == nil {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "Reading is kept on a user account, and this session has none.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Reading is kept on a user account, and this session has none."), "")
 		return
 	}
 	if err := a.userStore.SetMailLayout(r.Context(), u.ID, strings.TrimSpace(r.FormValue("layout"))); err != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "save-failed", "Reading could not be saved.", "")
+		writeAPIError(w, r, http.StatusInternalServerError, "save-failed", i18n.T(i18n.Lang(r.Context()), "Reading could not be saved."), "")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

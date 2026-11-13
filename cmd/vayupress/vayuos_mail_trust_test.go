@@ -32,7 +32,7 @@ func TestWhatTheTrustLineReads(t *testing.T) {
 		{"a name that is the sender's own site", "", `"help@bank.example" <noreply@mail.bank.example>`, false, 0, ""},
 		{"a stranger's pretending link", `<a href="https://paypa1.com/">https://paypal.com/</a>`, "a@shop.example", true, 0, "This sender is not in your contacts. A link says paypal.com but goes to paypa1.com."},
 	} {
-		got := mailTrustFor("", mailHTMLPolicyImages.Sanitize(c.html), c.from, c.stranger)
+		got := mailTrustFor("en", "", mailHTMLPolicyImages.Sanitize(c.html), c.from, c.stranger)
 		if got.Trackers != c.trackers || got.Warning != c.warning {
 			t.Errorf("%s: %d trackers, warning %q; want %d, %q", c.name, got.Trackers, got.Warning, c.trackers, c.warning)
 		}

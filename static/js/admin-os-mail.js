@@ -464,11 +464,12 @@
       }
       // From the mailboxes screen, a folder or view goes on to its list.
       if (at() === 'boxes' && t.closest('#vm-folders a, .mx-switch__row')) move('list', 'push');
+      // The phone bar's menu button opens the reader's menu of the same
+      // key, found by its key, not its words, which are in the reader's language.
       var menu = t.closest('[data-mx-menu]');
       if (menu) {
-        var label = menu.getAttribute('data-mx-menu');
-        var sums = document.querySelectorAll('#vm-readpane .mx-rtools details.sa-pop > summary');
-        for (var i = 0; i < sums.length; i++) if (sums[i].getAttribute('aria-label') === label) { sums[i].parentNode.open = true; break; }
+        var sum = document.querySelector('#vm-readpane .mx-rtools details.sa-pop > summary[aria-keyshortcuts="' + menu.getAttribute('data-mx-menu') + '"]');
+        if (sum) sum.parentNode.open = true;
       }
     });
     // The list's large title shrinks into the bar as the list scrolls.
@@ -2239,12 +2240,12 @@
         if ((btns[i].getAttribute('hx-vals') || '').indexOf(fragment) >= 0) { btns[i].click(); return; }
       }
     }
-    function openMenu(root, label) {
-      var menus = root ? root.querySelectorAll('details.sa-pop') : [];
-      for (var i = 0; i < menus.length; i++) {
-        var sm = menus[i].querySelector('summary');
-        if (sm && ((sm.getAttribute('aria-label') || sm.textContent).indexOf(label) === 0)) { menus[i].dataset.kbd = '1'; menus[i].open = true; return; }
-      }
+    // A control is found by its key (aria-keyshortcuts), never by its words:
+    // those are in the reader's language.
+    function byKey(key) { return '[aria-keyshortcuts="' + key + '"]'; }
+    function openMenu(root, key) {
+      var sm = root && root.querySelector('details.sa-pop > summary' + byKey(key));
+      if (sm) { sm.parentNode.dataset.kbd = '1'; sm.parentNode.open = true; }
     }
     // u: from a message back to the list. Over the list, the list comes
     // back; beside it, the open row takes the focus, so j and k go on from
@@ -2319,9 +2320,7 @@
           case 'U': selVals('"mark":"unread"'); return;
           case 's': selVals('"pin"'); return;
           case 'u': clickIn(document, '[data-vm-select-done]'); return;
-          case 'b': e.preventDefault(); openMenu(host, 'Snooze'); return;
-          case 'l': e.preventDefault(); openMenu(host, 'Label'); return;
-          case 'v': e.preventDefault(); openMenu(host, 'Move to'); return;
+          case 'b': case 'l': case 'v': e.preventDefault(); openMenu(host, e.key); return;
         }
       }
       var reader = document.querySelector('.mx-rtools');
@@ -2330,20 +2329,11 @@
       var beside = !!document.getElementById('vm-inbox-list');
       if (reader && !(beside && (e.key === 'j' || e.key === 'k'))) {
         switch (e.key) {
-          case 'r': clickIn(reader, '[aria-label="Reply"]'); return;
-          case 'a': clickIn(reader, '[aria-label="Reply all"]'); return;
-          case 'f': clickIn(reader, '[aria-label="Forward"]'); return;
+          case 'r': case 'a': case 'f': case '#': case 'e': case '!': case 's': case 'j': case 'k':
+            clickIn(reader, byKey(e.key)); return;
           case 'U': clickIn(reader, '[data-mail-mark="unread"], button[hx-vals*="unread"]'); return;
           case 'u': e.preventDefault(); backToList(); return;
-          case '#': clickIn(reader, '[aria-label="Move to Trash"], [aria-label="Delete for good"]'); return;
-          case 'e': clickIn(reader, '[aria-label="Archive"]'); return;
-          case '!': clickIn(reader, '[aria-label="Junk"], [aria-label="Not junk"]'); return;
-          case 's': clickIn(reader, '[aria-label="Pin"], [aria-label="Unpin"]'); return;
-          case 'b': e.preventDefault(); openMenu(reader, 'Snooze'); return;
-          case 'l': e.preventDefault(); openMenu(reader, 'Label'); return;
-          case 'v': e.preventDefault(); openMenu(reader, 'Move to'); return;
-          case 'j': clickIn(reader, '[aria-label="Older message"]'); return;
-          case 'k': clickIn(reader, '[aria-label="Newer message"]'); return;
+          case 'b': case 'l': case 'v': e.preventDefault(); openMenu(reader, e.key); return;
         }
         return;
       }
@@ -2588,11 +2578,17 @@
         list.classList.toggle('is-pulling', list.scrollTop <= 0 && dy > 70);
       }
     }, { passive: true });
+    // A row's quick button, found by the action it posts (as selVals finds
+    // the selection's), not by its label, which is in the reader's language.
+    function quickBtn(row, action) {
+      var btns = row.querySelectorAll('.mx-row__quick-btn[hx-vals]');
+      for (var i = 0; i < btns.length; i++) if (btns[i].getAttribute('hx-vals').indexOf(action) >= 0) return btns[i];
+      return null;
+    }
     document.addEventListener('touchend', function () {
       if (!list) return;
       if (axis === 'x' && row) {
-        var btn = Math.abs(dx) > row.offsetWidth / 3 &&
-          row.querySelector(dx > 0 ? '.mx-row__quick-btn[aria-label="Archive"]' : '.mx-row__quick-btn[aria-label="Snooze until tomorrow"]');
+        var btn = Math.abs(dx) > row.offsetWidth / 3 && quickBtn(row, dx > 0 ? '"to":"Archive"' : '"snooze":"tomorrow"');
         if (btn) btn.click(); else reset(row);
       } else if (list.classList.contains('is-pulling')) {
         list.classList.remove('is-pulling');

@@ -10,14 +10,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
-- **Mail's sidebar and message list in thirteen languages.** The standard
+- **Mail's sidebar, message list and reader in thirteen languages.** The standard
   folders, your own folders and the way to make one, the views and
   categories, saved searches, labels and the Label menus, blocked senders
   and the public keys you added are in the language the console is in,
   with every message their actions answer with. So is the list of mail:
   its head, the selection and what can be done to it, each row's marks and
   quick actions, Scheduled, and the dates, written as each language writes
-  them ("2. März", "11月20日(金)"). The rest of Mail follows.
+  them ("2. März", "11月20日(金)"). So is an open message: its tools and
+  menus, who it went to, the warning when a link or a name pretends, the
+  trackers blocked, its attachments and the reply field. Mail's keys find
+  what they act on by key, not by its English name, so they work in every
+  language. The rest of Mail follows.
 
 ## [3.18.41] — 2026-11-13
 

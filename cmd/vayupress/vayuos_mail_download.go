@@ -6,6 +6,7 @@ package main
 // a zip of mbox files, streamed as it is written.
 
 import (
+	"github.com/johalputt/vayupress/internal/i18n"
 	"net/http"
 	"strings"
 	"time"
@@ -26,19 +27,19 @@ func (a *App) handleVayuOSMailDownload(w http.ResponseWriter, r *http.Request) {
 	}
 	rd := a.mailReader(r, mailUserParam(r))
 	if rd.Key() == "" {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "No mailbox you can read was named.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(rd.Lang(), "No mailbox you can read was named."), "")
 		return
 	}
 	addr := mailAddrOf(rd.Key(), a.vayuMail.Config().Domain)
 	if _, err := a.vayuMail.FoldersFor(rd); err != nil {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "This mailbox cannot be read from here.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(rd.Lang(), "This mailbox cannot be read from here."), "")
 		return
 	}
 	if rd.IsOperator() {
 		if err := a.vayuMail.AppendLedger(r.Context(), addr, rd.Actor(), "download", "every folder of this mailbox was downloaded"); err != nil {
 			// No record, no download: an unrecorded operator read is the
 			// thing the record exists to rule out.
-			writeAPIError(w, r, http.StatusInternalServerError, "ledger", "The download could not be recorded, so it was not made.", "")
+			writeAPIError(w, r, http.StatusInternalServerError, "ledger", i18n.T(rd.Lang(), "The download could not be recorded, so it was not made."), "")
 			return
 		}
 	}

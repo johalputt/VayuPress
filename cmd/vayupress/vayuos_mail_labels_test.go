@@ -114,7 +114,7 @@ func TestALabelOnTheSelection(t *testing.T) {
 			second = m.ID
 		}
 	}
-	if list, _ := a.vayuInboxBody(rd, "Inbox", "", 50, ""); !strings.Contains(list, `<summary class="btn mx-selpanel__act">`+saIcon("tag")+`Label…</summary>`) {
+	if list, _ := a.vayuInboxBody(rd, "Inbox", "", 50, ""); !strings.Contains(list, `<summary class="btn mx-selpanel__act" aria-keyshortcuts="l">`+saIcon("tag")+`Label…</summary>`) {
 		t.Fatal("the selection panel has no Label menu")
 	}
 	act := func(vals url.Values) *httptest.ResponseRecorder {

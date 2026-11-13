@@ -10,6 +10,7 @@ package main
 // read from the message itself.
 
 import (
+	"github.com/johalputt/vayupress/internal/i18n"
 	"net/mail"
 	"net/url"
 	"regexp"
@@ -55,7 +56,7 @@ type mailTrust struct {
 // and whose target is another; and the From header for a name that is an
 // address other than the sender's. stranger says the sender is not among
 // the holder's contacts, which the warning then says first.
-func mailTrustFor(checked, sanitized, from string, stranger bool) mailTrust {
+func mailTrustFor(lang, checked, sanitized, from string, stranger bool) mailTrust {
 	t := mailTrust{Checked: checked}
 	var says, goes string
 	if sanitized != "" {
@@ -81,14 +82,14 @@ func mailTrustFor(checked, sanitized, from string, stranger bool) mailTrust {
 	var warn string
 	switch {
 	case says != "":
-		warn = "A link says " + says + " but goes to " + goes + "."
+		warn = i18n.T(lang, "A link says {says} but goes to {goes}.", "says", says, "goes", goes)
 	default:
 		if name, addr := namePretends(from); name != "" {
-			warn = "The name says " + name + " but the mail comes from " + addr + "."
+			warn = i18n.T(lang, "The name says {name} but the mail comes from {address}.", "name", name, "address", addr)
 		}
 	}
 	if warn != "" && stranger {
-		warn = "This sender is not in your contacts. " + warn
+		warn = i18n.T(lang, "This sender is not in your contacts.") + " " + warn
 	}
 	t.Warning = warn
 	return t
@@ -178,17 +179,13 @@ func nodeText(n *html.Node) string {
 }
 
 // mailTrustLine is the trust line and the warning, as the reader shows them.
-func mailTrustLine(t mailTrust) string {
+func mailTrustLine(lang string, t mailTrust) string {
 	var parts []string
 	if t.Checked != "" {
-		parts = append(parts, `<span class="mx-trust__item">`+saIcon("check-c")+esc(t.Checked)+` confirmed it sent this</span>`)
+		parts = append(parts, `<span class="mx-trust__item">`+saIcon("check-c")+esc(i18n.T(lang, "{domain} confirmed it sent this", "domain", t.Checked))+`</span>`)
 	}
 	if t.Trackers > 0 {
-		n := strconv.Itoa(t.Trackers) + " tracker"
-		if t.Trackers > 1 {
-			n += "s"
-		}
-		parts = append(parts, `<span class="mx-trust__item">`+saIcon("shield")+n+` blocked</span>`)
+		parts = append(parts, `<span class="mx-trust__item">`+saIcon("shield")+esc(i18n.T(lang, "{n, plural, one {# tracker blocked} other {# trackers blocked}}", "n", t.Trackers))+`</span>`)
 	}
 	out := ""
 	if len(parts) > 0 {

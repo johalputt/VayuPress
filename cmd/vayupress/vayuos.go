@@ -2472,7 +2472,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 			b.WriteString(sel("archive", i18n.T(lang, "Archive"), `{"action":"move","to":"Archive"}`, ""))
 		}
 		if !readOnly {
-			b.WriteString(`<details class="sa-pop mx-selpanel__menu"><summary class="btn mx-selpanel__act">` + saIcon("move") + esc(i18n.T(lang, "Move to…")) + `</summary><div class="sa-pop__panel sa-menu" role="menu">`)
+			b.WriteString(`<details class="sa-pop mx-selpanel__menu"><summary class="btn mx-selpanel__act" aria-keyshortcuts="v">` + saIcon("move") + esc(i18n.T(lang, "Move to…")) + `</summary><div class="sa-pop__panel sa-menu" role="menu">`)
 			for _, f := range a.moveTargets(rd, folder) {
 				b.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"move","to":"` + esc(f) + `"}'` + inc + `>` + saIcon(mailFolderIcon(f)) + `<span class="sa-menu__text">` + esc(mailFolderLabel(lang, f)) + `</span></button>`)
 			}
@@ -2488,7 +2488,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 			b.WriteString(sel("pin", i18n.T(lang, "Pin"), `{"action":"pin","pin":"1"}`, ""))
 		}
 		if !readOnly && received && !strings.EqualFold(folder, "Snoozed") {
-			b.WriteString(`<details class="sa-pop mx-selpanel__menu"><summary class="btn mx-selpanel__act">` + saIcon("timer") + esc(i18n.T(lang, "Snooze…")) + `</summary><div class="sa-pop__panel sa-menu" role="menu">`)
+			b.WriteString(`<details class="sa-pop mx-selpanel__menu"><summary class="btn mx-selpanel__act" aria-keyshortcuts="b">` + saIcon("timer") + esc(i18n.T(lang, "Snooze…")) + `</summary><div class="sa-pop__panel sa-menu" role="menu">`)
 			for _, sn := range [][2]string{{"later", i18n.T(lang, "Later today")}, {"tomorrow", i18n.T(lang, "Tomorrow, 8:00")}, {"nextweek", i18n.T(lang, "Next week, Monday 8:00")}} {
 				b.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"snooze","snooze":"` + sn[0] + `"}'` + inc + `><span class="sa-menu__text">` + esc(sn[1]) + `</span></button>`)
 			}

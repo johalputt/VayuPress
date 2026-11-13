@@ -5,6 +5,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -132,5 +133,68 @@ func TestScheduledAndUnsubscribeAreInThePersonsLanguage(t *testing.T) {
 	line := mailUnsubscribeLine("es", "dana", "Inbox", "1", vmail.UnsubscribeOffer{Link: "https://list.example/u"})
 	if !strings.Contains(line, "Este es correo de una lista.") || !strings.Contains(line, "Cancelar la suscripción en list.example") || strings.Contains(line, "mail from a list") {
 		t.Errorf("the Spanish unsubscribe line is not in Spanish: %s", line)
+	}
+}
+
+// TestTheReaderIsInThePersonsLanguage — an open message in German: its tools,
+// who it went to, the More menu and the reply field; and the trust line's
+// warning in French.
+func TestTheReaderIsInThePersonsLanguage(t *testing.T) {
+	a, holder, _ := reviewerApp(t, vmail.RoleMailbox)
+	req := withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/inbox", nil), holder)
+	de := a.mailReader(req.WithContext(i18n.WithLang(req.Context(), "de")), "")
+	msg := "From: Eli Rossi <eli@example.org>\r\nTo: dana@example.com\r\nMessage-ID: <de-1@example.org>\r\nSubject: Hallo\r\nDate: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n\r\nHallo Dana\r\n"
+	id, err := a.vayuMail.DeliverInbound("eli@example.org", "dana@example.com", []byte(msg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	card, ok := a.vayuReaderCard(de, "Inbox", id, readerView{Pane: true, Peek: true})
+	if !ok {
+		t.Fatal("the message could not be read")
+	}
+	for _, want := range []string{`aria-label="Antworten"`, `aria-label="Allen antworten"`, `aria-label="In den Papierkorb"`, "an mich", "Eli antworten…", ">Drucken<", "Eli Rossi"} {
+		if !strings.Contains(card, want) {
+			t.Errorf("the German reader has no %q", want)
+		}
+	}
+	for _, english := range []string{`aria-label="Reply"`, "Reply all", "Move to Trash", "to me", "Reply to Eli", ">Print<", "Show the original"} {
+		if strings.Contains(card, english) {
+			t.Errorf("the German reader says %q", english)
+		}
+	}
+	got := mailTrustFor("fr", "", "", `"support@bank.example" <x@evil.example>`, true).Warning
+	if want := "Cet expéditeur ne fait pas partie de vos contacts. Le nom indique support@bank.example, mais le message vient de x@evil.example."; got != want {
+		t.Errorf("the French warning is %q, want %q", got, want)
+	}
+}
+
+// TestTheReadersKeysAreFoundInAnyLanguage — admin-os-mail.js finds what each
+// key does by its aria-keyshortcuts, so a reader in Japanese offers every key
+// the script uses, on the control it means.
+func TestTheReadersKeysAreFoundInAnyLanguage(t *testing.T) {
+	a, holder, _ := reviewerApp(t, vmail.RoleMailbox)
+	req := withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/inbox", nil), holder)
+	ja := a.mailReader(req.WithContext(i18n.WithLang(req.Context(), "ja")), "")
+	for i, subj := range []string{"one", "two", "three"} {
+		msg := "From: Eli <eli@example.org>\r\nTo: dana@example.com\r\nMessage-ID: <k-" + subj + "@example.org>\r\nSubject: " + subj + "\r\nDate: " + time.Now().Add(time.Duration(i)*time.Minute).UTC().Format(time.RFC1123Z) + "\r\n\r\nbody\r\n"
+		if _, err := a.vayuMail.DeliverInbound("eli@example.org", "dana@example.com", []byte(msg)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A message with one newer and one older, by the id the list gives it.
+	list, err := a.vayuMail.ListFolder(ja, "Inbox")
+	if err != nil || len(list) < 3 {
+		t.Fatalf("the Inbox holds %d messages (%v)", len(list), err)
+	}
+	card, _ := a.vayuReaderCard(ja, "Inbox", list[1].ID, readerView{Pane: true, Peek: true})
+	for key, what := range map[string]string{"r": "返信", "a": "全員に返信", "f": "転送", "#": "ゴミ箱に移動", "e": "アーカイブ", "!": "迷惑メール", "s": "ピン留め", "j": "古いメッセージ", "k": "新しいメッセージ"} {
+		if !strings.Contains(card, `aria-label="`+what+`"`) || !regexp.MustCompile(`aria-label="`+regexp.QuoteMeta(what)+`"[^>]*aria-keyshortcuts="`+regexp.QuoteMeta(key)+`"`).MatchString(card) {
+			t.Errorf("the Japanese reader's %q is not on the key %q", what, key)
+		}
+	}
+	for key, what := range map[string]string{"v": "移動先", "b": "スヌーズ", "l": "ラベル"} {
+		if !regexp.MustCompile(`<summary[^>]*aria-label="` + what + `" aria-keyshortcuts="` + key + `"`).MatchString(card) {
+			t.Errorf("the Japanese reader's %s menu is not on the key %q", what, key)
+		}
 	}
 }
