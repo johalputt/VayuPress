@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/vayushield"
@@ -26,10 +25,10 @@ const shieldChartDays = 14
 // shieldTrailDays totals the recorded history by day for the chart, oldest
 // first and with a zero for a day nothing was recorded (a gap in the line
 // would read as missing data), and the blocks and challenges of the last day.
-func shieldTrailDays(tr botdb.Trail, days int, now time.Time) (daily []int, blocks, challenges int64) {
+func shieldTrailDays(hours []botdb.HourBucket, days int, now time.Time) (daily []int, blocks, challenges int64) {
 	byDay := map[string]int{}
 	cut := now.UTC().Add(-24 * time.Hour).Format("2006-01-02 15:00")
-	for _, h := range tr.Hours {
+	for _, h := range hours {
 		if len(h.Hour) >= 10 {
 			byDay[h.Hour[:10]] += int(h.Blocks)
 		}
@@ -175,16 +174,18 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	if a.vayuShield != nil {
 		stt = a.vayuShield.Status()
 	}
-	var tr botdb.Trail
+	// The chart's counts an hour, and only those: the whole trail of a busy
+	// fortnight is a breakdown this page does not show.
+	var hours []botdb.HourBucket
 	haveTrail := false
 	if a.vayuShield != nil {
 		if store := a.vayuShield.BotStore(); store != nil {
-			if t, err := store.ReadTrail(ctx, shieldChartDays*24, 1, config.Cfg.AnalyticsRetainDays); err == nil {
-				tr, haveTrail = t, true
+			if h, err := store.ReadHours(ctx, shieldChartDays*24); err == nil {
+				hours, haveTrail = h, true
 			}
 		}
 	}
-	daily, blocks, challenges := shieldTrailDays(tr, shieldChartDays, time.Now())
+	daily, blocks, challenges := shieldTrailDays(hours, shieldChartDays, time.Now())
 	selfTest := a.cachedShieldCanary()
 	tone, state := shieldState(cur, stt, haveTrail, blocks, selfTest.readers == len(canaryReaders))
 

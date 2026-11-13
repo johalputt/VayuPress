@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **Shield opens at once, however busy the install has been.** Its page
+  read the whole trail of the last fortnight on every visit, sorting every
+  event in it to find what deciding cost; on an install with a busy
+  fortnight that held the page for seventeen seconds, long enough to be
+  answered with an error. The chart now reads only its counts an hour, each
+  finished hour counted once and kept, so a visit counts only the hour
+  under way; what deciding cost is read from the latest ten thousand
+  decisions; and History's breakdown is counted in the background, its
+  last count shown while the next is made. A million events: from over
+  seventeen seconds to a hundredth of one.
+- **Monitoring's slowest routes leave out event streams.** The console's
+  notifications are a connection held open, and each one read there as a
+  thirty-second request, above the pages that really were slow.
+
 ## [3.18.40] — 2026-11-13
 
 Ways back into a mailbox, closed: a password reset now ends every one, a mailbox's address given out again carries none of its last holder's sign-ins, and a file's name can no longer disguise what it is.

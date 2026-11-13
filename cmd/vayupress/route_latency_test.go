@@ -65,3 +65,31 @@ func TestTheConnectorReportsTheSlowestRoutes(t *testing.T) {
 	}
 	t.Errorf("get_performance does not name the route just served: %v", j["slowest_routes"])
 }
+
+// An event stream is a connection held open, not a request answered: it is
+// left out of Monitoring's slowest routes, which the page beside it is not.
+func TestAnEventStreamIsNotCountedAsASlowRequest(t *testing.T) {
+	r := chi.NewRouter()
+	r.Use(structuredLoggerMiddleware)
+	r.Get("/stream-latency-test", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+	})
+	r.Get("/page-latency-test", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+	})
+	for _, p := range []string{"/stream-latency-test", "/page-latency-test"} {
+		r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, p, nil))
+	}
+	seen := map[string]bool{}
+	for _, st := range metrics.RouteLatency.Slowest(1000) {
+		seen[st.Route] = true
+	}
+	if seen["GET /stream-latency-test"] {
+		t.Error("an event stream was counted among the slowest routes")
+	}
+	if !seen["GET /page-latency-test"] {
+		t.Error("the page beside it was not counted, so the stream's absence proves nothing")
+	}
+}

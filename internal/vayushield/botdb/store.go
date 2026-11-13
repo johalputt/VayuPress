@@ -11,8 +11,9 @@ import (
 
 // Store is the SQLite-backed adaptive signature database. It records recurring
 // fingerprints, learns bot candidates, supports operator review, and can
-// export/import community signature files. It holds no in-memory table (the DB
-// is the source of truth).
+// export/import community signature files. The DB is the source of truth; the
+// one thing held in memory is the count of each finished hour (hours.go), which
+// can no longer change.
 //
 // Read/write split: writes (upserts, verify/dismiss) go to the single writer
 // connection (db); the per-request signature Lookup — which runs on the hot
@@ -24,6 +25,8 @@ import (
 type Store struct {
 	db  *sql.DB
 	rdb *sql.DB
+
+	hours hourCache
 }
 
 // New wraps an open *sql.DB. The vayushield_signatures table must already exist

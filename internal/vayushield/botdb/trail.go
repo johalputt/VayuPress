@@ -228,12 +228,22 @@ func (s *Store) counted(ctx context.Context, q string, args []any, topN int) ([]
 	return out, rows.Err()
 }
 
-// evalCost is the median and 95th percentile of what deciding cost over the
-// window's events that recorded it. Each is one row read at its offset, in
-// eval_us order, from the window's events: the window bounds the sort.
+// evalSample is how many of a window's latest decisions its cost is read
+// from. Enough that a median and a 95th percentile hold still from one
+// reading to the next; few enough that reading them never grows with the
+// window. Sorting the whole window was what made Shield take seventeen
+// seconds to open on an install with a fortnight of busy traffic.
+const evalSample = 10000
+
+// evalCost is the median and 95th percentile of what deciding cost, over the
+// window's latest evalSample events that recorded it. The sample is taken in
+// created_at order, which the window's index already gives, and only it is
+// sorted by cost.
 func (s *Store) evalCost(ctx context.Context, where string, args []any) (p50, p95 int64, err error) {
+	sample := `SELECT eval_us FROM shield_events` + where + ` AND eval_us>0 ORDER BY created_at DESC LIMIT ?`
+	sargs := append(append([]any{}, args...), evalSample)
 	var n int64
-	if err = s.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM shield_events`+where+` AND eval_us>0`, args...).Scan(&n); err != nil || n == 0 {
+	if err = s.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM (`+sample+`)`, sargs...).Scan(&n); err != nil || n == 0 {
 		return 0, 0, err
 	}
 	at := func(q float64) (int64, error) {
@@ -242,8 +252,8 @@ func (s *Store) evalCost(ctx context.Context, where string, args []any) (p50, p9
 		// below it. Interpolating down from n-1 reads a p95 of three samples
 		// as the middle one.
 		off := int64(math.Ceil(q*float64(n))) - 1
-		err := s.reader().QueryRowContext(ctx, `SELECT eval_us FROM shield_events`+where+` AND eval_us>0 ORDER BY eval_us LIMIT 1 OFFSET ?`,
-			append(append([]any{}, args...), off)...).Scan(&v)
+		err := s.reader().QueryRowContext(ctx, `SELECT eval_us FROM (`+sample+`) ORDER BY eval_us LIMIT 1 OFFSET ?`,
+			append(append([]any{}, sargs...), off)...).Scan(&v)
 		return v, err
 	}
 	if p50, err = at(0.50); err != nil {

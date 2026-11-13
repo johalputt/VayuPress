@@ -210,6 +210,10 @@ func (a *App) bootVayuShield() {
 	// Writes (learning upserts, verify/dismiss) stay on the writer. This is the
 	// fix for classification contending on the writer under load.
 	bots.UseReader(dbpkg.Reader())
+	// Shield's chart counts a fortnight an hour. The finished hours are counted
+	// here, once and off any request, so the first visit after a start does not
+	// wait for them; every visit after counts only the hours since.
+	go func() { _, _ = bots.ReadHours(context.Background(), shieldChartDays*24) }()
 	signer := challenge.NewSigner([]byte(config.Cfg.APIKey))
 
 	a.vayuShield = vayushield.New(vayushield.Config{

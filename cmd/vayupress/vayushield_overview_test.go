@@ -79,13 +79,13 @@ func TestShieldStateSaysTheWorstFirstAndOnlyWhatItKnows(t *testing.T) {
 // drawn as zero; the day's figures count the last 24 hours only.
 func TestShieldTrailDaysFillsTheGapsAndCountsTheLastDay(t *testing.T) {
 	now := time.Date(2026, 10, 2, 12, 30, 0, 0, time.UTC)
-	tr := botdb.Trail{Hours: []botdb.HourBucket{
+	hours := []botdb.HourBucket{
 		{Hour: "2026-09-29 08:00", Blocks: 5, Challenges: 1},
 		{Hour: "2026-10-01 11:00", Blocks: 7, Challenges: 2}, // older than a day
 		{Hour: "2026-10-01 13:00", Blocks: 3, Challenges: 4},
 		{Hour: "2026-10-02 09:00", Blocks: 2},
-	}}
-	daily, blocks, challenges := shieldTrailDays(tr, 4, now)
+	}
+	daily, blocks, challenges := shieldTrailDays(hours, 4, now)
 	if want := []int{5, 0, 10, 2}; len(daily) != 4 || daily[0] != want[0] || daily[1] != want[1] || daily[2] != want[2] || daily[3] != want[3] {
 		t.Errorf("daily %v, want %v", daily, want)
 	}

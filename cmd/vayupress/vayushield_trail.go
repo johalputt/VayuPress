@@ -19,6 +19,7 @@ package main
 // Aggregates only. Nothing here can identify a visitor.
 
 import (
+	"context"
 	"fmt"
 	"html"
 	"net/http"
@@ -59,11 +60,7 @@ func (a *App) shieldTrailBody(r *http.Request) string {
 		b.WriteString(`<p class="muted text-sm">The adaptive database is not available, so there is no recorded history to summarise.</p>`)
 		return b.String()
 	}
-	tr, err := store.ReadTrail(r.Context(), hours, 8, config.Cfg.AnalyticsRetainDays)
-	if err != nil {
-		b.WriteString(`<p class="muted text-sm">Could not read the trail: ` + html.EscapeString(err.Error()) + `</p>`)
-		return b.String()
-	}
+	retention := config.Cfg.AnalyticsRetainDays
 
 	// Window picker. Offering a window longer than retention would present an
 	// empty stretch as "nothing happened" when the truth is "those rows were
@@ -73,7 +70,7 @@ func (a *App) shieldTrailBody(r *http.Request) string {
 		h     int
 		label string
 	}{{24, "24 hours"}, {24 * 7, "7 days"}, {24 * 30, "30 days"}} {
-		if tr.RetentionDays > 0 && opt.h > tr.RetentionDays*24 {
+		if retention > 0 && opt.h > retention*24 {
 			continue
 		}
 		cls := "btn btn--sm"
@@ -85,6 +82,27 @@ func (a *App) shieldTrailBody(r *http.Request) string {
 	}
 	b.WriteString(`</p>`)
 
+	// The window's breakdown reads every event in it, which on a busy install
+	// is seconds for a month. It is counted off the request, and the page is
+	// never held for it: the last count is shown while the next one is made.
+	body, ready := adminDash.get("shield-trail:"+strconv.Itoa(hours), analyticsFragmentTTL, func(ctx context.Context) string {
+		tr, err := store.ReadTrail(ctx, hours, 8, retention)
+		if err != nil {
+			return `<p class="muted text-sm">Could not read the trail: ` + html.EscapeString(err.Error()) + `</p>`
+		}
+		return shieldTrailBreakdown(tr)
+	})
+	if !ready {
+		body = `<p class="table-empty">This is counted in the background; reload in a few seconds.</p>`
+	}
+	b.WriteString(body)
+	return b.String()
+}
+
+// shieldTrailBreakdown is what the window's trail says: its figures, why and
+// where from, and hour by hour.
+func shieldTrailBreakdown(tr botdb.Trail) string {
+	var b strings.Builder
 	if tr.TotalBlocks == 0 && tr.TotalChallenges == 0 {
 		b.WriteString(`<p class="muted text-sm">No blocks or challenges recorded in this window. On a quiet site that is the expected result, not a fault.</p>`)
 		b.WriteString(shieldTrailRetentionNote(tr))

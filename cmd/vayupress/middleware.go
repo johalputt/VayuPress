@@ -222,13 +222,17 @@ func structuredLoggerMiddleware(next http.Handler) http.Handler {
 		// that are not representative page loads:
 		//   - Long-lived/streamed connections (a VayuTalk relay held open for
 		//     minutes) would record their ENTIRE lifetime as one "request latency";
-		//     nothing under the 30s server timeout is a stream.
+		//     nothing under the 30s server timeout is a stream. An event stream says
+		//     what it is: the console's notifications reconnect well inside 30s,
+		//     and each connection read as a 30-second request in Monitoring's
+		//     slowest routes, above the pages that really were slow.
 		//   - VayuShield-defended requests: a tarpit deliberately sleeps ~5s to waste
 		//     a confirmed bot's time, so counting it as latency pins the p95 tail at
 		//     the shield's own delay for as long as bots keep probing.
 		// The windowed view drives the dashboards (recent real latency); the
 		// cumulative one stays the Prometheus source.
-		if dur <= streamLatencyCutoff && !reqclass.Shielded(ctx) {
+		stream := strings.HasPrefix(ww.Header().Get("Content-Type"), "text/event-stream")
+		if dur <= streamLatencyCutoff && !stream && !reqclass.Shielded(ctx) {
 			metrics.HTTPLatency.Record(dur)
 			metrics.HTTPLatencyWindow.Record(dur)
 			metrics.RouteLatency.Record(routeOf(r), dur)
