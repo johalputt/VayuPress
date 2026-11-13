@@ -8,6 +8,7 @@ package main
 // through mailReader (ADR-0152), as every Mail request does.
 
 import (
+	"github.com/johalputt/vayupress/internal/i18n"
 	"net/http"
 	"strconv"
 	"strings"
@@ -48,7 +49,7 @@ func (a *App) handleVayuOSTemplates(w http.ResponseWriter, r *http.Request) {
 	}
 	rd := a.mailReader(r, mailUserParam(r))
 	if rd.Key() == "" {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "No mailbox here to keep templates in.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(rd.Lang(), "No mailbox here to keep templates in."), "")
 		return
 	}
 	a.templatesReply(w, r, rd, nil)
@@ -63,7 +64,7 @@ func (a *App) handleVayuOSTemplatesAction(w http.ResponseWriter, r *http.Request
 	}
 	rd := a.mailReader(r, sanitizeMailUser(strings.TrimSpace(r.PostFormValue("user"))))
 	if rd.Key() == "" {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "No mailbox here to keep templates in.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(rd.Lang(), "No mailbox here to keep templates in."), "")
 		return
 	}
 	var err error

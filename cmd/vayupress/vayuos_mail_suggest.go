@@ -3,6 +3,7 @@
 package main
 
 import (
+	"github.com/johalputt/vayupress/internal/i18n"
 	"net/http"
 	"strings"
 	"time"
@@ -35,9 +36,10 @@ func (a *App) handleVayuOSSearchSuggest(w http.ResponseWriter, r *http.Request) 
 
 // mailSuggestions is the suggestion list for q in owner's mailbox.
 func (a *App) mailSuggestions(r *http.Request, owner, q string, now time.Time) string {
+	lang := i18n.Lang(r.Context())
 	var b strings.Builder
-	group := func(title string) {
-		b.WriteString(`<div class="mx-suggest__head" role="presentation">` + esc(title) + `</div>`)
+	group := func(title, attr string) {
+		b.WriteString(`<div class="mx-suggest__head" role="presentation"` + attr + `>` + esc(title) + `</div>`)
 	}
 	option := func(attr, value, inner string) {
 		b.WriteString(`<button type="button" class="mx-suggest__opt" role="option" aria-selected="false" ` + attr + `="` + esc(value) + `">` + inner + `</button>`)
@@ -47,8 +49,10 @@ func (a *App) mailSuggestions(r *http.Request, owner, q string, now time.Time) s
 	if typed != "" {
 		reading := vmail.ReadSearchSentence(typed, now)
 		if s := reading.String(); s != vmail.ParseSearchQuery(typed).String() && !reading.Empty() {
-			group("Search for")
-			option("data-mx-q", s, mailSuggestChips(reading))
+			// The script marks this one chosen for Enter, knowing it by
+			// data-mx-reading, not by its words.
+			group(i18n.T(lang, "Search for"), " data-mx-reading")
+			option("data-mx-q", s, mailSuggestChips(lang, reading))
 		}
 	}
 
@@ -67,7 +71,7 @@ func (a *App) mailSuggestions(r *http.Request, owner, q string, now time.Time) s
 	if typed == "" || last != "" {
 		people, _ := a.vayuMail.Accounts().SearchContacts(r.Context(), owner, needle, mailSuggestPeople)
 		if len(people) > 0 {
-			group("People")
+			group(i18n.T(lang, "People"), "")
 			head := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(q), last))
 			for _, c := range people {
 				put := strings.TrimSpace(head + " " + term + ":" + c.Email)
@@ -81,12 +85,12 @@ func (a *App) mailSuggestions(r *http.Request, owner, q string, now time.Time) s
 		}
 	}
 
-	group("Filters")
+	group(i18n.T(lang, "Filters"), "")
 	b.WriteString(`<div class="mx-suggest__chips">`)
 	day := func(back int) string { return now.UTC().AddDate(0, 0, -back).Format("2006-01-02") }
 	for _, f := range [][2]string{
-		{"from:", "From"}, {"to:", "To"}, {"has:attachment", "Has attachment"}, {"is:unread", "Unread"},
-		{"after:" + day(7), "Last 7 days"}, {"after:" + day(30), "Last 30 days"},
+		{"from:", i18n.T(lang, "From")}, {"to:", i18n.T(lang, "To")}, {"has:attachment", i18n.T(lang, "Has attachment")}, {"is:unread", i18n.T(lang, "Unread")},
+		{"after:" + day(7), i18n.T(lang, "Last 7 days")}, {"after:" + day(30), i18n.T(lang, "Last 30 days")},
 	} {
 		option("data-mx-add", f[0], `<span class="mx-suggest__chip">`+esc(f[1])+`</span>`)
 	}
@@ -96,28 +100,38 @@ func (a *App) mailSuggestions(r *http.Request, owner, q string, now time.Time) s
 
 // mailSuggestChips draws a reading as the chips it would search with, in
 // the order the search keeps them.
-func mailSuggestChips(q vmail.SearchQuery) string {
+func mailSuggestChips(lang string, q vmail.SearchQuery) string {
 	var chips []string
 	chip := func(s string) { chips = append(chips, `<span class="mx-suggest__chip">`+esc(s)+`</span>`) }
 	for _, w := range q.Words {
 		chip("“" + w + "”")
 	}
-	for _, t := range [][2]string{{"From ", q.From}, {"To ", q.To}, {"Subject ", q.Subject}, {"In ", q.Folder}, {"Label ", q.Label}} {
-		if t[1] != "" {
-			chip(t[0] + t[1])
-		}
+	if q.From != "" {
+		chip(i18n.T(lang, "From {who}", "who", q.From))
+	}
+	if q.To != "" {
+		chip(i18n.T(lang, "To {who}", "who", q.To))
+	}
+	if q.Subject != "" {
+		chip(i18n.T(lang, "Subject {words}", "words", q.Subject))
+	}
+	if q.Folder != "" {
+		chip(i18n.T(lang, "In {folder}", "folder", mailFolderLabel(lang, q.Folder)))
+	}
+	if q.Label != "" {
+		chip(i18n.T(lang, "Label {label}", "label", q.Label))
 	}
 	if !q.After.IsZero() {
-		chip("Since " + q.After.Format("2 Jan 2006"))
+		chip(i18n.T(lang, "Since {date}", "date", i18n.Date(lang, q.After, i18n.DayMonthYearShort)))
 	}
 	if !q.Before.IsZero() {
-		chip("Until " + q.Before.AddDate(0, 0, -1).Format("2 Jan 2006"))
+		chip(i18n.T(lang, "Until {date}", "date", i18n.Date(lang, q.Before.AddDate(0, 0, -1), i18n.DayMonthYearShort)))
 	}
 	if q.Attachment {
-		chip("Has attachment")
+		chip(i18n.T(lang, "Has attachment"))
 	}
 	if q.Unread {
-		chip("Unread")
+		chip(i18n.T(lang, "Unread"))
 	}
 	return `<span class="mx-suggest__chips">` + strings.Join(chips, "") + `</span>`
 }

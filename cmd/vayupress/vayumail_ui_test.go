@@ -112,11 +112,7 @@ func TestTheReaderOffersFullWidthAndPrint(t *testing.T) {
 // TestComposerHasAFormattingToolbar guards the editor controls. The message field
 // was a bare textarea with no way to structure anything.
 func TestComposerHasAFormattingToolbar(t *testing.T) {
-	src, err := os.ReadFile("vayuos_mail_compose.go")
-	if err != nil {
-		t.Fatalf("read vayuos_mail_compose.go: %v", err)
-	}
-	page := string(src)
+	page := drawnComposer(t)
 	for _, want := range []string{
 		`data-c-fmt="bold"`, `data-c-fmt="italic"`, `data-c-fmt="strike"`,
 		`data-c-fmt="h2"`, `data-c-fmt="ul"`, `data-c-fmt="ol"`,
@@ -161,16 +157,28 @@ func TestComposerPreviewNeverInjectsMarkup(t *testing.T) {
 // become the source and the plain-text fallback would drift into "please view this
 // in HTML", which is exactly the failure this design avoids.
 func TestComposerFormattingStaysPlainText(t *testing.T) {
+	page := drawnComposer(t)
+	if !strings.Contains(page, `<textarea class="mx-compose__text" data-c-body`) {
+		t.Error("the body must remain a textarea — it is the source both MIME parts are built from")
+	}
 	src, err := os.ReadFile("vayuos_mail_compose.go")
 	if err != nil {
 		t.Fatalf("read vayuos_mail_compose.go: %v", err)
 	}
-	if !strings.Contains(string(src), `data-c-body placeholder="Write your message…"`) {
-		t.Error("the body must remain a textarea — it is the source both MIME parts are built from")
-	}
-	if strings.Contains(withoutComments(string(src)), "contenteditable") {
+	if strings.Contains(page, "contenteditable") || strings.Contains(withoutComments(string(src)), "contenteditable") {
 		t.Error("no contenteditable in the composer — see the comment above the toolbar")
 	}
+}
+
+// drawnComposer is the compose sheet as a mailbox holder is given it.
+func drawnComposer(t *testing.T) string {
+	t.Helper()
+	a, holder, _ := reviewerApp(t, vmail.RoleMailbox)
+	sheet, refusal := a.composeSheet(withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/compose", nil), holder), false)
+	if refusal != "" {
+		t.Fatalf("the composer was refused: %s", refusal)
+	}
+	return sheet
 }
 
 // TestComposeSendsFromTheMailboxItWasOpenedFrom — an administrator replying from

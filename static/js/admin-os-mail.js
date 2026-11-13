@@ -232,7 +232,7 @@
         }
         // The sentence read as terms is what Enter takes, when there is one.
         var first = box.querySelector('.mx-suggest__head + .mx-suggest__opt');
-        if (first && box.firstElementChild && box.firstElementChild.textContent === 'Search for') first.setAttribute('aria-selected', 'true');
+        if (first && box.firstElementChild && box.firstElementChild.hasAttribute('data-mx-reading')) first.setAttribute('aria-selected', 'true');
       })
       .catch(function () { /* suggestions are a help; the search works without them */ });
   }

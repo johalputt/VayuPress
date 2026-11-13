@@ -8,6 +8,7 @@ package main
 
 import (
 	"errors"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"net/http"
 	"strings"
 
@@ -18,29 +19,30 @@ import (
 // throwawayBlock is the mailbox rd reads' throwaway addresses and the form
 // that makes one.
 func (a *App) throwawayBlock(rd vmail.Reader) string {
+	lang := rd.Lang()
 	list, _ := a.vayuMail.Throwaways(rd)
 	post := ` hx-post="/os/vayumail/throwaway" hx-target="#vm-throwaways" hx-swap="outerHTML"`
 	var b strings.Builder
-	b.WriteString(`<div id="vm-throwaways"><p class="text-sm muted">An address of its own for each website that asks for one. Its mail comes here; when a website passes the address on, turn it off.</p>` +
-		`<form class="vm-row"` + post + `><input type="hidden" name="op" value="new"><input class="input input--sm vm-grow" name="label" maxlength="60" placeholder="Which website is it for?" aria-label="Which website is it for?" autocomplete="off"><button class="btn btn--sm" type="submit">Make an address</button></form>`)
+	b.WriteString(`<div id="vm-throwaways"><p class="text-sm muted">` + esc(i18n.T(lang, "An address of its own for each website that asks for one. Its mail comes here; when a website passes the address on, turn it off.")) + `</p>` +
+		`<form class="vm-row"` + post + `><input type="hidden" name="op" value="new"><input class="input input--sm vm-grow" name="label" maxlength="60" placeholder="` + esc(i18n.T(lang, "Which website is it for?")) + `" aria-label="` + esc(i18n.T(lang, "Which website is it for?")) + `" autocomplete="off"><button class="btn btn--sm" type="submit">` + esc(i18n.T(lang, "Make an address")) + `</button></form>`)
 	if len(list) > 0 {
 		b.WriteString(`<ul class="mx-throwaways">`)
 		for _, t := range list {
-			meta := "No mail yet"
+			meta := i18n.T(lang, "No mail yet")
 			if t.Received > 0 {
-				meta = itoaSafe(t.Received) + map[bool]string{true: " message", false: " messages"}[t.Received == 1] +
-					", the last on " + config.FormatSite(t.LastReceived, "2 January")
+				meta = i18n.T(lang, "{n, plural, one {# message, the last on {date}} other {# messages, the last on {date}}}",
+					"n", t.Received, "date", i18n.Date(lang, config.InSite(t.LastReceived), i18n.DayMonthShort))
 			}
 			if t.Label != "" {
 				meta = t.Label + " · " + meta
 			}
-			op, verb := "off", "Turn off"
+			op, verb := "off", i18n.T(lang, "Turn off")
 			if t.Off {
-				op, verb, meta = "on", "Turn on", meta+" · Off"
+				op, verb, meta = "on", i18n.T(lang, "Turn on"), meta+" · "+i18n.T(lang, "Off")
 			}
 			b.WriteString(`<li` + map[bool]string{true: ` class="is-off"`, false: ""}[t.Off] + `><span class="mx-throwaways__what"><span class="mx-throwaways__addr">` + esc(t.Address) + `</span><span class="mx-throwaways__meta">` + esc(meta) + `</span></span>` +
-				`<button type="button" class="btn btn--sm"` + post + hxVals("op", op, "address", t.Address) + `>` + verb + `</button>` +
-				`<button type="button" class="btn btn--ghost btn--sm"` + post + hxVals("op", "remove", "address", t.Address) + ` hx-confirm="Remove ` + esc(t.Address) + `? Mail to it will be refused.">Remove</button></li>`)
+				`<button type="button" class="btn btn--sm"` + post + hxVals("op", op, "address", t.Address) + `>` + esc(verb) + `</button>` +
+				`<button type="button" class="btn btn--ghost btn--sm"` + post + hxVals("op", "remove", "address", t.Address) + ` hx-confirm="` + esc(i18n.T(lang, "Remove {address}? Mail to it will be refused.", "address", t.Address)) + `">` + esc(i18n.T(lang, "Remove")) + `</button></li>`)
 		}
 		b.WriteString(`</ul>`)
 	}
@@ -57,7 +59,7 @@ func (a *App) handleVayuOSThrowaway(w http.ResponseWriter, r *http.Request) {
 	}
 	rd := a.mailReader(r, "")
 	if rd.Key() == "" {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "This session has no mailbox of its own.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(rd.Lang(), "This session has no mailbox of its own."), "")
 		return
 	}
 	addr := strings.TrimSpace(r.PostFormValue("address"))
@@ -75,7 +77,7 @@ func (a *App) handleVayuOSThrowaway(w http.ResponseWriter, r *http.Request) {
 		err = errors.New("unknown action")
 	}
 	if err != nil {
-		setMailSaid(w, "Not done: "+strings.TrimPrefix(err.Error(), "vayumail: ")+".", true)
+		setMailSaid(w, i18n.T(rd.Lang(), "Not done: {reason}.", "reason", strings.TrimPrefix(err.Error(), "vayumail: ")), true)
 	}
 	writeOSFragment(w, a.throwawayBlock(rd))
 }

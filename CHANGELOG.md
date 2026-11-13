@@ -10,7 +10,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
-- **Mail's sidebar, message list and reader in thirteen languages.** The standard
+- **Mail's sidebar, message list, reader and compose in thirteen languages.** The standard
   folders, your own folders and the way to make one, the views and
   categories, saved searches, labels and the Label menus, blocked senders
   and the public keys you added are in the language the console is in,
@@ -21,7 +21,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   menus, who it went to, the warning when a link or a name pretends, the
   trackers blocked, its attachments and the reply field. Mail's keys find
   what they act on by key, not by its English name, so they work in every
-  language. The rest of Mail follows.
+  language. So is writing: the compose sheet, its formatting bar, Send
+  later, templates and signature, the search suggestions, and the
+  addresses made for websites. The rest of Mail follows.
 
 ## [3.18.41] — 2026-11-13
 

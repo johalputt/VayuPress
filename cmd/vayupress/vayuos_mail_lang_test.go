@@ -198,3 +198,39 @@ func TestTheReadersKeysAreFoundInAnyLanguage(t *testing.T) {
 		}
 	}
 }
+
+// TestComposeAndSearchAreInThePersonsLanguage — the compose sheet in German,
+// the search suggestions in German with the reading the script picks for
+// Enter marked by attribute, and a throwaway address's line in French.
+func TestComposeAndSearchAreInThePersonsLanguage(t *testing.T) {
+	a, holder, _ := reviewerApp(t, vmail.RoleMailbox)
+	req := withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/compose", nil), holder)
+	de := req.WithContext(i18n.WithLang(req.Context(), "de"))
+	sheet, refusal := a.composeSheet(de, false)
+	if refusal != "" {
+		t.Fatalf("refused: %s", refusal)
+	}
+	for _, want := range []string{">Neue Nachricht<", `placeholder="Ihre Nachricht schreiben…"`, ">Betreff<", `aria-label="Fett"`, ">Als Vorlage speichern<", `aria-label="Später senden"`} {
+		if !strings.Contains(sheet, want) {
+			t.Errorf("the German compose sheet has no %q", want)
+		}
+	}
+	for _, english := range []string{"New message", "Write your message", ">Subject<", `aria-label="Bold"`, "Save as a template", "Send later"} {
+		if strings.Contains(sheet, english) {
+			t.Errorf("the German compose sheet says %q", english)
+		}
+	}
+
+	got := a.mailSuggestions(de, "dana@example.com", "from eli", time.Date(2026, 11, 6, 9, 0, 0, 0, time.UTC))
+	if !strings.Contains(got, `<div class="mx-suggest__head" role="presentation" data-mx-reading>Suchen nach</div>`) || !strings.Contains(got, "Von eli") || !strings.Contains(got, ">Letzte 7 Tage<") || strings.Contains(got, "Search for") {
+		t.Errorf("the German suggestions:\n%s", got)
+	}
+
+	rd := a.mailReader(req.WithContext(i18n.WithLang(req.Context(), "fr")), "")
+	if _, err := a.vayuMail.NewThrowaway(rd, "shop"); err != nil {
+		t.Fatal(err)
+	}
+	if block := a.throwawayBlock(rd); !strings.Contains(block, "Pas encore de messages") || !strings.Contains(block, ">Désactiver<") || strings.Contains(block, "No mail yet") {
+		t.Errorf("the French throwaway list:\n%s", block)
+	}
+}
