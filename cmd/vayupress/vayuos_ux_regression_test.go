@@ -159,8 +159,8 @@ func TestFederationToggleDoesNotReloadThePage(t *testing.T) {
 // disagree about that.
 func TestMailAccountDeleteGoesThroughTheEngine(t *testing.T) {
 	src := withoutComments(readFileString(t, "vayuos_mail_accounts.go"))
-	if !strings.Contains(src, "a.vayuMail.DeleteMailbox(") {
-		t.Error("the panel's Delete must call DeleteMailbox so the mail is set aside and a reissued address cannot inherit it")
+	if !strings.Contains(src, "a.deleteMailbox(") {
+		t.Error("the panel's Delete must call a.deleteMailbox so the mail is set aside and a reissued address cannot inherit it or its sign-ins")
 	}
 	if strings.Contains(src, "accts.Delete(r.Context(), email)") {
 		t.Error("the store-only Delete leaves the messages on disk for the next holder of the address")
