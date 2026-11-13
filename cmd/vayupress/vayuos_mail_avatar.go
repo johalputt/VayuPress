@@ -9,6 +9,7 @@ package main
 
 import (
 	"bytes"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"io"
 	"net/http"
 	"strconv"
@@ -68,7 +69,7 @@ func (a *App) handleVayuOSAvatarUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !a.mayChangeMailboxSettings(r, email) {
-		code, msg := a.settingsRefusal(email)
+		code, msg := a.settingsRefusal(i18n.Lang(r.Context()), email)
 		writeAPIError(w, r, http.StatusForbidden, code, msg, "")
 		return
 	}
@@ -113,7 +114,7 @@ func (a *App) handleVayuOSAvatarRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !a.mayChangeMailboxSettings(r, email) {
-		code, msg := a.settingsRefusal(email)
+		code, msg := a.settingsRefusal(i18n.Lang(r.Context()), email)
 		writeAPIError(w, r, http.StatusForbidden, code, msg, "")
 		return
 	}
@@ -211,7 +212,7 @@ func (a *App) handleVayuOSAvatarCartoon(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if !a.mayChangeMailboxSettings(r, email) {
-		code, msg := a.settingsRefusal(email)
+		code, msg := a.settingsRefusal(i18n.Lang(r.Context()), email)
 		writeAPIError(w, r, http.StatusForbidden, code, msg, "")
 		return
 	}

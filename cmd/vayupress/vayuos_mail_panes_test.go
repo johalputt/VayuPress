@@ -167,7 +167,7 @@ func TestAnAdministratorOpensTheirOwnMailbox(t *testing.T) {
 // open one is checked, however its ?user= was written; an address is
 // matched by the search in lower case.
 func TestTheSwitcherGroupsByDomainPrimaryFirst(t *testing.T) {
-	out := mailSwitcherList("example.com", "OPS@Second.example", []mailDomainBoxes{
+	out := mailSwitcherList("en", "example.com", "OPS@Second.example", []mailDomainBoxes{
 		{"example.com", []vmail.MailboxSummary{{Username: "dana", Unseen: 4}, {Username: "Rohan"}}},
 		{"second.example", []vmail.MailboxSummary{{Username: "ops", Domain: "second.example"}}},
 	}, nil)

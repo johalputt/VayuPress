@@ -234,3 +234,42 @@ func TestComposeAndSearchAreInThePersonsLanguage(t *testing.T) {
 		t.Errorf("the French throwaway list:\n%s", block)
 	}
 }
+
+// TestSettingsAreInThePersonsLanguage — a holder's Settings page in German:
+// its sections, the find field, the password form and the sentence with a
+// link in it; and a refused password change in French.
+func TestSettingsAreInThePersonsLanguage(t *testing.T) {
+	a, holder, _ := reviewerApp(t, vmail.RoleMailbox)
+	req := withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/settings", nil), holder)
+	rec := httptest.NewRecorder()
+	a.handleVayuOSMySettings(rec, req.WithContext(i18n.WithLang(req.Context(), "de")))
+	page := rec.Body.String()
+	for _, want := range []string{">Einstellungen</h1>", `placeholder="Einstellung suchen"`, ">Allgemein<", ">Passwort ändern<", `Sie wird unter <a href="/members/account">Ihrem Konto auf der Website</a> eingerichtet`, `data-mx-set="abwesenheitsnotiz automatische antwort abwesend urlaub"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the German Settings page has no %q", want)
+		}
+	}
+	for _, english := range []string{">Settings</h1>", "Find a setting", ">General<", "Change password", "&lt;nil&gt;", "It is set on"} {
+		if strings.Contains(page, english) {
+			t.Errorf("the German Settings page says %q", english)
+		}
+	}
+
+	form := strings.NewReader("current=x&new=aaaaaaaa&again=bbbbbbbb")
+	post := withUser(httptest.NewRequest(http.MethodPost, "/os/vayumail/settings/password", form), holder)
+	post.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec = httptest.NewRecorder()
+	a.handleVayuOSMyPassword(rec, post.WithContext(i18n.WithLang(post.Context(), "fr")))
+	if got := rec.Body.String(); !strings.Contains(got, "Les deux nouveaux mots de passe diffèrent.") {
+		t.Errorf("the French refusal: %s", got)
+	}
+}
+
+// TestALinkedSentenceIsEscapedAroundItsLink — the sentence and the link's
+// words are text; only the anchor is markup, and its address is escaped.
+func TestALinkedSentenceIsEscapedAroundItsLink(t *testing.T) {
+	got := escLinked(i18n.T("en", "<b>Go</b> to {link} & back", "link", linkMark), `/x?a=1&b="2"`, `<i>here</i>`)
+	if want := `&lt;b&gt;Go&lt;/b&gt; to <a href="/x?a=1&amp;b=&#34;2&#34;">&lt;i&gt;here&lt;/i&gt;</a> &amp; back`; got != want {
+		t.Errorf("got %s\nwant %s", got, want)
+	}
+}

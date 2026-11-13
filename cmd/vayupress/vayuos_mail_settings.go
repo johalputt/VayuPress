@@ -24,7 +24,7 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"html"
 	"net/http"
 	"strings"
@@ -53,32 +53,33 @@ func (a *App) mailboxSettingsSections(ctx context.Context, email string, forHold
 	// The settings in the sections a person looks for them under, each item
 	// named for the page's search (mailSettingsLayout). An item whose control
 	// carries its own heading is not given a second one.
+	lang := i18n.Lang(ctx)
 	var b strings.Builder
-	b.WriteString(mailSettingGroup("general", "General",
-		mailSetting{Name: "Name on mail you send", HTML: autosaveForm(vayuCardName(ac))},
-		mailSetting{Name: "Picture", Find: "avatar photo", HTML: a.mailboxAvatarSettings(ac), Bare: true}))
-	addresses := []mailSetting{{Name: "Forward a copy to", Find: "forwarding auto-forward", HTML: autosaveForm(vayuCardForwarding(ac))}}
+	b.WriteString(mailSettingGroup("general", i18n.T(lang, "General"),
+		mailSetting{Name: i18n.T(lang, "Name on mail you send"), HTML: autosaveForm(vayuCardName(ac))},
+		mailSetting{Name: i18n.T(lang, "Picture"), Find: i18n.T(lang, "avatar photo"), HTML: a.mailboxAvatarSettings(lang, ac), Bare: true}))
+	addresses := []mailSetting{{Name: i18n.T(lang, "Forward a copy to"), Find: i18n.T(lang, "forwarding auto-forward"), HTML: autosaveForm(vayuCardForwarding(ac))}}
 	if !forHolder {
-		addresses = append(addresses, mailSetting{Name: "Aliases", Find: "other addresses", HTML: a.vayuCardAliases(ctx, ac), Bare: true})
+		addresses = append(addresses, mailSetting{Name: i18n.T(lang, "Aliases"), Find: i18n.T(lang, "other addresses"), HTML: a.vayuCardAliases(ctx, ac), Bare: true})
 	}
-	b.WriteString(mailSettingGroup("addresses", "Addresses", addresses...))
-	b.WriteString(mailSettingGroup("rules", "Rules and replies",
-		mailSetting{Name: "Vacation reply", Find: "autoresponder out of office away", HTML: autosaveForm(openSection(a.vayuCardVacation(ctx, ac))), Bare: true},
-		mailSetting{Name: "Rules", Find: "rules filters sort move forward reject label", HTML: a.vayuCardFilters(ctx, ac), Bare: true}))
+	b.WriteString(mailSettingGroup("addresses", i18n.T(lang, "Addresses"), addresses...))
+	b.WriteString(mailSettingGroup("rules", i18n.T(lang, "Rules and replies"),
+		mailSetting{Name: i18n.T(lang, "Vacation reply"), Find: i18n.T(lang, "autoresponder out of office away"), HTML: autosaveForm(openSection(a.vayuCardVacation(ctx, ac))), Bare: true},
+		mailSetting{Name: i18n.T(lang, "Rules"), Find: i18n.T(lang, "rules filters sort move forward reject label"), HTML: a.vayuCardFilters(ctx, ac), Bare: true}))
 	privacy := []mailSetting{
-		{Name: "Sign-in attempts", Find: "sign-in name login security", HTML: a.vayuCardSignins(ctx, ac), Bare: true},
-		{Name: "Encryption keys", Find: "pgp openpgp key", HTML: a.vayuCardPGP(ac), Bare: true},
-		{Name: "S/MIME certificate", Find: "smime certificate signing", HTML: a.vayuCardSMIME(ctx, ac), Bare: true},
+		{Name: i18n.T(lang, "Sign-in attempts"), Find: i18n.T(lang, "sign-in name login security"), HTML: a.vayuCardSignins(ctx, ac), Bare: true},
+		{Name: i18n.T(lang, "Encryption keys"), Find: i18n.T(lang, "pgp openpgp key"), HTML: a.vayuCardPGP(ac), Bare: true},
+		{Name: i18n.T(lang, "S/MIME certificate"), Find: i18n.T(lang, "smime certificate signing"), HTML: a.vayuCardSMIME(ctx, ac), Bare: true},
 	}
 	if !forHolder {
 		privacy = append(privacy,
-			mailSetting{Name: "Recovery", Find: "recovery codes", HTML: a.vayuCardRecovery(ctx, ac.Email), Bare: true},
-			mailSetting{Name: "Handover", Find: "ownership transfer", HTML: a.vayuCardHandover(ctx, ac), Bare: true})
+			mailSetting{Name: i18n.T(lang, "Recovery"), Find: i18n.T(lang, "recovery codes"), HTML: a.vayuCardRecovery(ctx, ac.Email), Bare: true},
+			mailSetting{Name: i18n.T(lang, "Handover"), Find: i18n.T(lang, "ownership transfer"), HTML: a.vayuCardHandover(ctx, ac), Bare: true})
 	}
 	if mh := a.modelHelpSetting(ctx, ac, forHolder); mh != "" {
-		privacy = append(privacy, mailSetting{Name: "Help from a model", Find: "ai summarise draft assistant", HTML: mh})
+		privacy = append(privacy, mailSetting{Name: i18n.T(lang, "Help from a model"), Find: i18n.T(lang, "ai summarise draft assistant"), HTML: mh})
 	}
-	b.WriteString(mailSettingGroup("privacy", "Privacy and security", privacy...))
+	b.WriteString(mailSettingGroup("privacy", i18n.T(lang, "Privacy and security"), privacy...))
 
 	// One adaptation point: the shared builders mark their controls with the list
 	// surface. On this page every control must come back to #vm-mbox-settings, so
@@ -92,31 +93,31 @@ func (a *App) mailboxSettingsSections(ctx context.Context, email string, forHold
 // mailboxAvatarSettings is the profile-picture editor (upload, remove, or pick a
 // prebuilt cartoon). It lives on the settings page so the accounts list is not
 // carrying an image picker for every mailbox on the server.
-func (a *App) mailboxAvatarSettings(ac vmail.Account) string {
+func (a *App) mailboxAvatarSettings(lang string, ac vmail.Account) string {
 	email := html.EscapeString(ac.Email)
 	hasAvatar := strings.TrimSpace(ac.AvatarType) != ""
 	removeBtn := ""
 	if hasAvatar {
 		removeBtn = `<button class="btn btn--sm btn--ghost" type="button" hx-post="/os/vayumail/accounts/avatar/remove" ` +
-			hxVals("email", ac.Email) + ` hx-target="#vm-mbox-settings" hx-swap="innerHTML">Remove picture</button>`
+			hxVals("email", ac.Email) + ` hx-target="#vm-mbox-settings" hx-swap="innerHTML">` + esc(i18n.T(lang, "Remove picture")) + `</button>`
 	}
 	var b strings.Builder
-	b.WriteString(`<div class="vm-acct__avatar-edit"><span class="field-label">Profile picture</span>` +
+	b.WriteString(`<div class="vm-acct__avatar-edit"><span class="field-label">` + esc(i18n.T(lang, "Profile picture")) + `</span>` +
 		`<form class="vm-row vm-avatar-form" hx-post="/os/vayumail/accounts/avatar" hx-encoding="multipart/form-data" hx-target="#vm-mbox-settings" hx-swap="innerHTML">` +
 		`<input type="hidden" name="email" value="` + email + `">` +
-		`<input class="input input--sm" type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Profile picture">` +
-		`<button class="btn btn--sm" type="submit">Upload</button></form>` + removeBtn +
-		`<span class="text-xs muted">PNG, JPEG, GIF or WebP · up to 500 KB.</span></div>`)
+		`<input class="input input--sm" type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="` + esc(i18n.T(lang, "Profile picture")) + `">` +
+		`<button class="btn btn--sm" type="submit">` + esc(i18n.T(lang, "Upload")) + `</button></form>` + removeBtn +
+		`<span class="text-xs muted">` + esc(i18n.T(lang, "PNG, JPEG, GIF or WebP · up to 500 KB.")) + `</span></div>`)
 	// Cartoons: same-origin previews, one click to set (no external asset fetched).
 	qEmail := qparam(ac.Email)
-	b.WriteString(`<div class="vm-acct__avatar-pick"><span class="field-label">Or choose an avatar</span><div class="vm-cartoon-row">`)
+	b.WriteString(`<div class="vm-acct__avatar-pick"><span class="field-label">` + esc(i18n.T(lang, "Or choose an avatar")) + `</span><div class="vm-cartoon-row">`)
 	for n := 0; n < avatarpkg.CartoonCount; n++ {
 		ns := itoaSafe(n)
-		b.WriteString(`<button type="button" class="vm-cartoon" title="Use this cartoon" ` +
+		b.WriteString(`<button type="button" class="vm-cartoon" title="` + esc(i18n.T(lang, "Use this cartoon")) + `" ` +
 			`hx-post="/os/vayumail/accounts/avatar/cartoon"` + hxVals("email", ac.Email, "n", ns) +
 			` hx-target="#vm-mbox-settings" hx-swap="innerHTML">` +
 			`<img class="vm-cartoon__img" src="/os/vayumail/accounts/avatar/cartoon?email=` + qEmail + `&amp;n=` + ns +
-			`" alt="Cartoon ` + ns + `" width="40" height="40" loading="lazy"></button>`)
+			`" alt="` + esc(i18n.T(lang, "Cartoon {n}", "n", n)) + `" width="40" height="40" loading="lazy"></button>`)
 	}
 	b.WriteString(`</div></div>`)
 	return b.String()
@@ -215,11 +216,11 @@ func (a *App) refusedAsPrivate(r *http.Request, email, what string) bool {
 
 // settingsRefusal is the reason a settings change was refused, in the
 // words of whichever rule refused it.
-func (a *App) settingsRefusal(email string) (code, msg string) {
+func (a *App) settingsRefusal(lang, email string) (code, msg string) {
 	if a.vayuMail != nil && a.vayuMail.IsHandedOver(email) {
-		return "private-mailbox", "This mailbox is private: only its holder can change its settings."
+		return "private-mailbox", i18n.T(lang, "This mailbox is private: only its holder can change its settings.")
 	}
-	return "forbidden", "only this mailbox's holder or an administrator"
+	return "forbidden", i18n.T(lang, "Only this mailbox's holder or an administrator can change its settings.")
 }
 
 // handleVayuOSMySettings is the holder's own settings page: forwarding,
@@ -227,11 +228,12 @@ func (a *App) settingsRefusal(email string) (code, msg string) {
 // administrator's per-mailbox page is /os/vayumail/accounts/settings.
 func (a *App) handleVayuOSMySettings(w http.ResponseWriter, r *http.Request) {
 	if !a.mailRunning() || a.vayuMail.Accounts() == nil {
-		a.writeMailSetup(w, r, "Mailbox settings")
+		a.writeMailSetup(w, r, i18n.T(i18n.Lang(r.Context()), "Mailbox settings"))
 		return
 	}
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
+	lang := i18n.Lang(r.Context())
 	_, own := a.ownMailbox(r)
 	ac, ok := a.mailAccountByEmail(r.Context(), own)
 	if a.isAdminRequest(r) && !ok {
@@ -241,64 +243,65 @@ func (a *App) handleVayuOSMySettings(w http.ResponseWriter, r *http.Request) {
 		// every holder does: its Signing in, Private mailbox and Throwaway
 		// addresses are a holder's, and the administrator's page for the
 		// same mailbox is under Accounts.
-		writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox settings", "vayumail", cfg, htmpl.HTML(a.mailboxSettingsPicker(r.Context()))))
+		writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Mailbox settings"), "vayumail", cfg, htmpl.HTML(a.mailboxSettingsPicker(r.Context()))))
 		return
 	}
 	if !ok {
-		writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox settings", "vayumail", cfg, htmpl.HTML(
-			`<div class="page-header"><h1>Mailbox settings</h1></div>`+
-				`<div class="empty-state">No mailbox has been given to your account yet. An administrator gives one under <strong>Members → Team &amp; roles</strong>.</div>`)))
+		writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Mailbox settings"), "vayumail", cfg, htmpl.HTML(
+			`<div class="page-header"><h1>`+esc(i18n.T(lang, "Mailbox settings"))+`</h1></div>`+
+				`<div class="empty-state">`+esc(i18n.T(lang, "No mailbox has been given to your account yet. An administrator gives one under Members → Team & roles."))+`</div>`)))
 		return
 	}
 	sec, _ := a.mailboxSettingsSections(r.Context(), ac.Email, true)
-	head := `<div class="page-header"><h1>Settings</h1></div>` +
+	head := `<div class="page-header"><h1>` + esc(i18n.T(lang, "Settings")) + `</h1></div>` +
 		`<div class="card vm-mbox-head">` + mailAvatarImg(ac.Email, a.mailboxAvatarSet()) +
 		`<div class="vm-mbox-head__meta"><div class="vm-mbox-head__email">` + esc(ac.Email) + `</div></div></div>`
 	signinItems := []mailSetting{
-		{Name: "Security checklist", Find: "score security check", HTML: a.securityChecklist(r, ac)},
-		{Name: "Where you are signed in", Find: "sessions devices sign out everywhere", HTML: a.sessionsBlock(r)},
-		{Name: "Password", Find: "change password", HTML: holderPasswordForm(), Bare: true},
+		{Name: i18n.T(lang, "Security checklist"), Find: i18n.T(lang, "score security check"), HTML: a.securityChecklist(r, ac)},
+		{Name: i18n.T(lang, "Where you are signed in"), Find: i18n.T(lang, "sessions devices sign out everywhere"), HTML: a.sessionsBlock(r)},
+		{Name: i18n.T(lang, "Password"), Find: i18n.T(lang, "change password"), HTML: holderPasswordForm(lang), Bare: true},
 		// Two-factor stays on the site's account page (handlers_portal_totp.go),
 		// where turning it off asks for a current code; a second way to change
 		// the factor from here would be the weaker of the two.
-		{Name: "Two-factor", Find: "2fa code authenticator totp", HTML: `<p class="text-sm">` + map[bool]string{true: "On.", false: "Off."}[ac.TOTPEnabled] +
-			` It is set on <a href="/members/account">your account on the site</a>, where turning it off asks for a current code.</p>`},
-		{Name: "Phones and mail apps", Find: "app passwords recovery connect device imap", HTML: `<p class="text-sm">App passwords, recovery and setting up a phone are on <a href="/os/vayumail/connect">Connect a device</a>.</p>`},
+		{Name: i18n.T(lang, "Two-factor"), Find: i18n.T(lang, "2fa code authenticator totp"), HTML: `<p class="text-sm">` + esc(map[bool]string{true: i18n.T(lang, "On."), false: i18n.T(lang, "Off.")}[ac.TOTPEnabled]) + ` ` +
+			escLinked(i18n.T(lang, "It is set on {link}, where turning it off asks for a current code.", "link", linkMark), "/members/account", i18n.T(lang, "your account on the site")) + `</p>`},
+		{Name: i18n.T(lang, "Phones and mail apps"), Find: i18n.T(lang, "app passwords recovery connect device imap"), HTML: `<p class="text-sm">` + escLinked(i18n.T(lang, "App passwords, recovery and setting up a phone are on {link}.", "link", linkMark), "/os/vayumail/connect", i18n.T(lang, "Connect a device")) + `</p>`},
 	}
 	script := ""
 	if pk := a.passkeysBlock(r); pk != "" {
-		signinItems = append(signinItems, mailSetting{Name: "Passkeys", Find: "passkey only security key fingerprint face", HTML: pk, Bare: true})
+		signinItems = append(signinItems, mailSetting{Name: i18n.T(lang, "Passkeys"), Find: i18n.T(lang, "passkey only security key fingerprint face"), HTML: pk, Bare: true})
 		script = `<script nonce="` + nonce + `" src="/os/static/js/passkey.js?v=` + assetVer("js/passkey.js") + `"></script>`
 	}
-	after := mailSettingGroup("signin", "Signing in", signinItems...) +
-		mailSettingGroup("private", "Privacy",
-			mailSetting{Name: "Private mailbox", Find: "private privacy administrator admin access handover", HTML: a.privateMailboxBlock(r, ac.Email), Bare: true}) +
-		mailSettingGroup("throwaway", "Throwaway addresses",
-			mailSetting{Name: "Throwaway addresses", Find: "alias disposable website shop sign up", HTML: a.throwawayBlock(a.mailReader(r, "")), Bare: true}) +
-		mailSettingGroup("tools", "Connected tools",
-			mailSetting{Name: "Connected tools", Find: "ai assistant mcp agent connected apps oauth disconnect", HTML: a.connectedToolsHere(r), Bare: true}) +
-		mailSettingGroup("export", "Import and export",
-			mailSetting{Name: "Bring mail in", Find: "import imap mbox", HTML: `<p class="text-sm"><a href="/os/vayumail/import?user=` + qparam(ac.Email) + `">Bring mail in</a> from another mail account or a file.</p>`},
-			mailSetting{Name: "Download all mail", Find: "export backup mbox zip", HTML: `<p class="text-sm"><a href="/os/vayumail/download?user=` + qparam(ac.Email) + `" download>Download all mail</a>, every folder as an mbox file in one zip.</p>`})
-	nav := append(append([][2]string{}, mailSettingsNav...), [2]string{"signin", "Signing in"}, [2]string{"private", "Privacy"}, [2]string{"throwaway", "Throwaway addresses"}, [2]string{"tools", "Connected tools"}, [2]string{"export", "Import and export"})
-	body := mailSettingsLayout(head, sec, after, nav) + script +
+	after := mailSettingGroup("signin", i18n.T(lang, "Signing in"), signinItems...) +
+		mailSettingGroup("private", i18n.T(lang, "Privacy"),
+			mailSetting{Name: i18n.T(lang, "Private mailbox"), Find: i18n.T(lang, "private privacy administrator admin access handover"), HTML: a.privateMailboxBlock(r, ac.Email), Bare: true}) +
+		mailSettingGroup("throwaway", i18n.T(lang, "Throwaway addresses"),
+			mailSetting{Name: i18n.T(lang, "Throwaway addresses"), Find: i18n.T(lang, "alias disposable website shop sign up"), HTML: a.throwawayBlock(a.mailReader(r, "")), Bare: true}) +
+		mailSettingGroup("tools", i18n.T(lang, "Connected tools"),
+			mailSetting{Name: i18n.T(lang, "Connected tools"), Find: i18n.T(lang, "ai assistant mcp agent connected apps oauth disconnect"), HTML: a.connectedToolsHere(r), Bare: true}) +
+		mailSettingGroup("export", i18n.T(lang, "Import and export"),
+			mailSetting{Name: i18n.T(lang, "Bring mail in"), Find: i18n.T(lang, "import imap mbox"), HTML: `<p class="text-sm">` + escLinked(i18n.T(lang, "{link} from another mail account or a file.", "link", linkMark), "/os/vayumail/import?user="+qparam(ac.Email), i18n.T(lang, "Bring mail in")) + `</p>`},
+			mailSetting{Name: i18n.T(lang, "Download all mail"), Find: i18n.T(lang, "export backup mbox zip"), HTML: `<p class="text-sm">` + strings.Replace(escLinked(i18n.T(lang, "{link}, every folder as an mbox file in one zip.", "link", linkMark), "/os/vayumail/download?user="+qparam(ac.Email), i18n.T(lang, "Download all mail")), `">`, `" download>`, 1) + `</p>`})
+	nav := append(mailSettingsNav(lang), [2]string{"signin", i18n.T(lang, "Signing in")}, [2]string{"private", i18n.T(lang, "Privacy")}, [2]string{"throwaway", i18n.T(lang, "Throwaway addresses")}, [2]string{"tools", i18n.T(lang, "Connected tools")}, [2]string{"export", i18n.T(lang, "Import and export")})
+	body := mailSettingsLayout(lang, head, sec, after, nav) + script +
 		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`
-	writeOSHTML(w, r, adminOSLayout(nonce, "Settings", "vayumail", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Settings"), "vayumail", cfg, htmpl.HTML(body)))
 }
 
 // mailboxSettingsPicker is Mailbox settings for an administrator with no
 // mailbox of their own: every mailbox, each opening its settings.
 func (a *App) mailboxSettingsPicker(ctx context.Context) string {
+	lang := i18n.Lang(ctx)
 	var b strings.Builder
-	b.WriteString(`<div class="page-header"><h1>Mailbox settings</h1></div>`)
-	b.WriteString(`<p class="page-sub">Choose a mailbox: forwarding, vacation reply, aliases, filters, recovery, keys and its picture.</p>`)
+	b.WriteString(`<div class="page-header"><h1>` + esc(i18n.T(lang, "Mailbox settings")) + `</h1></div>`)
+	b.WriteString(`<p class="page-sub">` + esc(i18n.T(lang, "Choose a mailbox: forwarding, vacation reply, aliases, filters, recovery, keys and its picture.")) + `</p>`)
 	accs, err := a.vayuMail.Accounts().List(ctx)
 	if err != nil {
-		b.WriteString(saCallout("danger", html.EscapeString("Could not read the mailboxes: "+err.Error())))
+		b.WriteString(saCallout("danger", esc(i18n.T(lang, "Could not read the mailboxes: {reason}", "reason", err.Error()))))
 		return b.String()
 	}
 	if len(accs) == 0 {
-		b.WriteString(`<div class="empty-state">No mailbox exists yet. <a href="/os/vayumail/accounts">Create one under Administration</a>.</div>`)
+		b.WriteString(`<div class="empty-state">` + esc(i18n.T(lang, "No mailbox exists yet.")) + ` ` + escLinked(i18n.T(lang, "{link}.", "link", linkMark), "/os/vayumail/accounts", i18n.T(lang, "Create one under Administration")) + `</div>`)
 		return b.String()
 	}
 	b.WriteString(`<div class="card"><ul class="vm-mbox-pick">`)
@@ -312,14 +315,14 @@ func (a *App) mailboxSettingsPicker(ctx context.Context) string {
 
 // holderPasswordForm is the holder's own password change. It answers into
 // #vm-pass-result, because the change signs every session out, this one too.
-func holderPasswordForm() string {
-	return `<details class="vm-ooo vm-acct__sub" id="vm-pass"><summary><span class="field-label">Password</span></summary>` +
+func holderPasswordForm(lang string) string {
+	return `<details class="vm-ooo vm-acct__sub" id="vm-pass"><summary><span class="field-label">` + esc(i18n.T(lang, "Password")) + `</span></summary>` +
 		`<form class="vm-ooo-form" hx-post="/os/vayumail/settings/password" hx-target="#vm-pass-result" hx-swap="innerHTML">` +
-		`<label class="field"><span class="field-label">Current password</span><input class="input input--sm" type="password" name="current" autocomplete="current-password" required></label>` +
-		`<label class="field"><span class="field-label">New password</span><input class="input input--sm" type="password" name="new" autocomplete="new-password" minlength="8" required></label>` +
-		`<label class="field"><span class="field-label">New password again</span><input class="input input--sm" type="password" name="again" autocomplete="new-password" minlength="8" required></label>` +
-		`<p class="text-xs muted">Changing it signs out every app, device and web session on this mailbox, this one too, and sends you a notice.</p>` +
-		`<button class="btn btn--primary btn--sm" type="submit">Change password</button></form>` +
+		`<label class="field"><span class="field-label">` + esc(i18n.T(lang, "Current password")) + `</span><input class="input input--sm" type="password" name="current" autocomplete="current-password" required></label>` +
+		`<label class="field"><span class="field-label">` + esc(i18n.T(lang, "New password")) + `</span><input class="input input--sm" type="password" name="new" autocomplete="new-password" minlength="8" required></label>` +
+		`<label class="field"><span class="field-label">` + esc(i18n.T(lang, "New password again")) + `</span><input class="input input--sm" type="password" name="again" autocomplete="new-password" minlength="8" required></label>` +
+		`<p class="text-xs muted">` + esc(i18n.T(lang, "Changing it signs out every app, device and web session on this mailbox, this one too, and sends you a notice.")) + `</p>` +
+		`<button class="btn btn--primary btn--sm" type="submit">` + esc(i18n.T(lang, "Change password")) + `</button></form>` +
 		`<div id="vm-pass-result" aria-live="polite"></div></details>`
 }
 
@@ -334,9 +337,10 @@ func (a *App) handleVayuOSMyPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = r.ParseForm()
+	lang := i18n.Lang(r.Context())
 	answer := func(tone, msg string) { writeOSHTML(w, r, saCallout(tone, html.EscapeString(msg))) }
 	if r.FormValue("new") != r.FormValue("again") {
-		answer("danger", "The two new passwords differ.")
+		answer("danger", i18n.T(lang, "The two new passwords differ."))
 		return
 	}
 	// The current password is a guess like any sign-in's: the same per-mailbox
@@ -346,13 +350,13 @@ func (a *App) handleVayuOSMyPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	if !auth.VerifySecretArgon2id(r.FormValue("current"), a.vayuMail.Accounts().HashFor(r.Context(), own)) {
 		mailAuthThrottle.Fail(own)
-		answer("danger", "That is not the current password.")
+		answer("danger", i18n.T(lang, "That is not the current password."))
 		return
 	}
 	mailAuthThrottle.Success(own)
 	deps, ok := a.mailResetDepsFor()
 	if !ok {
-		answer("danger", "Mail is not running.")
+		answer("danger", i18n.T(lang, "Mail is not running."))
 		return
 	}
 	// A sealed mailbox's key is locked with this password: it moves to the new
@@ -361,7 +365,7 @@ func (a *App) handleVayuOSMyPassword(w http.ResponseWriter, r *http.Request) {
 	holder := a.vayuPGP != nil && a.vayuPGP.HolderKeeps(own)
 	if holder {
 		if err := a.vayuPGP.ChangeHolderPassword(own, r.FormValue("current"), r.FormValue("new")); err != nil {
-			answer("danger", "Not changed: your mail is locked under an earlier password. Open it with your recovery code first.")
+			answer("danger", i18n.T(lang, "Not changed: your mail is locked under an earlier password. Open it with your recovery code first."))
 			return
 		}
 	}
@@ -370,25 +374,26 @@ func (a *App) handleVayuOSMyPassword(w http.ResponseWriter, r *http.Request) {
 		if holder {
 			_ = a.vayuPGP.ChangeHolderPassword(own, r.FormValue("new"), r.FormValue("current"))
 		}
-		answer("danger", "Not changed: "+err.Error()+".")
+		answer("danger", i18n.T(lang, "Not changed: {reason}.", "reason", err.Error()))
 		return
 	}
-	writeOSHTML(w, r, saCallout("ok", html.EscapeString(fmt.Sprintf(
-		"Password changed. %d app%s and %d session%s were signed out, this one too.",
-		out.AppPasswordsRevoked, plural(out.AppPasswordsRevoked), out.SessionsRevoked, plural(out.SessionsRevoked))))+
-		` <a class="btn btn--sm" href="/os/login">Sign in again</a>`)
+	writeOSHTML(w, r, saCallout("ok", html.EscapeString(i18n.T(lang,
+		"Password changed. {apps, plural, one {# app} other {# apps}} and {sessions, plural, one {# session} other {# sessions}} were signed out, this one too.",
+		"apps", out.AppPasswordsRevoked, "sessions", out.SessionsRevoked)))+
+		` <a class="btn btn--sm" href="/os/login">`+esc(i18n.T(lang, "Sign in again"))+`</a>`)
 }
 
 // handleVayuOSMailboxSettings renders one mailbox's full settings page.
 func (a *App) handleVayuOSMailboxSettings(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
+	lang := i18n.Lang(r.Context())
 	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Mailbox settings</h1></div>`)
-	body.WriteString(`<p class="page-sub">Everything that belongs to one address — forwarding, vacation, aliases, filters, recovery, handover, PGP and its picture.</p>`)
+	body.WriteString(`<div class="page-header"><h1>` + esc(i18n.T(lang, "Mailbox settings")) + `</h1></div>`)
+	body.WriteString(`<p class="page-sub">` + esc(i18n.T(lang, "Everything that belongs to one address — forwarding, vacation, aliases, filters, recovery, handover, PGP and its picture.")) + `</p>`)
 
 	if !a.mailRunning() || a.vayuMail.Accounts() == nil {
-		a.writeMailSetup(w, r, "Mailbox settings")
+		a.writeMailSetup(w, r, i18n.T(i18n.Lang(r.Context()), "Mailbox settings"))
 		return
 	}
 	if !a.isAdminRequest(r) {
@@ -398,33 +403,31 @@ func (a *App) handleVayuOSMailboxSettings(w http.ResponseWriter, r *http.Request
 	email := strings.TrimSpace(r.URL.Query().Get("user"))
 	ac, ok := a.mailAccountByEmail(r.Context(), email)
 	if !ok {
-		body.WriteString(`<div class="empty-state">No mailbox with that address. <a href="/os/vayumail/accounts">Back to mail accounts</a></div>`)
-		writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox settings", "vayuos", cfg, htmpl.HTML(body.String())))
+		body.WriteString(`<div class="empty-state">` + esc(i18n.T(lang, "No mailbox with that address.")) + ` ` + escLinked(linkMark, "/os/vayumail/accounts", i18n.T(lang, "Back to mail accounts")) + `</div>`)
+		writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Mailbox settings"), "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
 
 	// Identity header: who this is, whether it is active, and its storage.
-	badge := `<span class="badge badge--ok">Active</span>`
+	badge := `<span class="badge badge--ok">` + esc(i18n.T(lang, "Active")) + `</span>`
 	if !ac.Active {
-		badge = `<span class="badge badge--warn">Disabled</span>`
+		badge = `<span class="badge badge--warn">` + esc(i18n.T(lang, "Disabled")) + `</span>`
 	}
 	if ac.TOTPEnabled {
-		badge += `<span class="badge badge--info">2FA</span>`
+		badge += `<span class="badge badge--info">` + esc(i18n.T(lang, "2FA")) + `</span>`
 	}
 	used := a.vayuMail.MailboxUsage(ac.Email)
 	quota := a.vayuMail.MailboxQuota(ac.Email)
-	storage := humanBytes(used)
+	storage := i18n.T(lang, "{used} (no limit)", "used", humanBytes(used))
 	if quota > 0 {
-		storage += " of " + humanBytes(quota)
-	} else {
-		storage += " (no limit)"
+		storage = i18n.T(lang, "{used} of {quota}", "used", humanBytes(used), "quota", humanBytes(quota))
 	}
 	body.WriteString(`<div class="card vm-mbox-head">` +
 		mailAvatarImg(ac.Email, a.mailboxAvatarSet()) +
 		`<div class="vm-mbox-head__meta"><div class="vm-mbox-head__email mono">` + esc(ac.Email) + `</div>` +
 		`<div class="vm-mbox-head__badges">` + badge + `</div>` +
-		`<div class="muted text-sm">Storage: ` + esc(storage) + `</div></div>` +
-		`<a class="btn btn--sm" href="/os/vayumail/accounts">← All mailboxes</a>` +
+		`<div class="muted text-sm">` + esc(i18n.T(lang, "Storage: {amount}", "amount", storage)) + `</div></div>` +
+		`<a class="btn btn--sm" href="/os/vayumail/accounts">← ` + esc(i18n.T(lang, "All mailboxes")) + `</a>` +
 		`</div>`)
 
 	sec, _ := a.mailboxSettingsSections(r.Context(), ac.Email, false)
@@ -438,18 +441,18 @@ func (a *App) handleVayuOSMailboxSettings(w http.ResponseWriter, r *http.Request
 	after := ""
 	if a.isOwnMailbox(r, ac.Email) {
 		if pk := a.passkeysBlock(r); pk != "" {
-			after = mailSettingGroup("signin", "Signing in", mailSetting{Name: "Passkeys", Find: "passkey only security key fingerprint face", HTML: pk, Bare: true})
+			after = mailSettingGroup("signin", i18n.T(lang, "Signing in"), mailSetting{Name: i18n.T(lang, "Passkeys"), Find: i18n.T(lang, "passkey only security key fingerprint face"), HTML: pk, Bare: true})
 			after += `<script nonce="` + nonce + `" src="/os/static/js/passkey.js?v=` + assetVer("js/passkey.js") + `"></script>`
 		}
 	}
-	body.WriteString(mailSettingsLayout(head, sec, after, mailSettingsNav))
+	body.WriteString(mailSettingsLayout(lang, head, sec, after, mailSettingsNav(lang)))
 
 	// This page hosts the recovery card too, whose controls are driven by
 	// admin-os-mail-recovery.js. Loading only admin-os-mail.js would leave them as
 	// dead buttons — the exact kind of "it renders, so it must work" trap.
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail-recovery.js?v=` + assetVer("js/admin-os-mail-recovery.js") + `"></script>`)
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
-	writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox settings", "vayuos", cfg, htmpl.HTML(body.String())))
+	writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Mailbox settings"), "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
 // mailSetting is one setting on the Settings page: the name it is shown and
@@ -516,21 +519,23 @@ func openSection(card string) string {
 // them. head comes first in the column; swapped is the mailbox's own
 // sections, which every save redraws (#vm-mbox-settings); after holds the
 // sections the page adds; nav names every section, in order.
-func mailSettingsLayout(head, swapped, after string, nav [][2]string) string {
+func mailSettingsLayout(lang, head, swapped, after string, nav [][2]string) string {
 	var b strings.Builder
-	b.WriteString(`<div class="mx-settings"><nav class="mx-settings__nav" aria-label="Settings sections">` +
-		`<label class="mx-settings__find">` + saIcon("search") + `<input type="search" placeholder="Find a setting" aria-label="Find a setting" autocomplete="off" data-mx-set-find></label>`)
+	b.WriteString(`<div class="mx-settings"><nav class="mx-settings__nav" aria-label="` + esc(i18n.T(lang, "Settings sections")) + `">` +
+		`<label class="mx-settings__find">` + saIcon("search") + `<input type="search" placeholder="` + esc(i18n.T(lang, "Find a setting")) + `" aria-label="` + esc(i18n.T(lang, "Find a setting")) + `" autocomplete="off" data-mx-set-find></label>`)
 	for _, n := range nav {
 		b.WriteString(`<a class="sa-appside__item" href="#set-` + n[0] + `"><span class="sa-appside__label">` + esc(n[1]) + `</span></a>`)
 	}
 	b.WriteString(`</nav><div class="mx-settings__body">` + head +
-		`<p class="mx-settings__none" data-mx-set-none hidden>No setting is called that.</p>` +
-		`<span id="vm-mbox-spin" class="htmx-indicator vm-spin" aria-hidden="true">saving…</span>` +
+		`<p class="mx-settings__none" data-mx-set-none hidden>` + esc(i18n.T(lang, "No setting is called that.")) + `</p>` +
+		`<span id="vm-mbox-spin" class="htmx-indicator vm-spin" aria-hidden="true">` + esc(i18n.T(lang, "saving…")) + `</span>` +
 		`<div id="vm-mbox-settings">` + swapped + `</div>` + after +
-		`<p class="mx-saved" role="status" data-mx-saved hidden><span>Saved.</span> <button type="button" class="mx-head__link" data-mx-undo>Undo</button></p>` +
+		`<p class="mx-saved" role="status" data-mx-saved hidden><span>` + esc(i18n.T(lang, "Saved.")) + `</span> <button type="button" class="mx-head__link" data-mx-undo>` + esc(i18n.T(lang, "Undo")) + `</button></p>` +
 		`</div></div>`)
 	return b.String()
 }
 
-// mailSettingsNav is the sections every mailbox's Settings has.
-var mailSettingsNav = [][2]string{{"general", "General"}, {"addresses", "Addresses"}, {"rules", "Rules and replies"}, {"privacy", "Privacy and security"}}
+// mailSettingsNav is the sections every mailbox's Settings has, named in lang.
+func mailSettingsNav(lang string) [][2]string {
+	return [][2]string{{"general", i18n.T(lang, "General")}, {"addresses", i18n.T(lang, "Addresses")}, {"rules", i18n.T(lang, "Rules and replies")}, {"privacy", i18n.T(lang, "Privacy and security")}}
+}

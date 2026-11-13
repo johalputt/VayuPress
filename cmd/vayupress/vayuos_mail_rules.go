@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"html"
 	"net/http"
 	"net/url"
@@ -264,7 +265,7 @@ func (a *App) handleVayuOSFilterAction(w http.ResponseWriter, r *http.Request) {
 	accts := a.vayuMail.Accounts()
 	email := strings.TrimSpace(r.FormValue("email"))
 	if !a.mayChangeMailboxSettings(r, email) {
-		code, msg := a.settingsRefusal(email)
+		code, msg := a.settingsRefusal(i18n.Lang(r.Context()), email)
 		writeAPIError(w, r, http.StatusForbidden, code, msg, "")
 		return
 	}

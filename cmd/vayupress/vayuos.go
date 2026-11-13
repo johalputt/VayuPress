@@ -1471,6 +1471,18 @@ func qparam(s string) string { return html.EscapeString(url.QueryEscape(s)) }
 // (TestEscapesAreCalledByName).
 func esc(s string) string { return html.EscapeString(s) }
 
+// linkMark stands for a link in a translated sentence: the sentence is
+// i18n.T(lang, "… {link} …", "link", linkMark), so each language puts the
+// link where its words do, and escLinked puts the anchor in its place.
+const linkMark = "\x00"
+
+// escLinked is a translated sentence with linkMark where its link goes; the
+// link's own words are text, href its address. The sentence and the words
+// are escaped; only the anchor is markup.
+func escLinked(sentence, href, text string) string {
+	return strings.Replace(esc(sentence), linkMark, `<a href="`+esc(href)+`">`+esc(text)+`</a>`, 1)
+}
+
 // mailUserParam reads and STRICTLY validates a ?user= mailbox local-part from
 // the request. A mailbox local-part is a small, well-defined character set
 // (RFC 5321 dot-atom, lowercased by us); anything containing a character

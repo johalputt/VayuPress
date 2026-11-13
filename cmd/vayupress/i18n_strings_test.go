@@ -70,12 +70,104 @@ func TestEverySentenceGivenToTIsInTheCatalogue(t *testing.T) {
 			if _, ok := catalogue[msg]; !ok {
 				t.Errorf("%s: %q is not in locales/en.json", fset.Position(call.Pos()), msg)
 			}
+			// Every placeholder the sentence names is given a value here: one
+			// left out is written on the page as <nil>. Names chosen at run
+			// time are not read.
+			given := map[string]bool{}
+			for k := 2; k+1 < len(call.Args); k += 2 {
+				key, ok := call.Args[k].(*ast.BasicLit)
+				if !ok || key.Kind != token.STRING {
+					return true
+				}
+				name, _ := strconv.Unquote(key.Value)
+				given[name] = true
+			}
+			for _, name := range sentencePlaceholders(msg) {
+				if !given[name] {
+					t.Errorf("%s: %q names {%s} and is given no value for it", fset.Position(call.Pos()), msg, name)
+				}
+			}
 			return true
 		})
 	}
 	for msg := range catalogue {
 		if !used[msg] {
 			t.Errorf("locales/en.json has %q, which no code says", msg)
+		}
+	}
+}
+
+// sentencePlaceholders is every name a sentence fills in: {name}, and the
+// counted name of a plural with the names inside its branches. A branch's own
+// words ("one {message}") are not names.
+func sentencePlaceholders(msg string) []string {
+	var out []string
+	for i := 0; i < len(msg); i++ {
+		if msg[i] != '{' {
+			continue
+		}
+		depth, end := 0, -1
+		for j := i; j < len(msg) && end < 0; j++ {
+			switch msg[j] {
+			case '{':
+				depth++
+			case '}':
+				if depth--; depth == 0 {
+					end = j
+				}
+			}
+		}
+		if end < 0 {
+			return out
+		}
+		name, rest, plural := strings.Cut(msg[i+1:end], ",")
+		out = append(out, strings.TrimSpace(name))
+		if plural {
+			_, branches, _ := strings.Cut(rest, ",")
+			out = append(out, sentencePlaceholders(branchTexts(branches))...)
+		}
+		i = end
+	}
+	return out
+}
+
+// branchTexts is a plural's branches' texts, each wrapped in braces removed:
+// "one {# in {folder}} other {…}" gives "# in {folder} …".
+func branchTexts(branches string) string {
+	var b strings.Builder
+	depth := 0
+	for _, r := range branches {
+		switch {
+		case r == '{':
+			if depth > 0 {
+				b.WriteRune(r)
+			}
+			depth++
+		case r == '}':
+			depth--
+			if depth > 0 {
+				b.WriteRune(r)
+			}
+			b.WriteRune(' ')
+		case depth > 0:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// TestASentencesPlaceholdersAreReadAsTheyAre — the names the catalogue test
+// requires a value for, one seed per shape.
+func TestASentencesPlaceholdersAreReadAsTheyAre(t *testing.T) {
+	for msg, want := range map[string]string{
+		"Not done: {reason}.":                                                    "reason",
+		"{n, plural, one {# message} other {# messages}}":                        "n",
+		"{n, plural, one {Delete # in {folder}?} other {Delete # in {folder}?}}": "n folder folder",
+		"It is set on {link}, where.":                                            "link",
+		"No names here.":                                                         "",
+	} {
+		if got := strings.Join(sentencePlaceholders(msg), " "); got != want {
+			t.Errorf("%q names %q, want %q", msg, got, want)
 		}
 	}
 }

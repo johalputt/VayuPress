@@ -3,6 +3,7 @@
 package main
 
 import (
+	"github.com/johalputt/vayupress/internal/i18n"
 	"net/http"
 	"strings"
 
@@ -20,6 +21,7 @@ func (a *App) handleVayuOSMailSwitcher(w http.ResponseWriter, r *http.Request) {
 		writeOSFragment(w, "")
 		return
 	}
+	lang := i18n.Lang(r.Context())
 	primary := a.vayuMail.Config().Domain
 	var doms []mailDomainBoxes
 	// Readdir-only counts, the ones the new-mail poll reads.
@@ -31,7 +33,7 @@ func (a *App) handleVayuOSMailSwitcher(w http.ResponseWriter, r *http.Request) {
 			doms = append(doms, mailDomainBoxes{h, boxes})
 		}
 	}
-	writeOSFragment(w, mailSwitcherList(primary, mailUserParam(r), doms, a.mailboxAvatarSet()))
+	writeOSFragment(w, mailSwitcherList(lang, primary, mailUserParam(r), doms, a.mailboxAvatarSet()))
 }
 
 // mailDomainBoxes is one mail domain and its mailboxes.
@@ -42,7 +44,7 @@ type mailDomainBoxes struct {
 
 // mailSwitcherList renders the switcher's groups and foot. open is the ?user=
 // key of the mailbox on screen.
-func mailSwitcherList(primary, open string, doms []mailDomainBoxes, avatars map[string]bool) string {
+func mailSwitcherList(lang, primary, open string, doms []mailDomainBoxes, avatars map[string]bool) string {
 	var b strings.Builder
 	total := 0
 	for _, g := range doms {
@@ -57,7 +59,7 @@ func mailSwitcherList(primary, open string, doms []mailDomainBoxes, avatars map[
 			b.WriteString(`<a class="mx-switch__row" role="menuitem" href="/os/vayumail/inbox?user=` + qparam(key) + `" data-mx-find="` + esc(strings.ToLower(addr)) + `"` + cur + `>` +
 				mailAvatarImg(addr, avatars) + `<span class="mx-switch__addr">` + esc(addr) + `</span>`)
 			if bx.Unseen > 0 {
-				b.WriteString(`<span class="mx-switch__count" aria-label="` + itoaSafe(bx.Unseen) + ` unread">` + itoaSafe(bx.Unseen) + `</span>`)
+				b.WriteString(`<span class="mx-switch__count" aria-label="` + esc(i18n.T(lang, "{n} unread", "n", bx.Unseen)) + `">` + itoaSafe(bx.Unseen) + `</span>`)
 			}
 			if cur != "" {
 				b.WriteString(`<span class="mx-switch__check" aria-hidden="true">` + saIcon("check") + `</span>`)
@@ -66,12 +68,12 @@ func mailSwitcherList(primary, open string, doms []mailDomainBoxes, avatars map[
 		}
 		b.WriteString(`</div>`)
 	}
-	b.WriteString(`<p class="mx-switch__none" hidden>No mailbox matches that.</p>`)
-	every := "All " + itoaSafe(total) + " mailboxes"
+	b.WriteString(`<p class="mx-switch__none" hidden>` + esc(i18n.T(lang, "No mailbox matches that.")) + `</p>`)
+	every := i18n.T(lang, "All {n} mailboxes", "n", total)
 	if total == 1 {
-		every = "The one mailbox"
+		every = i18n.T(lang, "The one mailbox")
 	}
 	b.WriteString(`<div class="mx-switch__foot"><a role="menuitem" href="/os/vayumail/inbox?all=1">` + esc(every) + `</a>` +
-		`<a role="menuitem" href="/os/vayumail/accounts#new-mailbox">` + saIcon("plus") + `New mailbox</a></div>`)
+		`<a role="menuitem" href="/os/vayumail/accounts#new-mailbox">` + saIcon("plus") + esc(i18n.T(lang, "New mailbox")) + `</a></div>`)
 	return b.String()
 }
