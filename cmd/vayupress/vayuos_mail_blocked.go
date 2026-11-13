@@ -6,6 +6,7 @@ package main
 // list, with Unblock, at the foot of the mailbox's Contacts.
 
 import (
+	"github.com/johalputt/vayupress/internal/i18n"
 	"net/http"
 	"strings"
 
@@ -14,18 +15,19 @@ import (
 
 // blockedSection is the Contacts panel's list of blocked senders.
 func (a *App) blockedSection(rd vmail.Reader, userKey string) string {
+	lang := rd.Lang()
 	blocked, err := a.vayuMail.BlockedSenders(rd)
 	if err != nil || len(blocked) == 0 {
 		return ""
 	}
 	writable := !a.vayuMail.ReaderReadOnly(rd)
 	var b strings.Builder
-	b.WriteString(`<div class="vm-contacts-head vm-blocked-head"><h3 class="vm-contacts-title">Blocked</h3><span class="muted text-sm">` + itoaSafe(len(blocked)) + `</span></div><ul class="vm-contacts-list">`)
+	b.WriteString(`<div class="vm-contacts-head vm-blocked-head"><h3 class="vm-contacts-title">` + esc(i18n.T(lang, "Blocked")) + `</h3><span class="muted text-sm">` + itoaSafe(len(blocked)) + `</span></div><ul class="vm-contacts-list">`)
 	for _, s := range blocked {
 		b.WriteString(`<li class="vm-contact"><span class="vm-contact-meta"><span class="vm-contact-mail">` + esc(s) + `</span></span>`)
 		if writable {
 			b.WriteString(`<button class="btn btn--xs btn--ghost" type="button" hx-post="/os/vayumail/blocked/action"` + hxVals("user", userKey, "action", "unblock", "sender", s) +
-				` hx-target="#vm-contacts-panel" hx-swap="outerHTML">Unblock</button>`)
+				` hx-target="#vm-contacts-panel" hx-swap="outerHTML">` + esc(i18n.T(lang, "Unblock")) + `</button>`)
 		}
 		b.WriteString(`</li>`)
 	}
@@ -44,23 +46,24 @@ func (a *App) handleVayuOSBlockedAction(w http.ResponseWriter, r *http.Request) 
 	}
 	userKey := sanitizeMailUser(strings.TrimSpace(r.PostFormValue("user")))
 	rd := a.mailReader(r, userKey)
+	lang := rd.Lang()
 	if rd.Key() == "" {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "No mailbox you can change was named.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(lang, "No mailbox you can change was named."), "")
 		return
 	}
 	sender := strings.TrimSpace(r.PostFormValue("sender"))
 	switch r.PostFormValue("action") {
 	case "block":
-		said, warn := "Blocked "+sender+". Their mail will be refused, or put straight in Trash.", false
+		said, warn := i18n.T(lang, "Blocked {sender}. Their mail will be refused, or put straight in Trash.", "sender", sender), false
 		if err := a.vayuMail.BlockSender(rd, sender); err != nil {
-			said, warn = "Not blocked: "+err.Error()+".", true
+			said, warn = i18n.T(lang, "Not blocked: {reason}.", "reason", err.Error()), true
 		}
 		setMailSaid(w, said, warn)
 		w.WriteHeader(http.StatusNoContent)
 	case "unblock":
 		errMsg := ""
 		if err := a.vayuMail.UnblockSender(rd, sender); err != nil {
-			errMsg = "Not unblocked: " + err.Error() + "."
+			errMsg = i18n.T(lang, "Not unblocked: {reason}.", "reason", err.Error())
 		}
 		owner, ok := a.contactOwner(r, userKey)
 		if !ok {

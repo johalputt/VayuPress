@@ -34,6 +34,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/email"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
@@ -1878,35 +1879,35 @@ func mailFolderNav(n mailNav) string {
 		return ""
 	}
 	for _, f := range vmail.StandardFolders {
-		item("user="+user+"&folder="+qparam(f), f, mailFolderIcons[f], current(f), n.Counts[f])
+		item("user="+user+"&folder="+qparam(f), mailFolderLabel(n.Lang, f), mailFolderIcons[f], current(f), n.Counts[f])
 	}
 	// Scheduled is there while something is (or while it is open), and has
 	// no views: it is a list of held messages, not a folder of mail.
 	if c := n.Counts[scheduledFolder]; c > 0 || isScheduledFolder(n.Active) {
-		item("user="+user+"&folder="+scheduledFolder, scheduledFolder, "calendar", current(scheduledFolder), c)
+		item("user="+user+"&folder="+scheduledFolder, mailFolderLabel(n.Lang, scheduledFolder), "calendar", current(scheduledFolder), c)
 	}
 	// Your own folders, then the way to make one (not offered to a read-only
 	// mailbox, which the engine would refuse).
 	if len(n.Own) > 0 || n.Writable {
-		sb.WriteString(`<div class="sa-appside__group">Folders</div>`)
+		sb.WriteString(`<div class="sa-appside__group">` + esc(i18n.T(n.Lang, "Folders")) + `</div>`)
 		for _, f := range n.Own {
 			item("user="+user+"&folder="+qparam(f), f, "folder", current(f), 0)
 		}
 		if n.Writable {
-			sb.WriteString(`<details class="mx-newfolder"><summary class="sa-appside__item">` + saIcon("plus") + `<span class="sa-appside__label">New folder</span></summary>` +
+			sb.WriteString(`<details class="mx-newfolder"><summary class="sa-appside__item">` + saIcon("plus") + `<span class="sa-appside__label">` + esc(i18n.T(n.Lang, "New folder")) + `</span></summary>` +
 				`<form class="mx-newfolder__form" hx-post="/os/vayumail/folders/action" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin">` +
 				`<input type="hidden" name="user" value="` + esc(n.User) + `"><input type="hidden" name="folder" value="` + esc(n.Active) + `"><input type="hidden" name="action" value="create">` +
-				`<input class="mx-newfolder__name" name="name" required maxlength="40" aria-label="Folder name" placeholder="Folder name" autocomplete="off">` +
-				`<button type="submit" class="btn btn--sm">Create</button></form></details>`)
+				`<input class="mx-newfolder__name" name="name" required maxlength="40" aria-label="` + esc(i18n.T(n.Lang, "Folder name")) + `" placeholder="` + esc(i18n.T(n.Lang, "Folder name")) + `" autocomplete="off">` +
+				`<button type="submit" class="btn btn--sm">` + esc(i18n.T(n.Lang, "Create")) + `</button></form></details>`)
 		}
 	}
 	if isScheduledFolder(n.Active) {
-		sb.WriteString(mailSearchesGroup(n.User, n.Searches, false) + mailLabelsGroup(n.User, n.Labels, false) + `</div>`)
+		sb.WriteString(mailSearchesGroup(n.Lang, n.User, n.Searches, false) + mailLabelsGroup(n.Lang, n.User, n.Labels, false) + `</div>`)
 		return sb.String()
 	}
 	// Views filter the open folder; choosing the view in force again shows
 	// the whole folder.
-	sb.WriteString(`<div class="sa-appside__group">Views</div>`)
+	sb.WriteString(`<div class="sa-appside__group">` + esc(i18n.T(n.Lang, "Views")) + `</div>`)
 	for _, v := range mailViews {
 		// The categories are the list's tabs; a smart view is offered while
 		// it holds something, or while it is the one open.
@@ -1917,15 +1918,74 @@ func mailFolderNav(n mailNav) string {
 		if v.Key == n.View {
 			q, cur = "user="+user+"&folder="+qparam(n.Active), ` aria-current="true"`
 		}
-		item(q, v.Label, v.Icon, cur, n.ViewCounts[v.Key])
+		item(q, mailViewLabel(n.Lang, v.Key), v.Icon, cur, n.ViewCounts[v.Key])
 	}
-	sb.WriteString(mailSearchesGroup(n.User, n.Searches, false) + mailLabelsGroup(n.User, n.Labels, false))
+	sb.WriteString(mailSearchesGroup(n.Lang, n.User, n.Searches, false) + mailLabelsGroup(n.Lang, n.User, n.Labels, false))
 	sb.WriteString(`</div>`)
 	return sb.String()
 }
 
+// mailFolderLabel is a folder's name as the sidebar and the list show it:
+// a standard folder's in lang, a folder of the holder's own as they named
+// it. Only the label changes; the folder is still found by its own name.
+func mailFolderLabel(lang, folder string) string {
+	switch folder {
+	case "Inbox":
+		return i18n.T(lang, "Inbox")
+	case "Sent":
+		return i18n.T(lang, "Sent")
+	case "Drafts":
+		return i18n.T(lang, "Drafts")
+	case "Archive":
+		return i18n.T(lang, "Archive")
+	case "Snoozed":
+		return i18n.T(lang, "Snoozed")
+	case "Junk":
+		return i18n.T(lang, "Junk")
+	case "Trash":
+		return i18n.T(lang, "Trash")
+	case scheduledFolder:
+		return i18n.T(lang, "Scheduled")
+	}
+	return folder
+}
+
+// mailViewLabel is a view's name in lang, by its key.
+func mailViewLabel(lang, key string) string {
+	switch key {
+	case "unread":
+		return i18n.T(lang, "Unread")
+	case "pinned":
+		return i18n.T(lang, "Pinned")
+	case "encrypted":
+		return i18n.T(lang, "Encrypted")
+	case "followup":
+		return i18n.T(lang, "Follow-ups")
+	case "lists":
+		return i18n.T(lang, "Unsubscribe")
+	case vmail.CategoryPrimary:
+		return i18n.T(lang, "Primary")
+	case vmail.CategoryUpdates:
+		return i18n.T(lang, "Updates")
+	case vmail.CategoryNewsletters:
+		return i18n.T(lang, "Newsletters")
+	case vmail.CategoryReceipts:
+		return i18n.T(lang, "Receipts")
+	case vmail.CategorySocial:
+		return i18n.T(lang, "Social")
+	}
+	for _, v := range mailViews {
+		if v.Key == key {
+			return v.Label
+		}
+	}
+	return key
+}
+
 // mailNav is what the Mail sidebar's folders and views are drawn from.
 type mailNav struct {
+	// Lang is the language the sidebar is written in.
+	Lang               string
 	User, Active, View string
 	// Own are the mailbox's own folders; Writable offers New folder.
 	Own      []string
@@ -1941,7 +2001,7 @@ type mailNav struct {
 func (a *App) mailNavFor(rd vmail.Reader, active, view string, viewCounts map[string]int, oob bool) string {
 	searches, _ := a.vayuMail.SavedSearches(rd)
 	labels, _ := a.vayuMail.Labels(rd)
-	return mailFolderNav(mailNav{User: rd.Key(), Active: active, View: view, Own: a.ownFolders(rd), Searches: searches, Labels: labels,
+	return mailFolderNav(mailNav{Lang: rd.Lang(), User: rd.Key(), Active: active, View: view, Own: a.ownFolders(rd), Searches: searches, Labels: labels,
 		Writable: !a.vayuMail.ReaderReadOnly(rd), Counts: a.folderUnread(rd), ViewCounts: viewCounts, OOB: oob})
 }
 
@@ -2354,7 +2414,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 	}
 	b.WriteString(`<span class="mx-head__fill"></span>`)
 	if !readOnly && vmail.ValidFolderName(folder) {
-		b.WriteString(ownFolderMenu(user, folder))
+		b.WriteString(ownFolderMenu(rd.Lang(), user, folder))
 	}
 	// Trash and Junk empty at once, not only by retention (blocked.go,
 	// EmptyFolder). The confirm says how many go, and that it is for good.
@@ -2423,7 +2483,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 		}
 		if !readOnly {
 			labels, _ := a.vayuMail.Labels(rd)
-			b.WriteString(selLabelMenu(labels, inc))
+			b.WriteString(selLabelMenu(rd.Lang(), labels, inc))
 		}
 		if received {
 			b.WriteString(sel("check", "Mark read", `{"action":"mark","mark":"read"}`, ""))

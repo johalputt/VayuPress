@@ -6,6 +6,7 @@ package main
 // renaming and deleting them, and offering them wherever mail can be moved.
 
 import (
+	"github.com/johalputt/vayupress/internal/i18n"
 	"net/http"
 	"strings"
 
@@ -35,13 +36,13 @@ func (a *App) moveTargets(rd vmail.Reader, folder string) []string {
 
 // ownFolderMenu is the header's menu on one of the mailbox's own folders:
 // rename it, or delete it (its mail goes to Trash, which the confirm says).
-func ownFolderMenu(user, folder string) string {
+func ownFolderMenu(lang, user, folder string) string {
 	post := ` hx-post="/os/vayumail/folders/action" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin"`
-	return `<details class="sa-pop mx-head__folder"><summary class="btn btn--ghost btn--sm btn--icon" aria-label="Folder options" title="Folder options">` + saIcon("more") + `</summary><div class="sa-pop__panel">` +
+	return `<details class="sa-pop mx-head__folder"><summary class="btn btn--ghost btn--sm btn--icon" aria-label="` + esc(i18n.T(lang, "Folder options")) + `" title="` + esc(i18n.T(lang, "Folder options")) + `">` + saIcon("more") + `</summary><div class="sa-pop__panel">` +
 		`<form class="mx-folderform"` + post + `><input type="hidden" name="user" value="` + esc(user) + `"><input type="hidden" name="folder" value="` + esc(folder) + `"><input type="hidden" name="action" value="rename">` +
-		`<label class="mx-folderform__label">Rename<input class="mx-newfolder__name" name="name" value="` + esc(folder) + `" required maxlength="40" autocomplete="off"></label>` +
-		`<button type="submit" class="btn btn--sm">Rename</button></form>` +
-		`<button type="button" class="sa-menu__item mx-folderform__delete"` + post + ` hx-vals='{"action":"delete","user":"` + esc(user) + `","folder":"` + esc(folder) + `"}' hx-confirm="Delete the folder ` + esc(folder) + `? Its mail moves to Trash.">` + saIcon("trash") + `<span class="sa-menu__text">Delete folder</span></button>` +
+		`<label class="mx-folderform__label">` + esc(i18n.T(lang, "Rename")) + `<input class="mx-newfolder__name" name="name" value="` + esc(folder) + `" required maxlength="40" autocomplete="off"></label>` +
+		`<button type="submit" class="btn btn--sm">` + esc(i18n.T(lang, "Rename")) + `</button></form>` +
+		`<button type="button" class="sa-menu__item mx-folderform__delete"` + post + ` hx-vals='{"action":"delete","user":"` + esc(user) + `","folder":"` + esc(folder) + `"}' hx-confirm="` + esc(i18n.T(lang, "Delete the folder {folder}? Its mail moves to Trash.", "folder", folder)) + `">` + saIcon("trash") + `<span class="sa-menu__text">` + esc(i18n.T(lang, "Delete folder")) + `</span></button>` +
 		`</div></details>`
 }
 
@@ -56,8 +57,9 @@ func (a *App) handleVayuOSFolderAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rd := a.mailReader(r, strings.TrimSpace(r.PostFormValue("user")))
+	lang := rd.Lang()
 	if rd.Key() == "" {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "No mailbox you can change was named.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(lang, "No mailbox you can change was named."), "")
 		return
 	}
 	folder := sanitizeMailFolder(strings.TrimSpace(r.PostFormValue("folder")))
@@ -77,7 +79,7 @@ func (a *App) handleVayuOSFolderAction(w http.ResponseWriter, r *http.Request) {
 	}
 	note := ""
 	if err != nil {
-		open, note = folder, "Not done: "+err.Error()+"."
+		open, note = folder, i18n.T(lang, "Not done: {reason}.", "reason", err.Error())
 	} else {
 		open = sanitizeMailFolder(open)
 		w.Header().Set("HX-Push-Url", "/os/vayumail/inbox?user="+qparam(rd.Key())+"&folder="+qparam(open))

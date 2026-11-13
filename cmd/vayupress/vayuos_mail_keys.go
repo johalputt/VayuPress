@@ -8,6 +8,7 @@ package main
 // way to add one by pasting it.
 
 import (
+	"github.com/johalputt/vayupress/internal/i18n"
 	"net/http"
 	"strings"
 
@@ -19,13 +20,14 @@ const maxPastedKey = 64 << 10
 
 // keysSection is the Contacts panel's list of outside keys, with Add.
 func (a *App) keysSection(rd vmail.Reader, userKey, said string) string {
+	lang := rd.Lang()
 	keys, err := a.vayuMail.ContactKeys(rd)
 	if err != nil {
 		return ""
 	}
 	writable := !a.vayuMail.ReaderReadOnly(rd)
 	var b strings.Builder
-	b.WriteString(`<div class="vm-contacts-head vm-keys-head"><h3 class="vm-contacts-title">Keys</h3><span class="muted text-sm">` + itoaSafe(len(keys)) + `</span></div>`)
+	b.WriteString(`<div class="vm-contacts-head vm-keys-head"><h3 class="vm-contacts-title">` + esc(i18n.T(lang, "Keys")) + `</h3><span class="muted text-sm">` + itoaSafe(len(keys)) + `</span></div>`)
 	if said != "" {
 		b.WriteString(`<p class="vm-keys-said" role="status">` + esc(said) + `</p>`)
 	}
@@ -36,19 +38,19 @@ func (a *App) keysSection(rd vmail.Reader, userKey, said string) string {
 				`<code class="vm-key-fp">` + esc(formatSafety(k.Fingerprint)) + `</code></span>`)
 			if writable {
 				b.WriteString(`<button class="btn btn--xs btn--ghost" type="button" hx-post="/os/vayumail/keys/action"` + hxVals("user", userKey, "action", "remove", "email", k.Email) +
-					` hx-target="#vm-contacts-panel" hx-swap="outerHTML" hx-confirm="Remove the key for ` + esc(k.Email) + `? Mail to them is then sent readable, unless they publish a key.">Remove</button>`)
+					` hx-target="#vm-contacts-panel" hx-swap="outerHTML" hx-confirm="` + esc(i18n.T(lang, "Remove the key for {address}? Mail to them is then sent readable, unless they publish a key.", "address", k.Email)) + `">` + esc(i18n.T(lang, "Remove")) + `</button>`)
 			}
 			b.WriteString(`</li>`)
 		}
 		b.WriteString(`</ul>`)
 	}
 	if writable {
-		b.WriteString(`<details class="vm-keys-add"><summary class="btn btn--sm">Add a key</summary>` +
+		b.WriteString(`<details class="vm-keys-add"><summary class="btn btn--sm">` + esc(i18n.T(lang, "Add a key")) + `</summary>` +
 			`<form hx-post="/os/vayumail/keys/action" hx-target="#vm-contacts-panel" hx-swap="outerHTML">` +
 			`<input type="hidden" name="user" value="` + esc(userKey) + `"><input type="hidden" name="action" value="add">` +
-			`<label class="vm-keys-label" for="vm-key-armor">Paste the public key someone gave you. Compare its fingerprint with the one they read to you before you rely on it.</label>` +
+			`<label class="vm-keys-label" for="vm-key-armor">` + esc(i18n.T(lang, "Paste the public key someone gave you. Compare its fingerprint with the one they read to you before you rely on it.")) + `</label>` +
 			`<textarea class="input" id="vm-key-armor" name="armor" rows="6" spellcheck="false" placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----" required></textarea>` +
-			`<button class="btn btn--sm" type="submit">Add the key</button></form></details>`)
+			`<button class="btn btn--sm" type="submit">` + esc(i18n.T(lang, "Add the key")) + `</button></form></details>`)
 	}
 	return b.String()
 }
@@ -64,25 +66,26 @@ func (a *App) handleVayuOSKeysAction(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxPastedKey+(4<<10))
 	userKey := sanitizeMailUser(strings.TrimSpace(r.PostFormValue("user")))
 	rd := a.mailReader(r, userKey)
+	lang := rd.Lang()
 	owner, ok := a.contactOwner(r, userKey)
 	if rd.Key() == "" || !ok {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "No mailbox you can change was named.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(lang, "No mailbox you can change was named."), "")
 		return
 	}
 	said := ""
 	switch r.PostFormValue("action") {
 	case "add":
 		if emails, err := a.vayuMail.AddContactKey(rd, []byte(r.PostFormValue("armor"))); err != nil {
-			said = "Not added: " + err.Error() + "."
+			said = i18n.T(lang, "Not added: {reason}.", "reason", err.Error())
 		} else {
-			said = "Added the key for " + strings.Join(emails, ", ") + "."
+			said = i18n.T(lang, "Added the key for {addresses}.", "addresses", strings.Join(emails, ", "))
 		}
 	case "remove":
 		email := strings.TrimSpace(r.PostFormValue("email"))
 		if err := a.vayuMail.RemoveContactKey(rd, email); err != nil {
-			said = "Not removed: " + err.Error() + "."
+			said = i18n.T(lang, "Not removed: {reason}.", "reason", err.Error())
 		} else {
-			said = "Removed the key for " + email + "."
+			said = i18n.T(lang, "Removed the key for {address}.", "address", email)
 		}
 	default:
 		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "unknown action", "")

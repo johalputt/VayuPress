@@ -46,6 +46,22 @@ type Reader struct {
 	kind  readerKind
 	key   string // the mailbox key being read (local part, or full address)
 	actor string // who, or why, for the access record
+	lang  string // the language the reader's pages are in; "" is English
+}
+
+// InLang is rd for someone whose pages are in lang. Every page of Mail is
+// drawn from a Reader, so it is how the language reaches all of them.
+func (rd Reader) InLang(lang string) Reader {
+	rd.lang = lang
+	return rd
+}
+
+// Lang is the language rd's pages are in: English unless InLang said.
+func (rd Reader) Lang() string {
+	if rd.lang == "" {
+		return "en"
+	}
+	return rd.lang
 }
 
 // ReadAsOwner is the mailbox's own holder reading their own mail.

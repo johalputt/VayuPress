@@ -196,7 +196,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		c.WriteString(`</div></details>`)
 		if pane && cur.MessageID != "" {
 			allLabels, _ := a.vayuMail.Labels(rd)
-			c.WriteString(labelMenu(user, folder, id, allLabels, msgLabels))
+			c.WriteString(labelMenu(rd.Lang(), user, folder, id, allLabels, msgLabels))
 		}
 	}
 	c.WriteString(`<span class="mx-rtools__sep" aria-hidden="true"></span>`)

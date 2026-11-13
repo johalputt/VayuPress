@@ -8,6 +8,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Mail's sidebar and its lists in thirteen languages.** The standard
+  folders, your own folders and the way to make one, the views and
+  categories, saved searches, labels and the Label menus, blocked senders
+  and the public keys you added are in the language the console is in,
+  with every message their actions answer with. The rest of Mail follows.
+
 ## [3.18.41] — 2026-11-13
 
 Shield and a site's sitemap answer at once however busy the install has been, and signing in and getting back into a mailbox are in thirteen languages.

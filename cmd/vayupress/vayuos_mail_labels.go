@@ -9,6 +9,7 @@ package main
 
 import (
 	"bytes"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"net/http"
 	"net/mail"
 	"slices"
@@ -24,7 +25,7 @@ func labelSearchURL(user, label string) string {
 
 // mailLabelsGroup is the sidebar's labels. It is its own element so a new
 // label reaches it out of band, the way saved searches do.
-func mailLabelsGroup(user string, labels []string, oob bool) string {
+func mailLabelsGroup(lang, user string, labels []string, oob bool) string {
 	var b strings.Builder
 	b.WriteString(`<div id="vm-labels"`)
 	if oob {
@@ -32,7 +33,7 @@ func mailLabelsGroup(user string, labels []string, oob bool) string {
 	}
 	b.WriteString(`>`)
 	if len(labels) > 0 {
-		b.WriteString(`<div class="sa-appside__group">Labels</div>`)
+		b.WriteString(`<div class="sa-appside__group">` + esc(i18n.T(lang, "Labels")) + `</div>`)
 		for _, l := range labels {
 			b.WriteString(`<a class="sa-appside__item" href="` + esc(labelSearchURL(user, l)) + `">` + saIcon("tag") + `<span class="sa-appside__label">` + esc(l) + `</span></a>`)
 		}
@@ -72,13 +73,13 @@ func readerLabels(user string, labels []string) string {
 
 // labelMenu is the reader's Label tool: every label in use, ticked when the
 // message carries it, and a field for a new one.
-func labelMenu(user, folder, id string, all, mine []string) string {
+func labelMenu(lang, user, folder, id string, all, mine []string) string {
 	vals := func(extra ...string) string {
 		return hxVals(append([]string{"user", user, "folder", folder, "id", id}, extra...)...)
 	}
 	post := ` hx-post="/os/vayumail/labels/action" hx-target="#vm-readpane" hx-swap="innerHTML"`
 	var b strings.Builder
-	b.WriteString(`<details class="sa-pop"><summary class="mx-tool mx-tool--word" title="Label (l)" aria-label="Label">` + saIcon("tag") + `<span class="mx-tool__word">Label</span></summary><div class="sa-pop__panel sa-menu mx-labelmenu" role="menu">`)
+	b.WriteString(`<details class="sa-pop"><summary class="mx-tool mx-tool--word" title="` + esc(i18n.T(lang, "Label (l)")) + `" aria-label="` + esc(i18n.T(lang, "Label")) + `">` + saIcon("tag") + `<span class="mx-tool__word">` + esc(i18n.T(lang, "Label")) + `</span></summary><div class="sa-pop__panel sa-menu mx-labelmenu" role="menu">`)
 	for _, l := range all {
 		on := slices.ContainsFunc(mine, func(m string) bool { return strings.EqualFold(m, l) })
 		next, checked := "1", "false"
@@ -90,7 +91,7 @@ func labelMenu(user, folder, id string, all, mine []string) string {
 	}
 	b.WriteString(`<form class="mx-labelmenu__new"` + post + `><input type="hidden" name="user" value="` + esc(user) + `"><input type="hidden" name="folder" value="` + esc(folder) + `">` +
 		`<input type="hidden" name="id" value="` + esc(id) + `"><input type="hidden" name="on" value="1">` +
-		`<input class="input input--sm" name="label" required maxlength="30" placeholder="New label" aria-label="New label" autocomplete="off"><button class="btn btn--sm" type="submit">Add</button></form>`)
+		`<input class="input input--sm" name="label" required maxlength="30" placeholder="` + esc(i18n.T(lang, "New label")) + `" aria-label="` + esc(i18n.T(lang, "New label")) + `" autocomplete="off"><button class="btn btn--sm" type="submit">` + esc(i18n.T(lang, "Add")) + `</button></form>`)
 	b.WriteString(`</div></details>`)
 	return b.String()
 }
@@ -107,25 +108,25 @@ func (a *App) handleVayuOSLabelsAction(w http.ResponseWriter, r *http.Request) {
 	folder := sanitizeMailFolder(strings.TrimSpace(r.PostFormValue("folder")))
 	id := sanitizeMailID(strings.TrimSpace(r.PostFormValue("id")))
 	if rd.Key() == "" {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "No mailbox you can change was named.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(rd.Lang(), "No mailbox you can change was named."), "")
 		return
 	}
 	msgID, err := a.storedMessageID(rd, folder, id)
 	if err != nil {
-		writeOSHTML(w, r, vayuReadpaneEmpty("Message not available."))
+		writeOSHTML(w, r, vayuReadpaneEmpty(i18n.T(rd.Lang(), "Message not available.")))
 		return
 	}
 	if err := a.vayuMail.SetLabel(rd, msgID, r.PostFormValue("label"), r.PostFormValue("on") == "1"); err != nil {
-		setMailSaid(w, "Not labelled: "+err.Error()+".", true)
+		setMailSaid(w, i18n.T(rd.Lang(), "Not labelled: {reason}.", "reason", err.Error()), true)
 	} else {
 		w.Header().Add("HX-Trigger", "vm-mail-changed")
 	}
 	card, ok := a.vayuReaderCard(rd, folder, id, readerView{Pane: true, Peek: true, Home: a.calendarHome(r), Places: a.holderPlaces(r)})
 	if !ok {
-		card = vayuReadpaneEmpty("Message not available.")
+		card = vayuReadpaneEmpty(i18n.T(rd.Lang(), "Message not available."))
 	}
 	labels, _ := a.vayuMail.Labels(rd)
-	writeOSHTML(w, r, card+mailLabelsGroup(rd.Key(), labels, true))
+	writeOSHTML(w, r, card+mailLabelsGroup(rd.Lang(), rd.Key(), labels, true))
 }
 
 // storedMessageID is the Message-ID of the message id in folder, read from
@@ -146,15 +147,15 @@ func (a *App) storedMessageID(rd vmail.Reader, folder, id string) (string, error
 // selLabelMenu is the selection panel's Label menu: every label in use, and
 // a field for a new one, each put on every selected message through the
 // list's own action.
-func selLabelMenu(all []string, inc string) string {
+func selLabelMenu(lang string, all []string, inc string) string {
 	var b strings.Builder
-	b.WriteString(`<details class="sa-pop mx-selpanel__menu"><summary class="btn mx-selpanel__act">` + saIcon("tag") + `Label…</summary><div class="sa-pop__panel sa-menu mx-labelmenu" role="menu">`)
+	b.WriteString(`<details class="sa-pop mx-selpanel__menu"><summary class="btn mx-selpanel__act">` + saIcon("tag") + esc(i18n.T(lang, "Label…")) + `</summary><div class="sa-pop__panel sa-menu mx-labelmenu" role="menu">`)
 	for _, l := range all {
 		b.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" hx-post="/os/vayumail/inbox/action"` + hxVals("action", "label", "label", l, "on", "1") + inc + `>` +
 			saIcon("tag") + `<span class="sa-menu__text">` + esc(l) + `</span></button>`)
 	}
 	b.WriteString(`<form class="mx-labelmenu__new" hx-post="/os/vayumail/inbox/action"` + inc + `><input type="hidden" name="action" value="label"><input type="hidden" name="on" value="1">` +
-		`<input class="input input--sm" name="label" required maxlength="30" placeholder="New label" aria-label="New label" autocomplete="off"><button class="btn btn--sm" type="submit">Add</button></form>`)
+		`<input class="input input--sm" name="label" required maxlength="30" placeholder="` + esc(i18n.T(lang, "New label")) + `" aria-label="` + esc(i18n.T(lang, "New label")) + `" autocomplete="off"><button class="btn btn--sm" type="submit">` + esc(i18n.T(lang, "Add")) + `</button></form>`)
 	b.WriteString(`</div></details>`)
 	return b.String()
 }

@@ -7,6 +7,7 @@ package main
 // results, and the sidebar group that runs them again.
 
 import (
+	"github.com/johalputt/vayupress/internal/i18n"
 	"net/http"
 	"strings"
 )
@@ -16,7 +17,7 @@ import (
 // its own element so saving or forgetting swaps it alone, out of band: the
 // sidebar around it keeps the folder and view it shows, which the request
 // that saves does not know.
-func mailSearchesGroup(user string, searches []string, oob bool) string {
+func mailSearchesGroup(lang, user string, searches []string, oob bool) string {
 	var b strings.Builder
 	b.WriteString(`<div id="vm-searches"`)
 	if oob {
@@ -24,7 +25,7 @@ func mailSearchesGroup(user string, searches []string, oob bool) string {
 	}
 	b.WriteString(`>`)
 	if len(searches) > 0 {
-		b.WriteString(`<div class="sa-appside__group">Searches</div>`)
+		b.WriteString(`<div class="sa-appside__group">` + esc(i18n.T(lang, "Searches")) + `</div>`)
 		for _, q := range searches {
 			b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/inbox?user=` + qparam(user) + `&amp;search=` + qparam(q) + `">` +
 				saIcon("search") + `<span class="sa-appside__label">` + esc(q) + `</span></a>`)
@@ -43,8 +44,9 @@ func (a *App) handleVayuOSSearchesAction(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	rd := a.mailReader(r, sanitizeMailUser(strings.TrimSpace(r.PostFormValue("user"))))
+	lang := rd.Lang()
 	if rd.Key() == "" {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "No mailbox you can change was named.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(lang, "No mailbox you can change was named."), "")
 		return
 	}
 	// The button posts the search form's own fields, so they are read by the
@@ -63,8 +65,8 @@ func (a *App) handleVayuOSSearchesAction(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err != nil {
-		setMailSaid(w, "Not done: "+err.Error()+".", true)
+		setMailSaid(w, i18n.T(lang, "Not done: {reason}.", "reason", err.Error()), true)
 	}
 	searches, _ := a.vayuMail.SavedSearches(rd)
-	writeOSFragment(w, a.vayuSearchResults(rd, sf)+mailSearchesGroup(rd.Key(), searches, true))
+	writeOSFragment(w, a.vayuSearchResults(rd, sf)+mailSearchesGroup(lang, rd.Key(), searches, true))
 }

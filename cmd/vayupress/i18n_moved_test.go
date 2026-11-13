@@ -23,6 +23,12 @@ import (
 var i18nMoved = map[string][]string{
 	"handlers_mail_recovery_pages.go": nil,
 	"admin_os_ui.go":                  {"osLoginPage"},
+	"vayuos.go":                       {"mailFolderNav", "mailFolderLabel", "mailViewLabel"},
+	"vayuos_mail_blocked.go":          nil,
+	"vayuos_mail_folders.go":          nil,
+	"vayuos_mail_keys.go":             nil,
+	"vayuos_mail_labels.go":           nil,
+	"vayuos_mail_searches.go":         nil,
 }
 
 // i18nExempt are the calls whose words are for the operator or the code, not
@@ -32,9 +38,18 @@ var i18nExempt = map[string]bool{
 	"Errorf": true, "New": true, "Sprintf": true, "T": true,
 }
 
-// i18nNames are the product's own names, which every language writes as they
-// are.
-var i18nNames = []string{"VayuPress", "VayuMail", "VayuOS"}
+// i18nNames are what every language writes as it is: the product's own names,
+// and the armour line OpenPGP fixes, which a key pasted in any language begins
+// with.
+var i18nNames = []string{"VayuPress", "VayuMail", "VayuOS", "-----BEGIN PGP PUBLIC KEY BLOCK-----"}
+
+// i18nWithoutNames is text with the names taken out.
+func i18nWithoutNames(text string) string {
+	for _, name := range i18nNames {
+		text = strings.ReplaceAll(text, name, "")
+	}
+	return text
+}
 
 var (
 	i18nReadAttr = regexp.MustCompile(`(?:title|placeholder|aria-label|alt|hx-confirm|data-confirm)="([^"]*)`)
@@ -53,7 +68,7 @@ func i18nEnglishIn(lit string) string {
 	// tooltip, a label for a screen reader. A value may run past the end of
 	// the literal, cut off by a value spliced in.
 	for _, m := range i18nReadAttr.FindAllStringSubmatch(lit, -1) {
-		if i18nPhrase.MatchString(m[1]) {
+		if i18nPhrase.MatchString(i18nWithoutNames(m[1])) {
 			return m[1]
 		}
 	}
@@ -72,10 +87,7 @@ func i18nEnglishIn(lit string) string {
 		if i, j := strings.LastIndex(lit, "<"), strings.LastIndex(lit, ">"); i >= 0 && i > j {
 			lit = lit[:i]
 		}
-		text := strings.TrimSpace(i18nTag.ReplaceAllString(lit, " "))
-		for _, name := range i18nNames {
-			text = strings.ReplaceAll(text, name, "")
-		}
+		text := i18nWithoutNames(strings.TrimSpace(i18nTag.ReplaceAllString(lit, " ")))
 		if i18nWord.MatchString(text) {
 			return text
 		}
@@ -172,6 +184,8 @@ func TestTheEnglishLintSeesEnglish(t *testing.T) {
 		{`? Mail to them is then sent readable, unless they publish a key.">`, true},
 		{`<input placeholder="you@example.com" aria-label="`, false},
 		{`<input placeholder="Your password">`, true},
+		{`<textarea placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----" required>`, false},
+		{`<textarea placeholder="Paste your VayuMail key">`, true},
 		{`width:12px">`, false},
 		{`. Their mail will be refused, or put straight in Trash.`, true},
 		{`.`, false},

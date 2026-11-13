@@ -29,6 +29,7 @@ import (
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/ui"
@@ -888,7 +889,13 @@ func firstRuneUpper(s string) string {
 // because a non-admin has exactly one mailbox they may read and the parameter
 // has nothing to contribute to finding it.
 func (a *App) mailReader(r *http.Request, requested string) vmail.Reader {
-	return mailReaderFor(a.isAdminRequest(r), a.ownMailboxKey(r), requested, mailActorFor(r))
+	rd := mailReaderFor(a.isAdminRequest(r), a.ownMailboxKey(r), requested, mailActorFor(r))
+	// English leaves the Reader as it was made, so one compares equal to a
+	// Reader made anywhere else for the same mailbox.
+	if lang := i18n.Lang(r.Context()); lang != "en" {
+		rd = rd.InLang(lang)
+	}
+	return rd
 }
 
 // mailReaderFor is the decision itself, free of the request so it can be
