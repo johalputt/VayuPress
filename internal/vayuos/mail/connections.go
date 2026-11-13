@@ -171,6 +171,33 @@ func (e *Engine) Disconnect(rd Reader, keyID string) error {
 	return nil
 }
 
+// DisconnectMailbox ends every connection to the mailbox at address and
+// gives the keys they were minted for, for the caller to revoke. A password
+// reset calls it: a tool connected by whoever was in the mailbox before is
+// one more way in, and the reset ends every way in.
+func (e *Engine) DisconnectMailbox(address string) ([]string, error) {
+	if e.accounts == nil {
+		return nil, nil
+	}
+	if err := e.accounts.ensureConnectionTables(); err != nil {
+		return nil, err
+	}
+	mbox := normEmail(address)
+	ctx := context.Background()
+	cs, err := e.connections(ctx, `SELECT key_id,mailbox,client,scopes,created,last_used FROM vayumail_connections WHERE mailbox=?`, mbox)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := e.accounts.db.ExecContext(ctx, `DELETE FROM vayumail_connections WHERE mailbox=?`, mbox); err != nil {
+		return nil, err
+	}
+	keys := make([]string, 0, len(cs))
+	for _, c := range cs {
+		keys = append(keys, c.KeyID)
+	}
+	return keys, nil
+}
+
 func (e *Engine) connections(ctx context.Context, query string, args ...any) ([]Connection, error) {
 	rows, err := e.accounts.db.QueryContext(ctx, query, args...)
 	if err != nil {

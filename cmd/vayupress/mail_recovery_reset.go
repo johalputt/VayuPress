@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/auth"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/email"
@@ -54,6 +55,7 @@ const (
 type mailResetOutcome struct {
 	AppPasswordsRevoked int
 	SessionsRevoked     int
+	ToolsDisconnected   int
 	QueueHeld           int
 	NotifiedContact     string
 	// Problems lists steps that failed. A reset is never abandoned half-done —
@@ -77,13 +79,18 @@ type mailResetDeps struct {
 	// member session, and omitted the /os/login mailbox fallback entirely; this
 	// is that fourth credential finally getting its revocation step.
 	RevokeConsoleSessions func(ctx context.Context, email string) (int, error)
-	InvalidateTokens      func(ctx context.Context, email string)
-	HoldQueue             func(ctx context.Context, email string) (int, error)
-	RecoveryContact       func(ctx context.Context, email string) string
-	Notify                func(ctx context.Context, to, subject, body string) error
-	FileToMailbox         func(ctx context.Context, email, subject, body string) error
-	Audit                 func(action, actor, target, detail string)
-	Now                   func() time.Time
+	// RevokeConnections ends every AI tool connected to the mailbox over
+	// VayuMCP and revokes the keys minted for them. A connection outlives
+	// every sign-in by design (it renews itself), so without this step a tool
+	// connected by whoever had the mailbox kept reading it after the reset.
+	RevokeConnections func(ctx context.Context, email string) (int, error)
+	InvalidateTokens  func(ctx context.Context, email string)
+	HoldQueue         func(ctx context.Context, email string) (int, error)
+	RecoveryContact   func(ctx context.Context, email string) string
+	Notify            func(ctx context.Context, to, subject, body string) error
+	FileToMailbox     func(ctx context.Context, email, subject, body string) error
+	Audit             func(action, actor, target, detail string)
+	Now               func() time.Time
 	// handedOver reports whether this mailbox has been handed to its owner
 	// (ADR-0152 D4). Nil in tests and in installs where VayuMail is absent, which
 	// reads as "not handed over" — the historic behaviour.
@@ -208,7 +215,15 @@ func applyMailPasswordReset(ctx context.Context, d mailResetDeps, email, newPass
 			out.SessionsRevoked += n
 		}
 	}
-	// 3c. A private mailbox's key held open by one of those sign-ins.
+	// 3c. The AI tools connected to the mailbox, and their keys.
+	if d.RevokeConnections != nil {
+		if n, err := d.RevokeConnections(ctx, email); err != nil {
+			fail("disconnect AI tools", err)
+		} else {
+			out.ToolsDisconnected = n
+		}
+	}
+	// 3d. A private mailbox's key held open by one of those sign-ins.
 	if d.CloseHeldKey != nil {
 		d.CloseHeldKey(email)
 	}
@@ -249,8 +264,8 @@ func applyMailPasswordReset(ctx context.Context, d mailResetDeps, email, newPass
 	// 7. Audit last, with the outcome, so the record says what was destroyed and
 	//    not merely that something happened.
 	if d.Audit != nil {
-		detail := fmt.Sprintf("reason=%s app_passwords_revoked=%d sessions_revoked=%d queue_held=%d",
-			reason, out.AppPasswordsRevoked, out.SessionsRevoked, out.QueueHeld)
+		detail := fmt.Sprintf("reason=%s app_passwords_revoked=%d sessions_revoked=%d tools_disconnected=%d queue_held=%d",
+			reason, out.AppPasswordsRevoked, out.SessionsRevoked, out.ToolsDisconnected, out.QueueHeld)
 		if len(out.Problems) > 0 {
 			detail += " problems=" + strings.Join(out.Problems, "; ")
 		}
@@ -287,6 +302,9 @@ func mailResetNotice(email string, reason mailResetReason, actor string,
 	fmt.Fprintf(&b, "  - %d connected app%s or device%s signed out\n",
 		out.AppPasswordsRevoked, plural(out.AppPasswordsRevoked), plural(out.AppPasswordsRevoked))
 	fmt.Fprintf(&b, "  - %d web session%s ended\n", out.SessionsRevoked, plural(out.SessionsRevoked))
+	if out.ToolsDisconnected > 0 {
+		fmt.Fprintf(&b, "  - %d AI tool%s disconnected\n", out.ToolsDisconnected, plural(out.ToolsDisconnected))
+	}
 	if out.QueueHeld > 0 {
 		fmt.Fprintf(&b, "  - %d message%s waiting to be sent %s been held for review\n",
 			out.QueueHeld, plural(out.QueueHeld), map[bool]string{true: "has", false: "have"}[out.QueueHeld == 1])
@@ -331,6 +349,20 @@ func (a *App) mailResetDepsFor() (mailResetDeps, bool) {
 		d.RevokeConsoleSessions = func(ctx context.Context, email string) (int, error) {
 			return a.sessions.DestroyForUser(ctx, "vmail:"+strings.ToLower(strings.TrimSpace(email)))
 		}
+	}
+	d.RevokeConnections = func(ctx context.Context, email string) (int, error) {
+		keys, err := a.vayuMail.DisconnectMailbox(email)
+		if err != nil {
+			return 0, err
+		}
+		if a.apiKeys != nil {
+			for _, k := range keys {
+				if rerr := a.apiKeys.Revoke(ctx, k); rerr != nil && !errors.Is(rerr, apikeys.ErrNotFound) {
+					err = rerr
+				}
+			}
+		}
+		return len(keys), err
 	}
 	d.HoldQueue = a.vayuMail.HoldOutboundFor
 	d.Notify = a.sendRecoveryNotice
