@@ -46,6 +46,8 @@ var i18nMoved = map[string][]string{
 	"vayuos_mail_signin.go":      nil,
 	"vayuos_mail_smime.go":       nil,
 	"vayuos_mail_private.go":     nil,
+	"sessions_mine.go":           {"securityChecklist", "sessionsBlock"},
+	"passkey.go":                 {"passkeysBlock"},
 	"vayuos_mail_list.go":        nil,
 	"vayuos_mail_scheduled.go":   nil,
 	"vayuos_mail_unsubscribe.go": nil,

@@ -6,6 +6,7 @@ package main
 // opened from, signing one out, and signing out everywhere else.
 
 import (
+	"github.com/johalputt/vayupress/internal/i18n"
 	"net/http"
 	"strings"
 	"time"
@@ -66,25 +67,26 @@ func (a *App) sessionsBlock(r *http.Request) string {
 		return ""
 	}
 	this := auth.SessionID(c.Value)
+	lang := i18n.Lang(r.Context())
 	var b strings.Builder
 	b.WriteString(`<div id="vm-sessions"><ul class="mx-sessions">`)
 	for _, s := range list {
 		device := s.Device
 		if device == "" {
-			device = "A browser"
+			device = i18n.T(lang, "A browser")
 		}
-		b.WriteString(`<li><span class="mx-sessions__what"><span class="mx-sessions__device">` + esc(device) + `</span><span class="mx-sessions__when">Signed in ` +
-			esc(config.FormatSite(s.Created, "2 January 2006, 15:04")) + `</span></span>`)
+		b.WriteString(`<li><span class="mx-sessions__what"><span class="mx-sessions__device">` + esc(device) + `</span><span class="mx-sessions__when">` +
+			esc(i18n.T(lang, "Signed in {when}", "when", i18n.Date(lang, config.InSite(s.Created), i18n.DayMonthYearShortAt))) + `</span></span>`)
 		if s.ID == this {
-			b.WriteString(`<span class="mx-sessions__this">This one</span>`)
+			b.WriteString(`<span class="mx-sessions__this">` + esc(i18n.T(lang, "This one")) + `</span>`)
 		} else {
-			b.WriteString(`<button type="button" class="btn btn--sm" hx-post="/os/api/sessions/end"` + hxVals("id", s.ID) + ` hx-target="#vm-sessions" hx-swap="outerHTML">Sign out</button>`)
+			b.WriteString(`<button type="button" class="btn btn--sm" hx-post="/os/api/sessions/end"` + hxVals("id", s.ID) + ` hx-target="#vm-sessions" hx-swap="outerHTML">` + esc(i18n.T(lang, "Sign out")) + `</button>`)
 		}
 		b.WriteString(`</li>`)
 	}
 	b.WriteString(`</ul>`)
 	if len(list) > 1 {
-		b.WriteString(`<button type="button" class="btn btn--sm" hx-post="/os/api/sessions/end-others" hx-target="#vm-sessions" hx-swap="outerHTML" hx-confirm="Sign out of every other session?">Sign out everywhere else</button>`)
+		b.WriteString(`<button type="button" class="btn btn--sm" hx-post="/os/api/sessions/end-others" hx-target="#vm-sessions" hx-swap="outerHTML" hx-confirm="` + esc(i18n.T(lang, "Sign out of every other session?")) + `">` + esc(i18n.T(lang, "Sign out everywhere else")) + `</button>`)
 	}
 	b.WriteString(`</div>`)
 	return b.String()
@@ -124,6 +126,7 @@ func (a *App) endSessions(w http.ResponseWriter, r *http.Request, others bool) {
 // what is not and where to do it, and how many of the four are done.
 func (a *App) securityChecklist(r *http.Request, ac vmail.Account) string {
 	ctx := r.Context()
+	lang := i18n.Lang(ctx)
 	passkeys := 0
 	if principal, _, ok := passkeyPrincipal(r); ok && a.passkeys != nil {
 		list, _ := a.passkeys.List(ctx, principal)
@@ -140,10 +143,10 @@ func (a *App) securityChecklist(r *http.Request, ac vmail.Account) string {
 		done      bool
 		said, fix string
 	}{
-		{ac.TOTPEnabled, "Two-factor is on", `Turn on two-factor on <a href="/members/account">your account on the site</a>`},
-		{passkeys > 0, "You have a passkey", `Add a passkey under Passkeys below`},
-		{recovery, "You have a way back in", `Add a recovery address or codes on <a href="/os/vayumail/connect">Connect a device</a>`},
-		{stale == 0, "No forgotten app passwords", `Remove the app passwords nothing uses on <a href="/os/vayumail/connect">Connect a device</a>`},
+		{ac.TOTPEnabled, esc(i18n.T(lang, "Two-factor is on")), escLinked(i18n.T(lang, "Turn on two-factor on {link}", "link", linkMark), "/members/account", i18n.T(lang, "your account on the site"))},
+		{passkeys > 0, esc(i18n.T(lang, "You have a passkey")), esc(i18n.T(lang, "Add a passkey under Passkeys below"))},
+		{recovery, esc(i18n.T(lang, "You have a way back in")), escLinked(i18n.T(lang, "Add a recovery address or codes on {link}", "link", linkMark), "/os/vayumail/connect", i18n.T(lang, "Connect a device"))},
+		{stale == 0, esc(i18n.T(lang, "No forgotten app passwords")), escLinked(i18n.T(lang, "Remove the app passwords nothing uses on {link}", "link", linkMark), "/os/vayumail/connect", i18n.T(lang, "Connect a device"))},
 	}
 	done := 0
 	var rows strings.Builder
@@ -155,7 +158,7 @@ func (a *App) securityChecklist(r *http.Request, ac vmail.Account) string {
 			rows.WriteString(`<li>` + saIcon("warn") + `<span>` + it.fix + `</span></li>`)
 		}
 	}
-	return `<p class="mx-score"><strong>` + itoaSafe(done) + ` of ` + itoaSafe(len(items)) + `</strong> done</p><ul class="mx-checklist">` + rows.String() + `</ul>`
+	return `<p class="mx-score">` + escFill(i18n.T(lang, "{count} done", "count", htmlMark(0)), `<strong>`+esc(i18n.T(lang, "{n} of {total}", "n", done, "total", len(items)))+`</strong>`) + `</p><ul class="mx-checklist">` + rows.String() + `</ul>`
 }
 
 // appPasswordForgotten is an app password nothing seems to use: never used

@@ -9,6 +9,7 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"html"
 	"net/http"
 	"net/url"
@@ -292,32 +293,33 @@ func (a *App) passkeysBlock(r *http.Request) string {
 		return ""
 	}
 	list, _ := a.passkeys.List(r.Context(), principal)
+	lang := i18n.Lang(r.Context())
 	var b strings.Builder
-	b.WriteString(`<div class="vm-acct__sub" data-passkeys><span class="field-label">Passkeys</span>`)
-	b.WriteString(`<span class="text-sm">A passkey signs you in with this device's lock (a fingerprint, a face or a PIN) instead of a password and a code. It cannot be guessed or phished, and it works while sign-ins to your address are paused.</span>`)
+	b.WriteString(`<div class="vm-acct__sub" data-passkeys><span class="field-label">` + esc(i18n.T(lang, "Passkeys")) + `</span>`)
+	b.WriteString(`<span class="text-sm">` + esc(i18n.T(lang, "A passkey signs you in with this device's lock (a fingerprint, a face or a PIN) instead of a password and a code. It cannot be guessed or phished, and it works while sign-ins to your address are paused.")) + `</span>`)
 	if len(list) > 0 {
 		for _, e := range list {
-			used := "never used"
+			added := i18n.Date(lang, config.InSite(e.Created), i18n.DayMonthYearShort)
+			used := i18n.T(lang, "added {date}, never used", "date", added)
 			if !e.LastUsed.IsZero() {
-				used = "last used " + config.FormatSite(e.LastUsed, "2 Jan 2006")
+				used = i18n.T(lang, "added {date}, last used {when}", "date", added, "when", i18n.Date(lang, config.InSite(e.LastUsed), i18n.DayMonthYearShort))
 			}
-			b.WriteString(`<div class="vm-row"><span>` + html.EscapeString(e.Name) + `</span><span class="text-xs muted">added ` +
-				html.EscapeString(config.FormatSite(e.Created, "2 Jan 2006")) + `, ` + used + `</span>` +
+			b.WriteString(`<div class="vm-row"><span>` + html.EscapeString(e.Name) + `</span><span class="text-xs muted">` + esc(used) + `</span>` +
 				`<button type="button" class="btn btn--ghost btn--sm" hx-post="/os/api/passkeys/remove?id=` + strconv.FormatInt(e.ID, 10) +
-				`" hx-swap="none" hx-confirm="Remove this passkey? It will no longer sign you in.">Remove</button></div>`)
+				`" hx-swap="none" hx-confirm="` + esc(i18n.T(lang, "Remove this passkey? It will no longer sign you in.")) + `">` + esc(i18n.T(lang, "Remove")) + `</button></div>`)
 		}
 	}
 	switch {
 	case a.passkeys.Only(r.Context(), principal):
-		b.WriteString(`<div class="vm-row"><span class="text-sm"><strong>Your password is off.</strong> You sign in with a passkey only, so a stolen or guessed password opens nothing.</span>` +
-			`<button type="button" class="btn btn--ghost btn--sm" hx-post="/os/api/passkeys/only?on=0" hx-swap="none">Turn the password back on</button></div>`)
+		b.WriteString(`<div class="vm-row"><span class="text-sm"><strong>` + esc(i18n.T(lang, "Your password is off.")) + `</strong> ` + esc(i18n.T(lang, "You sign in with a passkey only, so a stolen or guessed password opens nothing.")) + `</span>` +
+			`<button type="button" class="btn btn--ghost btn--sm" hx-post="/os/api/passkeys/only?on=0" hx-swap="none">` + esc(i18n.T(lang, "Turn the password back on")) + `</button></div>`)
 	case len(list) >= passkey.OnlyNeeds:
-		b.WriteString(`<div class="vm-row"><span class="text-sm">With a spare passkey you can turn your password off, so only a passkey signs you in. Mail apps keep their app passwords.</span>` +
-			`<button type="button" class="btn btn--sm" hx-post="/os/api/passkeys/only?on=1" hx-swap="none" hx-confirm="Turn your password off? Only your passkeys will sign you in. Removing passkeys below two turns it back on.">Sign in by passkey only</button></div>`)
+		b.WriteString(`<div class="vm-row"><span class="text-sm">` + esc(i18n.T(lang, "With a spare passkey you can turn your password off, so only a passkey signs you in. Mail apps keep their app passwords.")) + `</span>` +
+			`<button type="button" class="btn btn--sm" hx-post="/os/api/passkeys/only?on=1" hx-swap="none" hx-confirm="` + esc(i18n.T(lang, "Turn your password off? Only your passkeys will sign you in. Removing passkeys below two turns it back on.")) + `">` + esc(i18n.T(lang, "Sign in by passkey only")) + `</button></div>`)
 	case len(list) == 1:
-		b.WriteString(`<p class="text-xs muted">Add a second passkey, on another device, and you can turn your password off.</p>`)
+		b.WriteString(`<p class="text-xs muted">` + esc(i18n.T(lang, "Add a second passkey, on another device, and you can turn your password off.")) + `</p>`)
 	}
-	b.WriteString(`<div class="vm-row"><input class="input input--sm" data-passkey-name placeholder="This device" aria-label="Name for the passkey" maxlength="64">` +
-		`<button type="button" class="btn btn--sm" data-passkey-add>Add a passkey</button><span class="text-xs muted" data-passkey-say role="status"></span></div></div>`)
+	b.WriteString(`<div class="vm-row"><input class="input input--sm" data-passkey-name placeholder="` + esc(i18n.T(lang, "This device")) + `" aria-label="` + esc(i18n.T(lang, "Name for the passkey")) + `" maxlength="64">` +
+		`<button type="button" class="btn btn--sm" data-passkey-add>` + esc(i18n.T(lang, "Add a passkey")) + `</button><span class="text-xs muted" data-passkey-say role="status"></span></div></div>`)
 	return b.String()
 }
