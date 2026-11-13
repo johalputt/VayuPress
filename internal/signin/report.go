@@ -47,7 +47,7 @@ func (s *Store) Report(ctx context.Context, since time.Time, account string, lim
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT ip_fp) FROM signin_attempts WHERE stage = 'code' AND `+base, args...).Scan(&r.PasswordKnown); err != nil {
 		return r, err
 	}
-	src, err := s.db.QueryContext(ctx, `SELECT ip_fp, MAX(ip_masked), MAX(country), SUM(n), COUNT(DISTINCT account), GROUP_CONCAT(DISTINCT door), MAX(minute), MAX(stage = 'code')
+	src, err := s.db.QueryContext(ctx, `SELECT ip_fp, MAX(net_fp), MAX(ip_masked), MAX(country), SUM(n), COUNT(DISTINCT account), GROUP_CONCAT(DISTINCT door), MIN(minute), MAX(minute), MAX(stage = 'code')
 		FROM signin_attempts WHERE `+where+` GROUP BY ip_fp ORDER BY SUM(n) DESC, MAX(minute) DESC LIMIT ?`, append(args, limit)...)
 	if err != nil {
 		return r, err
@@ -55,19 +55,50 @@ func (s *Store) Report(ctx context.Context, since time.Time, account string, lim
 	for src.Next() {
 		var x Source
 		var doors string
-		var last int64
-		if err := src.Scan(&x.FP, &x.Masked, &x.Country, &x.Failures, &x.Accounts, &doors, &last, &x.Known); err != nil {
+		var first, last int64
+		if err := src.Scan(&x.FP, &x.net, &x.Masked, &x.Country, &x.Failures, &x.Accounts, &doors, &first, &last, &x.Known); err != nil {
 			src.Close()
 			return r, err
 		}
 		x.Doors = strings.Split(doors, ",")
 		sort.Strings(x.Doors)
-		x.Last = time.Unix(last*60, 0)
+		x.First, x.Last = time.Unix(first*60, 0), time.Unix(last*60, 0)
+		x.Private = maskedPrivate(x.Masked)
 		r.Top = append(r.Top, x)
 	}
 	src.Close()
 	if err := src.Err(); err != nil {
 		return r, err
+	}
+	// The accounts each listed source tried, in one read for all of them.
+	if len(r.Top) > 0 {
+		at := map[string]int{}
+		marks := make([]string, len(r.Top))
+		targs := append([]any{}, args...)
+		for i, x := range r.Top {
+			at[x.FP] = i
+			marks[i] = "?"
+			targs = append(targs, x.FP)
+		}
+		rows, err := s.db.QueryContext(ctx, `SELECT ip_fp, account FROM signin_attempts WHERE `+where+` AND ip_fp IN (`+strings.Join(marks, ",")+`)
+			GROUP BY ip_fp, account ORDER BY ip_fp, SUM(n) DESC, account`, targs...)
+		if err != nil {
+			return r, err
+		}
+		for rows.Next() {
+			var fp, acct string
+			if err := rows.Scan(&fp, &acct); err != nil {
+				rows.Close()
+				return r, err
+			}
+			if i, ok := at[fp]; ok {
+				r.Top[i].Tried = append(r.Top[i].Tried, acct)
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return r, err
+		}
 	}
 	s.decorate(r.Top, account)
 	for _, q := range []struct {

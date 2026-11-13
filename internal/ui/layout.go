@@ -35,6 +35,21 @@ func Section(title, hint string, body HTML) HTML {
 		string(Text(title)) + `</h2>` + h + `</div>` + string(body) + `</section>`)
 }
 
+// Fold is a Section a person can close: its heading is the summary, with a
+// chevron that turns as it opens, and nothing but the browser opens it. open
+// draws it open; a long list that is rarely read starts closed.
+func Fold(title, hint string, open bool, body HTML) HTML {
+	o, h := "", ""
+	if open {
+		o = " open"
+	}
+	if hint != "" {
+		h = `<span class="section-head__hint">` + string(Text(hint)) + `</span>`
+	}
+	return HTML(`<details class="fold"` + o + `><summary class="section-head fold__head">` + string(Icon("chev-r")) +
+		`<h2 class="section-head__title">` + string(Text(title)) + `</h2>` + h + `</summary>` + string(body) + `</details>`)
+}
+
 // Row is one setting: what it is, what it does, and its control on the right.
 // Changed marks a row whose value differs from what is saved.
 type Row struct {

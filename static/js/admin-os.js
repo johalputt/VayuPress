@@ -119,10 +119,25 @@ function toast(msg, kind) {
   el.appendChild(text);
   container.appendChild(el);
 
-  setTimeout(function () {
+  function leave() {
     el.classList.add('leaving');
     setTimeout(function () { el.remove(); }, 200);
-  }, 3800);
+  }
+  // An error stays until it is put away: one that left after four seconds
+  // was gone before it could be read, and the reason in it is what the
+  // operator acts on. The rest are confirmations and go by themselves.
+  if (kind === 'error') {
+    el.setAttribute('role', 'alert');
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'toast__close';
+    close.setAttribute('aria-label', 'Dismiss');
+    close.appendChild(window.vpIcon('x'));
+    close.addEventListener('click', leave);
+    el.appendChild(close);
+  } else {
+    setTimeout(leave, 3800);
+  }
   return el; // callers may attach a click handler (e.g. the new-mail notifier)
 }
 window.vpToast = toast;

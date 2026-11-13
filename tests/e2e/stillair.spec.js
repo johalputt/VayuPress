@@ -1511,7 +1511,15 @@ test("a refused write is announced, not silent", async ({ page }) => {
   await expect(live).toBeAttached();
   await page.evaluate(() => window.htmx.ajax("POST", "/os/api/no-such-write", { target: "body", swap: "none" }));
   await expect(live).toHaveText(/did not go through \(\d{3}\)/);
-  await expect(page.locator(".toast", { hasText: "did not go through" })).toBeVisible();
+  const toast = page.locator(".toast", { hasText: "did not go through" });
+  await expect(toast).toBeVisible();
+  // Said once: the shell's own "try again" stands down for a write.
+  await expect(page.locator(".toast--error")).toHaveCount(1);
+  // An error stays until it is put away; a confirmation leaves after 3.8 s.
+  await page.waitForTimeout(4500);
+  await expect(toast).toBeVisible();
+  await toast.locator(".toast__close").click();
+  await expect(toast).toHaveCount(0);
 });
 
 // An app that cannot run yet answers with one page that says what it is, what

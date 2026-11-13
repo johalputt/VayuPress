@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/johalputt/vayupress/internal/signin"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // signinApp is an App with a migrated database and the record of attempts,
@@ -57,7 +58,7 @@ func postSigninAction(a *App, h func(*App, http.ResponseWriter, *http.Request), 
 // set, and never writes a whole address.
 func TestTheSigninPageShowsSourcesMasked(t *testing.T) {
 	a, _ := signinApp(t)
-	page := a.signinsBody(context.Background(), 7, "", "")
+	page := a.signinsBody(context.Background(), 7, "", "", "")
 	for _, want := range []string{"198.51.x.x", "3 attempts on 3 accounts through IMAP", "Blocked automatically", "203.0.x.x", "Knew a password", "4 failed sign-ins"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the page has no %q", want)
@@ -67,6 +68,98 @@ func TestTheSigninPageShowsSourcesMasked(t *testing.T) {
 		if strings.Contains(page, leak) {
 			t.Errorf("the page writes the whole address %s", leak)
 		}
+	}
+}
+
+// signinRow is the sources table's row for masked, from its opening tag.
+func signinRow(t *testing.T, page, masked string) string {
+	t.Helper()
+	for _, row := range strings.Split(page, "<tr>") {
+		if strings.Contains(row, "<strong>"+masked) {
+			return row
+		}
+	}
+	t.Fatalf("no row for %s", masked)
+	return ""
+}
+
+// Each source names the accounts it tried, most tried first, up to three and
+// a count of the rest, and when it was seen.
+func TestTheSigninPageNamesTheAccountsASourceTried(t *testing.T) {
+	a, st := signinApp(t)
+	for _, acct := range []string{"d@example.com", "d@example.com"} {
+		st.Record(signin.Attempt{Account: acct, Door: signin.DoorIMAP, Stage: signin.StagePassword, IP: "198.51.100.23:993"})
+	}
+	if err := st.Flush(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	row := signinRow(t, a.signinsBody(context.Background(), 7, "", "", ""), "198.51.x.x")
+	if !strings.Contains(row, "Tried d@example.com, a@example.com, b@example.com and <a ") || !strings.Contains(row, ">1 more</a>") {
+		t.Errorf("the row does not name d (tried twice) first, then a and b, and one more:\n%s", row)
+	}
+	if strings.Contains(row, "c@example.com") {
+		t.Error("the row names a fourth account; the rest are counted")
+	}
+	if !strings.Contains(row, "Seen ") && !strings.Contains(row, "From ") {
+		t.Errorf("the row does not say when the source was seen:\n%s", row)
+	}
+}
+
+// The Block menu offers only what would be set: from the source's own
+// address nothing of its address or network, from its network nothing of
+// the network, and for an address on the install's own network nothing for
+// the whole site; each time it says why.
+func TestTheSigninMenuLeavesOutABlockThatWouldBeRefused(t *testing.T) {
+	a, st := signinApp(t)
+	st.Record(signin.Attempt{Account: "a@example.com", Door: signin.DoorWeb, Stage: signin.StagePassword, IP: "10.0.0.5"})
+	if err := st.Flush(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	all := []string{`value="1"`, `value="30"`, `value="0"`, `value="net"`, `value="site"`, `value="site-net"`}
+	for _, x := range []struct {
+		self, masked, why string
+		offered           []string
+	}{
+		{"192.0.2.1", "198.51.x.x", "", all},
+		{"198.51.100.23", "198.51.x.x", "This is your own address", nil},
+		{"198.51.100.99", "198.51.x.x", "Its network is yours", []string{`value="1"`, `value="30"`, `value="0"`, `value="site"`}},
+		{"192.0.2.1", "10.0.x.x", "blocked from sign-in only", []string{`value="1"`, `value="30"`, `value="0"`, `value="net"`}},
+	} {
+		row := signinRow(t, a.signinsBody(context.Background(), 7, "", x.self, ""), x.masked)
+		for _, v := range all {
+			want := false
+			for _, o := range x.offered {
+				want = want || o == v
+			}
+			if strings.Contains(row, v) != want {
+				t.Errorf("from %s, %s's menu offers %s: %v, want %v", x.self, x.masked, v, !want, want)
+			}
+		}
+		if x.why != "" && !strings.Contains(row, x.why) {
+			t.Errorf("from %s, %s's menu does not say %q", x.self, x.masked, x.why)
+		}
+		if x.why == "" && strings.Contains(row, "sa-menu__why") {
+			t.Errorf("from %s, %s's menu explains a choice it offers", x.self, x.masked)
+		}
+	}
+}
+
+// The blocks in force are listed open while they are few, and folded once
+// there are more than signinBlocksOpen, so the sources stay near the top.
+func TestTheBlocksInForceFoldWhenThereAreMany(t *testing.T) {
+	a, st := signinApp(t)
+	open := `<details class="fold" open><summary class="section-head fold__head">`
+	if page := a.signinsBody(context.Background(), 7, "", "", ""); !strings.Contains(page, open+string(ui.Icon("chev-r"))+`<h2 class="section-head__title">Blocks in force`) {
+		t.Fatal("one block in force is folded")
+	}
+	for _, c := range []string{"DE", "FR", "VN", "BR", "US"} {
+		if _, err := st.BlockCountry(context.Background(), c, "", 0, "admin", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page := a.signinsBody(context.Background(), 7, "", "", "")
+	if strings.Contains(page, open+string(ui.Icon("chev-r"))+`<h2 class="section-head__title">Blocks in force`) || !strings.Contains(page, `>Blocks in force</h2><span class="section-head__hint">6 now`) {
+		t.Errorf("six blocks in force are not listed folded")
 	}
 }
 
@@ -127,7 +220,7 @@ func TestTheSigninPagesItWasOneOfUs(t *testing.T) {
 	if _, refused := st.Refuse("d@example.com", "198.51.100.23"); refused {
 		t.Error("the source is still blocked")
 	}
-	if !strings.Contains(a.signinsBody(context.Background(), 7, "", ""), "It was us") {
+	if !strings.Contains(a.signinsBody(context.Background(), 7, "", "", ""), "It was us") {
 		t.Error("the page does not mark the source as the install's own")
 	}
 }

@@ -65,6 +65,42 @@ func fail(s *Store, account, ip string) {
 	s.Record(Attempt{Account: account, Door: DoorIMAP, Stage: StagePassword, IP: ip})
 }
 
+// Each source lists the accounts it tried, the one it failed on most first,
+// and the minutes of its first and last failure: what an operator needs to
+// tell a guess at one mailbox from a sweep across them.
+func TestASourceListsTheAccountsItTried(t *testing.T) {
+	s, c := openStore(t)
+	ctx := context.Background()
+	since := c.now()
+	first := since.Truncate(time.Minute)
+	fail(s, "b@x.test", "198.51.100.90")
+	c.add(10 * time.Minute)
+	for _, a := range []string{"c@x.test", "c@x.test", "a@x.test"} {
+		fail(s, a, "198.51.100.90")
+	}
+	fail(s, "d@x.test", "203.0.113.93")
+	if err := s.Flush(ctx); err != nil {
+		t.Fatal(err)
+	}
+	r, err := s.Report(ctx, since, "", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Top) != 2 {
+		t.Fatalf("sources = %+v; want 2", r.Top)
+	}
+	top := r.Top[0]
+	if got := strings.Join(top.Tried, " "); got != "c@x.test a@x.test b@x.test" {
+		t.Errorf("the first source tried %q; want c (twice) first, then a and b by name", got)
+	}
+	if got := strings.Join(r.Top[1].Tried, " "); got != "d@x.test" {
+		t.Errorf("the second source tried %q; want only its own d@x.test", got)
+	}
+	if !top.First.Equal(first) || !top.Last.Equal(first.Add(10*time.Minute)) {
+		t.Errorf("first source seen %v to %v; want %v to %v", top.First, top.Last, first, first.Add(10*time.Minute))
+	}
+}
+
 // The masked form hides the last part of an address and nothing more, and a
 // network's label hides what the address's hides.
 func TestAnAddressIsShownWithItsLastPartHidden(t *testing.T) {
@@ -347,6 +383,51 @@ func TestABlockThatWouldStopItsMakerIsRefused(t *testing.T) {
 	}
 	if err := s.SetFence(ctx, "a@x.test", []string{"DE"}, "198.51.100.61"); !errors.Is(err, ErrSelf) {
 		t.Errorf("a fence leaving you out: %v, want ErrSelf", err)
+	}
+}
+
+// The page asks which of a source's blocks would stop the person looking,
+// so it can leave those out: their own address, their network, their
+// country, each on its own; and it knows an address on the install's own
+// network, which is never blocked from the whole site.
+func TestASourceSaysWhichBlocksWouldStopTheViewer(t *testing.T) {
+	s, c := openStore(t)
+	ctx := context.Background()
+	withCountries(t, map[string]string{"198.51.100.60": "IN", "198.51.100.61": "IN", "192.0.2.62": "IN", "203.0.113.63": "DE"})
+	since := c.now()
+	fail(s, "a@x.test", "198.51.100.60")
+	fail(s, "a@x.test", "198.51.100.60")
+	fail(s, "a@x.test", "10.0.0.5")
+	if err := s.Flush(ctx); err != nil {
+		t.Fatal(err)
+	}
+	r, err := s.Report(ctx, since, "", 10)
+	if err != nil || len(r.Top) != 2 {
+		t.Fatalf("report = %+v, %v; want 2 sources", r.Top, err)
+	}
+	src, private := r.Top[0], r.Top[1]
+	if src.Private || !private.Private {
+		t.Errorf("private: 198.51.x.x %v, 10.0.x.x %v; want false, true", src.Private, private.Private)
+	}
+	for _, x := range []struct {
+		viewer                string
+		address, network, cty bool
+	}{
+		{"198.51.100.60", true, true, true},
+		{"198.51.100.61", false, true, true},
+		{"192.0.2.62", false, false, true},
+		{"203.0.113.63", false, false, false},
+	} {
+		address, network, country := s.WouldStop(src, x.viewer)
+		if address != x.address || network != x.network || country != x.cty {
+			t.Errorf("from %s: address %v, network %v, country %v; want %v, %v, %v", x.viewer, address, network, country, x.address, x.network, x.cty)
+		}
+		// What the page leaves out is what a block would refuse.
+		_, errA := s.BlockSource(ctx, src.FP, false, false, "", time.Hour, "admin", x.viewer)
+		_, errN := s.BlockSource(ctx, src.FP, true, false, "", time.Hour, "admin", x.viewer)
+		if errors.Is(errA, ErrSelf) != address || errors.Is(errN, ErrSelf) != network {
+			t.Errorf("from %s: the blocks were refused %v, %v; the page was told %v, %v", x.viewer, errA, errN, address, network)
+		}
 	}
 }
 

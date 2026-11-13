@@ -65,13 +65,19 @@ func (a *App) handleOSSignins(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	body := a.signinsBody(r.Context(), days, r.URL.Query().Get("source"), saTabsFor(cfg, "shield", signinPage))
+	body := a.signinsBody(r.Context(), days, r.URL.Query().Get("source"), auth.ClientIP(r), saTabsFor(cfg, "shield", signinPage))
 	writeOSHTML(w, r, adminOSLayout(nonce, "Sign-in attempts", "shield", cfg, htmpl.HTML(body)))
 }
 
+// signinBlocksOpen is the most blocks the page shows without being asked: a
+// longer list starts folded, so the sources, which are what the page is
+// read for, are not pushed below it.
+const signinBlocksOpen = 5
+
 // signinsBody is the page for the last days, with source's attempts listed
-// in order when source names one.
-func (a *App) signinsBody(ctx context.Context, days int, source string, tabs ui.HTML) string {
+// in order when source names one; self is the address of the operator
+// reading it, whose own blocks the page does not offer.
+func (a *App) signinsBody(ctx context.Context, days int, source, self string, tabs ui.HTML) string {
 	segs := make([]ui.Segment, 0, len(signinWindows))
 	for _, o := range signinWindows {
 		segs = append(segs, ui.Segment{Label: o.label, Href: signinPage + "?days=" + strconv.Itoa(o.days), Count: -1, On: o.days == days})
@@ -105,7 +111,7 @@ func (a *App) signinsBody(ctx context.Context, days int, source string, tabs ui.
 	}
 	blocks := a.signin.Blocks("")
 	band := ui.Band{Title: "Sign-ins", Hint: "The last " + signinWindowLabel(days), Figures: figs,
-		Aside: ui.Section("Blocks in force", strconv.Itoa(len(blocks))+" now", ui.HTML(signinBlocksList(blocks)))}
+		Aside: ui.Fold("Blocks in force", strconv.Itoa(len(blocks))+" now", len(blocks) <= signinBlocksOpen, ui.HTML(signinBlocksList(blocks)))}
 	if len(figs) == 0 {
 		band.Sentence = "No one failed to sign in."
 	}
@@ -117,14 +123,14 @@ func (a *App) signinsBody(ctx context.Context, days int, source string, tabs ui.
 			ui.HTML(signinAttemptsTable(rows, true))))
 	}
 	sections = append(sections,
-		ui.Section("Sources", "Those that failed most first; an address is shown with its last part hidden", ui.HTML(signinSourcesTable(rep.Top, days))),
+		ui.Section("Sources", "Those that failed most first; an address is shown with its last part hidden", ui.HTML(signinSourcesTable(rep.Top, days, func(x signin.Source) (bool, bool, bool) { return a.signin.WouldStop(x, self) }))),
 		ui.HTML(analyticsCols(
-			string(ui.Section("Accounts most tried", "Failed attempts", ui.HTML(osBarList(signinBars(rep.ByAccount, false), osShareOf(rep.Failures), "No account was tried.")))),
-			string(ui.Section("Doors", "Where the attempts came in", ui.HTML(osBarList(signinBars(rep.ByDoor, true), osShareOf(rep.Failures), "No attempt."))))),
+			string(ui.Fold("Accounts most tried", "Failed attempts", true, ui.HTML(osBarList(signinBars(rep.ByAccount, false), osShareOf(rep.Failures), "No account was tried.")))),
+			string(ui.Fold("Doors", "Where the attempts came in", true, ui.HTML(osBarList(signinBars(rep.ByDoor, true), osShareOf(rep.Failures), "No attempt."))))),
 		),
 		ui.HTML(a.passkeyOnlySection(ctx)),
-		ui.Section("Where from", "Failed attempts by country", ui.HTML(signinMap(rep.Countries)+osBarList(signinCountryBars(rep.Countries), osShareOf(rep.Failures), "No attempt came from a known country."))),
-		ui.Section("By hour", "Failed attempts by hour of the day, UTC", ui.HTML(osBarList(signinHourBars(rep.Hours), osShareHidden(), "No attempt."))),
+		ui.Fold("Where from", "Failed attempts by country", false, ui.HTML(signinMap(rep.Countries)+osBarList(signinCountryBars(rep.Countries), osShareOf(rep.Failures), "No attempt came from a known country."))),
+		ui.Fold("By hour", "Failed attempts by hour of the day, UTC", false, ui.HTML(osBarList(signinHourBars(rep.Hours), osShareHidden(), "No attempt."))),
 		ui.Explain(ui.HTML(`<p><strong>Automatic blocking is on.</strong> A source that fails on `+strconv.Itoa(signin.SprayAccounts)+
 			` or more accounts within an hour is refused sign-in for `+strconv.Itoa(int(signin.SprayFirst.Hours()))+
 			` hours; caught again within a day of that ending, for twice as long, up to `+strconv.Itoa(int(signin.SprayMax.Hours()))+
@@ -168,11 +174,13 @@ func signinDoorList(doors []string) string {
 // signinSourcesTable lists the sources, each with what it did, its state and
 // the menu that stops it. Each control is a form of its own: the source's
 // fingerprint rides in a hidden field, and the chosen button names what to
-// do, so no value is written into an attribute as code.
-func signinSourcesTable(list []signin.Source, days int) string {
+// do, so no value is written into an attribute as code. stops says which of a
+// source's blocks would stop the operator's own sign-in.
+func signinSourcesTable(list []signin.Source, days int, stops func(signin.Source) (address, network, country bool)) string {
 	rows := make([][]ui.HTML, 0, len(list))
 	for _, s := range list {
 		fp := html.EscapeString(s.FP)
+		attempts := signinPage + `?days=` + strconv.Itoa(days) + `&amp;source=` + fp
 		what := countOf(s.Failures, "attempt") + " on " + countOf(s.Accounts, "account") + " through " + signinDoorList(s.Doors)
 		var state []string
 		if s.Block != nil {
@@ -184,31 +192,92 @@ func signinSourcesTable(list []signin.Source, days int) string {
 		if s.Mine {
 			state = append(state, `<span class="badge badge--ok">It was us</span>`)
 		}
-		menu := `<details class="sa-pop"><summary class="btn btn--sm">Block</summary><div class="sa-pop__panel sa-menu" role="menu">` +
-			`<form hx-post="/os/api/shield/sign-ins/block" hx-swap="none"><input type="hidden" name="fp" value="` + fp + `">` +
-			`<button class="sa-menu__item" role="menuitem" name="for" value="1">This address, for a day</button>` +
-			`<button class="sa-menu__item" role="menuitem" name="for" value="30">This address, for 30 days</button>` +
-			`<button class="sa-menu__item" role="menuitem" name="for" value="0">This address, always</button>` +
-			`<div class="sa-menu__sep"></div>` +
-			`<button class="sa-menu__item" role="menuitem" name="for" value="net">Its network, for 30 days<span class="sa-menu__meta">` + html.EscapeString(signin.NetworkLabel(s.Masked)) + `</span></button>` +
-			`<div class="sa-menu__sep"></div>` +
-			`<button class="sa-menu__item" role="menuitem" name="for" value="site">This address from the whole site, 30 days<span class="sa-menu__meta">Every page, not only sign-in</span></button>` +
-			`<button class="sa-menu__item" role="menuitem" name="for" value="site-net">Its network from the whole site, 30 days</button></form>`
-		if s.Country != "" {
-			menu += `<form hx-post="/os/api/shield/sign-ins/country" hx-swap="none"><input type="hidden" name="country" value="` + html.EscapeString(s.Country) + `">` +
-				`<button class="sa-menu__item" role="menuitem">Refuse sign-ins from ` + html.EscapeString(countryName(s.Country)) + `<span class="sa-menu__meta">Pages stay readable</span></button></form>`
+		item := func(value, label, note string) string {
+			if note != "" {
+				note = `<span class="sa-menu__meta">` + html.EscapeString(note) + `</span>`
+			}
+			return `<button class="sa-menu__item" role="menuitem" name="for" value="` + value + `"><span>` + html.EscapeString(label) + `</span>` + note + `</button>`
+		}
+		ownAddress, ownNetwork, ownCountry := stops(s)
+		why := func(text string) string { return `<p class="sa-menu__why">` + html.EscapeString(text) + `</p>` }
+		// A block the server would refuse is not offered: the menu says
+		// why instead, so a choice never ends in an error.
+		var signinItems, siteItems string
+		if !ownAddress {
+			signinItems += item("1", "This address, for a day", "") + item("30", "This address, for 30 days", "") + item("0", "This address, always", "")
+			siteItems += item("site", "This address, for 30 days", "Every page, not only sign-in")
+		}
+		if !ownNetwork {
+			signinItems += item("net", "Its network, for 30 days", signin.NetworkLabel(s.Masked))
+			siteItems += item("site-net", "Its network, for 30 days", signin.NetworkLabel(s.Masked))
+		}
+		switch {
+		case ownAddress:
+			signinItems += why("This is your own address: a block would stop your sign-in.")
+		case ownNetwork:
+			signinItems += why("Its network is yours: only the address can be blocked.")
+		}
+		if s.Private {
+			siteItems = why("An address on this install's own network may be the proxy every visitor comes through, so it is blocked from sign-in only.")
+		}
+		form := `<form hx-post="/os/api/shield/sign-ins/block" hx-swap="none"><input type="hidden" name="fp" value="` + fp + `">`
+		menu := `<details class="sa-pop"><summary class="btn btn--sm">Block</summary><div class="sa-pop__panel sa-menu sa-menu--notes" role="menu">` +
+			form + `<div class="sa-menu__label">From signing in</div>` + signinItems + `</form>`
+		if siteItems != "" {
+			menu += `<div class="sa-menu__sep"></div>` + form + `<div class="sa-menu__label">From the whole site</div>` + siteItems + `</form>`
+		}
+		if s.Country != "" && !ownCountry {
+			menu += `<div class="sa-menu__sep"></div><form hx-post="/os/api/shield/sign-ins/country" hx-swap="none"><input type="hidden" name="country" value="` + html.EscapeString(s.Country) + `">` +
+				`<button class="sa-menu__item" role="menuitem"><span>Refuse sign-ins from ` + html.EscapeString(countryName(s.Country)) + `</span><span class="sa-menu__meta">Pages stay readable</span></button></form>`
 		}
 		menu += `<div class="sa-menu__sep"></div><form hx-post="/os/api/shield/sign-ins/mine" hx-swap="none" hx-confirm="Clear this source and stop counting its failures on the accounts it tried?"><input type="hidden" name="fp" value="` + fp + `"><input type="hidden" name="days" value="` + strconv.Itoa(days) + `">` +
-			`<button class="sa-menu__item" role="menuitem">It was one of us<span class="sa-menu__meta">Clears it and remembers the place</span></button></form></div></details>`
+			`<button class="sa-menu__item" role="menuitem"><span>It was one of us</span><span class="sa-menu__meta">Clears it and remembers the place</span></button></form></div></details>`
 		rows = append(rows, []ui.HTML{
-			ui.HTML(`<a href="` + signinPage + `?days=` + strconv.Itoa(days) + `&amp;source=` + fp + `"><strong>` + html.EscapeString(signinWhere(s.Masked, s.Country)) + `</strong></a>`),
-			ui.Text(what),
-			ui.Text(config.FormatSite(s.Last, "2 Jan 15:04")),
+			ui.HTML(`<a href="` + attempts + `"><strong>` + html.EscapeString(signinWhere(s.Masked, s.Country)) + `</strong></a>` +
+				`<span class="sa-cell-sub">` + signinTried(s.Tried, attempts) + `</span>`),
+			ui.HTML(html.EscapeString(what) + `<span class="sa-cell-sub">` + html.EscapeString(signinSeen(s.First, s.Last)) + `</span>`),
 			ui.HTML(strings.Join(state, " ")),
 			ui.HTML(menu),
 		})
 	}
-	return string(ui.Table([]string{"Source", "What it did", "Last", "", ""}, rows, "No failed sign-in in this window."))
+	return string(ui.Table([]string{"Source", "What it did", "", ""}, rows, "No failed sign-in in this window."))
+}
+
+// signinTriedShown is how many accounts a source's row names; the rest are
+// counted, and its own list of attempts names every one.
+const signinTriedShown = 3
+
+// signinTried names the accounts a source tried, most tried first, as markup.
+func signinTried(tried []string, attempts string) string {
+	if len(tried) == 0 {
+		return ""
+	}
+	shown := tried
+	if len(shown) > signinTriedShown {
+		shown = shown[:signinTriedShown]
+	}
+	names := make([]string, len(shown))
+	for i, a := range shown {
+		names[i] = html.EscapeString(a)
+	}
+	out := "Tried " + strings.Join(names, ", ")
+	if more := len(tried) - len(shown); more > 0 {
+		out += ` and <a href="` + attempts + `">` + strconv.Itoa(more) + ` more</a>`
+	}
+	return out
+}
+
+// signinSeen says when a source was first and last seen failing.
+func signinSeen(first, last time.Time) string {
+	l := config.FormatSite(last, "2 Jan 15:04")
+	if last.Sub(first) < time.Minute {
+		return "Seen " + l
+	}
+	f := config.FormatSite(first, "2 Jan 15:04")
+	if config.FormatSite(first, "2 Jan") == config.FormatSite(last, "2 Jan") {
+		l = config.FormatSite(last, "15:04")
+	}
+	return "From " + f + " to " + l
 }
 
 // signinBlockState says a block's reason and how long it has left.

@@ -117,11 +117,17 @@ type Source struct {
 	Country  string
 	Failures int
 	Accounts int
-	Doors    []string
-	Last     time.Time
-	Known    bool // the password was right at least once (a code stage)
-	Mine     bool // a holder said it was them
-	Block    *Block
+	// Tried is the accounts it failed on, those it failed on most first.
+	Tried       []string
+	Doors       []string
+	First, Last time.Time
+	Known       bool // the password was right at least once (a code stage)
+	Mine        bool // a holder said it was them
+	// Private is an address on the install's own network, which may be its
+	// proxy: it is never blocked from the whole site (ErrPrivateSite).
+	Private bool
+	Block   *Block
+	net     string // its network's fingerprint
 }
 
 // Block refuses sign-in to a source, a network or a country.
@@ -659,6 +665,17 @@ func (s *Store) BlockSource(ctx context.Context, fp string, network, site bool, 
 		return nil, ErrSelf
 	}
 	return s.add(ctx, b)
+}
+
+// WouldStop says which of src's blocks would stop a sign-in from self, and so
+// are refused with ErrSelf: one of its address, of its network, of its
+// country. The page leaves those out rather than offer what it will refuse.
+func (s *Store) WouldStop(src Source, self string) (address, network, country bool) {
+	me, ok := s.source(self, true)
+	if !ok {
+		return false, false, false
+	}
+	return src.FP == me.fp, src.net == me.net, src.Country != "" && strings.ToUpper(src.Country) == me.country
 }
 
 // BlockCountry refuses sign-ins from country, for account or the install.

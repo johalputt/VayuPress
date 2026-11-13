@@ -280,6 +280,9 @@
      nothing; a refused one changes nothing and says nothing either. The
      page's status region announces the first to a screen reader, and a toast
      names the second, so no write fails silently. */
+  // The shell's own failure toast stands down for the writes this one
+  // reports, so a refusal is said once, with its reason.
+  window.vpWritesSaid = true;
   document.addEventListener('htmx:afterRequest', function (e) {
     var d = e.detail || {};
     var verb = d.requestConfig && d.requestConfig.verb;

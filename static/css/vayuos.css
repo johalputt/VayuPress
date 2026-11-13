@@ -4639,6 +4639,16 @@
 .vp-os[data-ui="still-air"] .sa-menu__item:hover,
 .vp-os[data-ui="still-air"] .sa-menu__item:focus-visible { background: var(--surface-hover); text-decoration: none; outline: none; }
 .vp-os[data-ui="still-air"] .sa-menu__item--quiet { color: var(--text-2); }
+/* A menu whose choices each carry a note (Sign-in attempts' Block menu): the
+   note goes under its label rather than beside it, so a long label and its
+   note never share one 32px line and overlap. */
+.vp-os[data-ui="still-air"] .sa-menu--notes { width: 300px; }
+.vp-os[data-ui="still-air"] .sa-menu--notes .sa-menu__item { flex-direction: column; align-items: flex-start; justify-content: center; gap: 0; height: auto; min-height: 32px; padding: var(--space-2) 8px; }
+.vp-os[data-ui="still-air"] .sa-menu--notes .sa-menu__meta { flex: initial; white-space: normal; }
+.vp-os[data-ui="still-air"] .sa-menu--notes .sa-menu__why { margin: 0; padding: var(--space-2) 8px var(--space-3); font: var(--type-small); color: var(--text-3); }
+/* The line under a table cell's main text: the accounts a source tried, when
+   it was seen. */
+.vp-os[data-ui="still-air"] .sa-cell-sub { display: block; margin-top: var(--space-1); font: var(--type-small); color: var(--text-3); overflow-wrap: anywhere; }
 .vp-os[data-ui="still-air"] .sa-menu__sep { height: 1px; background: var(--border-1); margin: 4px 6px; }
 .vp-os[data-ui="still-air"] .sa-menu__row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; font: var(--type-small); color: var(--text-2); }
 .vp-os[data-ui="still-air"] .sa-seg { display: inline-flex; padding: 2px; border-radius: var(--radius-control); background: var(--surface-sunken); border: 1px solid var(--border-1); }
@@ -5003,6 +5013,18 @@
 .vp-os[data-ui="still-air"] .section-head + * { margin-top: var(--space-4); }
 .vp-os[data-ui="still-air"] .section-head__title { font: var(--type-heading); letter-spacing: 0; color: var(--text-1); }
 .vp-os[data-ui="still-air"] .section-head__hint { font: var(--type-meta); color: var(--text-3); }
+/* A fold (ui.Fold): a section whose heading opens and closes it. The heading
+   keeps the section's look; the chevron before the title turns down when it
+   is open, and the hint stays at the right. */
+.vp-os[data-ui="still-air"] .fold__head { list-style: none; cursor: pointer; justify-content: flex-start; gap: var(--space-2); }
+.vp-os[data-ui="still-air"] .fold__head::-webkit-details-marker { display: none; }
+.vp-os[data-ui="still-air"] .fold__head .section-head__hint { margin-left: auto; }
+.vp-os[data-ui="still-air"] .fold__head > .sa-ico { flex: none; width: 14px; height: 14px; color: var(--text-3); align-self: center; transition: transform var(--duration-micro) var(--ease-move); }
+.vp-os[data-ui="still-air"] .fold[open] > .fold__head > .sa-ico { transform: rotate(90deg); }
+.vp-os[data-ui="still-air"] .fold__head:hover .section-head__title { color: var(--accent); }
+.vp-os[data-ui="still-air"] .fold__head:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.vp-os[data-ui="still-air"] .fold[open] > .fold__head + * { margin-top: var(--space-4); }
+@media (prefers-reduced-motion: reduce) { .vp-os[data-ui="still-air"] .fold__head > .sa-ico { transition: none; } }
 .vp-os[data-ui="still-air"] .settings-block-title {
   font: var(--type-heading); color: var(--text-1); text-transform: none; letter-spacing: 0;
   border-bottom: 1px solid var(--border-1); padding-bottom: var(--space-3); margin-bottom: var(--space-2);
@@ -5312,6 +5334,11 @@
 .vp-os[data-ui="still-air"] .toast--error { border-left: 3px solid var(--danger); }
 .vp-os[data-ui="still-air"] .toast--info { border-left: 3px solid var(--accent); }
 .vp-os[data-ui="still-air"] .toast--warn { border-left: 3px solid var(--warn); }
+/* An error toast stays until its close button puts it away. */
+.vp-os[data-ui="still-air"] .toast__close { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin-left: auto; padding: 0; border: 0; border-radius: var(--radius-control); background: none; color: var(--text-3); cursor: pointer; }
+.vp-os[data-ui="still-air"] .toast__close:hover { background: var(--surface-hover); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .toast__close:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.vp-os[data-ui="still-air"] .toast__close .sa-ico { width: 14px; height: 14px; }
 .vp-os[data-ui="still-air"] .toast.leaving { animation: sa-toast-out var(--duration-micro) var(--ease-exit) both; }
 @keyframes sa-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes sa-toast-out { to { opacity: 0; transform: translateY(4px); } }

@@ -1553,11 +1553,14 @@ function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return 
         header on every hx-* mutating request, so admin HTMX POST/DELETE pass the
         same CSRFTokenMiddleware the fetch() controls already use.
      2. Failure feedback — surface any HTTP or network error from an hx-* request
-        as a toast, so a failed publish/pin/moderate never fails silently. -->
+        as a toast, so a failed publish/pin/moderate never fails silently. A
+        write is left to vayuos.js where it runs (vpWritesSaid), which says the
+        server's reason: two toasts for one refusal, the first saying only
+        "try again", read as two failures. -->
 <script nonce="` + nonce + `">
 (function(){var b=document.body;if(!b)return;
 b.addEventListener('htmx:configRequest',function(e){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);if(m)e.detail.headers['X-CSRF-Token']=m[1];});
-function vpHtmxFail(){if(window.vpToast)window.vpToast('Action failed — please try again.','error');}
+function vpHtmxFail(e){var c=e.detail&&e.detail.requestConfig,v=c&&c.verb;if(window.vpWritesSaid&&v&&v!=='get')return;if(window.vpToast)window.vpToast('Action failed — please try again.','error');}
 b.addEventListener('htmx:responseError',vpHtmxFail);
 b.addEventListener('htmx:sendError',vpHtmxFail);
 b.addEventListener('htmx:afterRequest',function(e){var d=e.detail;if(!d||!d.successful)return;var l=document.getElementById('vp-live');if(!l)return;var v=(d.requestConfig&&(d.requestConfig.verb||'')).toLowerCase();l.textContent='';l.textContent=(v==='get'?'Content refreshed.':'Change saved.');});
