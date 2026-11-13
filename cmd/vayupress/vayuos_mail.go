@@ -914,7 +914,7 @@ func (a *App) handleVayuOSMessageAction(w http.ResponseWriter, r *http.Request) 
 // mailSafeFilename strips path components and header-breaking characters from
 // an attachment filename so it is safe to place in a Content-Disposition header.
 func mailSafeFilename(s string) string {
-	s = strings.TrimSpace(s)
+	s = strings.TrimSpace(vmail.PlainName(s))
 	if i := strings.LastIndexAny(s, `/\`); i >= 0 {
 		s = s[i+1:]
 	}

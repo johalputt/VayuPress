@@ -191,9 +191,26 @@ func (s *AccountStore) ensureDriveTables() error {
 	return nil
 }
 
+// PlainName is a file's name with every character that reorders the text
+// around it replaced by "_": the embeddings, overrides and isolates
+// (U+202A-U+202E, U+2066-U+2069). "invoice<U+202E>fdp.exe" is shown as
+// "invoiceexe.pdf" and kept by the computer as the program it is, which is
+// the oldest disguise an attachment has. The marks (U+200E, U+200F, U+061C)
+// stay: they place a neutral character in right-to-left text and cannot
+// turn a run of letters around. Replaced rather than refused, so a file
+// sent or uploaded by someone else is kept, under the name it really has.
+func PlainName(name string) string {
+	return strings.Map(func(r rune) rune {
+		if (r >= 0x202A && r <= 0x202E) || (r >= 0x2066 && r <= 0x2069) {
+			return '_'
+		}
+		return r
+	}, name)
+}
+
 // driveName is a name as kept, or ErrDriveName.
 func driveName(name string) (string, error) {
-	name = strings.TrimSpace(name)
+	name = strings.TrimSpace(PlainName(name))
 	if name == "" || name == "." || name == ".." || len(name) > 255 || !utf8.ValidString(name) {
 		return "", ErrDriveName
 	}

@@ -395,7 +395,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		for _, att := range pm.Attachments {
 			if picture, ok := mailPreviewable(att.ContentType); ok && picture && att.Size <= 10<<20 {
 				u := "/os/vayumail/attachment?" + q + "&idx=" + itoaSafe(att.Index) + "&inline=1"
-				thumbs.WriteString(`<a class="mx-preview" href="` + esc(u) + `" target="_blank" rel="noopener"><img src="` + esc(u) + `" alt="` + esc(att.Filename) + `" loading="lazy"></a>`)
+				thumbs.WriteString(`<a class="mx-preview" href="` + esc(u) + `" target="_blank" rel="noopener"><img src="` + esc(u) + `" alt="` + esc(vmail.PlainName(att.Filename)) + `" loading="lazy"></a>`)
 			}
 		}
 		if thumbs.Len() > 0 {
@@ -408,17 +408,17 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 			// to (admin-os-mail.js, Mail plan §8 item 7).
 			c.WriteString(`<li><a class="mx-file" href="` + esc(dl) + `" download data-mx-file><span class="mx-file__type" aria-hidden="true">` + esc(mailFileType(att.Filename, att.ContentType)) +
 				`<svg class="mx-file__ring" viewBox="0 0 36 36"><circle cx="18" cy="18" r="16" pathLength="100"/></svg><span class="mx-file__tick">` + saIcon("check") + `</span></span>` +
-				`<span class="mx-file__meta"><span class="mx-file__name">` + esc(att.Filename) + `</span><span class="mx-file__size">` + esc(humanBytes(att.Size)) + `</span></span>` +
+				`<span class="mx-file__meta"><span class="mx-file__name">` + esc(vmail.PlainName(att.Filename)) + `</span><span class="mx-file__size">` + esc(humanBytes(att.Size)) + `</span></span>` +
 				`<span class="mx-file__dl" aria-hidden="true">` + saIcon("download") + `</span><span class="vp-sr-only">Download</span></a>`)
 			if _, ok := mailPreviewable(att.ContentType); ok {
-				c.WriteString(`<a class="mx-file__open" href="` + esc(dl+"&inline=1") + `" target="_blank" rel="noopener">Open<span class="vp-sr-only"> ` + esc(att.Filename) + `</span></a>`)
+				c.WriteString(`<a class="mx-file__open" href="` + esc(dl+"&inline=1") + `" target="_blank" rel="noopener">Open<span class="vp-sr-only"> ` + esc(vmail.PlainName(att.Filename)) + `</span></a>`)
 			}
 			// Into the holder's own Drive (vayuos_mail_drive.go): for the
 			// mailbox's holder, not an administrator reading it, and where
 			// the session has a Drive. The button is replaced by what happened.
 			if rd.IsOwner() && v.Places.Drive {
 				c.WriteString(`<button type="button" class="mx-file__open" hx-post="/os/vayumail/drive/save"` + hxVals("folder", folder, "id", id, "idx", itoaSafe(att.Index)) +
-					` hx-swap="outerHTML">Save to Drive<span class="vp-sr-only"> ` + esc(att.Filename) + `</span></button>`)
+					` hx-swap="outerHTML">Save to Drive<span class="vp-sr-only"> ` + esc(vmail.PlainName(att.Filename)) + `</span></button>`)
 			}
 			c.WriteString(`</li>`)
 		}

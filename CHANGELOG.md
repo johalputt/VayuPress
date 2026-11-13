@@ -21,6 +21,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   other mailboxes all outlive a reset, and each may as well be the holder's
   own, so none is removed. The reset's notice now lists those it found, for
   the holder to look at.
+- **A file name cannot turn its own letters around.** A name carrying a
+  right-to-left override, such as `invoice<U+202E>fdp.exe`, was drawn as
+  `invoiceexe.pdf` in the reader and saved under that disguise by the
+  browser. The characters that reorder text (U+202A to U+202E, U+2066 to
+  U+2069) now become `_` in every download's name, in the attachment names
+  the reader shows, and in every name Drive keeps, files uploaded through a
+  link included.
 
 ## [3.18.39] — 2026-11-12
 
