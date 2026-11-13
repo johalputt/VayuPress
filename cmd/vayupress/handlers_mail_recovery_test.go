@@ -198,18 +198,18 @@ func TestRecoveryPagesEscapeUntrustedInput(t *testing.T) {
 	// sitting inside &lt;img …&gt; is inert text and perfectly safe. What must never
 	// appear is an unescaped tag, or an unescaped quote that would break out of the
 	// value attribute the address is echoed into.
-	page := recoveryCodeFormPage(`"><script>alert(1)</script>`, `"><img src=x onerror=alert(1)>`)
+	page := recoveryCodeFormPage("en", `"><script>alert(1)</script>`, `"><img src=x onerror=alert(1)>`)
 	if strings.Contains(page, "<script>") || strings.Contains(page, "<img ") {
 		t.Errorf("recovery form reflected a live tag:\n%s", page)
 	}
 	if !strings.Contains(page, "&lt;script&gt;") || !strings.Contains(page, "&#34;") {
 		t.Errorf("recovery form did not escape the input at all:\n%s", page)
 	}
-	done := recoveryDonePage(`<script>alert(1)</script>@x.test`, mailResetOutcome{})
+	done := recoveryDonePage("en", `<script>alert(1)</script>@x.test`, mailResetOutcome{})
 	if strings.Contains(done, "<script>") {
 		t.Errorf("completion page reflected an unescaped address:\n%s", done)
 	}
-	notice := recoveryNoticePage("<b>t</b>", "<i>m</i>")
+	notice := recoveryNoticePage("en", "<b>t</b>", "<i>m</i>")
 	if strings.Contains(notice, "<b>") || strings.Contains(notice, "<i>") {
 		t.Errorf("notice page reflected unescaped markup:\n%s", notice)
 	}
@@ -220,7 +220,7 @@ func TestRecoveryPagesEscapeUntrustedInput(t *testing.T) {
 // the account.
 func TestCompletionPageReportsWhatWasRevoked(t *testing.T) {
 	t.Parallel()
-	page := recoveryDonePage("user@example.com", mailResetOutcome{
+	page := recoveryDonePage("en", "user@example.com", mailResetOutcome{
 		AppPasswordsRevoked: 4, SessionsRevoked: 1, QueueHeld: 2,
 	})
 	for _, want := range []string{"4 connected apps", "1 web session", "2 unsent messages"} {
@@ -229,7 +229,7 @@ func TestCompletionPageReportsWhatWasRevoked(t *testing.T) {
 		}
 	}
 	// A partial failure must never hide behind a success page.
-	warned := recoveryDonePage("user@example.com", mailResetOutcome{Problems: []string{"revoke app passwords: boom"}})
+	warned := recoveryDonePage("en", "user@example.com", mailResetOutcome{Problems: []string{"revoke app passwords: boom"}})
 	if !strings.Contains(warned, "did not complete") {
 		t.Errorf("a partially failed reset rendered as a clean success:\n%s", warned)
 	}

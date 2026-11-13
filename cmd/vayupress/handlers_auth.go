@@ -24,6 +24,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/totp"
@@ -707,9 +708,8 @@ func loginClientIP(r *http.Request) string {
 }
 
 // loginLockoutMessage formats the operator-facing lockout notice.
-func loginLockoutMessage(until time.Time) string {
-	return "Too many failed sign-in attempts. Try again after " +
-		config.FormatSite(until, "15:04 MST") + "."
+func loginLockoutMessage(lang string, until time.Time) string {
+	return i18n.T(lang, "Too many failed sign-in attempts. Try again after {time}.", "time", config.FormatSite(until, "15:04 MST"))
 }
 
 // =============================================================================

@@ -32,8 +32,8 @@ import (
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
-func (a *App) writeBookShell(w http.ResponseWriter, lang string, status int, title, inner string) {
-	writeGuestPage(w, lang, status, title, `<div class="login-card book-card">`+inner+`</div>`+
+func (a *App) writeBookShell(w http.ResponseWriter, r *http.Request, lang string, status int, title, inner string) {
+	writeGuestPage(w, r, lang, status, title, `<div class="login-card book-card">`+inner+`</div>`+
 		`<script src="/os/static/js/book.js?v=`+assetVer("js/book.js")+`"></script>`)
 }
 
@@ -66,9 +66,9 @@ func bookSeries(lang string, b vmail.Booking) string {
 }
 
 // bookBusy is a booking page with no place free to work out its times.
-func (a *App) bookBusy(w http.ResponseWriter, lang, title string) {
+func (a *App) bookBusy(w http.ResponseWriter, r *http.Request, lang, title string) {
 	w.Header().Set("Retry-After", "5")
-	a.writeBookShell(w, lang, http.StatusServiceUnavailable, title, `<h1 class="login-title">`+esc(i18n.T(lang, "Busy"))+`</h1><p class="login-sub">`+
+	a.writeBookShell(w, r, lang, http.StatusServiceUnavailable, title, `<h1 class="login-title">`+esc(i18n.T(lang, "Busy"))+`</h1><p class="login-sub">`+
 		esc(i18n.T(lang, "This page is busy. Try again in a moment."))+`</p>`)
 }
 
@@ -76,7 +76,7 @@ func (a *App) bookBusy(w http.ResponseWriter, lang, title string) {
 // that is itself the secret (a booking's, a shared file's): never kept by a
 // cache, never sent on in a Referer, never indexed. It is in lang, with the
 // menu that changes it under the card.
-func writeGuestPage(w http.ResponseWriter, lang string, status int, title, body string) {
+func writeGuestPage(w http.ResponseWriter, r *http.Request, lang string, status int, title, body string) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
@@ -84,7 +84,7 @@ func writeGuestPage(w http.ResponseWriter, lang string, status int, title, body 
 	w.Header().Set("Content-Language", lang)
 	w.Header().Add("Vary", "Accept-Language, Cookie")
 	w.WriteHeader(status)
-	_, _ = w.Write([]byte(authPageShellIn(lang, title, body+languageMenu(lang))))
+	_, _ = w.Write([]byte(authPageShellIn(lang, title, body+languageMenu(lang, r))))
 }
 
 // publicBookingPage is the page a link names, when it is taking bookings.
@@ -104,8 +104,8 @@ func (a *App) publicBookingPage(r *http.Request) (vmail.BookingPage, bool) {
 	return p, err == nil && a.vayuMail.Accounts().BookingOffered(r.Context(), p)
 }
 
-func (a *App) bookNotFound(w http.ResponseWriter, lang string) {
-	a.writeBookShell(w, lang, http.StatusNotFound, i18n.T(lang, "Not found"), `<h1 class="login-title">`+esc(i18n.T(lang, "This booking page is not here"))+
+func (a *App) bookNotFound(w http.ResponseWriter, r *http.Request, lang string) {
+	a.writeBookShell(w, r, lang, http.StatusNotFound, i18n.T(lang, "Not found"), `<h1 class="login-title">`+esc(i18n.T(lang, "This booking page is not here"))+
 		`</h1><p class="login-sub">`+esc(i18n.T(lang, "It may have been switched off. Ask whoever sent you the link."))+`</p>`)
 }
 
@@ -134,14 +134,14 @@ func (a *App) handleBookPage(w http.ResponseWriter, r *http.Request) {
 	lang := requestLang(w, r)
 	p, ok := a.publicBookingPage(r)
 	if !ok {
-		a.bookNotFound(w, lang)
+		a.bookNotFound(w, r, lang)
 		return
 	}
 	select {
 	case bookSlots <- struct{}{}:
 		defer func() { <-bookSlots }()
 	case <-time.After(bookWait):
-		a.bookBusy(w, lang, p.Title)
+		a.bookBusy(w, r, lang, p.Title)
 		return
 	}
 	loc := guestZone(r, p)
@@ -169,7 +169,7 @@ func (a *App) handleBookPage(w http.ResponseWriter, r *http.Request) {
 	}
 	if t, err := strconv.ParseInt(q.Get("t"), 10, 64); err == nil {
 		start := time.Unix(t, 0).In(loc)
-		a.writeBookShell(w, lang, http.StatusOK, p.Title, a.bookIntro(lang, p, length, loc, self)+a.bookDetails(lang, p, start, length, loc, "", "", "", ""))
+		a.writeBookShell(w, r, lang, http.StatusOK, p.Title, a.bookIntro(lang, p, length, loc, self)+a.bookDetails(lang, p, start, length, loc, "", "", "", ""))
 		return
 	}
 	month := time.Date(now.In(loc).Year(), now.In(loc).Month(), 1, 0, 0, 0, 0, loc)
@@ -181,7 +181,7 @@ func (a *App) handleBookPage(w http.ResponseWriter, r *http.Request) {
 	if q.Get("tz") == "" {
 		zoned = ` data-book-zone` // book.js asks again in the guest's zone
 	}
-	a.writeBookShell(w, lang, http.StatusOK, p.Title, `<div class="book"`+zoned+`>`+a.bookIntro(lang, p, length, loc, self)+bookChooser(lang, month, slots, loc, now, p.Reach, q.Get("d"), "t", self)+`</div>`)
+	a.writeBookShell(w, r, lang, http.StatusOK, p.Title, `<div class="book"`+zoned+`>`+a.bookIntro(lang, p, length, loc, self)+bookChooser(lang, month, slots, loc, now, p.Reach, q.Get("d"), "t", self)+`</div>`)
 }
 
 // bookChooser is a month's days with free times as links, and the chosen
@@ -302,7 +302,7 @@ func (a *App) bookHold(w http.ResponseWriter, r *http.Request, lang string, p vm
 	_ = r.ParseForm()
 	t, err := strconv.ParseInt(r.PostFormValue("t"), 10, 64)
 	if err != nil {
-		a.bookNotFound(w, lang)
+		a.bookNotFound(w, r, lang)
 		return
 	}
 	if l := calZone(r.PostFormValue("tz")); l != nil {
@@ -332,10 +332,10 @@ func (a *App) bookHold(w http.ResponseWriter, r *http.Request, lang string, p vm
 		default:
 			dbpkg.AuditLog("vayumail.booking.hold-failed", "guest", p.Mailbox, err.Error())
 		}
-		a.writeBookShell(w, lang, status, p.Title, a.bookIntro(lang, p, length, loc, self)+a.bookDetails(lang, p, start, length, loc, name, email, answer, said))
+		a.writeBookShell(w, r, lang, status, p.Title, a.bookIntro(lang, p, length, loc, self)+a.bookDetails(lang, p, start, length, loc, name, email, answer, said))
 		return
 	}
-	a.writeBookShell(w, lang, http.StatusOK, p.Title, `<h1 class="login-title">`+esc(i18n.T(lang, "Check your mail"))+`</h1><p class="login-sub">`+
+	a.writeBookShell(w, r, lang, http.StatusOK, p.Title, `<h1 class="login-title">`+esc(i18n.T(lang, "Check your mail"))+`</h1><p class="login-sub">`+
 		esc(i18n.T(lang, "A link to confirm {when} ({zone}) is on its way to the address you gave. It works for fifteen minutes; nothing is booked until you use it.",
 			"when", i18n.Date(lang, start, i18n.DayMonthAt), "zone", loc.String()))+`</p>`)
 }
@@ -346,11 +346,11 @@ func (a *App) handleBookConfirm(w http.ResponseWriter, r *http.Request) {
 	tok := r.FormValue("t")
 	lang := requestLang(w, r)
 	if !a.mailRunning() {
-		a.bookNotFound(w, lang)
+		a.bookNotFound(w, r, lang)
 		return
 	}
 	if r.Method != http.MethodPost {
-		a.writeBookShell(w, lang, http.StatusOK, i18n.T(lang, "Confirm your booking"), `<h1 class="login-title">`+esc(i18n.T(lang, "Confirm your booking"))+`</h1><p class="login-sub">`+
+		a.writeBookShell(w, r, lang, http.StatusOK, i18n.T(lang, "Confirm your booking"), `<h1 class="login-title">`+esc(i18n.T(lang, "Confirm your booking"))+`</h1><p class="login-sub">`+
 			esc(i18n.T(lang, "Press the button to book the time you chose."))+`</p>`+
 			`<form class="login-form" method="POST"><input type="hidden" name="t" value="`+esc(tok)+`"><button class="btn btn--primary" type="submit">`+esc(i18n.T(lang, "Confirm"))+`</button></form>`)
 		return
@@ -361,7 +361,7 @@ func (a *App) handleBookConfirm(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, vmail.ErrSlotTaken) {
 			msg = i18n.T(lang, "That time was taken before you confirmed it. Choose another from the page you came from.")
 		}
-		a.writeBookShell(w, lang, http.StatusNotFound, i18n.T(lang, "Not booked"), `<h1 class="login-title">`+esc(i18n.T(lang, "Not booked"))+`</h1><p class="login-sub">`+esc(msg)+`</p>`)
+		a.writeBookShell(w, r, lang, http.StatusNotFound, i18n.T(lang, "Not booked"), `<h1 class="login-title">`+esc(i18n.T(lang, "Not booked"))+`</h1><p class="login-sub">`+esc(msg)+`</p>`)
 		return
 	}
 	// In the zone the guest booked in; UTC only when it was not known.
@@ -369,7 +369,7 @@ func (a *App) handleBookConfirm(w http.ResponseWriter, r *http.Request) {
 	if loc := calZone(b.Zone); loc != nil {
 		at = i18n.Date(lang, b.Start.In(loc), i18n.DayMonthYearAt) + " (" + loc.String() + ")"
 	}
-	a.writeBookShell(w, lang, http.StatusOK, i18n.T(lang, "Booked"), `<h1 class="login-title">`+esc(i18n.T(lang, "Booked"))+`</h1><p class="login-sub">`+
+	a.writeBookShell(w, r, lang, http.StatusOK, i18n.T(lang, "Booked"), `<h1 class="login-title">`+esc(i18n.T(lang, "Booked"))+`</h1><p class="login-sub">`+
 		esc(i18n.T(lang, "{when}. An invitation is on its way to {email}; it has a link to move or cancel it if you need to.", "when", at, "email", b.Email))+`</p>`)
 }
 
@@ -381,12 +381,12 @@ func (a *App) handleBookChange(w http.ResponseWriter, r *http.Request) {
 	tok := r.FormValue("t")
 	lang := requestLang(w, r)
 	if !a.mailRunning() {
-		a.bookNotFound(w, lang)
+		a.bookNotFound(w, r, lang)
 		return
 	}
 	ctx := r.Context()
 	gone := func() {
-		a.writeBookShell(w, lang, http.StatusNotFound, i18n.T(lang, "Not found"), `<h1 class="login-title">`+esc(i18n.T(lang, "This booking is not here"))+`</h1><p class="login-sub">`+
+		a.writeBookShell(w, r, lang, http.StatusNotFound, i18n.T(lang, "Not found"), `<h1 class="login-title">`+esc(i18n.T(lang, "This booking is not here"))+`</h1><p class="login-sub">`+
 			esc(i18n.T(lang, "The link is not valid, or the booking was cancelled."))+`</p>`)
 	}
 	b, p, err := a.vayuMail.BookingByLink(ctx, tok)
@@ -418,17 +418,17 @@ func (a *App) handleBookChange(w http.ResponseWriter, r *http.Request) {
 				gone()
 				return
 			}
-			a.writeBookShell(w, lang, http.StatusOK, i18n.T(lang, "Cancelled"), `<h1 class="login-title">`+esc(i18n.T(lang, "Cancelled"))+`</h1><p class="login-sub">`+
+			a.writeBookShell(w, r, lang, http.StatusOK, i18n.T(lang, "Cancelled"), `<h1 class="login-title">`+esc(i18n.T(lang, "Cancelled"))+`</h1><p class="login-sub">`+
 				esc(i18n.T(lang, "The booking is cancelled, and the time is free again."))+`</p>`)
 		case "move":
 			to, _ := strconv.ParseInt(r.PostFormValue("to"), 10, 64)
 			moved, err := a.vayuMail.MoveBooking(ctx, tok, time.Unix(to, 0), time.Now())
 			switch {
 			case err == nil:
-				a.writeBookShell(w, lang, http.StatusOK, i18n.T(lang, "Moved"), `<h1 class="login-title">`+esc(i18n.T(lang, "Moved"))+`</h1><p class="login-sub">`+
+				a.writeBookShell(w, r, lang, http.StatusOK, i18n.T(lang, "Moved"), `<h1 class="login-title">`+esc(i18n.T(lang, "Moved"))+`</h1><p class="login-sub">`+
 					esc(i18n.T(lang, "{title} is now {when}. The change is on its way to {email}; this link still moves or cancels it.", "title", p.Title, "when", when(moved.Start), "email", moved.Email))+`</p>`)
 			case errors.Is(err, vmail.ErrSlotTaken), errors.Is(err, vmail.ErrBookingMoves):
-				a.writeBookShell(w, lang, http.StatusConflict, i18n.T(lang, "Not moved"), `<h1 class="login-title">`+esc(i18n.T(lang, "Not moved"))+`</h1><p class="login-sub">`+esc(bookRefusal(lang, err))+
+				a.writeBookShell(w, r, lang, http.StatusConflict, i18n.T(lang, "Not moved"), `<h1 class="login-title">`+esc(i18n.T(lang, "Not moved"))+`</h1><p class="login-sub">`+esc(bookRefusal(lang, err))+
 					`</p><p><a class="btn" href="`+esc(self())+`">`+esc(i18n.T(lang, "Choose another time"))+`</a></p>`)
 			default:
 				gone()
@@ -445,17 +445,17 @@ func (a *App) handleBookChange(w http.ResponseWriter, r *http.Request) {
 	if !a.vayuMail.Accounts().BookingOffered(ctx, p) {
 		// The page is switched off: the booking can still be cancelled, not
 		// moved.
-		a.writeBookShell(w, lang, http.StatusOK, p.Title, `<div class="book">`+head+`<section class="book__details"><p class="login-sub">`+
+		a.writeBookShell(w, r, lang, http.StatusOK, p.Title, `<div class="book">`+head+`<section class="book__details"><p class="login-sub">`+
 			esc(i18n.T(lang, "This booking page is switched off, so the booking cannot be moved."))+`</p></section></div>`)
 		return
 	}
 	if b.Count > 1 {
-		a.writeBookShell(w, lang, http.StatusOK, p.Title, `<div class="book">`+head+`<section class="book__details"><p class="login-sub">`+
+		a.writeBookShell(w, r, lang, http.StatusOK, p.Title, `<div class="book">`+head+`<section class="book__details"><p class="login-sub">`+
 			esc(i18n.T(lang, "A series is not moved here: cancel it, and book the times you want from the page."))+`</p></section></div>`)
 		return
 	}
 	if to, err := strconv.ParseInt(r.URL.Query().Get("to"), 10, 64); err == nil {
-		a.writeBookShell(w, lang, http.StatusOK, p.Title, `<div class="book">`+head+`<section class="book__details"><h2>`+esc(i18n.T(lang, "Move to {when}?", "when", when(time.Unix(to, 0))))+`</h2>`+
+		a.writeBookShell(w, r, lang, http.StatusOK, p.Title, `<div class="book">`+head+`<section class="book__details"><h2>`+esc(i18n.T(lang, "Move to {when}?", "when", when(time.Unix(to, 0))))+`</h2>`+
 			`<form class="login-form" method="POST"><input type="hidden" name="t" value="`+esc(tok)+`"><input type="hidden" name="op" value="move"><input type="hidden" name="to" value="`+strconv.FormatInt(to, 10)+`">`+
 			`<input type="hidden" name="tz" value="`+esc(loc.String())+`"><button class="btn btn--primary" type="submit">`+esc(i18n.T(lang, "Move the booking"))+`</button></form></section></div>`)
 		return
@@ -464,7 +464,7 @@ func (a *App) handleBookChange(w http.ResponseWriter, r *http.Request) {
 	case bookSlots <- struct{}{}:
 		defer func() { <-bookSlots }()
 	case <-time.After(bookWait):
-		a.bookBusy(w, lang, p.Title)
+		a.bookBusy(w, r, lang, p.Title)
 		return
 	}
 	now := time.Now()
@@ -473,6 +473,6 @@ func (a *App) handleBookChange(w http.ResponseWriter, r *http.Request) {
 		month = m
 	}
 	slots, _ := a.vayuMail.MovingSlots(b, p, month, month.AddDate(0, 1, 0), now)
-	a.writeBookShell(w, lang, http.StatusOK, p.Title, `<div class="book">`+strings.Replace(head, `</section>`, `<p class="login-sub">`+esc(i18n.T(lang, "Or move it: choose a day, then a time."))+`</p></section>`, 1)+
+	a.writeBookShell(w, r, lang, http.StatusOK, p.Title, `<div class="book">`+strings.Replace(head, `</section>`, `<p class="login-sub">`+esc(i18n.T(lang, "Or move it: choose a day, then a time."))+`</p></section>`, 1)+
 		bookChooser(lang, month, slots, loc, now, p.Reach, r.URL.Query().Get("d"), "to", self)+`</div>`)
 }

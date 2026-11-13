@@ -65,8 +65,8 @@ func shareSlot(token string) (func(), bool) {
 	}, true
 }
 
-func shareGone(w http.ResponseWriter, lang string) {
-	writeGuestPage(w, lang, http.StatusNotFound, i18n.T(lang, "Not here"), `<div class="login-card"><h1 class="login-title">`+esc(i18n.T(lang, "This link is not open"))+
+func shareGone(w http.ResponseWriter, r *http.Request, lang string) {
+	writeGuestPage(w, r, lang, http.StatusNotFound, i18n.T(lang, "Not here"), `<div class="login-card"><h1 class="login-title">`+esc(i18n.T(lang, "This link is not open"))+
 		`</h1><p class="login-sub">`+esc(i18n.T(lang, "It may have ended or been stopped. Ask whoever sent it to you."))+`</p></div>`)
 }
 
@@ -93,12 +93,12 @@ func (a *App) handleDriveShare(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 	lang := requestLang(w, r)
 	if !a.mailRunning() || a.vayuMail.Accounts() == nil {
-		shareGone(w, lang)
+		shareGone(w, r, lang)
 		return
 	}
 	f, err := a.vayuMail.DriveShared(token)
 	if err != nil {
-		shareGone(w, lang)
+		shareGone(w, r, lang)
 		return
 	}
 	switch f.Kind {
@@ -110,12 +110,12 @@ func (a *App) handleDriveShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != http.MethodPost {
-		writeGuestPage(w, lang, http.StatusOK, f.Name, shareCard(lang, f, ""))
+		writeGuestPage(w, r, lang, http.StatusOK, f.Name, shareCard(lang, f, ""))
 		return
 	}
 	done, ok := shareSlot(token)
 	if !ok {
-		shareBusy(w, lang)
+		shareBusy(w, r, lang)
 		return
 	}
 	defer done()
@@ -125,12 +125,12 @@ func (a *App) handleDriveShare(w http.ResponseWriter, r *http.Request) {
 	if errors.Is(err, vmail.ErrSharePassword) {
 		// The page again, unless that was the wrong password that closed it.
 		if again, lerr := a.vayuMail.DriveShared(token); lerr == nil {
-			writeGuestPage(w, lang, http.StatusForbidden, again.Name, shareCard(lang, again, i18n.T(lang, "That is not the password for this link.")))
+			writeGuestPage(w, r, lang, http.StatusForbidden, again.Name, shareCard(lang, again, i18n.T(lang, "That is not the password for this link.")))
 			return
 		}
 	}
 	if err != nil {
-		shareGone(w, lang)
+		shareGone(w, r, lang)
 		return
 	}
 	defer body.Close()
@@ -138,9 +138,9 @@ func (a *App) handleDriveShare(w http.ResponseWriter, r *http.Request) {
 }
 
 // shareBusy says a link has no place free for one more sending.
-func shareBusy(w http.ResponseWriter, lang string) {
+func shareBusy(w http.ResponseWriter, r *http.Request, lang string) {
 	w.Header().Set("Retry-After", "30")
-	writeGuestPage(w, lang, http.StatusServiceUnavailable, i18n.T(lang, "Busy"), `<div class="login-card"><h1 class="login-title">`+esc(i18n.T(lang, "Busy"))+
+	writeGuestPage(w, r, lang, http.StatusServiceUnavailable, i18n.T(lang, "Busy"), `<div class="login-card"><h1 class="login-title">`+esc(i18n.T(lang, "Busy"))+
 		`</h1><p class="login-sub">`+esc(i18n.T(lang, "This link is busy. Try again in a moment."))+`</p></div>`)
 }
 

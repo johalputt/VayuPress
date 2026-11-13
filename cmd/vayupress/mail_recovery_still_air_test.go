@@ -27,19 +27,19 @@ func TestEveryRecoveryPageIsTheSignInsStillAir(t *testing.T) {
 		defined[m[1]] = true
 	}
 	pages := map[string]string{
-		"send a link":   recoveryFormPage("That address is not valid."),
-		"link sent":     recoverySentPage(),
-		"new password":  recoveryPasswordFormPage("tok", "The two passwords differ."),
-		"recovery code": recoveryCodeFormPage("a@b.c", "That code did not work."),
-		"done":          recoveryDonePage("a@b.c", mailResetOutcome{AppPasswordsRevoked: 2, SessionsRevoked: 1, QueueHeld: 1, NotifiedContact: "x@y.z", Problems: []string{"p"}}),
-		"notice":        recoveryNoticePage("Link expired", "Ask for a new one."),
-		"ask":           recoveryAskFormPage("a@b.c", "Enter your address."),
-		"asked":         recoveryAskedPage(),
+		"send a link":   recoveryFormPage("en", "That address is not valid."),
+		"link sent":     recoverySentPage("en"),
+		"new password":  recoveryPasswordFormPage("en", "tok", "The two passwords differ."),
+		"recovery code": recoveryCodeFormPage("en", "a@b.c", "That code did not work."),
+		"done":          recoveryDonePage("en", "a@b.c", mailResetOutcome{AppPasswordsRevoked: 2, SessionsRevoked: 1, QueueHeld: 1, NotifiedContact: "x@y.z", Problems: []string{"p"}}),
+		"notice":        recoveryNoticePage("en", "Link expired", "Ask for a new one."),
+		"ask":           recoveryAskFormPage("en", "a@b.c", "Enter your address."),
+		"asked":         recoveryAskedPage("en"),
 	}
 	classAttr := regexp.MustCompile(`class="([^"]*)"`)
 	for name, card := range pages {
 		w := httptest.NewRecorder()
-		(&App{}).renderRecoveryPage(w, httptest.NewRequest(http.MethodGet, "/mail/recover", nil), card)
+		(&App{}).renderRecoveryPage(w, httptest.NewRequest(http.MethodGet, "/mail/recover", nil), "en", card)
 		body := w.Body.String()
 		if !strings.Contains(body, `data-ui="still-air"`) || !strings.Contains(body, "/os/static/css/vayuos.css") || !strings.Contains(body, `class="login-card"`) {
 			t.Errorf("%s: not the sign-in's Still Air shell", name)

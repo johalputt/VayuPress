@@ -37,9 +37,22 @@ func requestLang(w http.ResponseWriter, r *http.Request) string {
 }
 
 // languageMenu is the form that shows the page in another language.
-func languageMenu(lang string) string {
+//
+// The form sends the page's own query values with it: a reset link's token,
+// a booking's time zone and a sign-in's next page outlive the change, which a
+// form of lang alone would drop.
+func languageMenu(lang string, r *http.Request) string {
 	var b strings.Builder
-	b.WriteString(`<form class="login-form" method="GET"><label class="field"><span class="field-label">` + esc(i18n.T(lang, "Language")) + `</span><select class="input" name="lang">`)
+	b.WriteString(`<form class="login-form" method="GET">`)
+	for k, vs := range r.URL.Query() {
+		if k == "lang" {
+			continue
+		}
+		for _, v := range vs {
+			b.WriteString(`<input type="hidden" name="` + esc(k) + `" value="` + esc(v) + `">`)
+		}
+	}
+	b.WriteString(`<label class="field"><span class="field-label">` + esc(i18n.T(lang, "Language")) + `</span><select class="input" name="lang">`)
 	for _, l := range i18n.Languages {
 		sel := ""
 		if l.Tag == lang {

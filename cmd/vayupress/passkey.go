@@ -207,7 +207,7 @@ func (a *App) handlePasskeySignInFinish(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if a.signinRefused(who.Account, ip) {
-		writeAPIError(w, r, http.StatusForbidden, "signin-refused", signinRefusedMessage, "")
+		writeAPIError(w, r, http.StatusForbidden, "signin-refused", signinRefused(requestLang(w, r)), "")
 		return
 	}
 	// A sign count that went backwards is a copied authenticator.

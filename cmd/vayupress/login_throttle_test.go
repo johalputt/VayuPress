@@ -24,7 +24,7 @@ func TestLoginClientIPStripsPort(t *testing.T) {
 
 func TestLoginLockoutMessage(t *testing.T) {
 	until := time.Date(2026, 6, 21, 9, 30, 0, 0, time.UTC)
-	msg := loginLockoutMessage(until)
+	msg := loginLockoutMessage("en", until)
 	if !strings.Contains(msg, "Too many failed sign-in attempts") {
 		t.Errorf("lockout message missing prefix: %q", msg)
 	}

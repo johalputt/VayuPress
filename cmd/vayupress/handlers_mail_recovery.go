@@ -29,6 +29,7 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/email"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/safefetch"
 	"github.com/johalputt/vayupress/internal/seo"
@@ -49,14 +50,16 @@ var (
 // It is phrased so it reads as helpful to the holder and tells an attacker
 // nothing: it does not say a mail was sent, only what happens if the account
 // exists and has a recovery address.
-const recoverySameAnswer = "If that mailbox exists and has a recovery address on file, " +
-	"a reset link is on its way to it. The link expires in 30 minutes."
+func recoverySameAnswer(lang string) string {
+	return i18n.T(lang, "If that mailbox exists and has a recovery address on file, a reset link is on its way to it. The link expires in 30 minutes.")
+}
 
 // handleMailRecoverRequest starts a recovery. GET renders the form; POST issues
 // the link.
 func (a *App) handleMailRecoverRequest(w http.ResponseWriter, r *http.Request) {
+	lang := requestLang(w, r)
 	if r.Method == http.MethodGet {
-		a.renderRecoveryPage(w, r, recoveryFormPage(""))
+		a.renderRecoveryPage(w, r, lang, recoveryFormPage(lang, ""))
 		return
 	}
 	addr := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
@@ -78,7 +81,7 @@ func (a *App) handleMailRecoverRequest(w http.ResponseWriter, r *http.Request) {
 		// address exists, how many codes it has, or how slow the SMTP peer is.
 		go a.issueRecoveryLink(addr, ip)
 	}
-	a.renderRecoveryPage(w, r, recoverySentPage())
+	a.renderRecoveryPage(w, r, lang, recoverySentPage(lang))
 }
 
 // issueRecoveryLink does the real work for an accepted request. Every early
@@ -143,13 +146,14 @@ func (a *App) issueRecoveryLink(addr, ip string) {
 // preloader, an antivirus scanner or a mail client's link-checker burn the
 // holder's one chance before they ever saw the page.
 func (a *App) handleMailRecoverReset(w http.ResponseWriter, r *http.Request) {
+	lang := requestLang(w, r)
 	if a.vayuMail == nil || a.vayuMail.Accounts() == nil {
-		a.renderRecoveryPage(w, r, recoveryNoticePage("Recovery unavailable",
-			"VayuMail is not running on this server."))
+		a.renderRecoveryPage(w, r, lang, recoveryNoticePage(lang, i18n.T(lang, "Recovery unavailable"),
+			i18n.T(lang, "VayuMail is not running on this server.")))
 		return
 	}
 	if r.Method == http.MethodGet {
-		a.renderRecoveryPage(w, r, recoveryPasswordFormPage(r.URL.Query().Get("token"), ""))
+		a.renderRecoveryPage(w, r, lang, recoveryPasswordFormPage(lang, r.URL.Query().Get("token"), ""))
 		return
 	}
 
@@ -157,12 +161,12 @@ func (a *App) handleMailRecoverReset(w http.ResponseWriter, r *http.Request) {
 	pass := r.FormValue("password")
 	confirm := r.FormValue("confirm")
 	if pass != confirm {
-		a.renderRecoveryPage(w, r, recoveryPasswordFormPage(token, "Those passwords do not match."))
+		a.renderRecoveryPage(w, r, lang, recoveryPasswordFormPage(lang, token, i18n.T(lang, "Those passwords do not match.")))
 		return
 	}
 	if len([]rune(pass)) < minMailPasswordLen {
-		a.renderRecoveryPage(w, r, recoveryPasswordFormPage(token,
-			"Choose a password of at least 8 characters."))
+		a.renderRecoveryPage(w, r, lang, recoveryPasswordFormPage(lang, token,
+			i18n.T(lang, "Choose a password of at least 8 characters.")))
 		return
 	}
 	// Consume first: an invalid or replayed token must cost the caller their
@@ -170,36 +174,37 @@ func (a *App) handleMailRecoverReset(w http.ResponseWriter, r *http.Request) {
 	addr, err := a.vayuMail.Accounts().ConsumeRecoveryToken(r.Context(), token)
 	if err != nil {
 		dbpkg.AuditLog("vayumail.recovery.token_rejected", "public:"+clientIPForContact(r), "", err.Error())
-		a.renderRecoveryPage(w, r, recoveryNoticePage("That link is no longer valid",
-			"Reset links can be used once and expire after 30 minutes. Request a new one."))
+		a.renderRecoveryPage(w, r, lang, recoveryNoticePage(lang, i18n.T(lang, "That link is no longer valid"),
+			i18n.T(lang, "Reset links can be used once and expire after 30 minutes. Request a new one.")))
 		return
 	}
 	deps, ok := a.mailResetDepsFor()
 	if !ok {
-		a.renderRecoveryPage(w, r, recoveryNoticePage("Recovery unavailable",
-			"VayuMail is not running on this server."))
+		a.renderRecoveryPage(w, r, lang, recoveryNoticePage(lang, i18n.T(lang, "Recovery unavailable"),
+			i18n.T(lang, "VayuMail is not running on this server.")))
 		return
 	}
 	out, err := applyMailPasswordReset(r.Context(), deps, addr, pass,
 		mailResetByLink, "public:"+clientIPForContact(r))
 	if err != nil {
-		a.renderRecoveryPage(w, r, recoveryNoticePage("That did not work", err.Error()))
+		a.renderRecoveryPage(w, r, lang, recoveryNoticePage(lang, i18n.T(lang, "That did not work"), err.Error()))
 		return
 	}
-	a.renderRecoveryPage(w, r, recoveryDonePage(addr, out))
+	a.renderRecoveryPage(w, r, lang, recoveryDonePage(lang, addr, out))
 }
 
 // handleMailRecoverCode completes a code-based recovery. This is the factor that
 // works with no network, no third party and no outbound queue — in a Tor Space it
 // is the only one.
 func (a *App) handleMailRecoverCode(w http.ResponseWriter, r *http.Request) {
+	lang := requestLang(w, r)
 	if a.vayuMail == nil || a.vayuMail.Accounts() == nil {
-		a.renderRecoveryPage(w, r, recoveryNoticePage("Recovery unavailable",
-			"VayuMail is not running on this server."))
+		a.renderRecoveryPage(w, r, lang, recoveryNoticePage(lang, i18n.T(lang, "Recovery unavailable"),
+			i18n.T(lang, "VayuMail is not running on this server.")))
 		return
 	}
 	if r.Method == http.MethodGet {
-		a.renderRecoveryPage(w, r, recoveryCodeFormPage("", ""))
+		a.renderRecoveryPage(w, r, lang, recoveryCodeFormPage(lang, "", ""))
 		return
 	}
 
@@ -209,7 +214,7 @@ func (a *App) handleMailRecoverCode(w http.ResponseWriter, r *http.Request) {
 	confirm := r.FormValue("confirm")
 	ip := clientIPForContact(r)
 	if a.signinRefused(addr, ip) {
-		a.renderRecoveryPage(w, r, recoveryCodeFormPage(addr, signinRefusedMessage))
+		a.renderRecoveryPage(w, r, lang, recoveryCodeFormPage(lang, addr, signinRefused(lang)))
 		return
 	}
 
@@ -218,22 +223,22 @@ func (a *App) handleMailRecoverCode(w http.ResponseWriter, r *http.Request) {
 	// a locked account is told when to try again rather than a generic no.
 	if locked, until := auth.CheckAccountLockout(addr); locked {
 		a.signinRecord(addr, signin.DoorRecovery, signin.StagePaused, ip)
-		a.renderRecoveryPage(w, r, recoveryCodeFormPage(addr, loginLockoutMessage(until)))
+		a.renderRecoveryPage(w, r, lang, recoveryCodeFormPage(lang, addr, loginLockoutMessage(lang, until)))
 		return
 	}
 	if !recoveryByIP.allow(ip) || !recoveryByAddress.allow(addr) {
 		// A generic failure, not "slow down": the latter tells an attacker their
 		// earlier guesses were reaching a real account.
-		a.renderRecoveryPage(w, r, recoveryCodeFormPage(addr, recoveryCodeFailure))
+		a.renderRecoveryPage(w, r, lang, recoveryCodeFormPage(lang, addr, recoveryCodeFailure(lang)))
 		return
 	}
 	if pass != confirm {
-		a.renderRecoveryPage(w, r, recoveryCodeFormPage(addr, "Those passwords do not match."))
+		a.renderRecoveryPage(w, r, lang, recoveryCodeFormPage(lang, addr, i18n.T(lang, "Those passwords do not match.")))
 		return
 	}
 	if len([]rune(pass)) < minMailPasswordLen {
-		a.renderRecoveryPage(w, r, recoveryCodeFormPage(addr,
-			"Choose a password of at least 8 characters."))
+		a.renderRecoveryPage(w, r, lang, recoveryCodeFormPage(lang, addr,
+			i18n.T(lang, "Choose a password of at least 8 characters.")))
 		return
 	}
 
@@ -247,27 +252,28 @@ func (a *App) handleMailRecoverCode(w http.ResponseWriter, r *http.Request) {
 		// here because a code attempt already requires knowing the address, and the
 		// per-address budget is 3/hour.
 		dbpkg.AuditLog("vayumail.recovery.code_rejected", "public:"+ip, addr, "")
-		a.renderRecoveryPage(w, r, recoveryCodeFormPage(addr, recoveryCodeFailure))
+		a.renderRecoveryPage(w, r, lang, recoveryCodeFormPage(lang, addr, recoveryCodeFailure(lang)))
 		return
 	}
 	deps, ok := a.mailResetDepsFor()
 	if !ok {
-		a.renderRecoveryPage(w, r, recoveryNoticePage("Recovery unavailable",
-			"VayuMail is not running on this server."))
+		a.renderRecoveryPage(w, r, lang, recoveryNoticePage(lang, i18n.T(lang, "Recovery unavailable"),
+			i18n.T(lang, "VayuMail is not running on this server.")))
 		return
 	}
 	out, err := applyMailPasswordReset(r.Context(), deps, addr, pass, mailResetByCode, "public:"+ip)
 	if err != nil {
-		a.renderRecoveryPage(w, r, recoveryNoticePage("That did not work", err.Error()))
+		a.renderRecoveryPage(w, r, lang, recoveryNoticePage(lang, i18n.T(lang, "That did not work"), err.Error()))
 		return
 	}
-	a.renderRecoveryPage(w, r, recoveryDonePage(addr, out))
+	a.renderRecoveryPage(w, r, lang, recoveryDonePage(lang, addr, out))
 }
 
 // recoveryCodeFailure is the single message for every code failure — unknown
 // mailbox, wrong code, spent code, or over budget.
-const recoveryCodeFailure = "That mailbox and code combination was not accepted. " +
-	"Check the code and try again, or use a recovery link instead."
+func recoveryCodeFailure(lang string) string {
+	return i18n.T(lang, "That mailbox and code combination was not accepted. Check the code and try again, or use a recovery link instead.")
+}
 
 // handleMailRecoverAsk files a request for administrator help — the last path,
 // for a holder who enrolled nothing and has no channel left.
@@ -277,13 +283,14 @@ const recoveryCodeFailure = "That mailbox and code combination was not accepted.
 // which mailboxes exist. The administrator sees the address in the queue and
 // declines if it is nonsense.
 func (a *App) handleMailRecoverAsk(w http.ResponseWriter, r *http.Request) {
+	lang := requestLang(w, r)
 	if a.vayuMail == nil || a.vayuMail.Accounts() == nil {
-		a.renderRecoveryPage(w, r, recoveryNoticePage("Recovery unavailable",
-			"VayuMail is not running on this server."))
+		a.renderRecoveryPage(w, r, lang, recoveryNoticePage(lang, i18n.T(lang, "Recovery unavailable"),
+			i18n.T(lang, "VayuMail is not running on this server.")))
 		return
 	}
 	if r.Method == http.MethodGet {
-		a.renderRecoveryPage(w, r, recoveryAskFormPage("", ""))
+		a.renderRecoveryPage(w, r, lang, recoveryAskFormPage(lang, "", ""))
 		return
 	}
 	addr := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
@@ -293,11 +300,11 @@ func (a *App) handleMailRecoverAsk(w http.ResponseWriter, r *http.Request) {
 	if !recoveryByIP.allow(ip) || !recoveryByAddress.allow(addr) {
 		// Same page as success. A visible "too many requests" would confirm that
 		// earlier attempts landed on something real.
-		a.renderRecoveryPage(w, r, recoveryAskedPage())
+		a.renderRecoveryPage(w, r, lang, recoveryAskedPage(lang))
 		return
 	}
 	if addr == "" {
-		a.renderRecoveryPage(w, r, recoveryAskFormPage(addr, "Enter your mail address."))
+		a.renderRecoveryPage(w, r, lang, recoveryAskFormPage(lang, addr, i18n.T(lang, "Enter your mail address.")))
 		return
 	}
 	if err := a.vayuMail.Accounts().FileRecoveryRequest(r.Context(), addr, note, ip); err != nil {
@@ -307,5 +314,5 @@ func (a *App) handleMailRecoverAsk(w http.ResponseWriter, r *http.Request) {
 	// pseudonym storage does — never "public:"+rawIP (audit: that contradicted
 	// gdpr.go's published pii_stored:false).
 	dbpkg.AuditLog("vayumail.recovery.help_requested", "public:"+vmail.PseudonymizeIP(ip), addr, note)
-	a.renderRecoveryPage(w, r, recoveryAskedPage())
+	a.renderRecoveryPage(w, r, lang, recoveryAskedPage(lang))
 }

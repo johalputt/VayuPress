@@ -57,6 +57,7 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/domain"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
@@ -2069,6 +2070,7 @@ func setAuthPageNoCache(w http.ResponseWriter) {
 }
 
 func (a *App) handleOSLogin(w http.ResponseWriter, r *http.Request) {
+	lang := requestLang(w, r)
 	// no-store BEFORE the branch so both the redirect and the form response are
 	// uncacheable — otherwise a cached form silently defeats the redirect.
 	setAuthPageNoCache(w)
@@ -2090,7 +2092,7 @@ func (a *App) handleOSLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(osLoginPage("", "", next)))
+	_, _ = w.Write([]byte(osLoginPage(lang, "", "", next, false)))
 }
 
 // isLocalURL reports whether s is a safe SAME-ORIGIN path. It must parse as a
@@ -2127,6 +2129,7 @@ func isLocalURL(s string) bool {
 }
 
 func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
+	lang := requestLang(w, r)
 	setAuthPageNoCache(w)
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -2144,7 +2147,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	pass := r.FormValue("password")
 	if email == "" || pass == "" {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(osLoginPage(email, "Email and password are required.", next)))
+		_, _ = w.Write([]byte(osLoginPage(lang, email, i18n.T(lang, "Email and password are required."), next, false)))
 		return
 	}
 	if a.userStore == nil || a.sessions == nil {
@@ -2161,12 +2164,12 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	email, signinCtx := a.signinResolve(r.Context(), email)
 	if a.signinRefused(email, ip) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(osLoginPage(email, signinRefusedMessage, next)))
+		_, _ = w.Write([]byte(osLoginPage(lang, email, signinRefused(lang), next, false)))
 		return
 	}
 	if locked, until := auth.CheckAuthLockout(ip); locked {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(osLoginPage(email, loginLockoutMessage(until), next)))
+		_, _ = w.Write([]byte(osLoginPage(lang, email, loginLockoutMessage(lang, until), next, false)))
 		return
 	}
 	// The account's own lockout, shared by every door: many addresses
@@ -2174,7 +2177,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	if locked, until := auth.CheckAccountLockout(email); locked {
 		a.signinRecord(email, signin.DoorConsole, signin.StagePaused, ip)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(osLoginPage(email, loginLockoutMessage(until), next)))
+		_, _ = w.Write([]byte(osLoginPage(lang, email, loginLockoutMessage(lang, until), next, false)))
 		return
 	}
 	u, err := a.userStore.Authenticate(signinCtx, email, pass)
@@ -2198,7 +2201,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 					auth.RecordAccountFailure(email, ip)
 					a.signinRecord(email, signin.DoorConsole, signin.StageCode, ip)
 					w.Header().Set("Content-Type", "text/html; charset=utf-8")
-					_, _ = w.Write([]byte(osLoginPage(email, "Enter the 6-digit code from your authenticator app, then re-enter your password.", next)))
+					_, _ = w.Write([]byte(osLoginPage(lang, email, i18n.T(lang, "Enter the 6-digit code from your authenticator app, then re-enter your password."), next, true)))
 					return
 				}
 			}
@@ -2219,14 +2222,14 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 			auth.RecordAccountFailure(email, ip)
 			a.signinRecord(email, signin.DoorConsole, signin.StageCode, ip)
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = w.Write([]byte(osLoginPage(email, "Enter the 6-digit code from your authenticator app, then re-enter your password.", next)))
+			_, _ = w.Write([]byte(osLoginPage(lang, email, i18n.T(lang, "Enter the 6-digit code from your authenticator app, then re-enter your password."), next, true)))
 			return
 		}
 		auth.RecordAuthFailure(ip)
 		auth.RecordAccountFailure(email, ip)
 		a.signinRecord(email, signin.DoorConsole, signin.StagePassword, ip)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(osLoginPage(email, "Invalid email or password.", next)))
+		_, _ = w.Write([]byte(osLoginPage(lang, email, i18n.T(lang, "Invalid email or password."), next, false)))
 		return
 	}
 	// Second factor: if the account has 2FA enabled, a valid TOTP code is required.
@@ -2236,7 +2239,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		auth.RecordAccountFailure(email, ip)
 		a.signinRecord(email, signin.DoorConsole, signin.StageCode, ip)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(osLoginPage(email, "Enter the 6-digit code from your authenticator app, then re-enter your password.", next)))
+		_, _ = w.Write([]byte(osLoginPage(lang, email, i18n.T(lang, "Enter the 6-digit code from your authenticator app, then re-enter your password."), next, true)))
 		return
 	}
 	token, err := a.startSession(r, u.ID)
@@ -2367,7 +2370,7 @@ func (a *App) handleOSLogout(w http.ResponseWriter, r *http.Request) {
 // osLoginPage builds the sign-in page: a single, calm, centered card on a clean
 // background (light by default, following the OS) with an unobtrusive
 // light/dark/auto theme switch. No gradients, no animation — minimalist premium.
-func osLoginPage(prefillEmail, errMsg, next string) string {
+func osLoginPage(lang, prefillEmail, errMsg, next string, codeAsked bool) string {
 	errHTML := ""
 	if errMsg != "" {
 		errHTML = `<div class="login-error" role="alert">` + html.EscapeString(errMsg) + `</div>`
@@ -2379,43 +2382,51 @@ func osLoginPage(prefillEmail, errMsg, next string) string {
 	if next != "" {
 		nextHTML = `<input type="hidden" name="next" value="` + html.EscapeString(next) + `">`
 	}
-	return authPageShell("Sign in — VayuPress", `
+	// The two-factor field starts open when the refusal was about its code, so
+	// a failed attempt reopens the field rather than hide why it failed. The
+	// handler says so; reading the message for an English word would close it
+	// in every other language.
+	totpOpen := ""
+	if codeAsked {
+		totpOpen = " open"
+	}
+	return authPageShellIn(lang, i18n.T(lang, "Sign in · VayuPress"), `
   <div class="login-brandline">`+saMark()+`<span>VayuPress</span></div>
   <div class="login-card">
-    <h1 class="login-title">Welcome back</h1>
-    <p class="login-sub">Sign in to your dashboard</p>
+    <h1 class="login-title">`+esc(i18n.T(lang, "Welcome back"))+`</h1>
+    <p class="login-sub">`+esc(i18n.T(lang, "Sign in to your dashboard"))+`</p>
     `+errHTML+`
     <form class="login-form" method="POST" action="/os/login" novalidate>`+nextHTML+`
       <div class="field">
-        <label class="field-label" for="login-email">Email</label>
+        <label class="field-label" for="login-email">`+esc(i18n.T(lang, "Email"))+`</label>
         <input id="login-email" class="input" type="email" name="email"
           value="`+html.EscapeString(prefillEmail)+`"
           placeholder="you@example.com" autocomplete="username" required autofocus>
       </div>
       <div class="field">
-        <label class="field-label" for="login-password">Password</label>
+        <label class="field-label" for="login-password">`+esc(i18n.T(lang, "Password"))+`</label>
         <input id="login-password" class="input" type="password" name="password"
-          placeholder="Your password" autocomplete="current-password" required>
+          placeholder="`+esc(i18n.T(lang, "Your password"))+`" autocomplete="current-password" required>
       </div>
-      <details class="login-totp"`+loginTOTPOpen(errHTML)+`>
-        <summary class="login-totp__summary">Sign in with a 2FA code</summary>
+      <details class="login-totp"`+totpOpen+`>
+        <summary class="login-totp__summary">`+esc(i18n.T(lang, "Sign in with a 2FA code"))+`</summary>
         <div class="field">
-          <label class="field-label" for="login-totp">Two-factor code</label>
+          <label class="field-label" for="login-totp">`+esc(i18n.T(lang, "Two-factor code"))+`</label>
           <input id="login-totp" class="input" type="text" name="totp"
             inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">
         </div>
       </details>
       <label class="login-remember" for="login-remember">
         <input id="login-remember" type="checkbox" name="remember" value="1" checked>
-        <span>Remember me on this device</span>
+        <span>`+esc(i18n.T(lang, "Remember me on this device"))+`</span>
       </label>
-      <button type="submit" class="btn btn--primary login-submit">Sign in</button>
+      <button type="submit" class="btn btn--primary login-submit">`+esc(i18n.T(lang, "Sign in"))+`</button>
     </form>
-    <button type="button" class="btn login-submit" data-passkey-signin hidden>Sign in with a passkey</button>
+    <button type="button" class="btn login-submit" data-passkey-signin hidden>`+esc(i18n.T(lang, "Sign in with a passkey"))+`</button>
     <p class="text-sm muted" data-passkey-signin-say role="status"></p>
-    <p class="login-recover"><a href="/mail/recover">Forgot your mailbox password?</a></p>
+    <p class="login-recover"><a href="/mail/recover">`+esc(i18n.T(lang, "Forgot your mailbox password?"))+`</a></p>
   </div>
-  <div class="login-footer">`+saEdition()+`<span>Sovereign · zero-telemetry · yours completely</span></div>
+  <div class="login-footer">`+saEdition()+`<span>`+esc(i18n.T(lang, "Sovereign · zero-telemetry · yours completely"))+`</span></div>
   <script src="/os/static/js/passkey.js?v=`+assetVer("js/passkey.js")+`"></script>`)
 }
 
@@ -2423,17 +2434,6 @@ func osLoginPage(prefillEmail, errMsg, next string) string {
 // shared by the sign-in and change-password pages. The .vp-os class and the
 // data-theme attribute both sit on <html> so the token overrides apply; the
 // theme defaults to "auto" (follows the OS) and is switchable via os-theme.js.
-// loginTOTPOpen reports whether the collapsed 2FA disclosure must start open:
-// only when the sign-in error was about the code itself, so a failed attempt
-// reopens the field instead of hiding the reason it failed.
-func loginTOTPOpen(errHTML string) string {
-	if strings.Contains(errHTML, "two-factor") || strings.Contains(errHTML, "2FA") ||
-		strings.Contains(errHTML, "code") || strings.Contains(errHTML, "TOTP") {
-		return " open"
-	}
-	return ""
-}
-
 func authPageShell(title, inner string) string {
 	return authPageShellIn("en", title, inner)
 }

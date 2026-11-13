@@ -19,6 +19,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/email"
 	"github.com/johalputt/vayupress/internal/geoip"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/signin"
 )
@@ -84,10 +85,12 @@ func (a *App) signinRefused(account, ip string) bool {
 	return refused
 }
 
-// signinRefusedMessage is what a refused sign-in is told. It names no rule,
+// signinRefused is what a refused sign-in is told, in lang. It names no rule,
 // so it tells a guesser nothing about the account, and it tells a holder
 // caught by their own fence where to turn.
-const signinRefusedMessage = "Sign-in from here is not allowed. If this is your account, ask the site's administrator."
+func signinRefused(lang string) string {
+	return i18n.T(lang, "Sign-in from here is not allowed. If this is your account, ask the site's administrator.")
+}
 
 // signinRecord records one attempt at door.
 func (a *App) signinRecord(account, door, stage, ip string) {
