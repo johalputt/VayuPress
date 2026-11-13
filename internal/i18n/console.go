@@ -25,6 +25,7 @@ package i18n
 // own direction regardless.
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -98,6 +99,22 @@ func Choose(chosen, acceptLanguage string) string {
 	// With nothing near, the matcher answers its first tag, English.
 	_, i, _ := matcher.Match(prefs...)
 	return Languages[i].Tag
+}
+
+type langKey struct{}
+
+// WithLang is ctx carrying lang, the language the page it serves is written
+// in.
+func WithLang(ctx context.Context, lang string) context.Context {
+	return context.WithValue(ctx, langKey{}, lang)
+}
+
+// Lang is the language ctx's page is written in: English when none was set.
+func Lang(ctx context.Context) string {
+	if l, ok := ctx.Value(langKey{}).(string); ok && l != "" {
+		return l
+	}
+	return "en"
 }
 
 // T is msg in lang, with its placeholders filled from args (name, value

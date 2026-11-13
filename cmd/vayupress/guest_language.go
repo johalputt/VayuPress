@@ -63,3 +63,27 @@ func languageMenu(lang string, r *http.Request) string {
 	b.WriteString(`</select></label><button class="btn btn--sm" type="submit">` + esc(i18n.T(lang, "Change")) + `</button></form>`)
 	return b.String()
 }
+
+// consoleSpeaks is the console's paths that are in the person's language;
+// every other page of it is English. A section joins when the last of its
+// sentences has moved into i18n.T, so no release shows a page half in one
+// language and half in another while a section is being moved.
+var consoleSpeaks []string
+
+// consoleLanguage puts the language a console page is written in on its
+// request: the person's (their choice from ?lang=, kept, then their
+// browser's) on a section that speaks it, English on every other.
+func consoleLanguage(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lang := "en"
+		for _, p := range consoleSpeaks {
+			if r.URL.Path == p || strings.HasPrefix(r.URL.Path, p+"/") {
+				lang = requestLang(w, r)
+				w.Header().Add("Vary", "Accept-Language, Cookie")
+				break
+			}
+		}
+		w.Header().Set("Content-Language", lang)
+		next.ServeHTTP(w, r.WithContext(i18n.WithLang(r.Context(), lang)))
+	})
+}

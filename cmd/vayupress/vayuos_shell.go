@@ -721,8 +721,12 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 		}
 	}
 
+	lang := "en"
+	if s != nil && s.Lang != "" {
+		lang = s.Lang
+	}
 	return `<!DOCTYPE html>
-<html lang="en">
+<html lang="` + esc(lang) + `">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

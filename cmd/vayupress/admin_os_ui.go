@@ -185,6 +185,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	// Protected pages and APIs — require session or API key.
 	r.Group(func(pr chi.Router) {
 		pr.Use(a.requireSessionOrAPIKey)
+		pr.Use(consoleLanguage)
 		// Enter-the-Tor-world bridge (ADR-0141): while the operator's view is set to
 		// Tor, this proxies /os/* into the separate Tor-world instance so they manage
 		// its data (its own database), never clearnet's. Mounted after auth so only a
@@ -1617,6 +1618,8 @@ Array.prototype.forEach.call(document.querySelectorAll('.sidebar [data-copy], .w
 
 // osSettings holds the subset of site settings needed to render every page.
 type osSettings struct {
+	// Lang is the language the page is written in (consoleLanguage).
+	Lang       string
 	SiteName   string
 	AdminTheme string
 	// Route is the matched route pattern (chi), which the Still Air shell uses to
@@ -1750,7 +1753,7 @@ type osNotification struct {
 
 // getOSSettings loads settings needed for layout rendering.
 func (a *App) getOSSettings(ctx context.Context) *osSettings {
-	s := &osSettings{}
+	s := &osSettings{Lang: i18n.Lang(ctx)}
 	if a.siteSettings != nil {
 		s.SiteName = a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeySiteName)
 		s.AdminTheme = a.siteSettings.Get(ctx, settings.ForPrimary(), "admin.theme")
