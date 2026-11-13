@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+
+- **A password reset disconnects every AI tool connected to the mailbox.**
+  A reset ended every session and app password but left a tool connected
+  over MCP with its key, so someone who had been in the mailbox and
+  connected a tool kept reading it after the holder took it back. The reset
+  now removes each connection and revokes its key, and its notice counts
+  them.
+- **A password reset names what keeps leaving the mailbox on its own.**
+  Forwarding, rules that forward, links to files and files shared with
+  other mailboxes all outlive a reset, and each may as well be the holder's
+  own, so none is removed. The reset's notice now lists those it found, for
+  the holder to look at.
+
 ## [3.18.39] — 2026-11-12
 
 Calendar and booking that work with other calendars, Drive that keeps files encrypted, checked and shareable, AI tools for your own mailbox that never send, and the pages a visitor reads in thirteen languages.

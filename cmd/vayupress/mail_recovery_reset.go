@@ -30,6 +30,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/email"
 	"github.com/johalputt/vayupress/internal/logging"
+	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
 // mailResetReason records how a reset was authorised. It drives both the audit
@@ -57,7 +58,11 @@ type mailResetOutcome struct {
 	SessionsRevoked     int
 	ToolsDisconnected   int
 	QueueHeld           int
-	NotifiedContact     string
+	// Exits is what keeps leaving the mailbox on its own (forwarding, rules
+	// that forward, file links, shares), left as it is and named in the
+	// notice: it may be the holder's own, or what an intruder left behind.
+	Exits           vmail.MailboxExits
+	NotifiedContact string
 	// Problems lists steps that failed. A reset is never abandoned half-done —
 	// leaving app passwords alive is worse than any error — so failures are
 	// collected, reported and audited rather than aborting the sequence.
@@ -85,12 +90,14 @@ type mailResetDeps struct {
 	// connected by whoever had the mailbox kept reading it after the reset.
 	RevokeConnections func(ctx context.Context, email string) (int, error)
 	InvalidateTokens  func(ctx context.Context, email string)
-	HoldQueue         func(ctx context.Context, email string) (int, error)
-	RecoveryContact   func(ctx context.Context, email string) string
-	Notify            func(ctx context.Context, to, subject, body string) error
-	FileToMailbox     func(ctx context.Context, email, subject, body string) error
-	Audit             func(action, actor, target, detail string)
-	Now               func() time.Time
+	// Exits reads what keeps leaving the mailbox on its own, for the notice.
+	Exits           func(ctx context.Context, email string) vmail.MailboxExits
+	HoldQueue       func(ctx context.Context, email string) (int, error)
+	RecoveryContact func(ctx context.Context, email string) string
+	Notify          func(ctx context.Context, to, subject, body string) error
+	FileToMailbox   func(ctx context.Context, email, subject, body string) error
+	Audit           func(action, actor, target, detail string)
+	Now             func() time.Time
 	// handedOver reports whether this mailbox has been handed to its owner
 	// (ADR-0152 D4). Nil in tests and in installs where VayuMail is absent, which
 	// reads as "not handed over" — the historic behaviour.
@@ -241,6 +248,11 @@ func applyMailPasswordReset(ctx context.Context, d mailResetDeps, email, newPass
 		}
 	}
 
+	// 5b. What the reset leaves as it was, for the notice to name.
+	if d.Exits != nil {
+		out.Exits = d.Exits(ctx, email)
+	}
+
 	// 6. Tell the holder, on every channel that is not the credential just
 	//    changed. The in-mailbox copy matters even though the attacker could
 	//    delete it: most account takeovers are not that careful, and it is the
@@ -309,6 +321,24 @@ func mailResetNotice(email string, reason mailResetReason, actor string,
 		fmt.Fprintf(&b, "  - %d message%s waiting to be sent %s been held for review\n",
 			out.QueueHeld, plural(out.QueueHeld), map[bool]string{true: "has", false: "have"}[out.QueueHeld == 1])
 	}
+	if x := out.Exits; x.Any() {
+		// Not ended by the reset, since each may be the holder's own: the
+		// standing ways mail and files leave, which are what someone who took
+		// a mailbox over sets up to go on reading it.
+		b.WriteString("\nThese were left as they were. If you did not set one up, remove it now:\n\n")
+		if x.ForwardTo != "" {
+			fmt.Fprintf(&b, "  - your mail is forwarded to %s (Settings, Forwarding)\n", x.ForwardTo)
+		}
+		if len(x.RuleForwards) > 0 {
+			fmt.Fprintf(&b, "  - rules forward mail to %s (Settings, Rules)\n", strings.Join(x.RuleForwards, ", "))
+		}
+		if x.FileLinks > 0 {
+			fmt.Fprintf(&b, "  - %d link%s to your files %s open (each file's sheet in Drive)\n", x.FileLinks, plural(x.FileLinks), map[bool]string{true: "is", false: "are"}[x.FileLinks == 1])
+		}
+		if x.FileShares > 0 {
+			fmt.Fprintf(&b, "  - files or folders are shared with %d other mailbox%s (each one's sheet in Drive)\n", x.FileShares, map[bool]string{true: "", false: "es"}[x.FileShares == 1])
+		}
+	}
 	b.WriteString("\nYou will need to sign in again on every device, and set up your mail app once more.\n\n")
 	b.WriteString("If this was NOT you, act now: someone else may have taken control of this mailbox. ")
 	b.WriteString("Sign in and change the password immediately, then contact your administrator.\n")
@@ -364,6 +394,7 @@ func (a *App) mailResetDepsFor() (mailResetDeps, bool) {
 		}
 		return len(keys), err
 	}
+	d.Exits = a.vayuMail.StandingExits
 	d.HoldQueue = a.vayuMail.HoldOutboundFor
 	d.Notify = a.sendRecoveryNotice
 	// ADR-0152 D4: the operator's reset path is refused once a mailbox belongs to
