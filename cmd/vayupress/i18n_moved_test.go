@@ -23,12 +23,15 @@ import (
 var i18nMoved = map[string][]string{
 	"handlers_mail_recovery_pages.go": nil,
 	"admin_os_ui.go":                  {"osLoginPage"},
-	"vayuos.go":                       {"mailFolderNav", "mailFolderLabel", "mailViewLabel"},
+	"vayuos.go":                       {"mailFolderNav", "mailFolderLabel", "mailViewLabel", "vayuInboxBody"},
 	"vayuos_mail_blocked.go":          nil,
 	"vayuos_mail_folders.go":          nil,
 	"vayuos_mail_keys.go":             nil,
 	"vayuos_mail_labels.go":           nil,
 	"vayuos_mail_searches.go":         nil,
+	"vayuos_mail_list.go":             nil,
+	"vayuos_mail_scheduled.go":        nil,
+	"vayuos_mail_unsubscribe.go":      nil,
 }
 
 // i18nExempt are the calls whose words are for the operator or the code, not

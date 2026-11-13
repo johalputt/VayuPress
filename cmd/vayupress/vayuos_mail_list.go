@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/i18n"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
@@ -22,19 +23,19 @@ import (
 // over the list rather than in the sidebar; a Smart view is shown in the
 // sidebar only while it holds something.
 var mailViews = []struct {
-	Key, Label, Icon string
-	Tab, Smart       bool
+	Key, Icon  string
+	Tab, Smart bool
 }{
-	{Key: "unread", Label: "Unread", Icon: "mail"},
-	{Key: "pinned", Label: "Pinned", Icon: "pin"},
-	{Key: "encrypted", Label: "Encrypted", Icon: "lock"},
-	{Key: "followup", Label: "Follow-ups", Icon: "reply", Smart: true},
-	{Key: "lists", Label: "Unsubscribe", Icon: "megaphone", Smart: true},
-	{Key: vmail.CategoryPrimary, Label: "Primary", Tab: true},
-	{Key: vmail.CategoryUpdates, Label: "Updates", Tab: true},
-	{Key: vmail.CategoryNewsletters, Label: "Newsletters", Tab: true},
-	{Key: vmail.CategoryReceipts, Label: "Receipts", Tab: true},
-	{Key: vmail.CategorySocial, Label: "Social", Tab: true},
+	{Key: "unread", Icon: "mail"},
+	{Key: "pinned", Icon: "pin"},
+	{Key: "encrypted", Icon: "lock"},
+	{Key: "followup", Icon: "reply", Smart: true},
+	{Key: "lists", Icon: "megaphone", Smart: true},
+	{Key: vmail.CategoryPrimary, Tab: true},
+	{Key: vmail.CategoryUpdates, Tab: true},
+	{Key: vmail.CategoryNewsletters, Tab: true},
+	{Key: vmail.CategoryReceipts, Tab: true},
+	{Key: vmail.CategorySocial, Tab: true},
 }
 
 // mailViewParam is the view a request names, or "" for the whole folder. An
@@ -149,7 +150,7 @@ func mailOnePerSender(msgs []vmail.StoredMessage) []vmail.StoredMessage {
 // then each category with its unread count. They are drawn only in the
 // Inbox and only when its mail falls into two categories or more, so a
 // mailbox that is all people's mail is not given tabs that sort nothing.
-func mailCategoryTabs(user, folder, view string, counts map[string]int) string {
+func mailCategoryTabs(lang, user, folder, view string, counts map[string]int) string {
 	if !strings.EqualFold(folder, "Inbox") {
 		return ""
 	}
@@ -178,54 +179,78 @@ func mailCategoryTabs(user, folder, view string, counts map[string]int) string {
 		return `<a class="mx-tabs__tab" href="/os/vayumail/inbox?` + q + `" hx-get="/os/vayumail/inbox/fragment?` + q + `" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin" hx-push-url="/os/vayumail/inbox?` + q + `"` + cur + `>` + label + n + `</a>`
 	}
 	var b strings.Builder
-	b.WriteString(`<nav class="mx-tabs" aria-label="Categories">` + tab("", "All", 0))
+	b.WriteString(`<nav class="mx-tabs" aria-label="` + esc(i18n.T(lang, "Categories")) + `">` + tab("", esc(i18n.T(lang, "All")), 0))
 	for _, v := range mailViews {
 		if v.Tab && counts["all:"+v.Key] > 0 {
-			b.WriteString(tab(v.Key, v.Label, counts[v.Key]))
+			b.WriteString(tab(v.Key, esc(mailViewLabel(lang, v.Key)), counts[v.Key]))
 		}
 	}
 	b.WriteString(`</nav>`)
 	return b.String()
 }
 
-// mailListGroup files a message under a date group, in the site's time zone:
+// mailWhen is where a message falls in the list's date groups.
+type mailWhen int
+
+const (
+	whenToday mailWhen = iota
+	whenYesterday
+	whenThisWeek
+	whenThisYear
+	whenBefore
+)
+
+// mailListWhen files a message under a date group, in the site's time zone:
 // Today, Yesterday, This week, then the month (with its year when it is not
 // this one).
-func mailListGroup(t, now time.Time) string {
+func mailListWhen(t, now time.Time) mailWhen {
 	loc := config.SiteLocation()
 	t, now = t.In(loc), now.In(loc)
 	day := func(x time.Time) time.Time { return time.Date(x.Year(), x.Month(), x.Day(), 0, 0, 0, 0, loc) }
 	today := day(now)
 	switch d := day(t); {
 	case !d.Before(today):
-		return "Today"
+		return whenToday
 	case !d.Before(today.AddDate(0, 0, -1)):
-		return "Yesterday"
+		return whenYesterday
 	case !d.Before(today.AddDate(0, 0, -6)):
-		return "This week"
+		return whenThisWeek
 	case t.Year() == now.Year():
-		return t.Month().String()
-	default:
-		return t.Month().String() + " " + strconv.Itoa(t.Year())
+		return whenThisYear
 	}
+	return whenBefore
+}
+
+// mailListGroup is the head of a message's date group, in lang.
+func mailListGroup(lang string, t, now time.Time) string {
+	switch mailListWhen(t, now) {
+	case whenToday:
+		return i18n.T(lang, "Today")
+	case whenYesterday:
+		return i18n.T(lang, "Yesterday")
+	case whenThisWeek:
+		return i18n.T(lang, "This week")
+	case whenThisYear:
+		return i18n.Date(lang, config.InSite(t), i18n.Month)
+	}
+	return i18n.Date(lang, config.InSite(t), i18n.MonthYear)
 }
 
 // mailListTime is a row's time, as much as its group leaves unsaid: the
 // clock for today and yesterday, the weekday this week, else the date.
-func mailListTime(t, now time.Time) string {
+func mailListTime(lang string, t, now time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
-	switch mailListGroup(t, now) {
-	case "Today", "Yesterday":
+	switch mailListWhen(t, now) {
+	case whenToday, whenYesterday:
 		return config.FormatSite(t, "15:04")
-	case "This week":
-		return config.FormatSite(t, "Mon")
+	case whenThisWeek:
+		return i18n.Date(lang, config.InSite(t), i18n.Weekday)
+	case whenThisYear:
+		return i18n.Date(lang, config.InSite(t), i18n.DayMonthShort)
 	}
-	if config.InSite(t).Year() == config.InSite(now).Year() {
-		return config.FormatSite(t, "2 Jan")
-	}
-	return config.FormatSite(t, "2 Jan 2006")
+	return i18n.Date(lang, config.InSite(t), i18n.DayMonthYearShort)
 }
 
 // mailListRow is one message as the list draws it. link opens it: in the
@@ -234,26 +259,26 @@ func mailListTime(t, now time.Time) string {
 //
 // acts is the row's own actions (mailRowActs), shown on hover in place of its
 // time, or "" for a row that has none.
-func mailListRow(m vmail.StoredMessage, who, link string, draft bool, count int, now time.Time, avSet map[string]bool, labels []string, acts string) string {
+func mailListRow(lang string, m vmail.StoredMessage, who, link string, draft bool, count int, now time.Time, avSet map[string]bool, labels []string, acts string) string {
 	subj := m.Subject
 	if subj == "" {
-		subj = "(no subject)"
+		subj = i18n.T(lang, "(no subject)")
 	}
 	cls := "mx-row"
 	state := ""
 	if !m.Seen {
 		cls += " is-unread"
-		state = "Unread. "
+		state = i18n.T(lang, "Unread.") + " "
 	}
 	if m.Flagged {
 		cls += " is-pinned"
-		state += "Pinned. "
+		state += i18n.T(lang, "Pinned.") + " "
 	}
 	var b strings.Builder
 	b.WriteString(`<li class="` + cls + `" data-vm-row>`)
 	// The gutter holds the unread dot or the pin, and the selection check in
 	// the same place, so selecting never shifts a column.
-	b.WriteString(`<span class="mx-row__gutter"><input type="checkbox" class="mx-check" name="id" value="` + esc(m.ID) + `" data-vm-check aria-label="Select the message from ` + esc(mailDisplay(who)) + `">`)
+	b.WriteString(`<span class="mx-row__gutter"><input type="checkbox" class="mx-check" name="id" value="` + esc(m.ID) + `" data-vm-check aria-label="` + esc(i18n.T(lang, "Select the message from {sender}", "sender", mailDisplay(who))) + `">`)
 	if m.Flagged {
 		b.WriteString(`<span class="mx-row__pin" aria-hidden="true">` + saIcon("pin") + `</span>`)
 	} else {
@@ -270,20 +295,21 @@ func mailListRow(m vmail.StoredMessage, who, link string, draft bool, count int,
 	}
 	b.WriteString(`<span class="mx-row__top"><span class="mx-row__who">` + esc(mailDisplay(who)) + `</span>`)
 	if !m.Date.IsZero() {
-		b.WriteString(`<time class="mx-row__time" datetime="` + m.Date.UTC().Format(time.RFC3339) + `" title="` + esc(config.FormatSiteStamp(m.Date)) + `">` + esc(mailListTime(m.Date, now)) + `</time>`)
+		b.WriteString(`<time class="mx-row__time" datetime="` + m.Date.UTC().Format(time.RFC3339) + `" title="` + esc(config.FormatSiteStamp(m.Date)) + `">` + esc(mailListTime(lang, m.Date, now)) + `</time>`)
 	}
 	b.WriteString(`</span><span class="mx-row__subj"><span class="mx-row__subj-text">` + esc(subj) + `</span>`)
 	if m.Encrypted || m.Attachment || count > 1 {
 		b.WriteString(`<span class="mx-row__marks">`)
 		if m.Encrypted {
-			b.WriteString(`<span class="mx-mark" title="Encrypted">` + saIcon("lock") + `<span class="vp-sr-only">Encrypted.</span></span>`)
+			b.WriteString(`<span class="mx-mark" title="` + esc(i18n.T(lang, "Encrypted")) + `">` + saIcon("lock") + `<span class="vp-sr-only">` + esc(i18n.T(lang, "Encrypted.")) + `</span></span>`)
 		}
 		if m.Attachment {
-			b.WriteString(`<span class="mx-mark" title="Has an attachment">` + saIcon("clip") + `<span class="vp-sr-only">Has an attachment.</span></span>`)
+			b.WriteString(`<span class="mx-mark" title="` + esc(i18n.T(lang, "Has an attachment")) + `">` + saIcon("clip") + `<span class="vp-sr-only">` + esc(i18n.T(lang, "Has an attachment.")) + `</span></span>`)
 		}
 		if count > 1 {
-			n := strconv.Itoa(count)
-			b.WriteString(`<span class="mx-thread" title="` + n + ` messages in this conversation">` + n + `<span class="vp-sr-only"> messages.</span></span>`)
+			// The number is seen; a screen reader hears its noun after it.
+			b.WriteString(`<span class="mx-thread" title="` + esc(i18n.T(lang, "{n, plural, one {# message in this conversation} other {# messages in this conversation}}", "n", count)) + `">` +
+				strconv.Itoa(count) + `<span class="vp-sr-only"> ` + esc(i18n.T(lang, "{n, plural, one {message.} other {messages.}}", "n", count)) + `</span></span>`)
 		}
 		b.WriteString(`</span>`)
 	}
@@ -299,26 +325,26 @@ func mailListRow(m vmail.StoredMessage, who, link string, draft bool, count int,
 // Delete (to Trash, as the reader's Delete is), Mark read or unread, and
 // Snooze until tomorrow. Each posts the one message through the list's own
 // action, with the folder its row was drawn in (the list's scope inputs).
-func mailRowActs(m vmail.StoredMessage, folder string) string {
+func mailRowActs(lang string, m vmail.StoredMessage, folder string) string {
 	act := func(icon, label string, vals ...string) string {
 		return `<button type="button" class="mx-row__quick-btn" hx-post="/os/vayumail/inbox/action"` + hxVals(append(vals, "id", m.ID)...) +
-			` hx-include="[data-vm-scope]" hx-target="#vm-inbox-list" hx-swap="innerHTML" title="` + label + `" aria-label="` + label + `">` + saIcon(icon) + `</button>`
+			` hx-include="[data-vm-scope]" hx-target="#vm-inbox-list" hx-swap="innerHTML" title="` + esc(label) + `" aria-label="` + esc(label) + `">` + saIcon(icon) + `</button>`
 	}
 	var b strings.Builder
 	b.WriteString(`<span class="mx-row__quick">`)
 	if !strings.EqualFold(folder, "Archive") {
-		b.WriteString(act("archive", "Archive", "action", "move", "to", "Archive"))
+		b.WriteString(act("archive", i18n.T(lang, "Archive"), "action", "move", "to", "Archive"))
 	}
 	if !strings.EqualFold(folder, "Trash") {
-		b.WriteString(act("trash", "Delete", "action", "move", "to", "Trash"))
+		b.WriteString(act("trash", i18n.T(lang, "Delete"), "action", "move", "to", "Trash"))
 	}
 	if m.Seen {
-		b.WriteString(act("mail", "Mark unread", "action", "mark", "mark", "unread"))
+		b.WriteString(act("mail", i18n.T(lang, "Mark unread"), "action", "mark", "mark", "unread"))
 	} else {
-		b.WriteString(act("check", "Mark read", "action", "mark", "mark", "read"))
+		b.WriteString(act("check", i18n.T(lang, "Mark read"), "action", "mark", "mark", "read"))
 	}
 	if !strings.EqualFold(folder, "Snoozed") {
-		b.WriteString(act("timer", "Snooze until tomorrow", "action", "snooze", "snooze", "tomorrow"))
+		b.WriteString(act("timer", i18n.T(lang, "Snooze until tomorrow"), "action", "snooze", "snooze", "tomorrow"))
 	}
 	b.WriteString(`</span>`)
 	return b.String()

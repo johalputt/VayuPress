@@ -6,6 +6,7 @@ package main
 // list (internal/vayuos/mail/unsubscribe.go says when it is sent from here).
 
 import (
+	"github.com/johalputt/vayupress/internal/i18n"
 	"net/http"
 	"net/url"
 	"strings"
@@ -18,7 +19,7 @@ import (
 // to open when it offers only that. One-click alone may yet be refused as
 // unsigned (checking needs DNS, so it is not done while drawing the reader),
 // so then the page is offered beside the control, where the refusal points.
-func mailUnsubscribeLine(user, folder, id string, o vmail.UnsubscribeOffer) string {
+func mailUnsubscribeLine(lang, user, folder, id string, o vmail.UnsubscribeOffer) string {
 	host := ""
 	if u, err := url.Parse(o.Link); err == nil {
 		host = u.Hostname()
@@ -27,15 +28,15 @@ func mailUnsubscribeLine(user, folder, id string, o vmail.UnsubscribeOffer) stri
 		return `<a class="` + class + `" href="` + esc(o.Link) + `" target="_blank" rel="noopener noreferrer">` + esc(text) + `</a>`
 	}
 	button := `<button type="button" class="mx-unsub__go" hx-post="/os/vayumail/unsubscribe" hx-swap="none"` +
-		hxVals("user", user, "folder", folder, "id", id) + ` hx-confirm="Unsubscribe from this list?">Unsubscribe</button>`
-	line := `<p class="mx-unsub">This is mail from a list. `
+		hxVals("user", user, "folder", folder, "id", id) + ` hx-confirm="` + esc(i18n.T(lang, "Unsubscribe from this list?")) + `">` + esc(i18n.T(lang, "Unsubscribe")) + `</button>`
+	line := `<p class="mx-unsub">` + esc(i18n.T(lang, "This is mail from a list.")) + ` `
 	switch {
 	case o.Mailto != "":
 		return line + button + `</p>`
 	case o.OneClick != "":
-		return line + button + ` <span aria-hidden="true">·</span> ` + page("mx-unsub__page", "or on "+host) + `</p>`
+		return line + button + ` <span aria-hidden="true">·</span> ` + page("mx-unsub__page", i18n.T(lang, "or on {host}", "host", host)) + `</p>`
 	default:
-		return line + page("mx-unsub__go", "Unsubscribe on "+host) + `</p>`
+		return line + page("mx-unsub__go", i18n.T(lang, "Unsubscribe on {host}", "host", host)) + `</p>`
 	}
 }
 
@@ -48,14 +49,14 @@ func (a *App) handleVayuOSUnsubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 	rd := a.mailReader(r, sanitizeMailUser(strings.TrimSpace(r.PostFormValue("user"))))
 	if rd.Key() == "" {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "No mailbox you can change was named.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(rd.Lang(), "No mailbox you can change was named."), "")
 		return
 	}
 	folder := sanitizeMailFolder(strings.TrimSpace(r.PostFormValue("folder")))
 	said, err := a.vayuMail.Unsubscribe(r.Context(), rd, folder, sanitizeMailID(strings.TrimSpace(r.PostFormValue("id"))))
 	warn := err != nil
 	if err != nil {
-		said = "Not unsubscribed: " + err.Error() + "."
+		said = i18n.T(rd.Lang(), "Not unsubscribed: {reason}.", "reason", err.Error())
 	}
 	setMailSaid(w, said, warn)
 	w.WriteHeader(http.StatusNoContent)

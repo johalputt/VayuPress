@@ -28,7 +28,7 @@ func TestARowOffersWhatCanBeDoneWhereItIs(t *testing.T) {
 		{"Trash", read, []string{"Archive"}, []string{`aria-label="Delete"`}},
 		{"Snoozed", read, []string{"Archive"}, []string{"Snooze"}},
 	} {
-		got := mailRowActs(c.m, c.folder)
+		got := mailRowActs("en", c.m, c.folder)
 		for _, want := range c.has {
 			if !strings.Contains(got, want) {
 				t.Errorf("%s, %s: no %q in %s", c.folder, c.m.ID, want, got)

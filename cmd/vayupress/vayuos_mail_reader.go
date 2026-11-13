@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"net/http"
 	"sort"
 	"strconv"
@@ -320,7 +321,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 			body := "/os/vayumail/message/body?user=" + qparam(user) + "&folder=" + qparam(m.folder) + "&id=" + qparam(m.msg.ID)
 			c.WriteString(`<details class="mx-earlier" hx-get="` + esc(body) + `" hx-trigger="toggle once" hx-target="find .mx-earlier__body" hx-swap="innerHTML">` +
 				`<summary class="mx-earlier__row">` + mailAvatarImg(mf, avSet) + `<span class="mx-earlier__who">` + esc(name) + `</span>` +
-				`<span class="mx-earlier__pv">` + esc(m.msg.Preview) + `</span><time class="mx-earlier__time">` + esc(mailListTime(m.msg.Date, time.Now())) + `</time></summary>` +
+				`<span class="mx-earlier__pv">` + esc(m.msg.Preview) + `</span><time class="mx-earlier__time">` + esc(mailListTime(rd.Lang(), m.msg.Date, time.Now())) + `</time></summary>` +
 				`<div class="mx-earlier__body"></div></details>`)
 		}
 		c.WriteString(`</div>`)
@@ -337,7 +338,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 	}
 	c.WriteString(`</div>`)
 	if !cur.Date.IsZero() {
-		c.WriteString(`<time class="mx-msg__time" datetime="` + cur.Date.UTC().Format(time.RFC3339) + `" title="` + esc(config.FormatSiteStamp(cur.Date)) + `">` + esc(mailReaderTime(cur.Date, time.Now())) + `</time>`)
+		c.WriteString(`<time class="mx-msg__time" datetime="` + cur.Date.UTC().Format(time.RFC3339) + `" title="` + esc(config.FormatSiteStamp(cur.Date)) + `">` + esc(mailReaderTime(rd.Lang(), cur.Date, time.Now())) + `</time>`)
 	}
 	c.WriteString(`</div>`)
 	// The seal comes from what was verified, read from the message as it was
@@ -375,7 +376,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 			c.WriteString(`</ul>`)
 		}
 		if o := vmail.ParseListUnsubscribe(stored); o.Any() && received && !readOnly {
-			c.WriteString(mailUnsubscribeLine(user, folder, id, o))
+			c.WriteString(mailUnsubscribeLine(rd.Lang(), user, folder, id, o))
 		}
 	}
 	if received && v.Places.Calendar {
@@ -576,17 +577,16 @@ func mailRecipientsLine(to, cc, me string) string {
 
 // mailReaderTime is a message's time in full enough words to stand alone:
 // "Today, 14:20", "Yesterday, 09:05", "Thu 2 Oct, 14:20".
-func mailReaderTime(t, now time.Time) string {
-	switch mailListGroup(t, now) {
-	case "Today":
-		return "Today, " + config.FormatSite(t, "15:04")
-	case "Yesterday":
-		return "Yesterday, " + config.FormatSite(t, "15:04")
+func mailReaderTime(lang string, t, now time.Time) string {
+	switch mailListWhen(t, now) {
+	case whenToday:
+		return i18n.T(lang, "Today, {time}", "time", config.FormatSite(t, "15:04"))
+	case whenYesterday:
+		return i18n.T(lang, "Yesterday, {time}", "time", config.FormatSite(t, "15:04"))
+	case whenThisWeek, whenThisYear:
+		return i18n.Date(lang, config.InSite(t), i18n.WeekdayDayMonthAt)
 	}
-	if config.InSite(t).Year() == config.InSite(now).Year() {
-		return config.FormatSite(t, "Mon 2 Jan, 15:04")
-	}
-	return config.FormatSite(t, "2 Jan 2006, 15:04")
+	return i18n.Date(lang, config.InSite(t), i18n.DayMonthYearShortAt)
 }
 
 // mailFileType is the short type an attachment's tile shows: its extension,

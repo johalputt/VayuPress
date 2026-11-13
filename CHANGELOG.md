@@ -10,11 +10,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
-- **Mail's sidebar and its lists in thirteen languages.** The standard
+- **Mail's sidebar and message list in thirteen languages.** The standard
   folders, your own folders and the way to make one, the views and
   categories, saved searches, labels and the Label menus, blocked senders
   and the public keys you added are in the language the console is in,
-  with every message their actions answer with. The rest of Mail follows.
+  with every message their actions answer with. So is the list of mail:
+  its head, the selection and what can be done to it, each row's marks and
+  quick actions, Scheduled, and the dates, written as each language writes
+  them ("2. März", "11月20日(金)"). The rest of Mail follows.
 
 ## [3.18.41] — 2026-11-13
 

@@ -122,6 +122,18 @@ func TestDatesAreWrittenAsEachLanguageWritesThem(t *testing.T) {
 		{"ko", MonthYear, "2026년 11월"},
 		{"tr", Day, "20 Cuma"},
 		{"xx", Day, "Friday 20"},
+		{"en", Month, "November"},
+		{"ru", Month, "ноябрь"},
+		{"en", Weekday, "Fri"},
+		{"ja", Weekday, "金曜日"},
+		{"en", DayMonthShort, "20 Nov"},
+		{"de", DayMonthShort, "20. Nov."},
+		{"en", DayMonthYearShort, "20 Nov 2026"},
+		{"ru", DayMonthYearShort, "20 нояб. 2026 г."},
+		{"en", WeekdayDayMonthAt, "Fri 20 Nov, 15:04"},
+		{"ja", WeekdayDayMonthAt, "11月20日(金) 15:04"},
+		{"pt-BR", DayMonthYearShortAt, "20 de nov. de 2026, 15:04"},
+		{"xx", DayMonthShort, "20 Nov"},
 	} {
 		if got := Date(c.lang, at, c.form); got != c.want {
 			t.Errorf("%s %d: %q, not %q", c.lang, c.form, got, c.want)
@@ -136,8 +148,7 @@ func TestDatesAreWrittenAsEachLanguageWritesThem(t *testing.T) {
 // a canonical form for comparing a translation with its English.
 func placeholders(msg string) []string {
 	var out []string
-	var walk func(s string)
-	walk = func(s string) {
+	walk := func(s string) {
 		for i := 0; i < len(s); i++ {
 			if s[i] != '{' {
 				continue
@@ -149,11 +160,24 @@ func placeholders(msg string) []string {
 			inner := s[i+1 : end]
 			name, rest, isChoice := strings.Cut(inner, ",")
 			if isChoice {
+				// A language has as many branches as its plural forms (one in
+				// Japanese, four in Russian), so a placeholder is counted once
+				// for the plural, and every branch must name the same ones.
 				out = append(out, strings.TrimSpace(name)+":plural")
 				_, branches, _ := strings.Cut(rest, ",")
+				var first []string
+				seen := false
 				for _, t := range pluralBranches(branches) {
-					walk(t)
+					got := placeholders(t)
+					slices.Sort(got)
+					if !seen {
+						first, seen = got, true
+					} else if !slices.Equal(got, first) {
+						out = append(out, strings.TrimSpace(name)+":branches-differ")
+						break
+					}
 				}
+				out = append(out, first...)
 			} else {
 				out = append(out, strings.TrimSpace(name))
 			}

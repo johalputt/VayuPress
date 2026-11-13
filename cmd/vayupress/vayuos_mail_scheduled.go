@@ -8,6 +8,7 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"net/http"
 	"strconv"
 	"strings"
@@ -51,13 +52,13 @@ func (a *App) scheduledCount(ctx context.Context, rd vmail.Reader) int {
 // vayuScheduledBody is the Scheduled list as #vm-inbox-list holds it. note,
 // when set, is the outcome of the action that redrew it.
 func (a *App) vayuScheduledBody(ctx context.Context, rd vmail.Reader, note string) string {
-	user := rd.Key()
+	user, lang := rd.Key(), rd.Lang()
 	list, err := a.vayuMail.ScheduledFor(ctx, a.scheduledOwner(rd))
 	var b strings.Builder
-	b.WriteString(`<h1 class="vp-sr-only">` + esc(a.scheduledOwner(rd)) + ` · Scheduled</h1>`)
-	b.WriteString(`<header class="mx-head"><div class="mx-head__main"><button type="button" class="mx-back mx-back--boxes" data-mx-go="boxes">` + saIcon("chev-l") + `Folders</button><h2 class="mx-head__title">Scheduled</h2>`)
+	b.WriteString(`<h1 class="vp-sr-only">` + esc(a.scheduledOwner(rd)) + ` · ` + esc(mailFolderLabel(lang, scheduledFolder)) + `</h1>`)
+	b.WriteString(`<header class="mx-head"><div class="mx-head__main"><button type="button" class="mx-back mx-back--boxes" data-mx-go="boxes">` + saIcon("chev-l") + esc(i18n.T(lang, "Folders")) + `</button><h2 class="mx-head__title">` + esc(mailFolderLabel(lang, scheduledFolder)) + `</h2>`)
 	if len(list) > 0 {
-		b.WriteString(`<span class="mx-head__note">` + itoaSafe(len(list)) + ` waiting to send</span>`)
+		b.WriteString(`<span class="mx-head__note">` + esc(i18n.T(lang, "{n} waiting to send", "n", len(list))) + `</span>`)
 	}
 	b.WriteString(`</div></header>`)
 	// A message leaves the list when it goes, so the list is redrawn while
@@ -68,16 +69,16 @@ func (a *App) vayuScheduledBody(ctx context.Context, rd vmail.Reader, note strin
 	}
 	switch {
 	case err != nil:
-		b.WriteString(`<div class="empty-state">Could not read what is scheduled: ` + esc(err.Error()) + `</div>`)
+		b.WriteString(`<div class="empty-state">` + esc(i18n.T(lang, "Could not read what is scheduled: {reason}", "reason", err.Error())) + `</div>`)
 		return b.String()
 	case len(list) == 0:
-		b.WriteString(string(ui.Empty("calendar", "Nothing is scheduled", "A message you send later waits here until its time, and can be sent now or cancelled until then.", "")))
+		b.WriteString(string(ui.Empty("calendar", i18n.T(lang, "Nothing is scheduled"), i18n.T(lang, "A message you send later waits here until its time, and can be sent now or cancelled until then."), "")))
 		return b.String()
 	}
 	avSet := a.mailboxAvatarSet()
-	b.WriteString(`<ol class="mx-list" aria-label="Scheduled messages">`)
+	b.WriteString(`<ol class="mx-list" aria-label="` + esc(i18n.T(lang, "Scheduled messages")) + `">`)
 	for _, s := range list {
-		b.WriteString(scheduledRow(user, s, avSet))
+		b.WriteString(scheduledRow(lang, user, s, avSet))
 	}
 	b.WriteString(`</ol>`)
 	return b.String()
@@ -85,20 +86,23 @@ func (a *App) vayuScheduledBody(ctx context.Context, rd vmail.Reader, note strin
 
 // scheduledRow is one held message: to whom, when it goes (or why it did
 // not), and its two actions.
-func scheduledRow(user string, s vmail.ScheduledMessage, avSet map[string]bool) string {
+func scheduledRow(lang, user string, s vmail.ScheduledMessage, avSet map[string]bool) string {
 	subj := s.Subject
 	if subj == "" {
-		subj = "(no subject)"
+		subj = i18n.T(lang, "(no subject)")
 	}
 	who := strings.Join(s.To, ", ")
-	when := `<time class="mx-row__time" datetime="` + s.Due.UTC().Format(time.RFC3339) + `">` + esc(config.FormatSite(s.Due, "Mon 2 Jan, 15:04 MST")) + `</time>`
-	line := "Sends " + config.FormatSite(s.Due, "Monday 2 January at 15:04 MST")
+	// The zone is named as the clock reads it ("CET"), in every language.
+	due := config.InSite(s.Due)
+	zone := due.Format("MST")
+	when := `<time class="mx-row__time" datetime="` + s.Due.UTC().Format(time.RFC3339) + `">` + esc(i18n.Date(lang, due, i18n.WeekdayDayMonthAt)+" "+zone) + `</time>`
+	line := i18n.T(lang, "Sends {when}", "when", i18n.Date(lang, due, i18n.DayMonthAt)+" "+zone)
 	if s.State == vmail.ScheduledFailed {
-		when = string(ui.State("warn", "Not sent"))
+		when = string(ui.State("warn", i18n.T(lang, "Not sent")))
 		line = s.LastError
 	}
 	act := func(action, label, cls string) string {
-		return `<button type="button" class="btn btn--sm` + cls + `" hx-post="/os/vayumail/scheduled/action" hx-vals='{"user":"` + esc(user) + `","id":"` + strconv.FormatInt(s.ID, 10) + `","action":"` + action + `"}' hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin">` + label + `</button>`
+		return `<button type="button" class="btn btn--sm` + cls + `" hx-post="/os/vayumail/scheduled/action" hx-vals='{"user":"` + esc(user) + `","id":"` + strconv.FormatInt(s.ID, 10) + `","action":"` + action + `"}' hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin">` + esc(label) + `</button>`
 	}
 	var b strings.Builder
 	b.WriteString(`<li class="mx-row mx-row--held" data-vm-row><span class="mx-row__gutter"><span class="mx-row__dot" aria-hidden="true"></span></span>`)
@@ -106,7 +110,7 @@ func scheduledRow(user string, s vmail.ScheduledMessage, avSet map[string]bool) 
 	b.WriteString(`<span class="mx-row__top"><span class="mx-row__who">` + esc(mailDisplay(who)) + `</span>` + when + `</span>`)
 	b.WriteString(`<span class="mx-row__subj"><span class="mx-row__subj-text">` + esc(subj) + `</span></span>`)
 	b.WriteString(`<span class="mx-row__pv">` + esc(line) + `</span>`)
-	b.WriteString(`<span class="mx-row__acts">` + act("send", "Send now", "") + act("cancel", "Cancel", " btn--ghost") + `</span>`)
+	b.WriteString(`<span class="mx-row__acts">` + act("send", i18n.T(lang, "Send now"), "") + act("cancel", i18n.T(lang, "Cancel"), " btn--ghost") + `</span>`)
 	b.WriteString(`</span></div></li>`)
 	return b.String()
 }
@@ -129,7 +133,7 @@ func (a *App) handleVayuOSScheduledAction(w http.ResponseWriter, r *http.Request
 	rd := a.mailReader(r, strings.TrimSpace(r.PostFormValue("user")))
 	owner := a.scheduledOwner(rd)
 	if owner == "" {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "No mailbox you can act on was named.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(rd.Lang(), "No mailbox you can act on was named."), "")
 		return
 	}
 	id, _ := strconv.ParseInt(strings.TrimSpace(r.PostFormValue("id")), 10, 64)
@@ -150,9 +154,9 @@ func (a *App) handleVayuOSScheduledAction(w http.ResponseWriter, r *http.Request
 	}
 	switch {
 	case errors.Is(err, vmail.ErrScheduledBusy):
-		note = "That message is being sent now, so it can no longer be changed."
+		note = i18n.T(rd.Lang(), "That message is being sent now, so it can no longer be changed.")
 	case err != nil:
-		note = "Not done: " + err.Error()
+		note = i18n.T(rd.Lang(), "Not done: {reason}.", "reason", err.Error())
 	}
 	writeOSFragment(w, a.vayuScheduledBody(r.Context(), rd, note)+
 		a.mailNavFor(rd, scheduledFolder, "", nil, true))

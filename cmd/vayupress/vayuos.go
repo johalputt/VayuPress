@@ -1974,11 +1974,6 @@ func mailViewLabel(lang, key string) string {
 	case vmail.CategorySocial:
 		return i18n.T(lang, "Social")
 	}
-	for _, v := range mailViews {
-		if v.Key == key {
-			return v.Label
-		}
-	}
 	return key
 }
 
@@ -2342,7 +2337,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 		// The top bar's search is offered here too, across all mail.
 		return a.vayuScheduledBody(context.Background(), rd, "") + `<div id="vm-search-results" class="mx-results" aria-live="polite"></div>`, mailListFacts{}
 	}
-	user := rd.Key()
+	user, lang := rd.Key(), rd.Lang()
 	// A read-only mailbox is offered no control the engine would refuse.
 	readOnly := a.vayuMail.ReaderReadOnly(rd)
 	domain := a.vayuMail.Config().Domain
@@ -2353,7 +2348,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 	var b strings.Builder
 	// The sidebar names the mailbox and holds its folders, so the page's own
 	// heading is for a screen reader, and swaps with the folder.
-	b.WriteString(`<h1 class="vp-sr-only">` + esc(mbox) + ` · ` + esc(folder) + `</h1>`)
+	b.WriteString(`<h1 class="vp-sr-only">` + esc(mbox) + ` · ` + esc(mailFolderLabel(lang, folder)) + `</h1>`)
 
 	// Every URL the list makes carries the folder, the view and the window,
 	// so a poll, "Load older" and a row action redraw what is on screen.
@@ -2371,7 +2366,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 
 	all, err := a.vayuMail.ListFolder(rd, folder)
 	if err != nil {
-		b.WriteString(`<div class="empty-state">Could not read folder: ` + esc(err.Error()) + `</div>`)
+		b.WriteString(`<div class="empty-state">` + esc(i18n.T(lang, "Could not read the folder: {reason}", "reason", err.Error())) + `</div>`)
 		return b.String(), mailListFacts{}
 	}
 	vc := mailViewCtx{inbox: strings.EqualFold(folder, "Inbox"), now: time.Now()}
@@ -2395,22 +2390,23 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 	}
 
 	// Header: the folder (or the view of it), what is unread, compose.
-	title := folder
+	title := esc(mailFolderLabel(lang, folder))
 	for _, v := range mailViews {
 		if v.Key == view && !v.Tab {
-			title = v.Label + ` <span class="mx-head__in">in ` + esc(folder) + `</span>`
+			// The view, then the folder it is a view of, set apart.
+			title = esc(mailViewLabel(lang, v.Key)) + ` <span class="mx-head__in">` + esc(i18n.T(lang, "in {folder}", "folder", mailFolderLabel(lang, folder))) + `</span>`
 		}
 	}
 	// The header has two layers: the folder, and the selection (Mail plan §7,
 	// render 04). Selecting crossfades one into the other in place (§8 item 2).
 	// On a phone the list is one screen of three (Mail plan §7, render 05):
 	// its back goes up to the mailboxes. Shown at phone width alone.
-	b.WriteString(`<header class="mx-head"><div class="mx-head__main"><button type="button" class="mx-back mx-back--boxes" data-mx-go="boxes">` + saIcon("chev-l") + `Folders</button><h2 class="mx-head__title">` + title + `</h2>`)
+	b.WriteString(`<header class="mx-head"><div class="mx-head__main"><button type="button" class="mx-back mx-back--boxes" data-mx-go="boxes">` + saIcon("chev-l") + esc(i18n.T(lang, "Folders")) + `</button><h2 class="mx-head__title">` + title + `</h2>`)
 	switch {
 	case readOnly:
-		b.WriteString(`<span class="mx-head__note">Read only</span>`)
+		b.WriteString(`<span class="mx-head__note">` + esc(i18n.T(lang, "Read only")) + `</span>`)
 	case counts["unread"] > 0:
-		b.WriteString(`<span class="mx-head__note">` + itoaSafe(counts["unread"]) + ` unread</span>`)
+		b.WriteString(`<span class="mx-head__note">` + esc(i18n.T(lang, "{n} unread", "n", counts["unread"])) + `</span>`)
 	}
 	b.WriteString(`<span class="mx-head__fill"></span>`)
 	if !readOnly && vmail.ValidFolderName(folder) {
@@ -2419,17 +2415,18 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 	// Trash and Junk empty at once, not only by retention (blocked.go,
 	// EmptyFolder). The confirm says how many go, and that it is for good.
 	if !readOnly && len(all) > 0 && (strings.EqualFold(folder, "Trash") || strings.EqualFold(folder, "Junk")) {
-		n := itoaSafe(len(all)) + " " + map[bool]string{true: "message", false: "messages"}[len(all) == 1]
+		name := mailFolderLabel(lang, folder)
 		b.WriteString(`<button type="button" class="btn btn--ghost btn--sm" hx-post="/os/vayumail/inbox/action"` + hxVals("user", user, "folder", folder, "action", "empty") +
-			` hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-confirm="Delete the ` + n + ` in ` + esc(folder) + ` for good?">Empty ` + esc(folder) + `</button>`)
+			` hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-confirm="` + esc(i18n.T(lang, "{n, plural, one {Delete the # message in {folder} for good?} other {Delete the # messages in {folder} for good?}}", "n", len(all), "folder", name)) + `">` +
+			esc(i18n.T(lang, "Empty {folder}", "folder", name)) + `</button>`)
 	}
 	if !readOnly {
-		b.WriteString(`<a class="btn btn--ghost btn--sm btn--icon" href="/os/vayumail/compose?user=` + qparam(user) + `" title="Write a message (c)" aria-label="Write a message">` + saIcon("pencil") + `</a>`)
+		b.WriteString(`<a class="btn btn--ghost btn--sm btn--icon" href="/os/vayumail/compose?user=` + qparam(user) + `" title="` + esc(i18n.T(lang, "Write a message (c)")) + `" aria-label="` + esc(i18n.T(lang, "Write a message")) + `">` + saIcon("pencil") + `</a>`)
 	}
-	b.WriteString(`</div><div class="mx-head__sel" aria-live="polite"><h2 class="mx-head__title" data-vm-bulkcount>0 selected</h2><span class="mx-head__fill"></span>` +
-		`<button type="button" class="mx-head__link" data-vm-select-all` + mailCmd("Select every message in the list", "Mail", "") + `>Select all</button>` +
-		`<button type="button" class="btn btn--sm" data-vm-select-done` + mailCmd("Leave selection", "Mail", "Escape") + `>Done</button></div></header>`)
-	b.WriteString(mailCategoryTabs(user, folder, view, counts))
+	b.WriteString(`</div><div class="mx-head__sel" aria-live="polite"><h2 class="mx-head__title" data-vm-bulkcount>` + esc(i18n.T(lang, "{n} selected", "n", 0)) + `</h2><span class="mx-head__fill"></span>` +
+		`<button type="button" class="mx-head__link" data-vm-select-all` + mailCmd(i18n.T(lang, "Select every message in the list"), "Mail", "") + `>` + esc(i18n.T(lang, "Select all")) + `</button>` +
+		`<button type="button" class="btn btn--sm" data-vm-select-done` + mailCmd(i18n.T(lang, "Leave selection"), "Mail", "Escape") + `>` + esc(i18n.T(lang, "Done")) + `</button></div></header>`)
+	b.WriteString(mailCategoryTabs(lang, user, folder, view, counts))
 	// The search itself is in the top bar (mailSearchForm); its results take
 	// the list's place here.
 	results := ""
@@ -2441,7 +2438,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 	// A full mailbox refuses mail, so it is said above the list where it is
 	// seen. Below full, the storage meter in the sidebar foot says enough.
 	if quota := a.vayuMail.MailboxQuota(mbox); quota > 0 && a.vayuMail.MailboxUsage(mbox) >= quota {
-		b.WriteString(`<div class="mx-banner" role="alert">` + saIcon("warn") + ` <span>This mailbox is full. New mail may be refused, and nothing can be sent until there is room.</span></div>`)
+		b.WriteString(`<div class="mx-banner" role="alert">` + saIcon("warn") + ` <span>` + esc(i18n.T(lang, "This mailbox is full. New mail may be refused, and nothing can be sent until there is room.")) + `</span></div>`)
 	}
 
 	// Window the list. Threading counts below are computed over what is
@@ -2464,20 +2461,20 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 		// messages are selected (render 04). A template, so it is part of each
 		// render of the folder and admin-os-mail.js places a copy of it.
 		sel := func(icon, label, vals, extra string) string {
-			return `<button type="button" class="btn mx-selpanel__act" hx-post="/os/vayumail/inbox/action" hx-vals='` + vals + `'` + inc + extra + mailCmd(label, "Selected messages", "") + `>` + saIcon(icon) + label + `</button>`
+			return `<button type="button" class="btn mx-selpanel__act" hx-post="/os/vayumail/inbox/action" hx-vals='` + vals + `'` + inc + extra + mailCmd(label, i18n.T(lang, "Selected messages"), "") + `>` + saIcon(icon) + esc(label) + `</button>`
 		}
 		b.WriteString(`<template id="vm-selpanel"><div class="mx-selpanel" data-vm-bulkbar><div class="mx-selpanel__stack" data-vm-sel-stack aria-hidden="true"></div>` +
 			`<h2 class="mx-selpanel__title" data-vm-sel-title></h2><p class="mx-selpanel__from" data-vm-sel-from></p><div class="mx-selpanel__acts">`)
 		if !readOnly && strings.EqualFold(folder, "Junk") {
-			b.WriteString(sel("inbox", "Not junk", `{"action":"notjunk"}`, ""))
+			b.WriteString(sel("inbox", i18n.T(lang, "Not junk"), `{"action":"notjunk"}`, ""))
 		}
 		if !readOnly && received && !strings.EqualFold(folder, "Archive") {
-			b.WriteString(sel("archive", "Archive", `{"action":"move","to":"Archive"}`, ""))
+			b.WriteString(sel("archive", i18n.T(lang, "Archive"), `{"action":"move","to":"Archive"}`, ""))
 		}
 		if !readOnly {
-			b.WriteString(`<details class="sa-pop mx-selpanel__menu"><summary class="btn mx-selpanel__act">` + saIcon("move") + `Move to…</summary><div class="sa-pop__panel sa-menu" role="menu">`)
+			b.WriteString(`<details class="sa-pop mx-selpanel__menu"><summary class="btn mx-selpanel__act">` + saIcon("move") + esc(i18n.T(lang, "Move to…")) + `</summary><div class="sa-pop__panel sa-menu" role="menu">`)
 			for _, f := range a.moveTargets(rd, folder) {
-				b.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"move","to":"` + esc(f) + `"}'` + inc + `>` + saIcon(mailFolderIcon(f)) + `<span class="sa-menu__text">` + esc(f) + `</span></button>`)
+				b.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"move","to":"` + esc(f) + `"}'` + inc + `>` + saIcon(mailFolderIcon(f)) + `<span class="sa-menu__text">` + esc(mailFolderLabel(lang, f)) + `</span></button>`)
 			}
 			b.WriteString(`</div></details>`)
 		}
@@ -2486,19 +2483,19 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 			b.WriteString(selLabelMenu(rd.Lang(), labels, inc))
 		}
 		if received {
-			b.WriteString(sel("check", "Mark read", `{"action":"mark","mark":"read"}`, ""))
-			b.WriteString(sel("mail", "Mark unread", `{"action":"mark","mark":"unread"}`, ""))
-			b.WriteString(sel("pin", "Pin", `{"action":"pin","pin":"1"}`, ""))
+			b.WriteString(sel("check", i18n.T(lang, "Mark read"), `{"action":"mark","mark":"read"}`, ""))
+			b.WriteString(sel("mail", i18n.T(lang, "Mark unread"), `{"action":"mark","mark":"unread"}`, ""))
+			b.WriteString(sel("pin", i18n.T(lang, "Pin"), `{"action":"pin","pin":"1"}`, ""))
 		}
 		if !readOnly && received && !strings.EqualFold(folder, "Snoozed") {
-			b.WriteString(`<details class="sa-pop mx-selpanel__menu"><summary class="btn mx-selpanel__act">` + saIcon("timer") + `Snooze…</summary><div class="sa-pop__panel sa-menu" role="menu">`)
-			for _, sn := range [][2]string{{"later", "Later today"}, {"tomorrow", "Tomorrow, 8:00"}, {"nextweek", "Next week, Monday 8:00"}} {
-				b.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"snooze","snooze":"` + sn[0] + `"}'` + inc + `><span class="sa-menu__text">` + sn[1] + `</span></button>`)
+			b.WriteString(`<details class="sa-pop mx-selpanel__menu"><summary class="btn mx-selpanel__act">` + saIcon("timer") + esc(i18n.T(lang, "Snooze…")) + `</summary><div class="sa-pop__panel sa-menu" role="menu">`)
+			for _, sn := range [][2]string{{"later", i18n.T(lang, "Later today")}, {"tomorrow", i18n.T(lang, "Tomorrow, 8:00")}, {"nextweek", i18n.T(lang, "Next week, Monday 8:00")}} {
+				b.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"snooze","snooze":"` + sn[0] + `"}'` + inc + `><span class="sa-menu__text">` + esc(sn[1]) + `</span></button>`)
 			}
 			b.WriteString(`</div></details>`)
 		}
 		if !readOnly {
-			b.WriteString(`</div><div class="mx-selpanel__acts">` + sel("trash", "Delete", `{"action":"delete"}`, ` hx-confirm="Permanently delete the selected messages?"`))
+			b.WriteString(`</div><div class="mx-selpanel__acts">` + sel("trash", i18n.T(lang, "Delete"), `{"action":"delete"}`, ` hx-confirm="`+esc(i18n.T(lang, "Permanently delete the selected messages?"))+`"`))
 		}
 		b.WriteString(`</div></div></template>`)
 	}
@@ -2506,18 +2503,18 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 	if len(msgs) == 0 {
 		switch {
 		case view != "":
-			b.WriteString(`<p class="mx-empty">Nothing in ` + esc(folder) + ` is ` + esc(view) + `.</p>`)
+			b.WriteString(`<p class="mx-empty">` + esc(i18n.T(lang, "Nothing under {view} in {folder}.", "view", mailViewLabel(lang, view), "folder", mailFolderLabel(lang, folder))) + `</p>`)
 		case strings.EqualFold(folder, "Inbox"):
 			// First run: the two things a new mailbox holder needs next.
-			next := "Write one, or connect a mail app so you can use this mailbox from your phone."
-			write := `<a class="btn btn--primary btn--sm" href="/os/vayumail/compose?user=` + qparam(user) + `">` + saIcon("pencil") + ` Write your first email</a>`
+			next := i18n.T(lang, "Write one, or connect a mail app so you can use this mailbox from your phone.")
+			write := `<a class="btn btn--primary btn--sm" href="/os/vayumail/compose?user=` + qparam(user) + `">` + saIcon("pencil") + ` ` + esc(i18n.T(lang, "Write your first email")) + `</a>`
 			if readOnly {
-				next, write = "Connect a mail app to read it on your phone.", ""
+				next, write = i18n.T(lang, "Connect a mail app to read it on your phone."), ""
 			}
-			b.WriteString(`<div class="mx-empty mx-empty--first"><p><strong>Your inbox is empty.</strong> Mail sent to ` + esc(mbox) + ` lands here. ` + next + `</p>` +
-				`<div class="mx-empty__actions">` + write + `<a class="btn btn--sm" href="/os/vayumail/connect?user=` + qparam(user) + `">Connect a mail app</a></div></div>`)
+			b.WriteString(`<div class="mx-empty mx-empty--first"><p><strong>` + esc(i18n.T(lang, "Your inbox is empty.")) + `</strong> ` + esc(i18n.T(lang, "Mail sent to {address} lands here.", "address", mbox)) + ` ` + esc(next) + `</p>` +
+				`<div class="mx-empty__actions">` + write + `<a class="btn btn--sm" href="/os/vayumail/connect?user=` + qparam(user) + `">` + esc(i18n.T(lang, "Connect a mail app")) + `</a></div></div>`)
 		default:
-			b.WriteString(`<p class="mx-empty">Nothing in ` + esc(folder) + `.</p>`)
+			b.WriteString(`<p class="mx-empty">` + esc(i18n.T(lang, "Nothing in {folder}.", "folder", mailFolderLabel(lang, folder))) + `</p>`)
 		}
 		return b.String(), mailListFacts{Counts: counts}
 	}
@@ -2567,7 +2564,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 	}
 	now := time.Now()
 	avSet := a.mailboxAvatarSet()
-	b.WriteString(`<ol class="mx-list" aria-label="Messages">`)
+	b.WriteString(`<ol class="mx-list" aria-label="` + esc(i18n.T(lang, "Messages")) + `">`)
 	group := ""
 	row := func(m vmail.StoredMessage, g string) {
 		if g != group {
@@ -2591,15 +2588,15 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 		}
 		acts := ""
 		if received && !readOnly {
-			acts = mailRowActs(m, folder)
+			acts = mailRowActs(lang, m, folder)
 		}
-		b.WriteString(mailListRow(m, who, link, isDrafts, n, now, avSet, labels[m.MessageID], acts))
+		b.WriteString(mailListRow(lang, m, who, link, isDrafts, n, now, avSet, labels[m.MessageID], acts))
 	}
 	for _, m := range pinned {
-		row(m, "Pinned")
+		row(m, i18n.T(lang, "Pinned"))
 	}
 	for _, m := range rest {
-		row(m, mailListGroup(m.Date, now))
+		row(m, mailListGroup(lang, m.Date, now))
 	}
 	b.WriteString(`</ol>`)
 	// Older mail is one click away, and the count says how much is out of view.
@@ -2609,7 +2606,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 			next = total
 		}
 		more := "/os/vayumail/inbox/fragment?" + scope + "&limit=" + itoaSafe(next)
-		b.WriteString(`<div class="mx-older"><span>The newest ` + itoaSafe(len(msgs)) + ` of ` + itoaSafe(total) + `</span><button type="button" class="btn btn--ghost btn--sm" hx-get="` + esc(more) + `" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin">Load older</button></div>`)
+		b.WriteString(`<div class="mx-older"><span>` + esc(i18n.T(lang, "The newest {shown} of {total}", "shown", len(msgs), "total", total)) + `</span><button type="button" class="btn btn--ghost btn--sm" hx-get="` + esc(more) + `" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin">` + esc(i18n.T(lang, "Load older")) + `</button></div>`)
 	}
 	return b.String(), mailListFacts{Counts: counts, Newest: msgs[0].ID}
 }
@@ -3063,7 +3060,7 @@ func (a *App) mailSearchRows(rd vmail.Reader, sf searchFilters, matched []vmail.
 		link := "/os/vayumail/message?user=" + qparam(user) + "&folder=" + qparam(m.Folder) + "&id=" + qparam(m.ID)
 		// Search results come from many folders and have no list scope to
 		// post with, so their rows carry no actions of their own.
-		b.WriteString(mailListRow(m.StoredMessage, m.From, link, false, 0, now, avSet, labels[m.MessageID], ""))
+		b.WriteString(mailListRow(rd.Lang(), m.StoredMessage, m.From, link, false, 0, now, avSet, labels[m.MessageID], ""))
 	}
 	b.WriteString(`</ol>`)
 	return b.String()

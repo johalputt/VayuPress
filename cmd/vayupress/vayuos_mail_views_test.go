@@ -74,7 +74,7 @@ func TestTheCategoryTabsAndSmartViews(t *testing.T) {
 	if counts[vmail.CategoryUpdates] != 1 || counts["all:"+vmail.CategoryUpdates] != 2 || counts["lists"] != 2 {
 		t.Fatalf("counts = %v", counts)
 	}
-	tabs := mailCategoryTabs("dana", "Inbox", vmail.CategoryUpdates, counts)
+	tabs := mailCategoryTabs("en", "dana", "Inbox", vmail.CategoryUpdates, counts)
 	for _, want := range []string{`>All</a>`, `view=updates" aria-current="page">Updates<span class="mx-tabs__n">1</span></a>`, `>Newsletters<span class="mx-tabs__n">2</span>`} {
 		if !strings.Contains(tabs, want) {
 			t.Errorf("the tabs lack %q:\n%s", want, tabs)
@@ -83,10 +83,10 @@ func TestTheCategoryTabsAndSmartViews(t *testing.T) {
 	if strings.Contains(tabs, ">Receipts") {
 		t.Error("a category with no mail has a tab")
 	}
-	if mailCategoryTabs("dana", "Archive", "", counts) != "" {
+	if mailCategoryTabs("en", "dana", "Archive", "", counts) != "" {
 		t.Error("a folder other than the Inbox has category tabs")
 	}
-	if mailCategoryTabs("dana", "Inbox", "", map[string]int{"all:primary": 9}) != "" {
+	if mailCategoryTabs("en", "dana", "Inbox", "", map[string]int{"all:primary": 9}) != "" {
 		t.Error("an Inbox of one category has tabs")
 	}
 	if got := mailOnePerSender(msgs[3:]); len(got) != 1 || !got[0].Date.Equal(now) {
