@@ -8,6 +8,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.40] — 2026-11-13
+
+Ways back into a mailbox, closed: a password reset now ends every one, a mailbox's address given out again carries none of its last holder's sign-ins, and a file's name can no longer disguise what it is.
+
 ### Security
 
 - **A password reset disconnects every AI tool connected to the mailbox.**
