@@ -273,3 +273,29 @@ func TestALinkedSentenceIsEscapedAroundItsLink(t *testing.T) {
 		t.Errorf("got %s\nwant %s", got, want)
 	}
 }
+
+// TestARuleIsSaidInThePersonsLanguage — a rule as one German sentence per
+// condition and action, joined as German joins them, with its values in bold
+// and escaped; and the page a forward's recipient confirms on, in the
+// language of their browser.
+func TestARuleIsSaidInThePersonsLanguage(t *testing.T) {
+	rule := vmail.FilterRule{Any: true, KeepGoing: true,
+		Conditions: []vmail.RuleCondition{{Field: "subject", Op: "contains", Value: "<Rechnung>"}, {Field: "attachment"}},
+		Actions:    []vmail.RuleAction{{Kind: "move", Arg: "Archive"}, {Kind: "markread"}}}
+	when, then := ruleWords("de", rule)
+	if want := "Wenn <b>Betreff</b> enthält <b>&lt;Rechnung&gt;</b> oder <b>hat einen Anhang</b>"; when != want {
+		t.Errorf("when: %s\nwant %s", when, want)
+	}
+	if want := "nach <b>Archiv</b> verschieben, als gelesen markieren, und weitermachen"; then != want {
+		t.Errorf("then: %s\nwant %s", then, want)
+	}
+
+	a, _, _ := reviewerApp(t, vmail.RoleMailbox)
+	req := httptest.NewRequest(http.MethodGet, "/vayumail/forward/confirm?t=x", nil)
+	req.Header.Set("Accept-Language", "ja,en;q=0.5")
+	rec := httptest.NewRecorder()
+	a.handleRuleForwardConfirm(rec, req)
+	if page := rec.Body.String(); !strings.Contains(page, `<html lang="ja">`) || !strings.Contains(page, "メールのコピーを受け取りますか？") {
+		t.Errorf("the confirmation page is not in Japanese: %s", page)
+	}
+}

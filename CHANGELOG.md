@@ -26,8 +26,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   addresses made for websites. Settings too: its sections, the field that
   finds a setting (by words in the language), the password change, the
   connected tools, the mailbox switcher, and the cards for the name on
-  mail, forwarding, the vacation reply and the PGP key. The rest of Mail
-  follows.
+  mail, forwarding, the vacation reply and the PGP key. Rules too: each
+  rule is said as sentences of the language, the editor and its answers,
+  and the page where an address confirms it wants a rule's copies follows
+  the language of that person's browser. The rest of Mail follows.
 
 ## [3.18.41] — 2026-11-13
 

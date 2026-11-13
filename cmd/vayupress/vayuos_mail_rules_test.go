@@ -47,7 +47,7 @@ func TestARuleIsSavedFromTheEditor(t *testing.T) {
 		t.Fatalf("stored %+v", rules)
 	}
 	sec, _ := a.mailboxSettingsSections(context.Background(), "dana@example.com", true)
-	if body := sec; !strings.Contains(body, "<b>sender's domain</b> is <b>shop.example</b> or <b>subject</b> contains <b>receipt</b>") ||
+	if body := sec; !strings.Contains(body, "<b>sender&#39;s domain</b> is <b>shop.example</b> or <b>subject</b> contains <b>receipt</b>") ||
 		!strings.Contains(body, "label <b>Shop</b>, mark read, and keep going") {
 		t.Errorf("the list does not say the rule: %s", body)
 	}

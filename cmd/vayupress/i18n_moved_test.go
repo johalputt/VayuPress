@@ -41,9 +41,11 @@ var i18nMoved = map[string][]string{
 	"vayuos_mail_switch.go":           nil,
 	"vayuos_mail_notify.go":           nil,
 	"vayuos_mail_accounts.go":         {"vayuCardName", "vayuCardForwarding", "vayuCardVacation", "vayuCardPGP"},
-	"vayuos_mail_list.go":             nil,
-	"vayuos_mail_scheduled.go":        nil,
-	"vayuos_mail_unsubscribe.go":      nil,
+	// ruleForwardMail goes to someone outside the install, in English.
+	"vayuos_mail_rules.go":       {"ruleFieldNames", "ruleOpNames", "ruleActionNames", "ruleWords", "ruleDomID", "vayuCardFilters", "ruleEditor", "option", "ruleFromForm", "handleVayuOSFilterAction", "ruleTestResult", "askRuleForwards", "handleRuleForwardConfirm"},
+	"vayuos_mail_list.go":        nil,
+	"vayuos_mail_scheduled.go":   nil,
+	"vayuos_mail_unsubscribe.go": nil,
 }
 
 // i18nExempt are the calls whose words are for the operator or the code, not

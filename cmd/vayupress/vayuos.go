@@ -1471,16 +1471,39 @@ func qparam(s string) string { return html.EscapeString(url.QueryEscape(s)) }
 // (TestEscapesAreCalledByName).
 func esc(s string) string { return html.EscapeString(s) }
 
-// linkMark stands for a link in a translated sentence: the sentence is
-// i18n.T(lang, "… {link} …", "link", linkMark), so each language puts the
-// link where its words do, and escLinked puts the anchor in its place.
+// htmlMark is the stand-in for the i-th piece of markup in a translated
+// sentence: the sentence is i18n.T(lang, "… {x} …", "x", htmlMark(0)), so
+// each language puts the piece where its words do, and escFill puts it in.
+// The marks are control characters, which no sentence holds.
+func htmlMark(i int) string { return string(rune(i)) }
+
+// linkMark is htmlMark(0), the stand-in for a sentence's one link.
 const linkMark = "\x00"
+
+// escFill is a translated sentence, escaped, with each htmlMark(i) replaced
+// by pieces[i], which is markup the caller has built and escaped itself.
+func escFill(sentence string, pieces ...string) string {
+	out := esc(sentence)
+	for i, p := range pieces {
+		out = strings.ReplaceAll(out, htmlMark(i), p)
+	}
+	return out
+}
 
 // escLinked is a translated sentence with linkMark where its link goes; the
 // link's own words are text, href its address. The sentence and the words
 // are escaped; only the anchor is markup.
 func escLinked(sentence, href, text string) string {
-	return strings.Replace(esc(sentence), linkMark, `<a href="`+esc(href)+`">`+esc(text)+`</a>`, 1)
+	return escFill(sentence, `<a href="`+esc(href)+`">`+esc(text)+`</a>`)
+}
+
+// escBold is escFill with each piece a value shown in bold.
+func escBold(sentence string, values ...string) string {
+	pieces := make([]string, len(values))
+	for i, v := range values {
+		pieces[i] = "<b>" + esc(v) + "</b>"
+	}
+	return escFill(sentence, pieces...)
 }
 
 // mailUserParam reads and STRICTLY validates a ?user= mailbox local-part from
