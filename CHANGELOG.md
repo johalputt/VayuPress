@@ -8,7 +8,28 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.41] — 2026-11-13
+
+Shield and a site's sitemap answer at once however busy the install has been, and signing in and getting back into a mailbox are in thirteen languages.
+
+### Added
+
+- **Sign-in and mailbox recovery in thirteen languages.** The console's
+  sign-in page and every page of recovery (a reset link, a recovery code,
+  asking an administrator) are in the person's language: their choice
+  from the language menu under the page, then their browser's. English,
+  Español, Português (Brasil), Français, Deutsch, Italiano, Русский,
+  Türkçe, 中文（简体）, 日本語, 한국어, Bahasa Indonesia and हिन्दी. The
+  messages a sign-in is given (a wrong password, a lockout, a refused
+  sign-in) are in it too.
+
 ### Fixed
+
+- **Changing the language keeps what the page was opened with.** The
+  language menu dropped a reset link's token, a booking page's time zone
+  and a sign-in's next page; it now sends them with the new language.
+- **The two-factor field opens when its code is what failed, in every
+  language.** It was opened by finding an English word in the message.
 
 - **Shield opens at once, however busy the install has been.** Its page
   read the whole trail of the last fortnight on every visit, sorting every
