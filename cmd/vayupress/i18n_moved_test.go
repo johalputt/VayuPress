@@ -67,6 +67,11 @@ var i18nMoved = map[string][]string{
 	"vayuos_mail_booking.go":       nil,
 	"vayuos_mail_drive_shared.go":  nil,
 	"vayuos_mail_drive.go":         nil,
+	"vayuos_mail_dav.go":           nil,
+	"vayuos_mail_dns_watch.go":     nil,
+	"vayuos_mail_pictures.go":      nil,
+	"book_public.go":               nil,
+	"vayuos_mail.go":               {"handleVayuOSConnect"},
 }
 
 // i18nExempt are the calls whose words are for the operator or the code, not

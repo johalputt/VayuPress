@@ -1447,6 +1447,10 @@ func (a *App) handleVayuMailAutoconfigJSON(w http.ResponseWriter, r *http.Reques
 	_ = json.NewEncoder(w).Encode(a.buildVayuMailAutoconfigFor(r.Host))
 }
 
+// mailSetupCommand is the command the Connect page gives for a certificate
+// apps trust: a command, the same in every language.
+const mailSetupCommand = "cd /tmp/VayuPress && git pull origin main && sudo bash deploy/vayumail-setup.sh"
+
 // handleVayuOSConnect is Connect a device, a status page: whether a mail app
 // can connect to this server, said first, because it is what the page is
 // opened to learn; then what the app needs. The listeners each say whether
@@ -1454,8 +1458,9 @@ func (a *App) handleVayuMailAutoconfigJSON(w http.ResponseWriter, r *http.Reques
 // when they will not), and the settings are there to copy for any app the
 // VayuMail app does not cover.
 func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
+	lang := i18n.Lang(r.Context())
 	if !a.mailRunning() {
-		a.writeMailSetup(w, r, "Connect a mail app")
+		a.writeMailSetup(w, r, i18n.T(lang, "Connect a mail app"))
 		return
 	}
 	nonce := render.CSPNonce(r)
@@ -1466,7 +1471,6 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	if host == "" {
 		host = "mail." + mc.Domain
 	}
-	hHost := html.EscapeString(host)
 	imapsPort := mailPort(mc.IMAPSListen, "993")
 	imapPort := mailPort(mc.IMAPListen, "143")
 	pop3sPort := mailPort(mc.POP3SListen, "995")
@@ -1482,15 +1486,15 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 		{"IMAP · STARTTLS", imapPort, a.vayuMail.IMAPActive()},
 		{"POP3 · SSL", pop3sPort, a.vayuMail.POP3SActive()},
 		{"POP3 · STLS", pop3Port, a.vayuMail.POP3Active()},
-		{"SMTP submission · STARTTLS", subPort, a.vayuMail.SubmissionActive()},
-		{"SMTP receive", smtpPort, a.vayuMail.InboundActive()},
+		{i18n.T(lang, "SMTP submission · STARTTLS"), subPort, a.vayuMail.SubmissionActive()},
+		{i18n.T(lang, "SMTP receive"), smtpPort, a.vayuMail.InboundActive()},
 	}
 	var lrows []ui.Row
 	down := 0
 	for _, l := range listeners {
-		st := ui.State("ok", "Listening")
+		st := ui.State("ok", i18n.T(lang, "Listening"))
 		if !l.up {
-			st = ui.State("warn", "Not listening")
+			st = ui.State("warn", i18n.T(lang, "Not listening"))
 			down++
 		}
 		lrows = append(lrows, ui.Row{Label: l.label, Hint: host + ":" + l.port, Control: st})
@@ -1501,21 +1505,23 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	untrusted := a.vayuMail.TLSActive() && !a.vayuMail.TLSTrusted()
 	covered := a.vayuMail.TLSCertHosts()
 	mismatch := a.vayuMail.TLSActive() && a.vayuMail.TLSTrusted() && len(covered) > 0 && !a.vayuMail.TLSCertCovers(host)
-	page := ui.StatusPage{Title: "Connect a mail app", Tone: "ok", State: "Mail apps can connect",
-		Detail: ui.HTML(`Every mail service is listening at <code>` + hHost + `</code>.`)}
+	code := func(s string) string { return `<code>` + esc(s) + `</code>` }
+	codeHost := code(host)
+	page := ui.StatusPage{Title: i18n.T(lang, "Connect a mail app"), Tone: "ok", State: i18n.T(lang, "Mail apps can connect"),
+		Detail: ui.HTML(escFill(i18n.T(lang, "Every mail service is listening at {host}.", "host", htmlMark(0)), codeHost))}
 	switch {
 	case untrusted:
-		page.Tone, page.State = "danger", "Mail apps will refuse to connect"
-		page.Detail = ui.HTML(`The mail services offer a self-signed certificate, which phones and mail apps reject. The fix is below.`)
+		page.Tone, page.State = "danger", i18n.T(lang, "Mail apps will refuse to connect")
+		page.Detail = ui.HTML(esc(i18n.T(lang, "The mail services offer a self-signed certificate, which phones and mail apps reject. The fix is below.")))
 	case down == len(listeners):
-		page.Tone, page.State = "danger", "No mail service is listening"
-		page.Detail = ui.HTML(`Nothing answers at <code>` + hHost + `</code>; see Listeners below.`)
+		page.Tone, page.State = "danger", i18n.T(lang, "No mail service is listening")
+		page.Detail = ui.HTML(escFill(i18n.T(lang, "Nothing answers at {host}; see Listeners below.", "host", htmlMark(0)), codeHost))
 	case mismatch:
-		page.Tone, page.State = "warn", "Phones will refuse this server's certificate"
-		page.Detail = ui.HTML(`It does not cover <code>` + hHost + `</code>. Desktop apps let you accept it; most phone mail apps, Thunderbird for Android among them, do not.`)
+		page.Tone, page.State = "warn", i18n.T(lang, "Phones will refuse this server's certificate")
+		page.Detail = ui.HTML(escFill(i18n.T(lang, "It does not cover {host}. Desktop apps let you accept it; most phone mail apps, Thunderbird for Android among them, do not.", "host", htmlMark(0)), codeHost))
 	case down > 0:
-		page.Tone, page.State = "warn", itoaSafe(down)+" of "+itoaSafe(len(listeners))+" mail services are not listening"
-		page.Detail = ui.HTML(`Apps that use them cannot connect; see Listeners below.`)
+		page.Tone, page.State = "warn", i18n.T(lang, "{down} of {total} mail services are not listening", "down", down, "total", len(listeners))
+		page.Detail = ui.HTML(esc(i18n.T(lang, "Apps that use them cannot connect; see Listeners below.")))
 	}
 
 	var sections []ui.HTML
@@ -1525,7 +1531,7 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	// is the page someone visits when setting their mail up: the one moment
 	// they think about access to this mailbox at all.
 	if row, sheet, ok := a.selfRecovery(r, nonce); ok {
-		sections = append(sections, ui.Section("Getting back in", "", ui.Rows(row)))
+		sections = append(sections, ui.Section(i18n.T(lang, "Getting back in"), "", ui.Rows(row)))
 		sheets.WriteString(sheet)
 	}
 
@@ -1536,48 +1542,57 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case untrusted:
 		var fix strings.Builder
-		fix.WriteString(`<p><strong>Apps reject the self-signed certificate</strong> with "Couldn't open connection to server", even though the ports are open.</p>`)
+		fix.WriteString(`<p>` + escFill(i18n.T(lang, "{lead} with “Couldn't open connection to server”, even though the ports are open.", "lead", htmlMark(0)),
+			`<strong>`+esc(i18n.T(lang, "Apps reject the self-signed certificate"))+`</strong>`) + `</p>`)
 		if note := a.vayuMail.TLSNote(); note != "" {
-			fix.WriteString(`<p class="muted">Reason: ` + html.EscapeString(note) + `</p>`)
+			fix.WriteString(`<p class="muted">` + esc(i18n.T(lang, "Reason: {reason}", "reason", note)) + `</p>`)
 		}
 		if acmeErr != "" {
-			fix.WriteString(`<p class="muted">Built-in ACME could not run: ` + html.EscapeString(acmeErr) + `. Port 80 is almost certainly your website's nginx, so VayuMail cannot answer the Let's Encrypt challenge itself.</p>`)
+			fix.WriteString(`<p class="muted">` + esc(i18n.T(lang, "Built-in ACME could not run: {error}. Port 80 is almost certainly your website's nginx, so VayuMail cannot answer the Let's Encrypt challenge itself.", "error", acmeErr)) + `</p>`)
 		}
-		fix.WriteString(`<p>Run this once on the server. It is separate from updating VayuPress: it issues a Let's Encrypt certificate for <code>` + hHost + `</code> through nginx, lets the mail service read it, and wires it in. It renews itself.</p>`)
-		fix.WriteString(`<pre class="code-block code-block--wrap">cd /tmp/VayuPress &amp;&amp; git pull origin main &amp;&amp; sudo bash deploy/vayumail-setup.sh</pre>`)
-		fix.WriteString(`<p>Then reload this page.` + string(ui.Tip("Alternatives: with port 80 free, set VAYUOS_MAIL_TLS_ACME=on and VAYUOS_MAIL_ACME_EMAIL, then restart; or point VAYUOS_MAIL_TLS_CERT and VAYUOS_MAIL_TLS_KEY at a CA-signed pair (such as /etc/letsencrypt/live/"+host+"/fullchain.pem and privkey.pem) and restart. Either way DNS needs an A record for "+host+" and the firewall must open ports 25, 143, 993, 587, 995 and 110; the script does both.")) + `</p>`)
+		fix.WriteString(`<p>` + escFill(i18n.T(lang, "Run this once on the server. It is separate from updating VayuPress: it issues a Let's Encrypt certificate for {host} through nginx, lets the mail service read it, and wires it in. It renews itself.", "host", htmlMark(0)), codeHost) + `</p>`)
+		fix.WriteString(`<pre class="code-block code-block--wrap">` + esc(mailSetupCommand) + `</pre>`)
+		fix.WriteString(`<p>` + esc(i18n.T(lang, "Then reload this page.")) + string(ui.Tip(i18n.T(lang, "Alternatives: with port 80 free, set VAYUOS_MAIL_TLS_ACME=on and VAYUOS_MAIL_ACME_EMAIL, then restart; or point VAYUOS_MAIL_TLS_CERT and VAYUOS_MAIL_TLS_KEY at a CA-signed pair (such as /etc/letsencrypt/live/{host}/fullchain.pem and privkey.pem) and restart. Either way DNS needs an A record for {host} and the firewall must open ports 25, 143, 993, 587, 995 and 110; the script does both.", "host", host))) + `</p>`)
 		cert.WriteString(string(ui.Callout("danger", ui.HTML(fix.String()))))
 	case a.vayuMail.TLSActive():
-		cert.WriteString(string(ui.Rows(ui.Row{Label: "Certificate", Hint: a.vayuMail.TLSNote(), Control: ui.State("ok", "Trusted")})))
+		cert.WriteString(string(ui.Rows(ui.Row{Label: i18n.T(lang, "Certificate"), Hint: a.vayuMail.TLSNote(), Control: ui.State("ok", i18n.T(lang, "Trusted"))})))
 		if mismatch {
-			cert.WriteString(string(ui.Callout("warn", ui.HTML(`This certificate is valid for <code>`+html.EscapeString(strings.Join(covered, "</code>, <code>"))+`</code>, not <code>`+hHost+`</code>. `+
-				`Set <code>VAYUOS_MAIL_HOSTNAME=`+html.EscapeString(covered[0])+`</code> and restart, so apps are handed a name it covers; or reissue it to include <code>`+hHost+`</code> (<code>sudo bash deploy/vayumail-setup.sh</code>, or <code>-d `+hHost+`</code> on your certbot command) and restart.`))))
+			names := make([]string, len(covered))
+			for k, c := range covered {
+				names[k] = code(c)
+			}
+			cert.WriteString(string(ui.Callout("warn", ui.HTML(
+				escFill(i18n.T(lang, "This certificate is valid for {names}, not {host}.", "names", htmlMark(0), "host", htmlMark(1)), strings.Join(names, ", "), codeHost)+` `+
+					escFill(i18n.T(lang, "Set {setting} and restart, so apps are handed a name it covers; or reissue it to include {host} ({script}, or {flag} on your certbot command) and restart.",
+						"setting", htmlMark(0), "host", htmlMark(1), "script", htmlMark(2), "flag", htmlMark(3)),
+						code("VAYUOS_MAIL_HOSTNAME="+covered[0]), codeHost, code("sudo bash deploy/vayumail-setup.sh"), code("-d "+host))))))
 		}
 		// Even in ACME mode a challenge responder that cannot bind means the
 		// renewal will fail and the certificate will lapse back to self-signed.
 		if acmeErr != "" {
-			cert.WriteString(string(ui.Callout("warn", ui.HTML(`Renewal may fail: `+html.EscapeString(acmeErr)+` (port 80 is held by another service). The guided script, <code>sudo bash deploy/vayumail-setup.sh</code>, renews through nginx instead.`))))
+			cert.WriteString(string(ui.Callout("warn", ui.HTML(escFill(i18n.T(lang, "Renewal may fail: {error} (port 80 is held by another service). The guided script, {script}, renews through nginx instead.", "error", acmeErr, "script", htmlMark(0)),
+				code("sudo bash deploy/vayumail-setup.sh"))))))
 		}
 	}
 	if cert.Len() > 0 {
-		sections = append(sections, ui.Section("Certificate", "", ui.HTML(cert.String())))
+		sections = append(sections, ui.Section(i18n.T(lang, "Certificate"), "", ui.HTML(cert.String())))
 	}
 
 	lis := string(ui.Rows(lrows...))
 	if err := a.vayuMail.InboundError(); err != nil {
-		lis += `<p class="sa-list__note">Some services could not bind: ` + html.EscapeString(err.Error()) + `.` +
-			string(ui.Tip("Make sure the ports are free and the service may bind them: grant CAP_NET_BIND_SERVICE for ports below 1024, or point the VAYUOS_MAIL_*_LISTEN variables at high ports. Then restart.")) + `</p>`
+		lis += `<p class="sa-list__note">` + esc(i18n.T(lang, "Some services could not bind: {error}.", "error", err.Error())) +
+			string(ui.Tip(i18n.T(lang, "Make sure the ports are free and the service may bind them: grant CAP_NET_BIND_SERVICE for ports below 1024, or point the VAYUOS_MAIL_*_LISTEN variables at high ports. Then restart."))) + `</p>`
 	}
-	sections = append(sections, ui.Section("Listeners", "Live", ui.HTML(lis)))
+	sections = append(sections, ui.Section(i18n.T(lang, "Listeners"), i18n.T(lang, "Live"), ui.HTML(lis)))
 
 	// The official app, which needs nothing typed but an address and an app
 	// password. Plain external links: CSP-safe, no third-party assets.
-	sections = append(sections, ui.Section("The VayuMail app", "", ui.Rows(ui.Row{
-		Label: "VayuMail for your phone",
-		Hint:  "Sign in with your address and an app password; it fills in every server setting and keeps your PGP keys in step.",
-		Control: ui.HTML(`<a class="btn btn--sm btn--ghost" href="https://github.com/johalputt/VayuMail-Mobile" target="_blank" rel="noopener noreferrer">Source</a>` +
-			`<a class="btn btn--primary btn--sm" href="https://github.com/johalputt/VayuMail-Mobile/releases" target="_blank" rel="noopener noreferrer">Download</a>` +
-			string(ui.Tip("VayuMail Mobile is VayuPress's own open-source app. It reads every server setting from /.well-known/vayumail/autoconfig.json and syncs PGP keys through WKD, so your mail stays end-to-end encrypted on your phone with no host, port or key typing."))),
+	sections = append(sections, ui.Section(i18n.T(lang, "The VayuMail app"), "", ui.Rows(ui.Row{
+		Label: i18n.T(lang, "VayuMail for your phone"),
+		Hint:  i18n.T(lang, "Sign in with your address and an app password; it fills in every server setting and keeps your PGP keys in step."),
+		Control: ui.HTML(`<a class="btn btn--sm btn--ghost" href="https://github.com/johalputt/VayuMail-Mobile" target="_blank" rel="noopener noreferrer">` + esc(i18n.T(lang, "Source")) + `</a>` +
+			`<a class="btn btn--primary btn--sm" href="https://github.com/johalputt/VayuMail-Mobile/releases" target="_blank" rel="noopener noreferrer">` + esc(i18n.T(lang, "Download")) + `</a>` +
+			string(ui.Tip(i18n.T(lang, "VayuMail Mobile is VayuPress's own open-source app. It reads every server setting from /.well-known/vayumail/autoconfig.json and syncs PGP keys through WKD, so your mail stays end-to-end encrypted on your phone with no host, port or key typing.")))),
 	})))
 
 	// App passwords: the list swaps in place on create and revoke; the form
@@ -1585,41 +1600,42 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	pwSheet := a.vayuAppPasswordSheet(r)
 	pwHead := ""
 	if pwSheet != "" {
-		pwHead = `<div class="vm-row vm-row--end"><button type="button" class="btn btn--sm" data-sheet="new-app-password">` + saIcon("plus") + `New app password</button></div>`
+		pwHead = `<div class="vm-row vm-row--end"><button type="button" class="btn btn--sm" data-sheet="new-app-password">` + saIcon("plus") + esc(i18n.T(lang, "New app password")) + `</button></div>`
 		sheets.WriteString(pwSheet)
 	}
-	sections = append(sections, ui.Section("App passwords", "One per device, revocable", ui.HTML(pwHead+`<div id="vm-apppw-card">`+a.vayuAppPasswordsCard(r)+`</div>`)))
+	sections = append(sections, ui.Section(i18n.T(lang, "App passwords"), i18n.T(lang, "One per device, revocable"), ui.HTML(pwHead+`<div id="vm-apppw-card">`+a.vayuAppPasswordsCard(r)+`</div>`)))
 
 	// Any other app: autoconfig fills these in from the address; the rows are
 	// for the apps that ask.
 	val := func(s string) ui.HTML {
 		return ui.HTML(`<span class="mono vm-connect__val">` + html.EscapeString(s) + `</span>`)
 	}
-	sections = append(sections, ui.Section("Any other mail app", "Thunderbird, Apple Mail, K-9 and the rest",
-		ui.HTML(`<p class="sa-list__note">Choose Add account and enter your address and password: Thunderbird and K-9 fill in the rest.`+
-			string(ui.Tip("Published at https://"+mc.Domain+"/.well-known/autoconfig/mail/config-v1.1.xml, and at /.well-known/vayumail/autoconfig.json for the VayuMail app."))+
-			` For an app that asks:</p>`+string(ui.Rows(
-			ui.Row{Label: "Incoming · IMAP", Hint: "Recommended: every device stays in step", Control: val(host + " · " + imapsPort + " SSL/TLS")},
-			ui.Row{Label: "Incoming · IMAP, alternative", Control: val(host + " · " + imapPort + " STARTTLS")},
-			ui.Row{Label: "Incoming · POP3", Hint: "Downloads to one device", Control: val(host + " · " + pop3sPort + " SSL, or " + pop3Port + " STLS")},
-			ui.Row{Label: "Outgoing · SMTP", Hint: "Authentication required", Control: val(host + " · " + subPort + " STARTTLS")},
-			ui.Row{Label: "Username", Control: ui.Text("Your full address, such as you@" + mc.Domain)},
-			ui.Row{Label: "Password", Hint: "An app password for a device; the mailbox password works too", Control: ui.Text("App password")},
+	fullAddress := ui.Text(i18n.T(lang, "Your full address, such as you@{domain}", "domain", mc.Domain))
+	sections = append(sections, ui.Section(i18n.T(lang, "Any other mail app"), i18n.T(lang, "Thunderbird, Apple Mail, K-9 and the rest"),
+		ui.HTML(`<p class="sa-list__note">`+esc(i18n.T(lang, "Choose Add account and enter your address and password: Thunderbird and K-9 fill in the rest."))+
+			string(ui.Tip(i18n.T(lang, "Published at {address}, and at /.well-known/vayumail/autoconfig.json for the VayuMail app.", "address", "https://"+mc.Domain+"/.well-known/autoconfig/mail/config-v1.1.xml")))+
+			` `+esc(i18n.T(lang, "For an app that asks:"))+`</p>`+string(ui.Rows(
+			ui.Row{Label: i18n.T(lang, "Incoming · IMAP"), Hint: i18n.T(lang, "Recommended: every device stays in step"), Control: val(host + " · " + imapsPort + " SSL/TLS")},
+			ui.Row{Label: i18n.T(lang, "Incoming · IMAP, alternative"), Control: val(host + " · " + imapPort + " STARTTLS")},
+			ui.Row{Label: i18n.T(lang, "Incoming · POP3"), Hint: i18n.T(lang, "Downloads to one device"), Control: val(host + " · " + i18n.T(lang, "{ssl} SSL, or {stls} STLS", "ssl", pop3sPort, "stls", pop3Port))},
+			ui.Row{Label: i18n.T(lang, "Outgoing · SMTP"), Hint: i18n.T(lang, "Authentication required"), Control: val(host + " · " + subPort + " STARTTLS")},
+			ui.Row{Label: i18n.T(lang, "Username"), Control: fullAddress},
+			ui.Row{Label: i18n.T(lang, "Password"), Hint: i18n.T(lang, "An app password for a device; the mailbox password works too"), Control: ui.Text(i18n.T(lang, "App password"))},
 		)))))
 
 	// Contacts, calendar and files (vayuos_mail_dav.go), on this site's own
 	// address: Apple's and DAVx5's setup find the first two from the
 	// server's name; a file app is given the files address itself.
 	origin := publicOrigin(r)
-	sections = append(sections, ui.Section("Contacts, calendar and files", "CardDAV, CalDAV and WebDAV, for phones and desktop apps",
-		ui.HTML(`<p class="sa-list__note">Add a CardDAV or CalDAV account with the server below, your address and an app password. The contacts are the ones in Mail and the calendar is the one in Calendar, and a change on either side reaches the other. A computer's or phone's file app opens Drive as a folder at the files address.`+
-			string(ui.Tip("Groups stay in Mail and do not travel to the phone. A file deleted from a file app goes to Drive's Trash, where it stays thirty days."))+`</p>`+string(ui.Rows(
-			ui.Row{Label: "Server", Hint: "Enough for Apple devices and DAVx5", Control: val(origin)},
-			ui.Row{Label: "Contacts · CardDAV", Control: val(origin + "/dav/card/")},
-			ui.Row{Label: "Calendar · CalDAV", Control: val(origin + "/dav/cal/")},
-			ui.Row{Label: "Files · WebDAV", Hint: "Connect to server in Finder, Map network drive in Windows, or a phone's file app", Control: val(origin + "/dav/files/")},
-			ui.Row{Label: "Username", Control: ui.Text("Your full address, such as you@" + mc.Domain)},
-			ui.Row{Label: "Password", Hint: "The same app password a mail app uses", Control: ui.Text("App password")},
+	sections = append(sections, ui.Section(i18n.T(lang, "Contacts, calendar and files"), i18n.T(lang, "CardDAV, CalDAV and WebDAV, for phones and desktop apps"),
+		ui.HTML(`<p class="sa-list__note">`+esc(i18n.T(lang, "Add a CardDAV or CalDAV account with the server below, your address and an app password. The contacts are the ones in Mail and the calendar is the one in Calendar, and a change on either side reaches the other. A computer's or phone's file app opens Drive as a folder at the files address."))+
+			string(ui.Tip(i18n.T(lang, "Groups stay in Mail and do not travel to the phone. A file deleted from a file app goes to Drive's Trash, where it stays thirty days.")))+`</p>`+string(ui.Rows(
+			ui.Row{Label: i18n.T(lang, "Server"), Hint: i18n.T(lang, "Enough for Apple devices and DAVx5"), Control: val(origin)},
+			ui.Row{Label: i18n.T(lang, "Contacts · CardDAV"), Control: val(origin + "/dav/card/")},
+			ui.Row{Label: i18n.T(lang, "Calendar · CalDAV"), Control: val(origin + "/dav/cal/")},
+			ui.Row{Label: i18n.T(lang, "Files · WebDAV"), Hint: i18n.T(lang, "Connect to server in Finder, Map network drive in Windows, or a phone's file app"), Control: val(origin + "/dav/files/")},
+			ui.Row{Label: i18n.T(lang, "Username"), Control: fullAddress},
+			ui.Row{Label: i18n.T(lang, "Password"), Hint: i18n.T(lang, "The same app password a mail app uses"), Control: ui.Text(i18n.T(lang, "App password"))},
 		)))))
 
 	// Per mailbox, for the administrator setting up several; a holder sees
@@ -1641,15 +1657,15 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 		mrows = append(mrows, []ui.HTML{ui.HTML(`<span class="mono">` + html.EscapeString(em) + `</span>`),
 			ui.Text(imapsPort + " SSL/TLS"), ui.Text(pop3sPort + " SSL/TLS"), ui.Text(subPort + " STARTTLS")})
 	}
-	sections = append(sections, ui.Section("Per mailbox", "The username is the full address",
-		ui.Table([]string{"Mailbox", "IMAP", "POP3", "SMTP (send)"}, mrows, "No active mailboxes yet. Make one under Accounts.")))
+	sections = append(sections, ui.Section(i18n.T(lang, "Per mailbox"), i18n.T(lang, "The username is the full address"),
+		ui.Table([]string{i18n.T(lang, "Mailbox"), "IMAP", "POP3", i18n.T(lang, "SMTP (send)")}, mrows, i18n.T(lang, "No active mailboxes yet. Make one under Accounts."))))
 
 	// The new password's Copy and Download, and the sheet that closes once it
 	// is made, are driven by admin-os-mail.js. This page never loaded it, so
 	// both buttons rendered and did nothing.
 	body := string(ui.Status(page, sections...)) + sheets.String() +
 		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`
-	writeOSHTML(w, r, adminOSLayout(nonce, "Connect a mail app", "vayuos", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Connect a mail app"), "vayuos", cfg, htmpl.HTML(body)))
 }
 
 func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) {
