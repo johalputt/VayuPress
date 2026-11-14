@@ -5,11 +5,13 @@ package main
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/users"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
@@ -141,5 +143,31 @@ func TestAPrivateMailboxsSheetSharesWithNoOneHere(t *testing.T) {
 	sheet := calGet(a, a.handleVayuOSDriveEntry, "/os/vayumail/drive/entry?id="+strconv.FormatInt(id, 10), dana, "").Body.String()
 	if !strings.Contains(sheet, "which no other mailbox has") || strings.Contains(sheet, `name="who"`) {
 		t.Errorf("a private mailbox's sheet:\n%s", sheet)
+	}
+}
+
+// TestSharedWithMeIsInThePersonsLanguage — the other mailbox's list and
+// the shared folder, in Italian.
+func TestSharedWithMeIsInThePersonsLanguage(t *testing.T) {
+	a := calendarApp(t)
+	e := eli(t, a)
+	project := driveFolder(t, a, 0, "Project")
+	driveAct(a, dana(), url.Values{"op": {"grant"}, "id": {strconv.FormatInt(project, 10)}, "who": {"eli"}, "write": {"1"}})
+	it := func(target string) string {
+		req := withUser(httptest.NewRequest(http.MethodGet, target, nil), e)
+		req = req.WithContext(i18n.WithLang(req.Context(), "it"))
+		rec := httptest.NewRecorder()
+		a.handleVayuOSDrive(rec, req)
+		return rec.Body.String()
+	}
+	list := it("/os/vayumail/drive?view=shared")
+	// The sidebar is Drive's and is not in this page's sentences.
+	if !strings.Contains(list, `<h1 class="drive-crumbs">Condivisi con me</h1>`) || !strings.Contains(list, "dana@example.com · può aggiungere file") || strings.Contains(list, "can add files") {
+		t.Errorf("the Italian list is not in Italian:\n%s", list)
+	}
+	g, _ := a.vayuMail.DriveSharedWithMe(vmail.ReadAsOwner("eli"))
+	folder := it("/os/vayumail/drive?view=shared&grant=" + strconv.FormatInt(g[0].ID, 10))
+	if !strings.Contains(folder, "Condiviso da dana@example.com. Puoi aggiungere file e cartelle") || !strings.Contains(folder, "Questa cartella è vuota.") {
+		t.Errorf("the Italian folder is not in Italian:\n%s", folder)
 	}
 }
