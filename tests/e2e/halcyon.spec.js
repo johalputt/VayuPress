@@ -665,7 +665,7 @@ test.describe("Halcyon", () => {
     expect(anim).toBe("none");
   });
 
-  // The site's mark comes alive under the pointer (3cy): it lifts and tips,
+  // The site's mark comes alive under the pointer: it lifts and tips,
   // and the name takes the accent; for a reader who asked for less motion it
   // only lights up.
   test("the site's logo comes alive on hover, and holds still for less motion", async ({ page }) => {
@@ -686,6 +686,33 @@ test.describe("Halcyon", () => {
     await name.hover();
     expect(await logo.evaluate((e) => getComputedStyle(e).transform), "with less motion the mark does not move").toBe("none");
     expect(await logo.evaluate((e) => getComputedStyle(e).boxShadow), "but it still lights up").not.toBe("none");
+  });
+
+  // Bringing the appearance and reading controls to what the reader chose is
+  // not a change they made: nothing transitions while a page loads (a colour
+  // animation there is one page audits count against the page), whether or not
+  // a choice is saved, and the reader's own choice still does.
+  test("nothing animates while a page loads; a reader's choice does", async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__moved = [];
+      document.addEventListener("transitionstart", (e) => {
+        const el = e.target, s = el.dataset && el.dataset.hScheme;
+        window.__moved.push(`${el.tagName.toLowerCase()}${s ? `[${s}]` : ""} ${e.propertyName}`);
+      }, true);
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/halcyon-long");
+    await page.waitForTimeout(400);
+    expect(await page.evaluate(() => window.__moved), "loading with nothing saved").toEqual([]);
+
+    await page.evaluate(() => localStorage.setItem("vayu-theme", "dark"));
+    await page.reload();
+    await page.waitForTimeout(400);
+    expect(await page.evaluate(() => window.__moved), "loading into a saved choice").toEqual([]);
+
+    await page.locator('.h-foot-base [data-h-scheme="light"]').click();
+    await expect.poll(() => page.evaluate(() => window.__moved)).toContain("button[light] background-color");
+    await page.evaluate(() => localStorage.removeItem("vayu-theme"));
   });
 
   test("asks nothing of any other host", async ({ page, baseURL }) => {

@@ -14,6 +14,18 @@
   function $$(s, el) { return Array.prototype.slice.call((el || d).querySelectorAll(s)); }
   function store(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
   function read() { try { return JSON.parse(localStorage.getItem(R) || '{}') || {}; } catch (e) { return {}; } }
+  // Bringing a control to the state already chosen (at load, or as a panel
+  // opens) is not a change the reader made, so it must not play the change's
+  // transition: at load it ran on every pressed button, a colour animation the
+  // browser cannot hand to the compositor and page audits count against the
+  // page. Transitions are held off for one style pass, which reading a
+  // computed value forces without a layout.
+  function still(fn) {
+    r.classList.add('h-still');
+    fn();
+    $$('.h-seg button').forEach(function (b) { void getComputedStyle(b).color; });
+    r.classList.remove('h-still');
+  }
   function say(msg) {
     var l = $('#h-live');
     if (!l) { l = d.createElement('p'); l.id = 'h-live'; l.className = 'h-vh'; l.setAttribute('aria-live', 'polite'); d.body.appendChild(l); }
@@ -114,7 +126,7 @@
       el.style.top = (b.bottom + w.scrollY + 8) + 'px';
       el.style.left = Math.max(8, Math.min(b.right + w.scrollX - el.offsetWidth, w.innerWidth - el.offsetWidth - 8)) + 'px';
     }
-    if (el.id === 'h-reader') paintReader();
+    if (el.id === 'h-reader') still(paintReader);
     var f = $(FOCUS, el);
     if (f) f.focus();
   }
@@ -255,5 +267,5 @@
     d.addEventListener('selectionchange', function () { if (!text()) hide(); });
   }
 
-  paintSchemes();
+  still(paintSchemes);
 })();

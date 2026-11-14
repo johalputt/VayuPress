@@ -141,6 +141,7 @@
 .h .h-field:focus { outline: none; box-shadow: inset 0 0 0 1.5px var(--h-accent), 0 0 0 4px var(--h-mark); }
 .h .h-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 22px; background: var(--h-sunken); }
 .h .h-seg button { min-height: 36px; padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 18px; font: 500 12px/1 var(--h-sans); color: var(--h-t3); transition: background-color 200ms var(--h-ease), color 200ms var(--h-ease); }
+.h.h-still .h-seg button { transition: none; }
 .h .h-seg button[aria-pressed="true"] { background: var(--h-raised); color: var(--h-t1); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
 .h .h-seg .h-i { width: 14px; height: 14px; }
 
