@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/johalputt/vayupress/internal/i18n"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
@@ -181,5 +182,28 @@ func TestABusyBookingPageSaysSoAndWorksOutNothing(t *testing.T) {
 	<-bookSlots
 	if rec := visit(h, http.MethodGet, "/book/dana/intro?tz=UTC", ""); rec.Code != http.StatusOK {
 		t.Fatalf("with a slot free: %d", rec.Code)
+	}
+}
+
+// TestTheBookingEditorIsInThePersonsLanguage — the editor's fields, its
+// days and a refused day in French, with none of the English they replaced.
+func TestTheBookingEditorIsInThePersonsLanguage(t *testing.T) {
+	a := calendarApp(t)
+	req := withUser(httptest.NewRequest(http.MethodPost, "/os/vayumail/calendar/booking/action", strings.NewReader(url.Values{"op": {"save"}, "title": {"X"}, "slug": {"x"},
+		"length": {"30"}, "zone": {"UTC"}, "reach": {"30"}, "hours1": {"dix à midi"}}.Encode())), dana())
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = req.WithContext(i18n.WithLang(req.Context(), "fr"))
+	rec := httptest.NewRecorder()
+	a.handleVayuOSBookingAction(rec, req)
+	page := rec.Body.String()
+	for _, want := range []string{"mardi : les horaires n’ont pas la forme", "Durées proposées", "<span>lundi</span>", "Accepte les réservations", "30 min"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the French editor has no %q", want)
+		}
+	}
+	for _, english := range []string{"Lengths offered", "<span>Monday</span>", "Taking bookings"} {
+		if strings.Contains(page, english) {
+			t.Errorf("the French editor says %q", english)
+		}
 	}
 }

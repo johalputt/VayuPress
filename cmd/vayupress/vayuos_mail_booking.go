@@ -34,7 +34,8 @@ func (a *App) bookingLink(r *http.Request, p vmail.BookingPage) string {
 	return a.oauthBaseURL(r) + "/book/" + url.PathEscape(bookingOwner(p.Mailbox, a.vayuMail.Config().Domain)) + "/" + p.Slug
 }
 
-var bookingDayNames = [7]string{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}
+// bookingDay names the d-th day of a page's week, Monday first, in lang.
+func bookingDay(lang string, d int) string { return i18n.WeekdayName(lang, time.Weekday((d+1)%7)) }
 
 // hoursText is a day's windows as the editor shows them: "10:00-13:00, 15:00-18:00".
 func hoursText(ws [][2]int) string {
@@ -79,13 +80,14 @@ var bookingLengths = []int{15, 30, 45, 60, 90}
 
 // bookingEditor is a page's form, and its bookings below.
 func (a *App) bookingEditor(r *http.Request, p vmail.BookingPage, bookings []vmail.Booking, csrf, msg string) string {
+	lang := i18n.Lang(r.Context())
 	var b strings.Builder
-	title := "New booking page"
+	title := i18n.T(lang, "New booking page")
 	if p.ID > 0 {
 		title = p.Title
 	}
 	b.WriteString(`<div class="cal-booking" data-page-kind="settings"><div class="page-header"><h1>` + esc(title) + `</h1>` +
-		`<p class="page-sub">A page anyone with the link can book a free time on. They see only free and busy, never what is in your calendar.</p></div>`)
+		`<p class="page-sub">` + esc(i18n.T(lang, "A page anyone with the link can book a free time on. They see only free and busy, never what is in your calendar.")) + `</p></div>`)
 	b.WriteString(msg)
 	if p.ID > 0 {
 		link := a.bookingLink(r, p)
@@ -94,11 +96,11 @@ func (a *App) bookingEditor(r *http.Request, p vmail.BookingPage, bookings []vma
 	b.WriteString(`<form class="cal-form" method="post" action="/os/vayumail/calendar/booking/action">`)
 	b.WriteString(`<input type="hidden" name="csrf_token" value="` + esc(csrf) + `"><input type="hidden" name="op" value="save"><input type="hidden" name="id" value="` + strconv.FormatInt(p.ID, 10) + `">`)
 	field := func(label, input string) string {
-		return `<label class="field"><span class="field-label">` + label + `</span>` + input + `</label>`
+		return `<label class="field"><span class="field-label">` + esc(label) + `</span>` + input + `</label>`
 	}
-	b.WriteString(`<div class="cal-two">` + field("Name", `<input type="text" name="title" required maxlength="120" value="`+esc(p.Title)+`" placeholder="Intro call">`) +
-		field("Name in the link", `<input type="text" name="slug" required maxlength="40" pattern="[a-z0-9][a-z0-9-]*" value="`+esc(p.Slug)+`" placeholder="intro">`) + `</div>`)
-	b.WriteString(`<fieldset class="cal-repeat"><legend>Lengths offered</legend><div class="cal-repeat__row">`)
+	b.WriteString(`<div class="cal-two">` + field(i18n.T(lang, "Name"), `<input type="text" name="title" required maxlength="120" value="`+esc(p.Title)+`" placeholder="`+esc(i18n.T(lang, "Intro call"))+`">`) +
+		field(i18n.T(lang, "Name in the link"), `<input type="text" name="slug" required maxlength="40" pattern="[a-z0-9][a-z0-9-]*" value="`+esc(p.Slug)+`" placeholder="intro">`) + `</div>`)
+	b.WriteString(`<fieldset class="cal-repeat"><legend>` + esc(i18n.T(lang, "Lengths offered")) + `</legend><div class="cal-repeat__row">`)
 	for _, l := range bookingLengths {
 		chk := ""
 		for _, o := range p.Lengths {
@@ -106,22 +108,23 @@ func (a *App) bookingEditor(r *http.Request, p vmail.BookingPage, bookings []vma
 				chk = " checked"
 			}
 		}
-		b.WriteString(`<label class="cal-check"><input type="checkbox" name="length" value="` + strconv.Itoa(l) + `"` + chk + `> ` + strconv.Itoa(l) + ` min</label>`)
+		b.WriteString(`<label class="cal-check"><input type="checkbox" name="length" value="` + strconv.Itoa(l) + `"` + chk + `> ` + esc(i18n.T(lang, "{n} min", "n", l)) + `</label>`)
 	}
 	b.WriteString(`</div></fieldset>`)
-	b.WriteString(`<fieldset class="cal-repeat"><legend>Weekly hours, in ` + esc(p.Zone) + `</legend>`)
-	for d, name := range bookingDayNames {
-		b.WriteString(`<label class="cal-booking__day"><span>` + name + `</span><input type="text" name="hours` + strconv.Itoa(d) + `" value="` + esc(hoursText(p.Hours[d])) +
-			`" placeholder="unavailable" aria-label="` + name + ` hours, as 10:00-13:00, 15:00-18:00"></label>`)
+	b.WriteString(`<fieldset class="cal-repeat"><legend>` + esc(i18n.T(lang, "Weekly hours, in {zone}", "zone", p.Zone)) + `</legend>`)
+	for d := range p.Hours {
+		name := bookingDay(lang, d)
+		b.WriteString(`<label class="cal-booking__day"><span>` + esc(name) + `</span><input type="text" name="hours` + strconv.Itoa(d) + `" value="` + esc(hoursText(p.Hours[d])) +
+			`" placeholder="` + esc(i18n.T(lang, "unavailable")) + `" aria-label="` + esc(i18n.T(lang, "{day} hours, as 10:00-13:00, 15:00-18:00", "day", name)) + `"></label>`)
 	}
 	b.WriteString(`<input type="hidden" name="zone" value="` + esc(p.Zone) + `"></fieldset>`)
 	num := func(name string, v, max int) string {
 		return `<input type="number" name="` + name + `" min="0" max="` + strconv.Itoa(max) + `" value="` + strconv.Itoa(v) + `">`
 	}
-	b.WriteString(`<div class="cal-two">` + field("Minutes kept free before", num("before", p.Before, 240)) + field("Minutes kept free after", num("after", p.After, 240)) + `</div>`)
-	b.WriteString(`<div class="cal-two">` + field("At least this many hours ahead", num("notice", p.Notice/60, 720)) + field("Up to this many days out", num("reach", p.Reach, 180)) + `</div>`)
-	b.WriteString(`<div class="cal-two">` + field("Most bookings in a day (0 for no limit)", num("perday", p.PerDay, 100)) +
-		field("A question for the guest", `<input type="text" name="question" maxlength="300" value="`+esc(p.Question)+`" placeholder="What would you like to talk about?">`) + `</div>`)
+	b.WriteString(`<div class="cal-two">` + field(i18n.T(lang, "Minutes kept free before"), num("before", p.Before, 240)) + field(i18n.T(lang, "Minutes kept free after"), num("after", p.After, 240)) + `</div>`)
+	b.WriteString(`<div class="cal-two">` + field(i18n.T(lang, "At least this many hours ahead"), num("notice", p.Notice/60, 720)) + field(i18n.T(lang, "Up to this many days out"), num("reach", p.Reach, 180)) + `</div>`)
+	b.WriteString(`<div class="cal-two">` + field(i18n.T(lang, "Most bookings in a day (0 for no limit)"), num("perday", p.PerDay, 100)) +
+		field(i18n.T(lang, "A question for the guest"), `<input type="text" name="question" maxlength="300" value="`+esc(p.Question)+`" placeholder="`+esc(i18n.T(lang, "What would you like to talk about?"))+`">`) + `</div>`)
 	remind := p.Remind
 	if p.ID == 0 {
 		remind = 1440
@@ -130,41 +133,41 @@ func (a *App) bookingEditor(r *http.Request, p vmail.BookingPage, bookings []vma
 	for _, o := range []struct {
 		v     int
 		label string
-	}{{0, "No reminder"}, {60, "An hour before"}, {1440, "A day before"}} {
+	}{{0, i18n.T(lang, "No reminder")}, {60, i18n.T(lang, "An hour before")}, {1440, i18n.T(lang, "A day before")}} {
 		sel := ""
 		if o.v == remind {
 			sel = " selected"
 		}
-		opts += `<option value="` + strconv.Itoa(o.v) + `"` + sel + `>` + o.label + `</option>`
+		opts += `<option value="` + strconv.Itoa(o.v) + `"` + sel + `>` + esc(o.label) + `</option>`
 	}
 	reps := ""
 	for _, n := range []int{0, 2, 4, 6, 8, 12} {
-		sel, label := "", "Single bookings only"
+		sel, label := "", i18n.T(lang, "Single bookings only")
 		if n == p.Repeats {
 			sel = " selected"
 		}
 		if n > 0 {
-			label = "Up to " + strconv.Itoa(n) + " in a series"
+			label = i18n.T(lang, "Up to {n} in a series", "n", n)
 		}
-		reps += `<option value="` + strconv.Itoa(n) + `"` + sel + `>` + label + `</option>`
+		reps += `<option value="` + strconv.Itoa(n) + `"` + sel + `>` + esc(label) + `</option>`
 	}
-	b.WriteString(`<div class="cal-two">` + field("Remind the guest and you", `<select name="remind">`+opts+`</select>`) +
-		field("A guest may book the same time weekly or every two weeks", `<select name="repeats">`+reps+`</select>`) + `</div>`)
+	b.WriteString(`<div class="cal-two">` + field(i18n.T(lang, "Remind the guest and you"), `<select name="remind">`+opts+`</select>`) +
+		field(i18n.T(lang, "A guest may book the same time weekly or every two weeks"), `<select name="repeats">`+reps+`</select>`) + `</div>`)
 	on := ""
 	if p.Enabled || p.ID == 0 {
 		on = " checked"
 	}
-	b.WriteString(`<label class="cal-check"><input type="checkbox" name="enabled" value="1"` + on + `> Taking bookings</label>`)
-	b.WriteString(`<p class="cal-note">The guest confirms by a link sent to their address before the time is booked; the booking then comes into your calendar with the guest invited.</p>`)
+	b.WriteString(`<label class="cal-check"><input type="checkbox" name="enabled" value="1"` + on + `> ` + esc(i18n.T(lang, "Taking bookings")) + `</label>`)
+	b.WriteString(`<p class="cal-note">` + esc(i18n.T(lang, "The guest confirms by a link sent to their address before the time is booked; the booking then comes into your calendar with the guest invited.")) + `</p>`)
 	b.WriteString(`<div class="cal-form__acts">`)
 	if p.ID > 0 {
-		b.WriteString(`<button type="submit" class="btn btn--danger" name="op" value="delete" formnovalidate>Delete page</button>`)
+		b.WriteString(`<button type="submit" class="btn btn--danger" name="op" value="delete" formnovalidate>` + esc(i18n.T(lang, "Delete page")) + `</button>`)
 	}
-	b.WriteString(`<button type="submit" class="btn btn--primary">Save</button></div></form>`)
+	b.WriteString(`<button type="submit" class="btn btn--primary">` + esc(i18n.T(lang, "Save")) + `</button></div></form>`)
 	if p.ID > 0 {
-		b.WriteString(`<h2 class="cal-booking__h">Recent bookings</h2>`)
+		b.WriteString(`<h2 class="cal-booking__h">` + esc(i18n.T(lang, "Recent bookings")) + `</h2>`)
 		if len(bookings) == 0 {
-			b.WriteString(`<p class="cal-note">Nothing booked yet.</p>`)
+			b.WriteString(`<p class="cal-note">` + esc(i18n.T(lang, "Nothing booked yet.")) + `</p>`)
 		}
 		loc := calZone(p.Zone)
 		if loc == nil {
@@ -172,9 +175,9 @@ func (a *App) bookingEditor(r *http.Request, p vmail.BookingPage, bookings []vma
 		}
 		b.WriteString(`<ul class="cal-booking__list">`)
 		for _, bk := range bookings {
-			state := map[string]string{"held": "waiting for their confirmation", "confirmed": "confirmed", "cancelled": "cancelled", "checking": "being confirmed"}[bk.Status]
+			state := map[string]string{"held": i18n.T(lang, "waiting for their confirmation"), "confirmed": i18n.T(lang, "confirmed"), "cancelled": i18n.T(lang, "cancelled"), "checking": i18n.T(lang, "being confirmed")}[bk.Status]
 			b.WriteString(`<li><span class="cal-booking__who">` + esc(bk.Name) + ` <span class="muted">` + esc(bk.Email) + `</span></span>` +
-				`<span class="muted">` + esc(bk.Start.In(loc).Format("Mon 2 Jan · 15:04")) + ` · ` + strconv.Itoa(int(bk.End.Sub(bk.Start).Minutes())) + ` min · ` + esc(state) + `</span></li>`)
+				`<span class="muted">` + esc(i18n.T(lang, "{when} · {n} min · {state}", "when", i18n.Date(lang, bk.Start.In(loc), i18n.WeekdayDayMonthAt), "n", int(bk.End.Sub(bk.Start).Minutes()), "state", state)) + `</span></li>`)
 		}
 		b.WriteString(`</ul>`)
 	}
@@ -183,14 +186,17 @@ func (a *App) bookingEditor(r *http.Request, p vmail.BookingPage, bookings []vma
 }
 
 func (a *App) handleVayuOSBookingPage(w http.ResponseWriter, r *http.Request) {
+	lang := i18n.Lang(r.Context())
+	title := i18n.T(lang, "Booking pages")
 	if !a.mailRunning() || a.vayuMail.Accounts() == nil {
-		a.writeMailSetup(w, r, "Booking pages")
+		a.writeMailSetup(w, r, title)
 		return
 	}
 	rd, ok := a.calendarOwner(r)
 	if !ok {
-		page := `<div data-page-kind="status"><div class="page-header"><h1>Booking pages</h1></div><div class="empty-state">Booking pages belong to a mailbox, and this account has none. An administrator can give you an address under <strong>Members → Team &amp; roles</strong>.</div></div>`
-		writeOSHTML(w, r, adminOSLayout(render.CSPNonce(r), "Booking pages", "vayuos", a.getOSSettings(r.Context()), htmpl.HTML(page)))
+		page := `<div data-page-kind="status"><div class="page-header"><h1>` + esc(title) + `</h1></div><div class="empty-state">` +
+			escBold(i18n.T(lang, "Booking pages belong to a mailbox, and this account has none. An administrator can give you an address under {place}.", "place", htmlMark(0)), i18n.T(lang, "Members → Team & roles")) + `</div></div>`
+		writeOSHTML(w, r, adminOSLayout(render.CSPNonce(r), title, "vayuos", a.getOSSettings(r.Context()), htmpl.HTML(page)))
 		return
 	}
 	mbox := a.calendarAddress(rd)
@@ -226,14 +232,15 @@ func (a *App) writeBookingPage(w http.ResponseWriter, r *http.Request, rd vmail.
 	}
 	side.Place, side.PlaceSide = "calendar", calSide(calViewFor(i18n.Lang(r.Context()), "week", "", home, now), home, midnight(now.In(home)), pages, on)
 	cfg.MailSide = side
-	writeOSHTML(w, r, adminOSLayout(nonce, "Booking pages", "vayuos", cfg, htmpl.HTML(a.bookingEditor(r, p, bookings, csrf, msg))))
+	writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(i18n.Lang(r.Context()), "Booking pages"), "vayuos", cfg, htmpl.HTML(a.bookingEditor(r, p, bookings, csrf, msg))))
 }
 
 // handleVayuOSBookingAction saves or deletes one of the session's own pages.
 func (a *App) handleVayuOSBookingAction(w http.ResponseWriter, r *http.Request) {
+	lang := i18n.Lang(r.Context())
 	rd, ok := a.calendarOwner(r)
 	if !ok {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "Booking pages belong to a mailbox, and this account has none.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(lang, "Booking pages belong to a mailbox, and this account has none."), "")
 		return
 	}
 	_ = r.ParseForm()
@@ -255,10 +262,10 @@ func (a *App) handleVayuOSBookingAction(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	msg := ""
-	for d := range bookingDayNames {
+	for d := range p.Hours {
 		ws, ok := parseHours(r.PostFormValue("hours" + strconv.Itoa(d)))
 		if !ok {
-			msg = saCallout("danger", esc(bookingDayNames[d])+"'s hours are not in the shape 10:00-13:00, 15:00-18:00.")
+			msg = saCallout("danger", esc(i18n.T(lang, "{day}: the hours are not in the shape 10:00-13:00, 15:00-18:00.", "day", bookingDay(lang, d))))
 		}
 		p.Hours[d] = ws
 	}
@@ -268,7 +275,7 @@ func (a *App) handleVayuOSBookingAction(w http.ResponseWriter, r *http.Request) 
 			http.Redirect(w, r, "/os/vayumail/calendar/booking?id="+strconv.FormatInt(saved, 10), http.StatusSeeOther)
 			return
 		}
-		msg = saCallout("danger", esc(strings.TrimPrefix(err.Error(), "vayumail: "))+".")
+		msg = saCallout("danger", esc(i18n.T(lang, "Not saved: {reason}.", "reason", strings.TrimPrefix(err.Error(), "vayumail: "))))
 	}
 	var bookings []vmail.Booking
 	if p.ID > 0 {
