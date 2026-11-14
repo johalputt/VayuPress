@@ -79,13 +79,6 @@ func (a *App) groupsSection(ctx context.Context, owner, userKey, said string) st
 	return b.String()
 }
 
-func pluralWord(n int, one, many string) string {
-	if n == 1 {
-		return one
-	}
-	return many
-}
-
 // handleVayuOSContactGroups saves a group (renaming it when its name was
 // changed) or deletes one, and redraws the panel with what happened.
 func (a *App) handleVayuOSContactGroups(w http.ResponseWriter, r *http.Request) {

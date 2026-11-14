@@ -37,7 +37,7 @@ func TestADrivesSheetShowsItsSumAndWhatIsDamaged(t *testing.T) {
 		t.Fatal(err)
 	}
 	sheet = calGet(a, a.handleVayuOSDriveEntry, "/os/vayumail/drive/entry?id="+strconv.FormatInt(id, 10), dana(), "").Body.String()
-	if !strings.Contains(sheet, "This file's bytes on the server are not what was kept") {
+	if !strings.Contains(sheet, "This file&#39;s bytes on the server are not what was kept") {
 		t.Errorf("a damaged file's sheet: %s", sheet)
 	}
 	if page := calGet(a, a.handleVayuOSDrive, "/os/vayumail/drive", dana(), "").Body.String(); !strings.Contains(page, "1 file or version in this Drive no longer matches what was kept") {

@@ -28,6 +28,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/ui"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
@@ -72,35 +73,38 @@ func driveHref(dir int64) string {
 // the files share with mail. upload is where an upload goes (its data-
 // attributes), "" where there is none: Trash, and what is shared to read.
 func (a *App) driveSide(ctx context.Context, rd vmail.Reader, view, upload string) string {
+	lang := rd.Lang()
 	var b strings.Builder
 	if upload != "" {
-		b.WriteString(`<label class="btn btn--primary mx-compose-btn">` + saIcon("upload") + `Upload<input class="vp-sr-only" type="file" multiple data-drive-upload` + upload + `></label>`)
+		b.WriteString(`<label class="btn btn--primary mx-compose-btn">` + saIcon("upload") + esc(i18n.T(lang, "Upload")) + `<input class="vp-sr-only" type="file" multiple data-drive-upload` + upload + `></label>`)
 	}
 	item := func(href, icon, label string, on bool) {
 		cur := ""
 		if on {
 			cur = ` aria-current="page"`
 		}
-		b.WriteString(`<a class="sa-appside__item" href="` + href + `"` + cur + `>` + saIcon(icon) + `<span class="sa-appside__label">` + label + `</span></a>`)
+		b.WriteString(`<a class="sa-appside__item" href="` + href + `"` + cur + `>` + saIcon(icon) + `<span class="sa-appside__label">` + esc(label) + `</span></a>`)
 	}
-	item("/os/vayumail/drive", "folder", "My files", view == "files")
-	item(sharedHref(0, 0), "user", "Shared with me", view == "shared")
-	item("/os/vayumail/drive?view=trash", "trash", "Trash", view == "trash")
+	item("/os/vayumail/drive", "folder", i18n.T(lang, "My files"), view == "files")
+	item(sharedHref(0, 0), "user", i18n.T(lang, "Shared with me"), view == "shared")
+	item("/os/vayumail/drive?view=trash", "trash", i18n.T(lang, "Trash"), view == "trash")
 	b.WriteString(`<button type="button" class="sa-appside__item" hx-get="/os/vayumail/drive/entry?settings=1" hx-target="#drive-sheet-body" hx-swap="innerHTML">` + saIcon("settings") +
-		`<span class="sa-appside__label">Drive settings</span></button>`)
+		`<span class="sa-appside__label">` + esc(i18n.T(lang, "Drive settings")) + `</span></button>`)
 	mbox := a.calendarAddress(rd)
 	// Mail and files share the mailbox's one allowance (the engine counts
 	// them together), so the figure here is both, with the files' part named.
 	used, files, quota := a.vayuMail.MailboxUsage(mbox), a.vayuMail.Accounts().DriveUsed(ctx, mbox), a.vayuMail.MailboxQuota(mbox)
-	b.WriteString(`<div class="mx-foot"><div class="mx-storage"><span class="mx-storage__row"><span>Mail and files</span><span>` + esc(humanBytes(used)))
+	figure := humanBytes(used)
 	if quota > 0 {
-		b.WriteString(` of ` + esc(humanBytes(quota)))
+		figure = i18n.T(lang, "{used} of {quota}", "used", humanBytes(used), "quota", humanBytes(quota))
 	}
-	b.WriteString(`</span></span><span class="mx-storage__row"><span>Files alone</span><span>` + esc(humanBytes(files)) + `</span></span></div></div>`)
+	b.WriteString(`<div class="mx-foot"><div class="mx-storage"><span class="mx-storage__row"><span>` + esc(i18n.T(lang, "Mail and files")) + `</span><span>` + esc(figure) +
+		`</span></span><span class="mx-storage__row"><span>` + esc(i18n.T(lang, "Files alone")) + `</span><span>` + esc(humanBytes(files)) + `</span></span></div></div>`)
 	return b.String()
 }
 
 func (a *App) handleVayuOSDrive(w http.ResponseWriter, r *http.Request) {
+	lang := i18n.Lang(r.Context())
 	if !a.mailRunning() || a.vayuMail.Accounts() == nil {
 		a.writeMailSetup(w, r, "Drive")
 		return
@@ -110,7 +114,8 @@ func (a *App) handleVayuOSDrive(w http.ResponseWriter, r *http.Request) {
 	csrfTokenFor(w, r)
 	rd, ok := a.driveOwner(r)
 	if !ok {
-		page := `<div data-page-kind="status"><div class="page-header"><h1>Drive</h1></div><div class="empty-state">Files belong to a mailbox, and this account has none. An administrator can give you an address under <strong>Members → Team &amp; roles</strong>.</div></div>`
+		page := `<div data-page-kind="status"><div class="page-header"><h1>` + esc(i18n.T(lang, "Drive")) + `</h1></div><div class="empty-state">` +
+			escBold(i18n.T(lang, "Files belong to a mailbox, and this account has none. An administrator can give you an address under {place}.", "place", htmlMark(0)), i18n.T(lang, "Members → Team & roles")) + `</div></div>`
 		writeOSHTML(w, r, adminOSLayout(nonce, "Drive", "vayuos", cfg, htmpl.HTML(page)))
 		return
 	}
@@ -134,7 +139,7 @@ func (a *App) handleVayuOSDrive(w http.ResponseWriter, r *http.Request) {
 		side.Place, side.PlaceSide = "drive", a.driveSide(r.Context(), rd, "shared", upload)
 		cfg.MailSide = side
 		page := `<div class="drive" data-page-kind="app" data-drive` + attrs + `>` + body + `</div>` +
-			string(ui.Sheet("drive-sheet", "File", ui.HTML(`<div id="drive-sheet-body"></div>`))) +
+			string(ui.Sheet("drive-sheet", i18n.T(lang, "File"), ui.HTML(`<div id="drive-sheet-body"></div>`))) +
 			`<script nonce="` + nonce + `" src="/os/static/js/admin-os-drive.js?v=` + assetVer("js/admin-os-drive.js") + `"></script>`
 		writeOSHTML(w, r, adminOSLayout(nonce, "Drive", "vayuos", cfg, htmpl.HTML(page)))
 		return
@@ -167,11 +172,11 @@ func (a *App) handleVayuOSDrive(w http.ResponseWriter, r *http.Request) {
 	b.WriteString(`<div class="drive-head"><h1 class="drive-crumbs">`)
 	switch {
 	case trash:
-		b.WriteString(`Trash`)
+		b.WriteString(esc(i18n.T(lang, "Trash")))
 	case len(path) == 0:
-		b.WriteString(`My files`)
+		b.WriteString(esc(i18n.T(lang, "My files")))
 	default:
-		b.WriteString(`<a href="/os/vayumail/drive">My files</a>`)
+		b.WriteString(`<a href="/os/vayumail/drive">` + esc(i18n.T(lang, "My files")) + `</a>`)
 		for i, p := range path {
 			b.WriteString(saIcon("chev-r"))
 			if i == len(path)-1 {
@@ -183,31 +188,30 @@ func (a *App) handleVayuOSDrive(w http.ResponseWriter, r *http.Request) {
 	}
 	b.WriteString(`</h1>`)
 	if !trash {
-		b.WriteString(`<button type="button" class="btn btn--sm" hx-get="/os/vayumail/drive/entry?new=folder&amp;dir=` + strconv.FormatInt(dir, 10) + `" hx-target="#drive-sheet-body" hx-swap="innerHTML">` + saIcon("plus") + `New folder</button>`)
+		b.WriteString(`<button type="button" class="btn btn--sm" hx-get="/os/vayumail/drive/entry?new=folder&amp;dir=` + strconv.FormatInt(dir, 10) + `" hx-target="#drive-sheet-body" hx-swap="innerHTML">` + saIcon("plus") + esc(i18n.T(lang, "New folder")) + `</button>`)
 	}
 	b.WriteString(`</div><div id="drive-status" class="drive-status" role="status" aria-live="polite"></div>`)
 	if err != nil {
-		b.WriteString(saCallout("danger", "The files could not be read: "+esc(driveRefusal(err))+"."))
+		b.WriteString(saCallout("danger", esc(i18n.T(lang, "The files could not be read: {reason}.", "reason", driveRefusal(err)))))
 	}
 	if trash && len(entries) > 0 {
 		days := 30
 		if ds, err := a.vayuMail.DriveSettingsOf(rd); err == nil {
 			days = ds.TrashDays
 		}
-		b.WriteString(`<p class="cal-note">A file stays here ` + strconv.Itoa(days) + ` days, then it is deleted for good.</p>` +
+		b.WriteString(`<p class="cal-note">` + esc(i18n.T(lang, "{n, plural, one {A file stays here # day, then it is deleted for good.} other {A file stays here # days, then it is deleted for good.}}", "n", days)) + `</p>` +
 			`<div class="cal-detail__acts"><button type="button" class="btn btn--sm btn--danger" hx-post="/os/vayumail/drive/action"` + hxVals("op", "empty") +
-			` hx-confirm="Delete everything in Trash for good? It cannot be brought back.">Empty Trash</button></div>`)
+			` hx-confirm="` + esc(i18n.T(lang, "Delete everything in Trash for good? It cannot be brought back.")) + `">` + esc(i18n.T(lang, "Empty Trash")) + `</button></div>`)
 	}
 	if n, _ := a.vayuMail.DriveDamaged(rd); n > 0 {
-		b.WriteString(saCallout("danger", strconv.Itoa(n)+" "+pluralWord(n, "file or version", "files or versions")+
-			" in this Drive "+pluralWord(n, "no longer matches", "no longer match")+" what was kept: the server's disk changed or damaged "+pluralWord(n, "it", "them")+". Each says so on its sheet."))
+		b.WriteString(saCallout("danger", esc(i18n.T(lang, "{n, plural, one {# file or version in this Drive no longer matches what was kept: the server's disk changed or damaged it. Each says so on its sheet.} other {# files or versions in this Drive no longer match what was kept: the server's disk changed or damaged them. Each says so on its sheet.}}", "n", n))))
 	}
 	if len(entries) == 0 && err == nil {
-		what := "This folder is empty. Upload a file, or drop one here."
+		what := i18n.T(lang, "This folder is empty. Upload a file, or drop one here.")
 		if trash {
-			what = "Trash is empty."
+			what = i18n.T(lang, "Trash is empty.")
 		}
-		b.WriteString(`<p class="drive-empty">` + what + `</p>`)
+		b.WriteString(`<p class="drive-empty">` + esc(what) + `</p>`)
 	} else {
 		b.WriteString(`<ul class="drive-list">`)
 		for _, d := range entries {
@@ -227,13 +231,13 @@ func (a *App) handleVayuOSDrive(w http.ResponseWriter, r *http.Request) {
 			if !d.IsDir {
 				size = humanBytes(d.Size)
 			}
-			b.WriteString(`<span class="drive-row__meta">` + esc(size) + `</span><span class="drive-row__meta">` + esc(d.Modified.In(a.calendarHome(r)).Format("2 Jan 2006")) + `</span>` +
-				`<button type="button" class="btn btn--ghost btn--sm" aria-label="More for ` + esc(d.Name) + `"` + open + `>` + saIcon("more") + `</button></li>`)
+			b.WriteString(`<span class="drive-row__meta">` + esc(size) + `</span><span class="drive-row__meta">` + esc(i18n.Date(lang, d.Modified.In(a.calendarHome(r)), i18n.DayMonthYearShort)) + `</span>` +
+				`<button type="button" class="btn btn--ghost btn--sm" aria-label="` + esc(i18n.T(lang, "More for {name}", "name", d.Name)) + `"` + open + `>` + saIcon("more") + `</button></li>`)
 		}
 		b.WriteString(`</ul>`)
 	}
 	b.WriteString(`</div>`)
-	b.WriteString(string(ui.Sheet("drive-sheet", "File", ui.HTML(`<div id="drive-sheet-body"></div>`))))
+	b.WriteString(string(ui.Sheet("drive-sheet", i18n.T(lang, "File"), ui.HTML(`<div id="drive-sheet-body"></div>`))))
 	b.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-drive.js?v=` + assetVer("js/admin-os-drive.js") + `"></script>`)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Drive", "vayuos", cfg, htmpl.HTML(b.String())))
 }
@@ -259,9 +263,10 @@ func (a *App) driveFolders(rd vmail.Reader, parent int64, prefix string, depth i
 
 // handleVayuOSDriveEntry is the sheet for one entry, or for a new folder.
 func (a *App) handleVayuOSDriveEntry(w http.ResponseWriter, r *http.Request) {
+	lang := i18n.Lang(r.Context())
 	rd, ok := a.driveOwner(r)
 	if !ok {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "Files open only for their holder.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(lang, "Files open only for their holder."), "")
 		return
 	}
 	q := r.URL.Query()
@@ -270,10 +275,10 @@ func (a *App) handleVayuOSDriveEntry(w http.ResponseWriter, r *http.Request) {
 		dir, _ := strconv.ParseInt(q.Get("dir"), 10, 64)
 		// In a folder shared with this mailbox to write, the share goes too.
 		grant, _ := strconv.ParseInt(q.Get("grant"), 10, 64)
-		writeOSHTML(w, r, `<form class="cal-form" data-sheet-title="New folder"`+post+`><input type="hidden" name="op" value="mkdir"><input type="hidden" name="dir" value="`+strconv.FormatInt(dir, 10)+`">`+
+		writeOSHTML(w, r, `<form class="cal-form" data-sheet-title="`+esc(i18n.T(lang, "New folder"))+`"`+post+`><input type="hidden" name="op" value="mkdir"><input type="hidden" name="dir" value="`+strconv.FormatInt(dir, 10)+`">`+
 			`<input type="hidden" name="grant" value="`+strconv.FormatInt(grant, 10)+`">`+
-			`<label class="field"><span class="field-label">Name</span><input type="text" name="name" required maxlength="255" autocomplete="off"></label>`+
-			`<div class="cal-form__acts"><button type="button" class="btn" data-sheet-close>Cancel</button><button type="submit" class="btn btn--primary">Make folder</button></div></form>`)
+			`<label class="field"><span class="field-label">`+esc(i18n.T(lang, "Name"))+`</span><input type="text" name="name" required maxlength="255" autocomplete="off"></label>`+
+			`<div class="cal-form__acts"><button type="button" class="btn" data-sheet-close>`+esc(i18n.T(lang, "Cancel"))+`</button><button type="submit" class="btn btn--primary">`+esc(i18n.T(lang, "Make folder"))+`</button></div></form>`)
 		return
 	}
 	if q.Get("settings") == "1" {
@@ -283,60 +288,60 @@ func (a *App) handleVayuOSDriveEntry(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(q.Get("id"), 10, 64)
 	path, err := a.vayuMail.DrivePath(rd, id)
 	if err != nil || len(path) == 0 {
-		writeOSHTML(w, r, saCallout("danger", "This is no longer here."))
+		writeOSHTML(w, r, saCallout("danger", esc(i18n.T(lang, "This is no longer here."))))
 		return
 	}
 	writeOSHTML(w, r, a.driveSheet(rd, path[len(path)-1], a.calendarHome(r), ""))
 }
 
 func (a *App) driveSheet(rd vmail.Reader, d vmail.DriveEntry, home *time.Location, msg string) string {
-	id := strconv.FormatInt(d.ID, 10)
+	id, lang := strconv.FormatInt(d.ID, 10), rd.Lang()
 	post := ` hx-post="/os/vayumail/drive/action" hx-target="#drive-sheet-body" hx-swap="innerHTML"`
 	var b strings.Builder
 	b.WriteString(`<div class="cal-detail" data-sheet-title="` + esc(d.Name) + `">` + msg)
 	if !d.Trashed.IsZero() {
-		b.WriteString(`<p class="cal-note">In Trash since ` + esc(d.Trashed.In(home).Format("2 January 2006")) + `.</p><div class="cal-detail__acts">` +
-			`<button type="button" class="btn btn--sm"` + post + hxVals("op", "restore", "id", id) + `>Restore</button>` +
-			`<button type="button" class="btn btn--sm btn--danger"` + post + hxVals("op", "delete", "id", id) + ` hx-confirm="Delete this for good? It cannot be brought back.">Delete for good</button></div></div>`)
+		b.WriteString(`<p class="cal-note">` + esc(i18n.T(lang, "In Trash since {date}.", "date", i18n.Date(lang, d.Trashed.In(home), i18n.DayMonthYearPlain))) + `</p><div class="cal-detail__acts">` +
+			`<button type="button" class="btn btn--sm"` + post + hxVals("op", "restore", "id", id) + `>` + esc(i18n.T(lang, "Restore")) + `</button>` +
+			`<button type="button" class="btn btn--sm btn--danger"` + post + hxVals("op", "delete", "id", id) + ` hx-confirm="` + esc(i18n.T(lang, "Delete this for good? It cannot be brought back.")) + `">` + esc(i18n.T(lang, "Delete for good")) + `</button></div></div>`)
 		return b.String()
 	}
 	if !d.IsDir {
 		if drivePictureType(d.Name) != "" && d.Size <= 20<<20 {
 			b.WriteString(`<img class="drive-preview" alt="" src="/os/vayumail/drive/file?id=` + id + `&amp;show=1">`)
 		}
-		meta := humanBytes(d.Size) + " · changed " + d.Modified.In(home).Format("2 January 2006")
+		meta := i18n.T(lang, "{size} · changed {date}", "size", humanBytes(d.Size), "date", i18n.Date(lang, d.Modified.In(home), i18n.DayMonthYearPlain))
 		if d.Sealed {
-			meta += " · sealed"
+			meta = i18n.T(lang, "{size} · changed {date} · sealed", "size", humanBytes(d.Size), "date", i18n.Date(lang, d.Modified.In(home), i18n.DayMonthYearPlain))
 		}
 		b.WriteString(`<p class="cal-note">` + esc(meta) + `</p>`)
 		if d.Damaged {
-			b.WriteString(saCallout("danger", "This file's bytes on the server are not what was kept: the disk changed or damaged them, and the file is not handed out as if it were sound. Bring back an earlier version below, or keep it again from your own copy or from a backup."))
+			b.WriteString(saCallout("danger", esc(i18n.T(lang, "This file's bytes on the server are not what was kept: the disk changed or damaged them, and the file is not handed out as if it were sound. Bring back an earlier version below, or keep it again from your own copy or from a backup."))))
 		}
 		if d.Sum != "" {
 			// The content's SHA-256, to compare with a copy kept elsewhere
 			// (sha256sum, shasum -a 256, Get-FileHash).
-			b.WriteString(`<p class="cal-note">SHA-256 <span class="mono drive-sum">` + esc(d.Sum) + `</span></p>`)
+			b.WriteString(`<p class="cal-note">` + esc(i18n.T(lang, "SHA-256")) + ` <span class="mono drive-sum">` + esc(d.Sum) + `</span></p>`)
 		}
 		if !d.Sealed && a.vayuPGP != nil && a.vayuPGP.HolderKeeps(a.calendarAddress(rd)) {
 			// A private mailbox's holder was told their files are sealed; the
 			// one that is not says so itself.
-			b.WriteString(`<p class="cal-note">This file is not sealed yet: it could not be when the mailbox was made private. Making it private again seals it; or download it and delete it here.</p>`)
+			b.WriteString(`<p class="cal-note">` + esc(i18n.T(lang, "This file is not sealed yet: it could not be when the mailbox was made private. Making it private again seals it; or download it and delete it here.")) + `</p>`)
 		}
-		b.WriteString(`<div class="cal-detail__acts"><a class="btn btn--sm" href="/os/vayumail/drive/file?id=` + id + `" download>` + saIcon("download") + `Download</a></div>`)
+		b.WriteString(`<div class="cal-detail__acts"><a class="btn btn--sm" href="/os/vayumail/drive/file?id=` + id + `" download>` + saIcon("download") + esc(i18n.T(lang, "Download")) + `</a></div>`)
 	}
 	if !d.IsDir {
 		if vs, _ := a.vayuMail.DriveVersions(rd, d.ID); len(vs) > 0 {
 			// What the file was before each time it was saved over. Bringing
 			// one back swaps it with the file as it is, so that is kept too.
-			b.WriteString(`<h3 class="cal-booking__h">Earlier versions</h3><ul class="drive-versions">`)
+			b.WriteString(`<h3 class="cal-booking__h">` + esc(i18n.T(lang, "Earlier versions")) + `</h3><ul class="drive-versions">`)
 			for _, v := range vs {
-				damaged := ""
+				what := i18n.Date(lang, v.Saved.In(home), i18n.DayMonthYearShortAt) + " · " + humanBytes(v.Size)
 				if v.Damaged {
-					damaged = " · damaged"
+					what = i18n.T(lang, "{version} · damaged", "version", what)
 				}
-				b.WriteString(`<li><span>` + esc(v.Saved.In(home).Format("2 January 2006, 15:04")) + ` · ` + esc(humanBytes(v.Size)) + damaged + `</span>` +
-					`<a class="btn btn--sm" href="/os/vayumail/drive/file?id=` + id + `&amp;version=` + strconv.FormatInt(v.ID, 10) + `" download>Download</a>` +
-					`<button type="button" class="btn btn--sm"` + post + hxVals("op", "version", "id", id, "version", strconv.FormatInt(v.ID, 10)) + `>Bring back</button></li>`)
+				b.WriteString(`<li><span>` + esc(what) + `</span>` +
+					`<a class="btn btn--sm" href="/os/vayumail/drive/file?id=` + id + `&amp;version=` + strconv.FormatInt(v.ID, 10) + `" download>` + esc(i18n.T(lang, "Download")) + `</a>` +
+					`<button type="button" class="btn btn--sm"` + post + hxVals("op", "version", "id", id, "version", strconv.FormatInt(v.ID, 10)) + `>` + esc(i18n.T(lang, "Bring back")) + `</button></li>`)
 			}
 			b.WriteString(`</ul>`)
 		}
@@ -344,12 +349,12 @@ func (a *App) driveSheet(rd vmail.Reader, d vmail.DriveEntry, home *time.Locatio
 	b.WriteString(a.driveShareSection(rd, d, home, post))
 	b.WriteString(a.driveGrantSection(rd, d, post))
 	b.WriteString(`<form class="cal-form"` + post + `><input type="hidden" name="op" value="rename"><input type="hidden" name="id" value="` + id + `">` +
-		`<label class="field"><span class="field-label">Name</span><input type="text" name="name" required maxlength="255" value="` + esc(d.Name) + `" autocomplete="off"></label>` +
-		`<div class="cal-form__acts"><button type="submit" class="btn btn--sm">Rename</button></div></form>`)
+		`<label class="field"><span class="field-label">` + esc(i18n.T(lang, "Name")) + `</span><input type="text" name="name" required maxlength="255" value="` + esc(d.Name) + `" autocomplete="off"></label>` +
+		`<div class="cal-form__acts"><button type="submit" class="btn btn--sm">` + esc(i18n.T(lang, "Rename")) + `</button></div></form>`)
 	var folders [][2]string
 	a.driveFolders(rd, 0, "", 0, &folders)
 	b.WriteString(`<form class="cal-form"` + post + `><input type="hidden" name="op" value="move"><input type="hidden" name="id" value="` + id + `">` +
-		`<label class="field"><span class="field-label">Move to</span><select name="to"><option value="0">My files</option>`)
+		`<label class="field"><span class="field-label">` + esc(i18n.T(lang, "Move to")) + `</span><select name="to"><option value="0">` + esc(i18n.T(lang, "My files")) + `</option>`)
 	for _, f := range folders {
 		if f[0] == id {
 			continue
@@ -360,13 +365,24 @@ func (a *App) driveSheet(rd vmail.Reader, d vmail.DriveEntry, home *time.Locatio
 		}
 		b.WriteString(`<option value="` + f[0] + `"` + sel + `>` + esc(f[1]) + `</option>`)
 	}
-	b.WriteString(`</select></label><div class="cal-form__acts"><button type="submit" class="btn btn--sm">Move</button></div></form>`)
-	b.WriteString(`<div class="cal-detail__delete"><button type="button" class="btn btn--sm btn--danger"` + post + hxVals("op", "trash", "id", id) + `>Move to Trash</button></div></div>`)
+	b.WriteString(`</select></label><div class="cal-form__acts"><button type="submit" class="btn btn--sm">` + esc(i18n.T(lang, "Move")) + `</button></div></form>`)
+	b.WriteString(`<div class="cal-detail__delete"><button type="button" class="btn btn--sm btn--danger"` + post + hxVals("op", "trash", "id", id) + `>` + esc(i18n.T(lang, "Move to Trash")) + `</button></div></div>`)
 	return b.String()
 }
 
 // driveEnds are the ends a link is offered, in days; 0 is until stopped.
-var driveEnds = [][2]string{{"1", "In a day"}, {"7", "In 7 days"}, {"30", "In 30 days"}, {"0", "When I stop it"}}
+var driveEnds = []int{1, 7, 30, 0}
+
+// driveEndLabel names a link's end from driveEnds in lang.
+func driveEndLabel(lang string, days int) string {
+	switch days {
+	case 0:
+		return i18n.T(lang, "When I stop it")
+	case 1:
+		return i18n.T(lang, "In a day")
+	}
+	return i18n.T(lang, "In {n} days", "n", days)
+}
 
 // driveShareSection is an entry's links and the form that makes one: for a
 // file, a link to download it; for a folder, one to look through it or one
@@ -374,78 +390,91 @@ var driveEnds = [][2]string{{"1", "In a day"}, {"7", "In 7 days"}, {"30", "In 30
 // (the action's answer): only its hash is kept, so this list cannot show it
 // again.
 func (a *App) driveShareSection(rd vmail.Reader, d vmail.DriveEntry, home *time.Location, post string) string {
-	id := strconv.FormatInt(d.ID, 10)
+	id, lang := strconv.FormatInt(d.ID, 10), rd.Lang()
 	var b strings.Builder
-	b.WriteString(`<h3 class="cal-booking__h">Share by link</h3>`)
+	b.WriteString(`<h3 class="cal-booking__h">` + esc(i18n.T(lang, "Share by link")) + `</h3>`)
 	private := a.vayuPGP != nil && a.vayuPGP.HolderKeeps(a.calendarAddress(rd))
 	switch {
 	case d.Sealed:
 		// Said before the link is made: the copy is readable on the server's
 		// disk, which the sealed file is not.
-		b.WriteString(`<p class="cal-note">This file is sealed to your key. A link needs a copy that is not sealed, kept on the server until the link ends or you stop it.</p>`)
+		b.WriteString(`<p class="cal-note">` + esc(i18n.T(lang, "This file is sealed to your key. A link needs a copy that is not sealed, kept on the server until the link ends or you stop it.")) + `</p>`)
 	case d.IsDir && private:
-		b.WriteString(`<p class="cal-note">Your files are sealed to your key, so this folder is shared only to upload into: what is sent is sealed to you as it is kept. Share its files one at a time to let someone download them.</p>`)
+		b.WriteString(`<p class="cal-note">` + esc(i18n.T(lang, "Your files are sealed to your key, so this folder is shared only to upload into: what is sent is sealed to you as it is kept. Share its files one at a time to let someone download them.")) + `</p>`)
 	case d.IsDir:
-		b.WriteString(`<p class="cal-note">A link to look through this folder opens it and every folder in it, and nothing above it. A link to upload into it shows nothing of what is there and keeps each file under a name of its own; it has an end.</p>`)
+		b.WriteString(`<p class="cal-note">` + esc(i18n.T(lang, "A link to look through this folder opens it and every folder in it, and nothing above it. A link to upload into it shows nothing of what is there and keeps each file under a name of its own; it has an end.")) + `</p>`)
 	}
 	if links, _ := a.vayuMail.DriveShares(rd, d.ID); len(links) > 0 {
 		b.WriteString(`<ul class="drive-versions">`)
 		for _, l := range links {
-			used, uses, last := "download", "downloads", " · last downloaded "
-			what := "Made " + l.Created.In(home).Format("2 January")
-			if l.Kind == vmail.ShareUpload {
-				used, uses, last = "file received", "files received", " · last received "
-				what = "Upload only · " + what
+			// Each fact about a link is a sentence of its own, joined as a
+			// list: none of them reads into the next.
+			upload := l.Kind == vmail.ShareUpload
+			var facts []string
+			if upload {
+				facts = append(facts, i18n.T(lang, "Upload only"))
 			}
+			facts = append(facts, i18n.T(lang, "Made {date}", "date", i18n.Date(lang, l.Created.In(home), i18n.DayMonthPlain)))
 			if !l.Expires.IsZero() {
-				what += " · ends " + l.Expires.In(home).Format("2 January, 15:04")
+				facts = append(facts, i18n.T(lang, "ends {when}", "when", i18n.Date(lang, l.Expires.In(home), i18n.WeekdayDayMonthAt)))
 			}
-			if l.Most > 0 {
-				what += " · " + strconv.Itoa(l.Downloads) + " of " + strconv.Itoa(l.Most) + " " + uses
-			} else {
-				what += " · " + strconv.Itoa(l.Downloads) + " " + pluralWord(l.Downloads, used, uses)
+			switch {
+			case upload && l.Most > 0:
+				facts = append(facts, i18n.T(lang, "{n} of {most} files received", "n", l.Downloads, "most", l.Most))
+			case upload:
+				facts = append(facts, i18n.T(lang, "{n, plural, one {# file received} other {# files received}}", "n", l.Downloads))
+			case l.Most > 0:
+				facts = append(facts, i18n.T(lang, "{n} of {most} downloads", "n", l.Downloads, "most", l.Most))
+			default:
+				facts = append(facts, i18n.T(lang, "{n, plural, one {# download} other {# downloads}}", "n", l.Downloads))
 			}
 			if l.Password {
-				what += " · password"
+				facts = append(facts, i18n.T(lang, "password"))
 			}
 			if len(l.Recent) > 0 {
-				what += last + l.Recent[0].In(home).Format("2 January, 15:04")
+				when := i18n.Date(lang, l.Recent[0].In(home), i18n.WeekdayDayMonthAt)
+				if upload {
+					facts = append(facts, i18n.T(lang, "last received {when}", "when", when))
+				} else {
+					facts = append(facts, i18n.T(lang, "last downloaded {when}", "when", when))
+				}
 			}
-			b.WriteString(`<li><span>` + esc(what) + `</span><button type="button" class="btn btn--sm"` + post + hxVals("op", "unshare", "id", id, "share", strconv.FormatInt(l.ID, 10)) + `>Stop</button></li>`)
+			b.WriteString(`<li><span>` + esc(strings.Join(facts, " · ")) + `</span><button type="button" class="btn btn--sm"` + post + hxVals("op", "unshare", "id", id, "share", strconv.FormatInt(l.ID, 10)) + `>` + esc(i18n.T(lang, "Stop")) + `</button></li>`)
 		}
 		b.WriteString(`</ul>`)
 	}
 	b.WriteString(`<form class="cal-form"` + post + `><input type="hidden" name="op" value="share"><input type="hidden" name="id" value="` + id + `">`)
 	// A folder's most counts files, handed out or received.
-	most := "downloads"
+	most := i18n.T(lang, "Most downloads (optional)")
 	if d.IsDir {
-		most = "files"
-		b.WriteString(`<label class="field"><span class="field-label">The link lets someone</span><select name="kind">`)
+		most = i18n.T(lang, "Most files (optional)")
+		b.WriteString(`<label class="field"><span class="field-label">` + esc(i18n.T(lang, "The link lets someone")) + `</span><select name="kind">`)
 		if !private {
-			b.WriteString(`<option value="folder">Look through it and download</option>`)
+			b.WriteString(`<option value="folder">` + esc(i18n.T(lang, "Look through it and download")) + `</option>`)
 		}
-		b.WriteString(`<option value="upload">Only upload into it</option></select></label>`)
+		b.WriteString(`<option value="upload">` + esc(i18n.T(lang, "Only upload into it")) + `</option></select></label>`)
 	}
-	b.WriteString(`<label class="field"><span class="field-label">Ends</span><select name="ends">`)
-	for _, e := range driveEnds {
+	b.WriteString(`<label class="field"><span class="field-label">` + esc(i18n.T(lang, "Ends")) + `</span><select name="ends">`)
+	for _, days := range driveEnds {
 		sel := ""
-		if e[0] == "7" {
+		if days == 7 {
 			sel = " selected"
 		}
-		b.WriteString(`<option value="` + e[0] + `"` + sel + `>` + e[1] + `</option>`)
+		b.WriteString(`<option value="` + strconv.Itoa(days) + `"` + sel + `>` + esc(driveEndLabel(lang, days)) + `</option>`)
 	}
 	b.WriteString(`</select></label>` +
-		`<label class="field"><span class="field-label">Password (optional)</span><input type="text" name="password" minlength="` + strconv.Itoa(vmail.ShareMinPassword) + `" maxlength="256" autocomplete="off"></label>` +
-		`<label class="field"><span class="field-label">Most ` + most + ` (optional)</span><input type="number" name="most" min="1" max="` + strconv.Itoa(vmail.ShareMaxDownloads) + `"></label>` +
-		`<div class="cal-form__acts"><button type="submit" class="btn btn--sm">Make a link</button></div></form>`)
+		`<label class="field"><span class="field-label">` + esc(i18n.T(lang, "Password (optional)")) + `</span><input type="text" name="password" minlength="` + strconv.Itoa(vmail.ShareMinPassword) + `" maxlength="256" autocomplete="off"></label>` +
+		`<label class="field"><span class="field-label">` + esc(most) + `</span><input type="number" name="most" min="1" max="` + strconv.Itoa(vmail.ShareMaxDownloads) + `"></label>` +
+		`<div class="cal-form__acts"><button type="submit" class="btn btn--sm">` + esc(i18n.T(lang, "Make a link")) + `</button></div></form>`)
 	return b.String()
 }
 
 // handleVayuOSDriveAction changes one of the session's own entries.
 func (a *App) handleVayuOSDriveAction(w http.ResponseWriter, r *http.Request) {
+	lang := i18n.Lang(r.Context())
 	rd, ok := a.driveOwner(r)
 	if !ok {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "Files open only for their holder.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(lang, "Files open only for their holder."), "")
 		return
 	}
 	_ = r.ParseForm()
@@ -474,7 +503,7 @@ func (a *App) handleVayuOSDriveAction(w http.ResponseWriter, r *http.Request) {
 	case "grant":
 		if err = a.vayuMail.DriveGrantTo(rd, id, r.PostFormValue("who"), r.PostFormValue("write") == "1"); err == nil {
 			if path, perr := a.vayuMail.DrivePath(rd, id); perr == nil && len(path) > 0 {
-				writeOSHTML(w, r, a.driveSheet(rd, path[len(path)-1], a.calendarHome(r), saCallout("ok", "Shared. It is under Shared with me in their Drive.")))
+				writeOSHTML(w, r, a.driveSheet(rd, path[len(path)-1], a.calendarHome(r), saCallout("ok", esc(i18n.T(lang, "Shared. It is under Shared with me in their Drive.")))))
 				return
 			}
 		}
@@ -482,7 +511,7 @@ func (a *App) handleVayuOSDriveAction(w http.ResponseWriter, r *http.Request) {
 		grant, _ := strconv.ParseInt(r.PostFormValue("grant"), 10, 64)
 		if err = a.vayuMail.DriveUngrant(rd, grant); err == nil {
 			if path, perr := a.vayuMail.DrivePath(rd, id); perr == nil && len(path) > 0 {
-				writeOSHTML(w, r, a.driveSheet(rd, path[len(path)-1], a.calendarHome(r), saCallout("ok", "No longer shared with them.")))
+				writeOSHTML(w, r, a.driveSheet(rd, path[len(path)-1], a.calendarHome(r), saCallout("ok", esc(i18n.T(lang, "No longer shared with them.")))))
 				return
 			}
 		}
@@ -506,7 +535,7 @@ func (a *App) handleVayuOSDriveAction(w http.ResponseWriter, r *http.Request) {
 			// The sheet again, on the file as it now is, not the folder: the
 			// holder is choosing between versions and may go back.
 			if path, perr := a.vayuMail.DrivePath(rd, id); perr == nil && len(path) > 0 {
-				writeOSHTML(w, r, a.driveSheet(rd, path[len(path)-1], a.calendarHome(r), saCallout("ok", "That version is the file again. The one it replaced is kept below.")))
+				writeOSHTML(w, r, a.driveSheet(rd, path[len(path)-1], a.calendarHome(r), saCallout("ok", esc(i18n.T(lang, "That version is the file again. The one it replaced is kept below.")))))
 				return
 			}
 		}
@@ -522,7 +551,7 @@ func (a *App) handleVayuOSDriveAction(w http.ResponseWriter, r *http.Request) {
 		}
 		if err == nil {
 			link := a.oauthBaseURL(r) + "/drive/s/" + token
-			said := saCallout("ok", `This link is shown once. Copy it now.<input class="input" type="text" readonly aria-label="The link" value="`+esc(link)+`">`)
+			said := saCallout("ok", esc(i18n.T(lang, "This link is shown once. Copy it now."))+`<input class="input" type="text" readonly aria-label="`+esc(i18n.T(lang, "The link"))+`" value="`+esc(link)+`">`)
 			if path, perr := a.vayuMail.DrivePath(rd, id); perr == nil && len(path) > 0 {
 				writeOSHTML(w, r, a.driveSheet(rd, path[len(path)-1], a.calendarHome(r), said))
 				return
@@ -532,14 +561,14 @@ func (a *App) handleVayuOSDriveAction(w http.ResponseWriter, r *http.Request) {
 		share, _ := strconv.ParseInt(r.PostFormValue("share"), 10, 64)
 		if err = a.vayuMail.DriveUnshare(rd, share); err == nil {
 			if path, perr := a.vayuMail.DrivePath(rd, id); perr == nil && len(path) > 0 {
-				writeOSHTML(w, r, a.driveSheet(rd, path[len(path)-1], a.calendarHome(r), saCallout("ok", "That link is stopped.")))
+				writeOSHTML(w, r, a.driveSheet(rd, path[len(path)-1], a.calendarHome(r), saCallout("ok", esc(i18n.T(lang, "That link is stopped.")))))
 				return
 			}
 		}
 	case "settings":
 		versions, _ := strconv.Atoi(r.PostFormValue("versions"))
 		days, _ := strconv.Atoi(r.PostFormValue("trash_days"))
-		msg := saCallout("ok", "Saved.")
+		msg := saCallout("ok", esc(i18n.T(lang, "Saved.")))
 		if serr := a.vayuMail.SetDriveSettings(rd, vmail.DriveSettings{Versions: versions, TrashDays: days}); serr != nil {
 			msg = saCallout("danger", esc(driveRefusal(serr))+".")
 		}
@@ -579,9 +608,10 @@ func (a *App) handleVayuOSDriveAction(w http.ResponseWriter, r *http.Request) {
 // before it is read: the engine's own limit is the rule, and this stops a
 // body far past it being received at all.
 func (a *App) handleVayuOSDriveUpload(w http.ResponseWriter, r *http.Request) {
+	lang := i18n.Lang(r.Context())
 	rd, ok := a.driveOwner(r)
 	if !ok {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "Files open only for their holder.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(lang, "Files open only for their holder."), "")
 		return
 	}
 	// The server's deadlines suit a page, not a hundred megabytes; a signed-in
@@ -626,6 +656,7 @@ func (a *App) handleVayuOSDriveUpload(w http.ResponseWriter, r *http.Request) {
 // handleVayuOSDriveFile sends a file: a download, or with show=1 one of
 // drivePictures drawn in place.
 func (a *App) handleVayuOSDriveFile(w http.ResponseWriter, r *http.Request) {
+	lang := i18n.Lang(r.Context())
 	rd, ok := a.driveOwner(r)
 	if !ok {
 		http.NotFound(w, r)
@@ -648,12 +679,12 @@ func (a *App) handleVayuOSDriveFile(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		if errors.Is(err, vmail.ErrDriveLocked) {
-			http.Error(w, "This file is sealed. Unlock your mailbox in Mail to open it.", http.StatusLocked)
+			http.Error(w, i18n.T(lang, "This file is sealed. Unlock your mailbox in Mail to open it."), http.StatusLocked)
 			return
 		}
 		if errors.Is(err, vmail.ErrDriveBusy) {
 			w.Header().Set("Retry-After", "5")
-			http.Error(w, "Two of your sealed files are being opened already. Try again when one is done.", http.StatusTooManyRequests)
+			http.Error(w, i18n.T(lang, "Two of your sealed files are being opened already. Try again when one is done."), http.StatusTooManyRequests)
 			return
 		}
 		http.NotFound(w, r)
@@ -682,9 +713,10 @@ func (a *App) handleVayuOSDriveFile(w http.ResponseWriter, r *http.Request) {
 // mailbox: an administrator reading someone's mail has no Drive of theirs
 // to put it in.
 func (a *App) handleVayuOSDriveSave(w http.ResponseWriter, r *http.Request) {
+	lang := i18n.Lang(r.Context())
 	rd, ok := a.driveOwner(r)
 	if !ok {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "Files open only for their holder.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(lang, "Files open only for their holder."), "")
 		return
 	}
 	_ = r.ParseForm()
@@ -695,19 +727,19 @@ func (a *App) handleVayuOSDriveSave(w http.ResponseWriter, r *http.Request) {
 	}
 	raw, err := a.vayuMail.ReadFolderMessage(rd, folder, id)
 	if err != nil || id == "" {
-		said("danger", "Not saved: the message is not here.")
+		said("danger", esc(i18n.T(lang, "Not saved: the message is not here.")))
 		return
 	}
 	name, ctype, data, found := vmail.ExtractAttachment(raw, idx)
 	if !found {
-		said("danger", "Not saved: the message has no such file.")
+		said("danger", esc(i18n.T(lang, "Not saved: the message has no such file.")))
 		return
 	}
 	if _, _, err := a.vayuMail.DriveKeepNew(rd, 0, mailSafeFilename(name), ctype, bytes.NewReader(data)); err != nil {
-		said("danger", "Not saved: "+esc(driveRefusal(err))+".")
+		said("danger", esc(i18n.T(lang, "Not saved: {reason}.", "reason", driveRefusal(err))))
 		return
 	}
-	writeOSHTML(w, r, `<a class="mx-file__open" href="/os/vayumail/drive">Saved to Drive</a>`)
+	writeOSHTML(w, r, `<a class="mx-file__open" href="/os/vayumail/drive">`+esc(i18n.T(lang, "Saved to Drive"))+`</a>`)
 }
 
 // handleVayuOSDrivePick is a folder of the holder's Drive as the composer's
@@ -716,9 +748,10 @@ func (a *App) handleVayuOSDriveSave(w http.ResponseWriter, r *http.Request) {
 // adds one chosen from the computer, so the send path takes one kind of
 // attachment and its size limit is one rule.
 func (a *App) handleVayuOSDrivePick(w http.ResponseWriter, r *http.Request) {
+	lang := i18n.Lang(r.Context())
 	rd, ok := a.driveOwner(r)
 	if !ok {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "Files open only for their holder.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(lang, "Files open only for their holder."), "")
 		return
 	}
 	dir, _ := strconv.ParseInt(r.URL.Query().Get("dir"), 10, 64)
@@ -732,13 +765,13 @@ func (a *App) handleVayuOSDrivePick(w http.ResponseWriter, r *http.Request) {
 		return `<li><button type="button" class="mx-compose__opt" hx-get="/os/vayumail/drive/pick?dir=` + strconv.FormatInt(id, 10) + `" hx-target="closest [data-c-drive-list]" hx-swap="outerHTML">` + saIcon("folder") + `<span>` + label + `</span></button></li>`
 	}
 	var b strings.Builder
-	b.WriteString(`<ul class="mx-compose__tpls" data-c-drive-list aria-label="Files in Drive">`)
+	b.WriteString(`<ul class="mx-compose__tpls" data-c-drive-list aria-label="` + esc(i18n.T(lang, "Files in Drive")) + `">`)
 	if dir != 0 {
 		up := int64(0)
 		if path, perr := a.vayuMail.DrivePath(rd, dir); perr == nil && len(path) > 0 {
 			up = path[len(path)-1].Parent
 		}
-		b.WriteString(into(up, "Back"))
+		b.WriteString(into(up, esc(i18n.T(lang, "Back"))))
 	}
 	limit := int64(composeMaxAttachMB()) << 20
 	for _, d := range entries {
@@ -750,13 +783,13 @@ func (a *App) handleVayuOSDrivePick(w http.ResponseWriter, r *http.Request) {
 		// attaching it could only be refused at Send.
 		off := ""
 		if d.Size > limit {
-			off = ` disabled title="Larger than a message takes"`
+			off = ` disabled title="` + esc(i18n.T(lang, "Larger than a message takes")) + `"`
 		}
 		b.WriteString(`<li><button type="button" class="mx-compose__opt" data-c-drive-file="` + strconv.FormatInt(d.ID, 10) + `" data-name="` + esc(d.Name) + `"` + off + `>` +
 			saIcon("doc") + `<span>` + esc(d.Name) + ` · ` + esc(humanBytes(d.Size)) + `</span></button></li>`)
 	}
 	if len(entries) == 0 {
-		b.WriteString(`<li class="mx-compose__tpl-empty">Nothing is here.</li>`)
+		b.WriteString(`<li class="mx-compose__tpl-empty">` + esc(i18n.T(lang, "Nothing is here.")) + `</li>`)
 	}
 	b.WriteString(`</ul>`)
 	writeOSHTML(w, r, b.String())
@@ -764,11 +797,13 @@ func (a *App) handleVayuOSDrivePick(w http.ResponseWriter, r *http.Request) {
 
 // driveSettingsSheet is the holder's choices for their Drive.
 func (a *App) driveSettingsSheet(rd vmail.Reader, msg string) string {
+	lang := rd.Lang()
 	ds, err := a.vayuMail.DriveSettingsOf(rd)
 	if err != nil {
-		return saCallout("danger", "The settings could not be read.")
+		return saCallout("danger", esc(i18n.T(lang, "The settings could not be read.")))
 	}
-	sel := func(name string, cur int, opts []int, word string) string {
+	// one names an option in lang: "5 versions", "30 days".
+	sel := func(name string, cur int, opts []int, one func(int) string) string {
 		var b strings.Builder
 		b.WriteString(`<select name="` + name + `">`)
 		for _, o := range opts {
@@ -776,14 +811,18 @@ func (a *App) driveSettingsSheet(rd vmail.Reader, msg string) string {
 			if o == cur {
 				on = " selected"
 			}
-			b.WriteString(`<option value="` + strconv.Itoa(o) + `"` + on + `>` + strconv.Itoa(o) + ` ` + word + `</option>`)
+			b.WriteString(`<option value="` + strconv.Itoa(o) + `"` + on + `>` + esc(one(o)) + `</option>`)
 		}
 		return b.String() + `</select>`
 	}
-	return `<form class="cal-form" data-sheet-title="Drive settings" hx-post="/os/vayumail/drive/action" hx-target="#drive-sheet-body" hx-swap="innerHTML">` + msg +
+	versions := func(n int) string {
+		return i18n.T(lang, "{n, plural, one {# version} other {# versions}}", "n", n)
+	}
+	days := func(n int) string { return i18n.T(lang, "{n, plural, one {# day} other {# days}}", "n", n) }
+	return `<form class="cal-form" data-sheet-title="` + esc(i18n.T(lang, "Drive settings")) + `" hx-post="/os/vayumail/drive/action" hx-target="#drive-sheet-body" hx-swap="innerHTML">` + msg +
 		`<input type="hidden" name="op" value="settings">` +
-		`<label class="field"><span class="field-label">Earlier versions kept of each file</span>` + sel("versions", ds.Versions, []int{1, 3, 5, 10, 20}, "versions") + `</label>` +
-		`<label class="field"><span class="field-label">Trash keeps what you delete for</span>` + sel("trash_days", ds.TrashDays, []int{7, 14, 30, 60, 90}, "days") + `</label>` +
-		`<p class="cal-note">Fewer versions take effect at once: the older ones past the number are deleted. Versions and Trash count against the mailbox's storage.</p>` +
-		`<div class="cal-form__acts"><button type="submit" class="btn btn--primary">Save</button></div></form>`
+		`<label class="field"><span class="field-label">` + esc(i18n.T(lang, "Earlier versions kept of each file")) + `</span>` + sel("versions", ds.Versions, []int{1, 3, 5, 10, 20}, versions) + `</label>` +
+		`<label class="field"><span class="field-label">` + esc(i18n.T(lang, "Trash keeps what you delete for")) + `</span>` + sel("trash_days", ds.TrashDays, []int{7, 14, 30, 60, 90}, days) + `</label>` +
+		`<p class="cal-note">` + esc(i18n.T(lang, "Fewer versions take effect at once: the older ones past the number are deleted. Versions and Trash count against the mailbox's storage.")) + `</p>` +
+		`<div class="cal-form__acts"><button type="submit" class="btn btn--primary">` + esc(i18n.T(lang, "Save")) + `</button></div></form>`
 }

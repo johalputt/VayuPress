@@ -171,3 +171,36 @@ func TestSharedWithMeIsInThePersonsLanguage(t *testing.T) {
 		t.Errorf("the Italian folder is not in Italian:\n%s", folder)
 	}
 }
+
+// TestDriveIsInThePersonsLanguage — Drive's page and a file's sheet in
+// German: its sidebar, its list, the sheet's facts and the link form.
+func TestDriveIsInThePersonsLanguage(t *testing.T) {
+	a := calendarApp(t)
+	project := driveFolder(t, a, 0, "Projekt")
+	driveUpload(a, dana(), project, "plan.txt", "der Plan")
+	plan := driveIDs(t, a, "dana", project)["plan.txt"]
+	de := func(h http.HandlerFunc, target string) string {
+		req := withUser(httptest.NewRequest(http.MethodGet, target, nil), dana())
+		req = req.WithContext(i18n.WithLang(req.Context(), "de"))
+		rec := httptest.NewRecorder()
+		h(rec, req)
+		return rec.Body.String()
+	}
+	page := de(a.handleVayuOSDrive, "/os/vayumail/drive?dir="+strconv.FormatInt(project, 10))
+	for _, want := range []string{">Meine Dateien<", "Drive-Einstellungen", "Neuer Ordner", "Mehr zu plan.txt"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the German page has no %q", want)
+		}
+	}
+	sheet := de(a.handleVayuOSDriveEntry, "/os/vayumail/drive/entry?id="+strconv.FormatInt(plan, 10))
+	for _, want := range []string{" · geändert am ", "Per Link teilen", "Link erstellen", "Umbenennen", "In den Papierkorb"} {
+		if !strings.Contains(sheet, want) {
+			t.Errorf("the German sheet has no %q", want)
+		}
+	}
+	for _, english := range []string{"My files", "Share by link", "Make a link", "changed "} {
+		if strings.Contains(page+sheet, english) {
+			t.Errorf("the German Drive says %q", english)
+		}
+	}
+}
