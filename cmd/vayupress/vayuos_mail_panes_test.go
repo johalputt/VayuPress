@@ -54,12 +54,17 @@ func TestTheMailSidebarIsTheOpenMailbox(t *testing.T) {
 		t.Error("the sidebar lists every mailbox again")
 	}
 	// The rest of Mail is folded away, and the section that opened the
-	// mailbox is not among it.
+	// mailbox is not among it. An administrator's administration is not:
+	// it stands above, one item for its pages, beside the Outbox.
 	more := side[strings.Index(side, `<details class="mx-more">`):strings.Index(side, `<div class="mx-foot">`)]
-	// Administration is one item there, as in Mail's own sidebar.
-	if !strings.Contains(more, `href="/os/vayumail/compose"`) || !strings.Contains(more, `href="/os/vayumail"`) || !strings.Contains(more, `>Administration</span>`) ||
+	if !strings.Contains(more, `href="/os/vayumail/compose"`) || strings.Contains(more, `href="/os/vayumail"`) || strings.Contains(more, `href="/os/vayumail/sent"`) ||
 		strings.Contains(more, `href="/os/vayumail/accounts"`) || strings.Contains(more, `>Mailbox</span>`) {
-		t.Errorf("the rest of Mail is not folded under the mailbox:\n%s", more)
+		t.Errorf("the rest of Mail is not folded under the mailbox, or the administration is folded with it:\n%s", more)
+	}
+	admin := side[strings.Index(side, `<div class="sa-appside__group">Administration</div>`):strings.Index(side, `<details class="mx-more">`)]
+	if !strings.Contains(admin, `href="/os/vayumail"`) || !strings.Contains(admin, `>Administration</span>`) || !strings.Contains(admin, `href="/os/vayumail/sent"`) ||
+		strings.Contains(admin, `href="/os/vayumail/accounts"`) {
+		t.Errorf("the administration does not stand above More in Mail as one item and the Outbox:\n%s", admin)
 	}
 	// The foot: contacts, the mailbox's rules, and its storage, warned at 75%.
 	foot := side[strings.Index(side, `<div class="mx-foot">`):]
@@ -230,6 +235,44 @@ func TestAnOpenMailboxIsItsOwnApp(t *testing.T) {
 	if !strings.Contains(out, `<body class="vp-os" data-ui`) || strings.Contains(out, "sa-appname") ||
 		!strings.Contains(out, "topbar-cmd") || !strings.Contains(out, `class="sa-status"`) {
 		t.Error("with no mailbox open, the page is not the console's")
+	}
+}
+
+// An administrator in Mail sees the Outbox and Mail administration as they
+// open it, not folded into More in Mail beneath the views, where they were
+// taken for gone; a mailbox's holder is shown neither.
+func TestAnAdministratorsMailKeepsItsAdministrationInSight(t *testing.T) {
+	folded := func(out string) (open, more string) {
+		side := out[strings.Index(out, `<nav class="sa-appside"`):]
+		side = side[:strings.Index(side, `</nav>`)]
+		if i := strings.Index(side, `<details class="mx-more">`); i >= 0 {
+			return side[:i], side[i:]
+		}
+		return side, ""
+	}
+	s := saSession(accessAdmin)
+	s.Route = "/os/vayumail/inbox"
+	s.MailSide = &osMailSide{User: "dana", Address: "dana@example.com", Admin: true}
+	open, more := folded(stillAirShellHead("n", "Mailbox", "vayuos", s))
+	for _, href := range []string{`href="/os/vayumail/sent"`, `href="/os/vayumail"`} {
+		if !strings.Contains(open, href) {
+			t.Errorf("an administrator's Mail does not show %s unfolded:\n%s", href, open)
+		}
+		if strings.Contains(more, href) {
+			t.Errorf("an administrator's Mail still folds %s into More in Mail", href)
+		}
+	}
+	if !strings.Contains(open, `<div class="sa-appside__group">Administration</div>`) {
+		t.Errorf("the administration is not under a heading of its own:\n%s", open)
+	}
+
+	h := saSession(accessMailOnly)
+	h.MailOnly = true
+	h.Route = "/os/vayumail/inbox"
+	h.MailSide = &osMailSide{User: "dana", Address: "dana@example.com"}
+	out := stillAirShellHead("n", "Mailbox", "vayuos", h)
+	if strings.Contains(out, `href="/os/vayumail/sent"`) || strings.Contains(out, `href="/os/vayumail"`) || strings.Contains(out, ">Administration<") {
+		t.Error("a mailbox's holder is shown the administration")
 	}
 }
 

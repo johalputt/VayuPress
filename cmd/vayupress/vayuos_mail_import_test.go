@@ -118,7 +118,7 @@ func TestBringMailInIsOfferedOnlyWhereItCanRun(t *testing.T) {
 		if strings.Contains(body, `name="password"`) == readOnly {
 			t.Errorf("%s: the form is offered = %v", role, !readOnly)
 		}
-		side := saMailSide(&osMailSide{User: "dana", Address: "dana@example.com", Writable: !a.vayuMail.ReaderReadOnly(rd)}, "")
+		side := saMailSide(&osMailSide{User: "dana", Address: "dana@example.com", Writable: !a.vayuMail.ReaderReadOnly(rd)}, "", "")
 		if strings.Contains(side, "Bring mail in") == readOnly {
 			t.Errorf("%s: the sidebar offers Bring mail in = %v", role, !readOnly)
 		}

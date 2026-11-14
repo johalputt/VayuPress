@@ -66,14 +66,14 @@ func TestTheMailSidebarOffersReading(t *testing.T) {
 		{true, true, []string{`class="sa-pop mx-reading"`, `aria-checked="false" data-mx-layout-choice=""`, `aria-checked="true" data-mx-layout-choice="full"`}},
 		{true, false, []string{`aria-checked="true" data-mx-layout-choice=""`, `aria-checked="false" data-mx-layout-choice="full"`}},
 	} {
-		side := saMailSide(&osMailSide{User: "dana", Address: "dana@example.com", Reading: c.reading, FullOpen: c.full}, "")
+		side := saMailSide(&osMailSide{User: "dana", Address: "dana@example.com", Reading: c.reading, FullOpen: c.full}, "", "")
 		for _, w := range c.want {
 			if !strings.Contains(side, w) {
 				t.Errorf("full=%v: the sidebar lacks %s", c.full, w)
 			}
 		}
 	}
-	if side := saMailSide(&osMailSide{User: "dana", Address: "dana@example.com"}, ""); strings.Contains(side, "mx-reading") {
+	if side := saMailSide(&osMailSide{User: "dana", Address: "dana@example.com"}, "", ""); strings.Contains(side, "mx-reading") {
 		t.Error("Reading is offered to a session with no account")
 	}
 }

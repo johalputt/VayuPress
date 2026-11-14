@@ -92,11 +92,11 @@ func TestASealedMessageRoundTrip(t *testing.T) {
 // administrator reading someone's mailbox would be sealing as them.
 func TestOnlyTheHolderIsOfferedSealing(t *testing.T) {
 	m := &osMailSide{User: "dana", Address: "dana@example.com", Writable: true}
-	if strings.Contains(saMailSide(m, ""), "/os/vayumail/sealed") {
+	if strings.Contains(saMailSide(m, "", ""), "/os/vayumail/sealed") {
 		t.Error("someone else's mailbox offers sealing a message as it")
 	}
 	m.Own = true
-	if !strings.Contains(saMailSide(m, ""), "/os/vayumail/sealed") {
+	if !strings.Contains(saMailSide(m, "", ""), "/os/vayumail/sealed") {
 		t.Error("the holder's own mailbox does not offer sealing")
 	}
 }

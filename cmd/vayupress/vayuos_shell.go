@@ -374,7 +374,7 @@ func saRailItem(href, label, icon, count string, current bool) string {
 // the account, its folders and views; then, folded away, the rest of Mail
 // (more); then the foot, pinned to the bottom, with contacts, the mailbox's
 // rules and its storage.
-func saMailSide(m *osMailSide, more string) string {
+func saMailSide(m *osMailSide, admin, more string) string {
 	var b strings.Builder
 	// For an administrator the account block opens the mailbox switcher (Mail
 	// plan §4), whose list is read when it opens (handleVayuOSMailSwitcher);
@@ -407,6 +407,9 @@ func saMailSide(m *osMailSide, more string) string {
 		b.WriteString(`<a class="btn btn--primary mx-compose-btn" href="/os/vayumail/compose?user=` + qparam(m.User) + `"` + mailCmd("Compose", "Mail", "c") + `>` + saIcon("pencil") + `Compose</a>`)
 	}
 	b.WriteString(m.Folders)
+	if admin != "" {
+		b.WriteString(`<div class="sa-appside__group">Administration</div>` + admin)
+	}
 	if more != "" {
 		b.WriteString(`<details class="mx-more"><summary class="sa-appside__item">` + saIcon("more") + `<span class="sa-appside__label">More in Mail</span></summary>` + more + `</details>`)
 	}
@@ -571,7 +574,11 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 		// While a mailbox is open its own sections are the sidebar, and the
 		// rest of Mail is gathered for saMailSide to fold away.
 		out := &side
-		var more strings.Builder
+		// An administrator's Mail keeps its administration in sight: the
+		// Outbox and the administration pages were folded into More in Mail
+		// with the rest, under the views, where an administrator looking for
+		// them read them as gone.
+		var more, admin strings.Builder
 		switch {
 		case app.Key == "settings":
 			// The render puts the search where the title would be; the rail
@@ -588,6 +595,10 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 			if mailOpen && x.Href == "/os/vayumail/inbox" {
 				continue // the folders are the mailbox
 			}
+			to := out
+			if mailOpen && x.AdminOnly {
+				to = &admin
+			}
 			if x.Tab {
 				// The group is one item, opening its first tab this session
 				// may see, current on any of them.
@@ -600,23 +611,23 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 					if s.MailDNSAttention {
 						mark = `<span class="sa-attn" role="img" aria-label="needs attention" title="A mail domain's DNS is not finished"></span>`
 					}
-					out.WriteString(`<a class="sa-appside__item" href="` + x.Href + `"` + cur + `>` + saIcon(app.TabIcon) +
+					to.WriteString(`<a class="sa-appside__item" href="` + x.Href + `"` + cur + `>` + saIcon(app.TabIcon) +
 						`<span class="sa-appside__label">` + html.EscapeString(app.TabGroup) + `</span>` + mark + `</a>`)
 				}
 				continue
 			}
 			if x.Group != "" {
-				out.WriteString(`<div class="sa-appside__group">` + html.EscapeString(x.Group) + `</div>`)
+				to.WriteString(`<div class="sa-appside__group">` + html.EscapeString(x.Group) + `</div>`)
 			}
 			cur := ""
 			if sec == x {
 				cur = ` aria-current="page"`
 			}
-			out.WriteString(`<a class="sa-appside__item" href="` + x.Href + `"` + cur + `>` + saIcon(x.Icon) +
+			to.WriteString(`<a class="sa-appside__item" href="` + x.Href + `"` + cur + `>` + saIcon(x.Icon) +
 				`<span class="sa-appside__label">` + html.EscapeString(x.Label) + `</span></a>`)
 		}
 		if mailOpen {
-			side.WriteString(saMailSide(s.MailSide, more.String()))
+			side.WriteString(saMailSide(s.MailSide, admin.String(), more.String()))
 		}
 		side.WriteString(`</nav>`)
 	}

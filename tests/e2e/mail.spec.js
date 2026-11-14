@@ -769,6 +769,15 @@ test("the command bar runs the open message's actions", async ({ page }) => {
   await expect(page.locator("#vm-inbox-list .mx-row", { hasText: subject })).toHaveCount(0);
 });
 
+// An administrator's Mail shows the Outbox and Mail administration as it
+// opens, not folded away under More in Mail.
+test("an administrator's Mail shows its administration without opening anything", async ({ page }) => {
+  await openInbox(page);
+  const side = page.locator(".sa-appside");
+  await expect(side.locator('a[href="/os/vayumail/sent"]')).toBeVisible();
+  await expect(side.locator('a[href="/os/vayumail"]')).toBeVisible();
+});
+
 // Mail is its own app: the console's rail is folded away, the menu brings
 // it back for the page, and "Mail" beside the mark goes to the Inbox.
 test("Mail folds the console's rail away, and the menu brings it back", async ({ page }) => {
