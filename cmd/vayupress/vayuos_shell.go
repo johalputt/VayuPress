@@ -765,7 +765,7 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
   <div class="sa-rail__foot">` + settingsItem + `<div class="sa-rail__version">` + saEdition() + `<span>` + html.EscapeString(Version) + `</span></div></div>
 </aside>
 <nav class="sa-tabbar" aria-label="Apps">` + tabs.String() + `</nav>
-` + saPaletteIndex(apps) + saSprite + `<script nonce="` + nonce + `">` + vpIconScript + `</script>
+` + saPaletteIndex(apps) + saSprite + `<script nonce="` + nonce + `">` + vpIconScript + vpTScript + `</script>
 <div class="main sa-main` + sideCls + `">
 ` + side.String() + `
 <main id="main-content" class="content sa-content">

@@ -12,7 +12,7 @@ import (
 // i18nMovedScripts is every console script whose words a person reads have
 // moved into vpT. From then on an English sentence written beside vpT fails
 // TestAMovedScriptHasNoEnglishOutsideVpT, as a moved page's does beside T.
-var i18nMovedScripts = []string{"admin-os-drive.js", "admin-os-mail-recovery.js"}
+var i18nMovedScripts = []string{"admin-os-drive.js", "admin-os-mail-recovery.js", "admin-os-mail.js"}
 
 var (
 	// jsLiteral is a quoted string on one line.
@@ -23,6 +23,13 @@ var (
 	// vpTGiven is a vpT call with the values it fills its sentence with.
 	vpTGiven = regexp.MustCompile(`vpT\(\s*'((?:[^'\\]|\\.)*)'\s*(?:,\s*\{([^}]*)\})?`)
 	jsKey    = regexp.MustCompile(`(\w+)\s*:`)
+	// jsSelectorCall ends where a CSS selector is given: no one reads one, and
+	// its element names ("summary", "span") read to the lint as words.
+	jsSelectorCall = regexp.MustCompile(`\b(querySelector|querySelectorAll|closest|matches)\($`)
+	// jsProse is a sentence that i18nEnglishIn lets by because of a bracket
+	// or a slash, which in a page's source usually mean code: in a script's
+	// literal, "(Google Authenticator, Aegis…)" is a sentence's own.
+	jsProse = regexp.MustCompile(`^[A-Z0-9][^<>]*\b[a-z]+ [a-z]+ [a-z]+\b[^<>]*[.?!…]$`)
 )
 
 // TestAMovedScriptHasNoEnglishOutsideVpT — a script moved into vpT stays
@@ -36,7 +43,8 @@ func TestAMovedScriptHasNoEnglishOutsideVpT(t *testing.T) {
 		}
 		src := jsComment.ReplaceAllString(string(b), "")
 		for _, m := range jsLiteral.FindAllStringSubmatchIndex(src, -1) {
-			if strings.HasSuffix(strings.TrimRight(src[:m[0]], " \t\n"), "vpT(") {
+			before := strings.TrimRight(src[:m[0]], " \t\n")
+			if strings.HasSuffix(before, "vpT(") || jsSelectorCall.MatchString(before) {
 				continue
 			}
 			lit := ""
@@ -47,6 +55,8 @@ func TestAMovedScriptHasNoEnglishOutsideVpT(t *testing.T) {
 			}
 			if eng := i18nEnglishIn(lit); eng != "" {
 				t.Errorf("%s: English outside vpT: %q", name, eng)
+			} else if jsProse.MatchString(lit) {
+				t.Errorf("%s: English outside vpT: %q", name, lit)
 			}
 		}
 	}
@@ -76,7 +86,8 @@ func TestEveryVpTSentenceIsGivenItsValues(t *testing.T) {
 }
 
 // A console page in German carries the scripts' sentences in German, once,
-// at the end of the page; an English page and a fragment carry none.
+// in its <head>, where they are before any script asks for one; an English
+// page and a fragment carry none.
 func TestAConsolePageCarriesItsScriptsWords(t *testing.T) {
 	found := false
 	for _, s := range scriptSentences() {
@@ -97,9 +108,9 @@ func TestAConsolePageCarriesItsScriptsWords(t *testing.T) {
 	if scriptWords("en") != "" {
 		t.Error("an English page carries a block of words it does not need")
 	}
-	page := "<html><body><main>…</main></body></html>"
-	if got := withScriptWords(page, "de"); !strings.Contains(got, `<script type="application/json" id="vp-words">`) || !strings.HasSuffix(got, "</script></body></html>") {
-		t.Errorf("the block is not at the end of the page: %.120s", got)
+	page := "<html><head><title>t</title></head><body><script src=a.js></script></body></html>"
+	if got := withScriptWords(page, "de"); !strings.HasPrefix(got, `<html><head><title>t</title><script type="application/json" id="vp-words">`) || !strings.HasSuffix(got, "</script></head><body><script src=a.js></script></body></html>") {
+		t.Errorf("the block is not in the page's head: %.160s", got)
 	}
 	if frag := "<p>a swapped part</p>"; withScriptWords(frag, "de") != frag {
 		t.Error("a fragment was given a block, so a page could carry two")

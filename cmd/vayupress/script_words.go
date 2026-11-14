@@ -3,11 +3,11 @@
 package main
 
 // script_words.go — the sentences the console's scripts say, in the page's
-// language. A script asks for one with vpT('…') (static/js/admin-os.js); the
+// language. A script asks for one with vpT('…') (vpTScript, below); the
 // sentences are read once from the scripts compiled into the binary, and a
 // console page in a language other than English carries that language's
-// versions in #vp-words, a JSON block the script reads. The page is the
-// carrier rather than a file of its own because it already knows its
+// versions in #vp-words, a JSON block in its <head> that vpT reads. The page
+// is the carrier rather than a file of its own because it already knows its
 // language, and a script asking for its words would answer its first
 // message before they arrived.
 
@@ -75,11 +75,11 @@ func scriptWords(lang string) string {
 	return `<script type="application/json" id="vp-words">` + string(b) + `</script>`
 }
 
-// withScriptWords puts lang's #vp-words into a whole page, before </body>; a
-// fragment (an htmx swap) has none and is returned as it is, so a page never
-// carries two.
+// withScriptWords puts lang's #vp-words into a whole page, in its <head>, so
+// it is there before any script runs; a fragment (an htmx swap) has none and
+// is returned as it is, so a page never carries two.
 func withScriptWords(body, lang string) string {
-	i := strings.LastIndex(body, "</body>")
+	i := strings.Index(body, "</head>")
 	if i < 0 {
 		return body
 	}
@@ -89,3 +89,73 @@ func withScriptWords(body, lang string) string {
 	}
 	return body[:i] + words + body[i:]
 }
+
+// vpTScript defines window.vpT(msg, vals): msg in the language the page is
+// written in, from #vp-words, with its placeholders filled as i18n.T fills
+// them (internal/i18n/console.go, render and placeholder): {name}, and
+// {n, plural, =1 {…} one {…} other {…}} with # for the number, the branch
+// chosen by the language's own rules. The shell runs it at the top of the
+// body, beside vpIcon, because a page's own script runs before admin-os.js
+// and may say a sentence as it loads (Mail's word count does).
+const vpTScript = `(function(){
+var vpWords = null;
+function vpT(msg, vals) {
+  if (vpWords === null) {
+    var el = document.getElementById('vp-words');
+    try { vpWords = el ? JSON.parse(el.textContent) : {}; } catch (e) { vpWords = {}; }
+  }
+  return vpFill(vpWords[msg] || msg, vals || {}, '');
+}
+function vpClosing(text, open) {
+  var depth = 0;
+  for (var j = open; j < text.length; j++) {
+    var c = text.charAt(j);
+    if (c === '{') depth++;
+    else if (c === '}' && --depth === 0) return j;
+  }
+  return -1;
+}
+function vpFill(text, vals, hash) {
+  var out = '';
+  for (var i = 0; i < text.length;) {
+    var c = text.charAt(i);
+    if (c === '#' && hash !== '') { out += hash; i++; continue; }
+    if (c !== '{') { out += c; i++; continue; }
+    var end = vpClosing(text, i);
+    if (end < 0) { out += text.slice(i); break; }
+    out += vpPlace(text.slice(i + 1, end), vals);
+    i = end + 1;
+  }
+  return out;
+}
+function vpPlace(inner, vals) {
+  var comma = inner.indexOf(',');
+  if (comma < 0) {
+    var v = vals[inner.trim()];
+    return v === undefined || v === null ? '' : String(v);
+  }
+  var name = inner.slice(0, comma).trim();
+  var rest = inner.slice(comma + 1);
+  var comma2 = rest.indexOf(',');
+  if (comma2 < 0 || rest.slice(0, comma2).trim() !== 'plural') return '{' + inner + '}';
+  var n = Math.trunc(Number(vals[name]) || 0);
+  var forms = vpBranches(rest.slice(comma2 + 1));
+  if (forms['=' + n] !== undefined) return vpFill(forms['=' + n], vals, String(n));
+  var cat = 'other';
+  try { cat = new Intl.PluralRules(document.documentElement.lang || 'en').select(Math.abs(n)); } catch (e) {}
+  return vpFill(forms[cat] !== undefined ? forms[cat] : (forms.other || ''), vals, String(n));
+}
+function vpBranches(s) {
+  var out = {};
+  for (var i = 0; i < s.length;) {
+    var open = s.indexOf('{', i);
+    if (open < 0) break;
+    var end = vpClosing(s, open);
+    if (end < 0) break;
+    out[s.slice(i, open).trim()] = s.slice(open + 1, end);
+    i = end + 1;
+  }
+  return out;
+}
+window.vpT = vpT;
+})();`

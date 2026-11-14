@@ -556,6 +556,30 @@ test("the compose page is the sheet, full width", async ({ page }) => {
   await expect(page.locator('.mx-compose--page a[aria-label="Close"]')).toHaveAttribute("href", "/os/vayumail/inbox?user=ankush");
 });
 
+// A sentence Mail's script says as it loads is in the page's language: the
+// compose page, served in German with the catalogue's German for its word
+// count in its head (where the server puts #vp-words), counts in German from
+// its first paint and as it is typed in.
+test("Mail's script says its sentences in the page's language from the first paint", async ({ page }) => {
+  const de = JSON.parse(require("fs").readFileSync(require("path").join(__dirname, "../../internal/i18n/locales/de.json"), "utf8"));
+  const count = "{words, plural, one {# word} other {# words}} · {chars, plural, one {# character} other {# characters}}";
+  expect(de[count]).toBeTruthy();
+  await page.route("**/os/vayumail/compose?user=ankush", async (route) => {
+    const res = await route.fetch();
+    const words = '<script type="application/json" id="vp-words">' + JSON.stringify({ [count]: de[count] }) + "</script>";
+    const body = (await res.text()).replace('<html lang="en">', '<html lang="de">').replace("</head>", words + "</head>");
+    await route.fulfill({ response: res, body });
+  });
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/os/vayumail/compose?user=ankush");
+  await expect(page.locator("[data-c-count]")).toHaveText("0 Wörter · 0 Zeichen");
+  await page.locator("[data-c-body]").fill("Hallo");
+  await expect(page.locator("[data-c-count]")).toHaveText("1 Wort · 5 Zeichen");
+  expect(errors).toEqual([]);
+});
+
 // Discard on the page goes back to the mailbox it was opened from. The way
 // back is built by the script, never read from the page's markup (CodeQL #120).
 test("discard on the compose page goes back to its mailbox", async ({ page }) => {

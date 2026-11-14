@@ -201,7 +201,7 @@
     var head = document.createElement('div');
     head.className = 'mx-suggest__head';
     head.setAttribute('role', 'presentation');
-    head.textContent = 'Recent';
+    head.textContent = vpT('Recent');
     frag.appendChild(head);
     list.forEach(function (q) {
       var b = document.createElement('button');
@@ -453,7 +453,7 @@
         if (!screensOn()) body.setAttribute('data-mx-screen', 'list');
         sync();
         fetch('/os/vayumail/layout', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrfToken(), 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ layout: full ? 'full' : '' }) })
-          .then(function (r) { if (!r.ok && window.vpToast) window.vpToast('Reading could not be saved.', 'error'); });
+          .then(function (r) { if (!r.ok && window.vpToast) window.vpToast(vpT('Reading could not be saved.'), 'error'); });
         return;
       }
       var go = t.closest('[data-mx-go]');
@@ -535,8 +535,17 @@
   // errText turns a failed response into a readable message, with a clear hint
   // for the expired-CSRF (403) case so the operator knows to just reload.
   function errText(res) {
-    if (res.status === 403) return 'session token expired — reload the page and try again';
+    if (res.status === 403) return vpT('session token expired — reload the page and try again');
     return (res.body && res.body.message) || res.status;
+  }
+
+  // listed joins names as the page's language joins a list ("a, b and c",
+  // "a, b und c", "a、b、c"). English is joined as en-GB, which writes no comma
+  // before "and", as the console's English does everywhere else.
+  function listed(names) {
+    var lang = document.documentElement.lang || 'en';
+    if (!window.Intl || !Intl.ListFormat) return names.join(', ');
+    return new Intl.ListFormat(lang === 'en' ? 'en-GB' : lang, { style: 'long', type: 'conjunction' }).format(names);
   }
 
   function val(root, sel) {
@@ -569,7 +578,7 @@
       if (!countEl || !bodyEl) { return; }
       var text = bodyEl.value;
       var words = text.trim() ? text.trim().split(/\s+/).length : 0;
-      countEl.textContent = words + (words === 1 ? ' word' : ' words') + ' · ' + text.length + ' characters';
+      countEl.textContent = vpT('{words, plural, one {# word} other {# words}} · {chars, plural, one {# character} other {# characters}}', { words: words, chars: text.length });
     }
 
     // Wrap the selection in a marker, or unwrap it when it is already wrapped so
@@ -629,20 +638,20 @@
       var back = el('div', 'modal-backdrop');
       var panel = el('div', 'modal-panel');
       var head = el('div', 'modal-header');
-      head.appendChild(el('div', 'modal-title', 'Insert link'));
+      head.appendChild(el('div', 'modal-title', vpT('Insert link')));
       var x = el('button', 'modal-close', '×'); x.type = 'button';
       head.appendChild(x);
       var body = el('div', 'modal-body');
       var f = el('div', 'field');
-      var l = el('label', 'field-label', 'Web address'); l.setAttribute('for', 'mb-link-url');
+      var l = el('label', 'field-label', vpT('Web address')); l.setAttribute('for', 'mb-link-url');
       var i = document.createElement('input');
       i.id = 'mb-link-url'; i.className = 'input'; i.type = 'url';
       i.placeholder = 'https://'; i.value = 'https://';
       f.appendChild(l); f.appendChild(i); body.appendChild(f);
-      body.appendChild(el('p', 'field-hint', 'The link is written into the message text so it reads the same in every mail client.'));
+      body.appendChild(el('p', 'field-hint', vpT('The link is written into the message text so it reads the same in every mail client.')));
       var foot = el('div', 'modal-footer');
-      var cancel = el('button', 'btn btn--ghost btn--sm', 'Cancel'); cancel.type = 'button';
-      var ok = el('button', 'btn btn--primary btn--sm', 'Insert'); ok.type = 'button';
+      var cancel = el('button', 'btn btn--ghost btn--sm', vpT('Cancel')); cancel.type = 'button';
+      var ok = el('button', 'btn btn--primary btn--sm', vpT('Insert')); ok.type = 'button';
       foot.appendChild(cancel); foot.appendChild(ok);
       panel.appendChild(head); panel.appendChild(body); panel.appendChild(foot);
       back.appendChild(panel); document.body.appendChild(back);
@@ -732,7 +741,7 @@
     var titleEl = compose.querySelector('[data-c-title]');
     var subjEl = compose.querySelector('[data-c-subject]');
     if (titleEl && subjEl) {
-      subjEl.addEventListener('input', function () { titleEl.textContent = subjEl.value.trim() || 'New message'; });
+      subjEl.addEventListener('input', function () { titleEl.textContent = subjEl.value.trim() || vpT('New message'); });
     }
     // A reply's quote is folded away under the reply, and goes with it unless
     // the sender leaves it out.
@@ -758,7 +767,7 @@
           previewPane.setAttribute('hidden', '');
           bodyEl.removeAttribute('hidden');
           previewBtn.setAttribute('aria-pressed', 'false');
-          previewBtn.textContent = 'Preview';
+          previewBtn.textContent = vpT('Preview');
           return;
         }
         previewPane.textContent = '';
@@ -778,7 +787,7 @@
         previewPane.removeAttribute('hidden');
         bodyEl.setAttribute('hidden', '');
         previewBtn.setAttribute('aria-pressed', 'true');
-        previewBtn.textContent = 'Edit';
+        previewBtn.textContent = vpT('Edit');
       });
     }
 
@@ -808,7 +817,7 @@
           var chip = document.createElement('span');
           var ok = EMAIL_RE.test(addrOf(addr));
           chip.className = 'vm-chip' + (ok ? '' : ' vm-chip--bad');
-          if (!ok) chip.title = 'This does not look like a valid email address';
+          if (!ok) chip.title = vpT('This does not look like a valid email address');
           var info = ok ? recipientInfo(addr, render) : null;
           if (info) {
             var av = document.createElement('span');
@@ -819,12 +828,12 @@
           chip.appendChild(label);
           if (info && info.key) {
             var lock = document.createElement('span');
-            lock.className = 'vm-chip__lock'; lock.setAttribute('role', 'img'); lock.setAttribute('aria-label', 'has a key');
+            lock.className = 'vm-chip__lock'; lock.setAttribute('role', 'img'); lock.setAttribute('aria-label', vpT('has a key'));
             lock.appendChild(window.vpIcon('lock'));
             chip.appendChild(lock);
           }
           var x = document.createElement('button');
-          x.type = 'button'; x.className = 'vm-chip-x'; x.setAttribute('aria-label', 'Remove ' + addr); x.textContent = '×';
+          x.type = 'button'; x.className = 'vm-chip-x'; x.setAttribute('aria-label', vpT('Remove {name}', { name: addr })); x.textContent = '×';
           x.addEventListener('click', function () { list.splice(i, 1); render(); sync(); });
           chip.appendChild(x);
           container.insertBefore(chip, input);
@@ -885,7 +894,7 @@
       tray.textContent = '';
       // Say where the files go: they are stored with the draft, not autosaved.
       if (composeFiles.length > 0 && cStatus && !cStatus.textContent) {
-        cStatus.textContent = 'Files are kept with the draft when it is closed.';
+        cStatus.textContent = vpT('Files are kept with the draft when it is closed.');
       }
       composeFiles.forEach(function (f, i) {
         var chip = document.createElement('span');
@@ -894,7 +903,7 @@
         var name = document.createElement('span'); name.className = 'vm-attach-name'; name.textContent = f.name;
         var size = document.createElement('span'); size.className = 'vm-attach-size'; size.textContent = humanSize(f.size);
         var x = document.createElement('button');
-        x.type = 'button'; x.className = 'vm-chip-x'; x.setAttribute('aria-label', 'Remove ' + f.name); x.textContent = '×';
+        x.type = 'button'; x.className = 'vm-chip-x'; x.setAttribute('aria-label', vpT('Remove {name}', { name: f.name })); x.textContent = '×';
         x.addEventListener('click', function () { composeFiles.splice(i, 1); renderFiles(); });
         chip.appendChild(ico); chip.appendChild(name); chip.appendChild(size); chip.appendChild(x);
         tray.appendChild(chip);
@@ -925,7 +934,7 @@
           var menu = pick.closest('details');
           if (menu) menu.open = false;
         })
-        .catch(function () { if (cStatus) cStatus.textContent = name + ' could not be read from Drive.'; })
+        .catch(function () { if (cStatus) cStatus.textContent = vpT('{file} could not be read from Drive.', { file: name }); })
         .then(function () { pick.disabled = false; });
     });
     if (filesEl) filesEl.addEventListener('change', function () { addFiles(filesEl.files); filesEl.value = ''; });
@@ -970,7 +979,8 @@
     // when encryption is on and every recipient has a key (engine
     // ComposeRich), and those are exactly what this line reads.
     function names(list) {
-      return list.length <= 2 ? list.join(' and ') : list.slice(0, 2).join(', ') + ' and ' + (list.length - 2) + ' more';
+      var shown = list.length <= 2 ? list : list.slice(0, 2).concat(vpT('{n, plural, one {# more} other {# more}}', { n: list.length - 2 }));
+      return listed(shown);
     }
     function paintEnc() {
       if (!encLine) return;
@@ -979,18 +989,18 @@
       if (!rs.length) return;
       var text, tone = '';
       if (!pgpEncrypt()) {
-        text = 'Sent as readable text: encryption is off';
-        encLine.title = 'Turn encryption on';
+        text = vpT('Sent as readable text: encryption is off');
+        encLine.title = vpT('Turn encryption on');
       } else {
         var asking = false, missing = [];
         rs.forEach(function (a) {
           var info = recipientInfo(a);
           if (!info) asking = true; else if (!info.key) missing.push(nameOf(a));
         });
-        encLine.title = 'Turn encryption off';
-        if (asking) text = 'Checking keys…';
-        else if (missing.length) text = 'Sent as readable text: no key for ' + names(missing);
-        else { text = 'Encrypted for ' + (rs.length === 1 ? nameOf(rs[0]) : rs.length === 2 ? 'both' : 'all ' + rs.length); tone = 'ok'; }
+        encLine.title = vpT('Turn encryption off');
+        if (asking) text = vpT('Checking keys…');
+        else if (missing.length) text = vpT('Sent as readable text: no key for {names}', { names: names(missing) });
+        else { text = rs.length === 1 ? vpT('Encrypted for {name}', { name: nameOf(rs[0]) }) : rs.length === 2 ? vpT('Encrypted for both') : vpT('Encrypted for all {n}', { n: rs.length }); tone = 'ok'; }
       }
       encLine.textContent = '';
       if (tone === 'ok') encLine.appendChild(window.vpIcon('lock'));
@@ -1047,12 +1057,12 @@
         postJSON('/os/vayumail/accounts/update', { email: opt.value, sign_by_default: on }).then(function (res) {
           if (!res.ok) {
             signDefault.checked = !on;
-            if (cStatus) cStatus.textContent = 'Not changed: ' + errText(res);
+            if (cStatus) cStatus.textContent = vpT('Not changed: {error}', { error: errText(res) });
             return;
           }
           if (on) opt.setAttribute('data-sign', '1'); else opt.removeAttribute('data-sign');
           if (signBox) signBox.checked = on;
-          if (cStatus) cStatus.textContent = on ? 'Messages from ' + opt.value + ' are signed unless you untick it.' : 'Messages from ' + opt.value + ' are no longer signed unless you tick it.';
+          if (cStatus) cStatus.textContent = on ? vpT('Messages from {address} are signed unless you untick it.', { address: opt.value }) : vpT('Messages from {address} are no longer signed unless you tick it.', { address: opt.value });
         });
       });
     }
@@ -1063,18 +1073,18 @@
         if (!fromSel) return;
         var email = fromSel.value, text = sigText ? sigText.value : '';
         sigSave.disabled = true;
-        if (sigStatus) sigStatus.textContent = 'Saving…';
+        if (sigStatus) sigStatus.textContent = vpT('Saving…');
         postJSON('/os/vayumail/accounts/update', { email: email, signature: text }).then(function (res) {
           sigSave.disabled = false;
           if (res.ok) {
             var opt = fromSel.options[fromSel.selectedIndex];
             if (opt) opt.setAttribute('data-sig', text);
             paintSig();
-            if (sigStatus) sigStatus.textContent = 'Saved ✓';
-            acctToast('Signature saved');
+            if (sigStatus) sigStatus.textContent = vpT('Saved') + ' ✓';
+            acctToast(vpT('Signature saved'));
           } else {
-            if (sigStatus) sigStatus.textContent = 'Failed: ' + errText(res);
-            acctToast('Signature save failed: ' + errText(res), true);
+            if (sigStatus) sigStatus.textContent = vpT('Failed: {error}', { error: errText(res) });
+            acctToast(vpT('Signature save failed: {error}', { error: errText(res) }), true);
           }
         });
       });
@@ -1113,7 +1123,7 @@
       var sig = f.to + '|' + f.subject + '|' + f.body + '|' + composeFiles.length;
       if (silent && sig === lastSavedSig) { if (done) done(true); return; }
       lastSavedSig = sig;
-      if (!silent && cStatus) cStatus.textContent = 'Saving draft…';
+      if (!silent && cStatus) cStatus.textContent = vpT('Saving draft…');
       var prev = draftId, user = localPart(f.from);
       // With files attached the draft goes up as multipart so the FILES are stored
       // too. A draft that silently dropped them lost work the sender could see on
@@ -1139,10 +1149,10 @@
           if (prev && user && prev !== draftId) {
             postJSON('/os/vayumail/message/action', { user: user, folder: 'Drafts', id: prev, delete: true });
           }
-          if (cStatus) { var t = new Date(); cStatus.textContent = 'Draft saved ' + ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2); }
+          if (cStatus) { var t = new Date(); cStatus.textContent = vpT('Draft saved {time}', { time: ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2) }); }
           if (done) done(true);
         } else {
-          if (!silent && cStatus) cStatus.textContent = 'Draft failed: ' + errText(res);
+          if (!silent && cStatus) cStatus.textContent = vpT('Draft failed: {error}', { error: errText(res) });
           if (done) done(false);
         }
       });
@@ -1202,8 +1212,8 @@
           postJSON('/os/vayumail/message/action', { user: localPart(holdSnapshot.from), folder: 'Drafts', id: holdSnapshot.draftId, delete: true });
         }
         var later = res.body && res.body.scheduled;
-        var said = later ? 'Scheduled for ' + laterLabel(new Date(res.body.sendAt)) : 'Message sent';
-        if (cStatus) cStatus.textContent = later ? 'Scheduled' : 'Sent';
+        var said = later ? vpT('Scheduled for {time}', { time: laterLabel(new Date(res.body.sendAt)) }) : vpT('Message sent');
+        if (cStatus) cStatus.textContent = later ? vpT('Scheduled') : vpT('Sent');
         acctToast(said);
         // The sidebar gains Scheduled: redraw the list beside the sheet.
         if (later) document.body.dispatchEvent(new CustomEvent('vm-mail-changed'));
@@ -1218,8 +1228,8 @@
       } else {
         sending = false;
         holdSnapshot = null;
-        if (cStatus) cStatus.textContent = 'Failed: ' + errText(res);
-        acctToast('Send failed: ' + errText(res), true);
+        if (cStatus) cStatus.textContent = vpT('Failed: {error}', { error: errText(res) });
+        acctToast(vpT('Send failed: {error}', { error: errText(res) }), true);
       }
     }
     function performSend(keepalive) {
@@ -1260,7 +1270,7 @@
       holdSnapshot = null;
       if (undoBar) undoBar.setAttribute('hidden', '');
       if (sendBtn) sendBtn.disabled = false;
-      if (cStatus) cStatus.textContent = 'Cancelled — back to your draft.';
+      if (cStatus) cStatus.textContent = vpT('Cancelled — back to your draft.');
       if (!autosaveTimer) armAutosave();
     }
     if (undoBtn) undoBtn.addEventListener('click', cancelHold);
@@ -1271,7 +1281,7 @@
     // its time it waits under Scheduled, where it can be sent or cancelled.
     var later = compose.querySelector('[data-c-later]');
     function laterLabel(d) {
-      return d.toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+      return d.toLocaleString(document.documentElement.lang || [], { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
     }
     function atHour(daysAhead, hour) {
       var d = new Date();
@@ -1281,13 +1291,13 @@
     }
     function laterPresets() {
       var monday = (8 - new Date().getDay()) % 7 || 7;
-      return { morning: ['Tomorrow morning', atHour(1, 8)], afternoon: ['Tomorrow afternoon', atHour(1, 13)], monday: ['Monday morning', atHour(monday, 8)] };
+      return { morning: [vpT('Tomorrow morning'), atHour(1, 8)], afternoon: [vpT('Tomorrow afternoon'), atHour(1, 13)], monday: [vpT('Monday morning'), atHour(monday, 8)] };
     }
     function scheduleAt(d) {
       if (sending || holdSnapshot) return;
-      if (isNaN(d) || d.getTime() <= Date.now()) { if (cStatus) cStatus.textContent = 'Choose a time that has not passed.'; return; }
+      if (isNaN(d) || d.getTime() <= Date.now()) { if (cStatus) cStatus.textContent = vpT('Choose a time that has not passed.'); return; }
       var f = composeFields();
-      if (!f.to && !f.cc && !f.bcc) { if (cStatus) cStatus.textContent = 'Add at least one recipient.'; return; }
+      if (!f.to && !f.cc && !f.bcc) { if (cStatus) cStatus.textContent = vpT('Add at least one recipient.'); return; }
       if (later) later.open = false;
       holdSnapshot = { fields: f, files: composeFiles.slice(), appendSig: sigAppend(), encrypt: pgpEncrypt(), richHTML: richHTML(), sign: pgpSign(), from: f.from, draftId: draftId, sendAt: d.toISOString() };
       stopAutosave();
@@ -1339,7 +1349,7 @@
         if (!tplItems.length) {
           var none = document.createElement('li');
           none.className = 'mx-compose__tpl-empty';
-          none.textContent = 'None yet. Write a message, name it below and save it.';
+          none.textContent = vpT('None yet. Write a message, name it below and save it.');
           tplList.appendChild(none);
         }
         tplItems.forEach(function (t) {
@@ -1357,13 +1367,13 @@
           del.type = 'button';
           del.className = 'mx-compose__tpl-del';
           del.setAttribute('data-c-tpl-del', t.id);
-          del.setAttribute('aria-label', 'Delete the template ' + t.name);
-          del.textContent = 'Delete';
+          del.setAttribute('aria-label', vpT('Delete the template {name}', { name: t.name }));
+          del.textContent = vpT('Delete');
           li.appendChild(use);
           li.appendChild(del);
           tplList.appendChild(li);
         });
-        tplNote.textContent = ans.error ? 'Not done: ' + ans.error + '.' : (said || '');
+        tplNote.textContent = ans.error ? vpT('Not done: {error}.', { error: ans.error }) : (said || '');
         return !ans.error;
       };
       // Only the newest question's answer is painted. The list read as the
@@ -1374,7 +1384,7 @@
         var mine = ++tplAsked;
         return req.then(function (r) { return r.json(); })
           .then(function (ans) { return mine === tplAsked ? paintTpl(ans, said) : !ans.error; })
-          .catch(function () { if (mine === tplAsked) tplNote.textContent = 'Templates could not be reached.'; return false; });
+          .catch(function () { if (mine === tplAsked) tplNote.textContent = vpT('Templates could not be reached.'); return false; });
       };
       // Writes made since the panel last closed. "toggle" is fired a task
       // after the panel opens, and a save can go before it; its answer
@@ -1416,12 +1426,12 @@
           }
         } else if (del) {
           var name = del.parentNode.querySelector('[data-c-tpl-use]').textContent;
-          vpConfirm({ title: 'Delete a template', message: 'Delete the template “' + name + '”? Messages written from it are not changed.', confirm: 'Delete' }, function () {
-            tplPost({ action: 'delete', id: del.getAttribute('data-c-tpl-del') }, 'Deleted “' + name + '”.');
+          vpConfirm({ title: vpT('Delete a template'), message: vpT('Delete the template “{name}”? Messages written from it are not changed.', { name: name }), confirm: vpT('Delete') }, function () {
+            tplPost({ action: 'delete', id: del.getAttribute('data-c-tpl-del') }, vpT('Deleted “{name}”.', { name: name }));
           });
         } else if (e.target.closest('[data-c-tpl-save]')) {
           var named = tplName.value.trim();
-          tplPost({ action: 'save', name: named, subject: subjEl ? subjEl.value : '', body: bodyEl ? bodyEl.value : '' }, 'Saved as “' + named + '”.')
+          tplPost({ action: 'save', name: named, subject: subjEl ? subjEl.value : '', body: bodyEl ? bodyEl.value : '' }, vpT('Saved as “{name}”.', { name: named }))
             .then(function (ok) { if (ok) tplName.value = ''; });
         }
       });
@@ -1431,19 +1441,19 @@
       e.preventDefault();
       if (sending || holdSnapshot) return; // a send is already in flight/held
       var f = composeFields();
-      if (!f.to && !f.cc && !f.bcc) { if (cStatus) cStatus.textContent = 'Add at least one recipient.'; return; }
+      if (!f.to && !f.cc && !f.bcc) { if (cStatus) cStatus.textContent = vpT('Add at least one recipient.'); return; }
       // Snapshot at click time so edits during the hold don't leak into the send.
       holdSnapshot = { fields: f, files: composeFiles.slice(), appendSig: sigAppend(), encrypt: pgpEncrypt(), richHTML: richHTML(), sign: pgpSign(), from: f.from, draftId: draftId };
       stopAutosave();
       if (sendBtn) sendBtn.disabled = true;
       if (cStatus) cStatus.textContent = '';
       var remaining = Math.ceil(HOLD_MS / 1000);
-      if (undoText) undoText.textContent = 'Sending in ' + remaining + 's…';
+      if (undoText) undoText.textContent = vpT('Sending in {n}s…', { n: remaining });
       if (undoBar) undoBar.removeAttribute('hidden');
       clearHoldTimers();
       countdownTimer = setInterval(function () {
         remaining -= 1;
-        if (undoText) undoText.textContent = remaining > 0 ? ('Sending in ' + remaining + 's…') : 'Sending…';
+        if (undoText) undoText.textContent = remaining > 0 ? vpT('Sending in {n}s…', { n: remaining }) : vpT('Sending…');
       }, 1000);
       holdTimer = setTimeout(function () { performSend(false); }, HOLD_MS);
     });
@@ -1477,7 +1487,7 @@
         if (discarded || sending) { window.removeEventListener('beforeunload', onLeave); done(true); return; }
         saveDraft(true, function (ok, nothing) {
           if (ok || nothing) { stopAutosave(); window.removeEventListener('beforeunload', onLeave); }
-          else if (cStatus) cStatus.textContent = 'The draft could not be saved, so it stays open.';
+          else if (cStatus) cStatus.textContent = vpT('The draft could not be saved, so it stays open.');
           done(!!(ok || nothing));
         });
       },
@@ -1618,8 +1628,8 @@
       e.preventDefault();
       var local = val(acctForm, '[data-a-local]');
       var pass = val(acctForm, '[data-a-pass]');
-      if (!local || pass.length < 8) { if (aStatus) aStatus.textContent = 'Address and an 8+ character password are required.'; return; }
-      if (aStatus) aStatus.textContent = 'Creating…';
+      if (!local || pass.length < 8) { if (aStatus) aStatus.textContent = vpT('Address and an 8+ character password are required.'); return; }
+      if (aStatus) aStatus.textContent = vpT('Creating…');
       postJSON('/os/vayumail/accounts/create', {
         local: local, name: val(acctForm, '[data-a-name]'), pass: pass,
         role: val(acctForm, '[data-a-role]'),
@@ -1627,13 +1637,13 @@
         quota_mb: parseFloat(val(acctForm, '[data-a-quota]')) || 0,
       }).then(function (res) {
         if (res.ok) {
-          acctToast('Mailbox ' + local + ' created');
+          acctToast(vpT('Mailbox {name} created', { name: local }));
           if (aStatus) aStatus.textContent = '';
           acctForm.querySelectorAll('[data-a-local],[data-a-name],[data-a-pass]').forEach(function (el) { el.value = ''; });
           var sheet = acctForm.closest('dialog');
           if (sheet && sheet.open) sheet.close();
           acctReload();
-        } else if (aStatus) aStatus.textContent = 'Failed: ' + errText(res);
+        } else if (aStatus) aStatus.textContent = vpT('Failed: {error}', { error: errText(res) });
       });
     });
   }
@@ -1654,32 +1664,32 @@
     var back = el('div', 'modal-backdrop');
     var panel = el('div', 'modal-panel');
     var head = el('div', 'modal-header');
-    head.appendChild(el('div', 'modal-title', 'Two-factor · ' + email));
+    head.appendChild(el('div', 'modal-title', vpT('Two-factor · {address}', { address: email })));
     var x = el('button', 'modal-close', '×'); x.type = 'button';
     head.appendChild(x);
     var body = el('div', 'modal-body');
-    body.appendChild(el('p', 'text-sm muted', 'Scan this QR in the account’s authenticator app (Google Authenticator, Aegis, 1Password…) — the address fills in automatically — then enter the 6-digit code to confirm. Can’t scan? Add the key by hand.'));
+    body.appendChild(el('p', 'text-sm muted', vpT('Scan this QR in the account’s authenticator app (Google Authenticator, Aegis, 1Password…) — the address fills in automatically — then enter the 6-digit code to confirm. Can’t scan? Add the key by hand.')));
     if (data.qr) {
       var img = document.createElement('img');
-      img.alt = '2FA setup QR code'; img.width = 188; img.height = 188; img.src = data.qr;
+      img.alt = vpT('2FA setup QR code'); img.width = 188; img.height = 188; img.src = data.qr;
       img.style.background = 'var(--paper)'; img.style.padding = '8px'; img.style.borderRadius = '10px';
       img.style.display = 'block'; img.style.margin = '4px auto 14px';
       body.appendChild(img);
     }
     var keyWrap = el('p', 'text-xs muted');
-    keyWrap.appendChild(document.createTextNode('Manual key: '));
+    keyWrap.appendChild(document.createTextNode(vpT('Manual key:') + ' '));
     keyWrap.appendChild(el('code', null, data.secret || ''));
     body.appendChild(keyWrap);
     var field = el('div', 'field');
-    var lab = el('label', 'field-label', 'Verification code'); lab.setAttribute('for', 'mb-totp-code');
+    var lab = el('label', 'field-label', vpT('Verification code')); lab.setAttribute('for', 'mb-totp-code');
     var inp = document.createElement('input');
     inp.id = 'mb-totp-code'; inp.className = 'input'; inp.type = 'text';
     inp.inputMode = 'numeric'; inp.maxLength = 6; inp.placeholder = '000000';
     inp.setAttribute('autocomplete', 'one-time-code');
     field.appendChild(lab); field.appendChild(inp); body.appendChild(field);
     var foot = el('div', 'modal-footer');
-    var cancel = el('button', 'btn btn--ghost btn--sm', 'Cancel'); cancel.type = 'button';
-    var verify = el('button', 'btn btn--primary btn--sm', 'Verify & enable'); verify.type = 'button';
+    var cancel = el('button', 'btn btn--ghost btn--sm', vpT('Cancel')); cancel.type = 'button';
+    var verify = el('button', 'btn btn--primary btn--sm', vpT('Verify & enable')); verify.type = 'button';
     foot.appendChild(cancel); foot.appendChild(verify);
     panel.appendChild(head); panel.appendChild(body); panel.appendChild(foot);
     back.appendChild(panel);
@@ -1701,11 +1711,11 @@
     inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); verify.click(); } });
     verify.addEventListener('click', function () {
       var c = (inp.value || '').replace(/\D/g, '');
-      if (c.length !== 6) { acctToast('Enter the 6-digit code.', true); return; }
+      if (c.length !== 6) { acctToast(vpT('Enter the 6-digit code.'), true); return; }
       verify.disabled = true;
       postJSON('/os/vayumail/accounts/totp', { email: email, action: 'verify', code: c }).then(function (vr) {
-        if (vr.ok) { close(); acctToast('Two-factor authentication is now ON for ' + email); acctReload(); }
-        else { verify.disabled = false; acctToast('Verification failed: ' + errText(vr), true); }
+        if (vr.ok) { close(); acctToast(vpT('Two-factor authentication is now ON for {address}', { address: email })); acctReload(); }
+        else { verify.disabled = false; acctToast(vpT('Verification failed: {error}', { error: errText(vr) }), true); }
       });
     });
   }
@@ -1718,13 +1728,13 @@
     var back = el('div', 'modal-backdrop');
     var panel = el('div', 'modal-panel');
     var head = el('div', 'modal-header');
-    head.appendChild(el('div', 'modal-title', 'Set password · ' + email));
+    head.appendChild(el('div', 'modal-title', vpT('Set password · {address}', { address: email })));
     var x = el('button', 'modal-close', '×'); x.type = 'button';
     head.appendChild(x);
 
     var body = el('div', 'modal-body');
     body.appendChild(el('p', 'text-sm muted',
-      'Choose a new password for this mailbox (at least 8 characters). Mail apps already signed in with the old password stop working until they use the new one.'));
+      vpT('Choose a new password for this mailbox (at least 8 characters). Mail apps already signed in with the old password stop working until they use the new one.')));
 
     function pwField(label, id) {
       var f = el('div', 'field');
@@ -1735,14 +1745,14 @@
       f.appendChild(l); f.appendChild(i);
       return { field: f, input: i };
     }
-    var p1 = pwField('New password', 'mb-pass-new');
-    var p2 = pwField('Confirm password', 'mb-pass-confirm');
+    var p1 = pwField(vpT('New password'), 'mb-pass-new');
+    var p2 = pwField(vpT('Confirm password'), 'mb-pass-confirm');
     body.appendChild(p1.field); body.appendChild(p2.field);
 
     var showWrap = el('label', 'vm-filter-check');
     var show = document.createElement('input'); show.type = 'checkbox';
     showWrap.appendChild(show);
-    showWrap.appendChild(el('span', null, 'Show passwords'));
+    showWrap.appendChild(el('span', null, vpT('Show passwords')));
     body.appendChild(showWrap);
     show.addEventListener('change', function () {
       var t = show.checked ? 'text' : 'password';
@@ -1750,8 +1760,8 @@
     });
 
     var foot = el('div', 'modal-footer');
-    var cancel = el('button', 'btn btn--ghost btn--sm', 'Cancel'); cancel.type = 'button';
-    var save = el('button', 'btn btn--primary btn--sm', 'Update password'); save.type = 'button';
+    var cancel = el('button', 'btn btn--ghost btn--sm', vpT('Cancel')); cancel.type = 'button';
+    var save = el('button', 'btn btn--primary btn--sm', vpT('Update password')); save.type = 'button';
     foot.appendChild(cancel); foot.appendChild(save);
     panel.appendChild(head); panel.appendChild(body); panel.appendChild(foot);
     back.appendChild(panel); document.body.appendChild(back);
@@ -1770,13 +1780,13 @@
 
     function submit() {
       var v1 = p1.input.value, v2 = p2.input.value;
-      if (v1.length < 8) { acctToast('Password must be at least 8 characters.', true); p1.input.focus(); return; }
-      if (v1 !== v2) { acctToast('The two passwords do not match.', true); p2.input.focus(); return; }
+      if (v1.length < 8) { acctToast(vpT('Password must be at least 8 characters.'), true); p1.input.focus(); return; }
+      if (v1 !== v2) { acctToast(vpT('The two passwords do not match.'), true); p2.input.focus(); return; }
       save.disabled = true;
       postJSON('/os/vayumail/accounts/update', { email: email, pass: v1 }).then(function (res) {
         save.disabled = false;
-        if (res.ok) { close(); acctToast('Password updated for ' + email); acctReload(); }
-        else { acctToast('Update failed: ' + errText(res), true); }
+        if (res.ok) { close(); acctToast(vpT('Password updated for {address}', { address: email })); acctReload(); }
+        else { acctToast(vpT('Update failed: {error}', { error: errText(res) }), true); }
       });
     }
     save.addEventListener('click', submit);
@@ -1805,7 +1815,7 @@
     if (en) {
       var eemail = en.getAttribute('data-acct-2fa-enable');
       postJSON('/os/vayumail/accounts/totp', { email: eemail, action: 'begin' }).then(function (res) {
-        if (!res.ok || !res.body || !res.body.secret) { acctToast('Could not start 2FA setup: ' + errText(res), true); return; }
+        if (!res.ok || !res.body || !res.body.secret) { acctToast(vpT('Could not start 2FA setup: {error}', { error: errText(res) }), true); return; }
         openMailboxTotpModal(eemail, res.body);
       });
       return;
@@ -1817,13 +1827,13 @@
       // The house modal, not window.confirm: it can say what turning 2FA off
       // actually costs, and it keeps the rest of the console's look.
       vpConfirm({
-        title: 'Turn off two-factor authentication',
-        message: 'Turn OFF two-factor authentication for ' + demail + '? After this, the password alone is enough to sign in to this mailbox.',
-        confirm: 'Turn off'
+        title: vpT('Turn off two-factor authentication'),
+        message: vpT('Turn OFF two-factor authentication for {address}? After this, the password alone is enough to sign in to this mailbox.', { address: demail }),
+        confirm: vpT('Turn off')
       }, function () {
         postJSON('/os/vayumail/accounts/totp', { email: demail, action: 'disable' }).then(function (res) {
-          if (res.ok) { acctToast('Two-factor disabled for ' + demail); acctReload(); }
-          else acctToast('Update failed: ' + errText(res), true);
+          if (res.ok) { acctToast(vpT('Two-factor disabled for {address}', { address: demail })); acctReload(); }
+          else acctToast(vpT('Update failed: {error}', { error: errText(res) }), true);
         });
       });
       return;
@@ -1849,6 +1859,12 @@
     // After a message leaves the folder (move/junk/trash/delete) continue to the
     // next message if there is one, otherwise fall back to the folder list.
     var advance = function () { window.location.assign(nextURL || backURL); };
+    // folderName is a move's target as the page names it: the four folders
+    // every mailbox has in the page's language, a folder of the holder's own
+    // as they named it.
+    var folderName = function (f) {
+      return { Inbox: vpT('Inbox'), Archive: vpT('Archive'), Trash: vpT('Trash'), Junk: vpT('Junk') }[f] || f;
+    };
 
     // Move / Junk / Trash / Restore buttons.
     actions.querySelectorAll('[data-mail-move]').forEach(function (btn) {
@@ -1856,8 +1872,8 @@
         var target = btn.getAttribute('data-mail-move');
         btn.disabled = true;
         postJSON('/os/vayumail/message/action', { user: user, id: id, folder: folder, to: target }).then(function (res) {
-          if (res.ok) { acctToast('Moved to ' + target); advance(); }
-          else { btn.disabled = false; acctToast('Move failed: ' + errText(res), true); }
+          if (res.ok) { acctToast(vpT('Moved to {folder}', { folder: folderName(target) })); advance(); }
+          else { btn.disabled = false; acctToast(vpT('Move failed: {error}', { error: errText(res) }), true); }
         });
       });
     });
@@ -1868,8 +1884,8 @@
       btn.addEventListener('click', function () {
         btn.disabled = true;
         postJSON('/os/vayumail/message/action', { user: user, id: id, folder: folder, notjunk: true }).then(function (res) {
-          if (res.ok) { acctToast('Moved to Inbox, and the sender will not be filed as junk again'); advance(); }
-          else { btn.disabled = false; acctToast('Could not move it: ' + errText(res), true); }
+          if (res.ok) { acctToast(vpT('Moved to Inbox, and the sender will not be filed as junk again')); advance(); }
+          else { btn.disabled = false; acctToast(vpT('Could not move it: {error}', { error: errText(res) }), true); }
         });
       });
     });
@@ -1879,8 +1895,8 @@
       btn.addEventListener('click', function () {
         var mark = btn.getAttribute('data-mail-mark');
         postJSON('/os/vayumail/message/action', { user: user, id: id, folder: folder, mark: mark }).then(function (res) {
-          if (res.ok) { acctToast(mark === 'unread' ? 'Marked unread' : 'Marked read'); window.location.assign(backURL); }
-          else acctToast('Mark failed: ' + errText(res), true);
+          if (res.ok) { acctToast(mark === 'unread' ? vpT('Marked unread') : vpT('Marked read')); window.location.assign(backURL); }
+          else acctToast(vpT('Mark failed: {error}', { error: errText(res) }), true);
         });
       });
     });
@@ -1891,11 +1907,11 @@
         var pin = btn.getAttribute('data-mail-pin') === '1';
         postJSON('/os/vayumail/message/action', { user: user, id: id, folder: folder, pin: pin }).then(function (res) {
           if (res.ok) {
-            acctToast(pin ? 'Pinned' : 'Unpinned');
+            acctToast(pin ? vpT('Pinned') : vpT('Unpinned'));
             btn.setAttribute('data-mail-pin', pin ? '0' : '1');
             // Only the words change; the icon the server drew stays.
-            btn.lastChild.textContent = pin ? 'Unpin' : 'Pin';
-          } else acctToast('Pin failed: ' + errText(res), true);
+            btn.lastChild.textContent = pin ? vpT('Unpin') : vpT('Pin');
+          } else acctToast(vpT('Pin failed: {error}', { error: errText(res) }), true);
         });
       });
     });
@@ -1907,8 +1923,8 @@
         var target = moveSel.value;
         if (!target) return;
         postJSON('/os/vayumail/message/action', { user: user, id: id, folder: folder, to: target }).then(function (res) {
-          if (res.ok) { acctToast('Moved to ' + target); advance(); }
-          else { moveSel.value = ''; acctToast('Move failed: ' + errText(res), true); }
+          if (res.ok) { acctToast(vpT('Moved to {folder}', { folder: folderName(target) })); advance(); }
+          else { moveSel.value = ''; acctToast(vpT('Move failed: {error}', { error: errText(res) }), true); }
         });
       });
     }
@@ -1918,14 +1934,14 @@
     if (del) {
       del.addEventListener('click', function () {
         vpConfirm({
-          title: 'Delete this message',
-          message: 'Permanently delete this message? This cannot be undone.',
-          confirm: 'Delete'
+          title: vpT('Delete this message'),
+          message: vpT('Permanently delete this message? This cannot be undone.'),
+          confirm: vpT('Delete')
         }, function () {
           del.disabled = true;
           postJSON('/os/vayumail/message/action', { user: user, id: id, folder: folder, delete: true }).then(function (res) {
-            if (res.ok) { acctToast('Deleted'); advance(); }
-            else { del.disabled = false; acctToast('Delete failed: ' + errText(res), true); }
+            if (res.ok) { acctToast(vpT('Deleted')); advance(); }
+            else { del.disabled = false; acctToast(vpT('Delete failed: {error}', { error: errText(res) }), true); }
           });
         });
       });
@@ -1950,9 +1966,8 @@
     function picked() { return boxes().filter(function (c) { return c.checked; }); }
     function who(row) { var w = row.querySelector('.mx-row__who'); return w ? w.textContent.trim() : ''; }
     function sentence(names) {
-      if (names.length <= 1) return names.join('');
-      if (names.length <= 3) return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
-      return names.slice(0, 2).join(', ') + ' and ' + (names.length - 2) + ' others';
+      if (names.length <= 3) return listed(names);
+      return listed(names.slice(0, 2).concat(vpT('{n, plural, one {# other} other {# others}}', { n: names.length - 2 })));
     }
     function card(row) {
       var c = document.createElement('div');
@@ -1977,9 +1992,9 @@
         r.classList.toggle('is-picked', !!(c && c.checked));
       });
       var count = document.querySelector('[data-vm-bulkcount]');
-      if (count) count.textContent = n + ' selected';
+      if (count) count.textContent = vpT('{n, plural, one {# selected} other {# selected}}', { n: n });
       var all = document.querySelector('[data-vm-select-all]');
-      if (all) all.textContent = n > 0 && n === boxes().length ? 'Select none' : 'Select all';
+      if (all) all.textContent = n > 0 && n === boxes().length ? vpT('Select none') : vpT('Select all');
       if (!split) return;
       if (!host) { host = document.createElement('div'); host.className = 'mx-select-host'; host.hidden = true; split.appendChild(host); }
       if (n === 0) { host.hidden = true; host.textContent = ''; return; }
@@ -1994,12 +2009,12 @@
       var stack = host.querySelector('[data-vm-sel-stack]');
       if (stack) { stack.textContent = ''; cs.slice(0, 3).forEach(function (c) { stack.appendChild(card(c.closest('.mx-row'))); }); }
       var title = host.querySelector('[data-vm-sel-title]');
-      if (title) title.textContent = n === 1 ? '1 message selected' : n + ' messages selected';
+      if (title) title.textContent = vpT('{n, plural, one {# message selected} other {# messages selected}}', { n: n });
       var from = host.querySelector('[data-vm-sel-from]');
       if (from) {
         var names = [];
         cs.forEach(function (c) { var w = who(c.closest('.mx-row')); if (w && names.indexOf(w) < 0) names.push(w); });
-        from.textContent = names.length ? 'From ' + sentence(names) : '';
+        from.textContent = names.length ? vpT('From {names}', { names: sentence(names) }) : '';
       }
     }
     function done() {
@@ -2071,11 +2086,11 @@
     var d = (e && e.detail) || {};
     if (!d.failed) return;
     if (d.readonly) {
-      acctToast('This mailbox is read-only: messages can be read here but not deleted or moved.', 'warn');
+      acctToast(vpT('This mailbox is read-only: messages can be read here but not deleted or moved.'), 'warn');
       return;
     }
     var done = d.done || 0;
-    acctToast(done + ' applied, ' + d.failed + ' failed — those messages may already have been moved or deleted.', 'warn');
+    acctToast(vpT('{done} applied, {failed} failed — those messages may already have been moved or deleted.', { done: done, failed: d.failed }), 'warn');
   });
 
   // One-time app-password reveal: copy and save. The value is already on screen,
@@ -2088,8 +2103,8 @@
     if (cp) {
       var v = cp.getAttribute('data-apppw-copy') || '';
       var was = cp.textContent;
-      var done = function () { cp.textContent = 'Copied'; setTimeout(function () { cp.textContent = was; }, 1400); };
-      var fail = function () { cp.textContent = 'Copy failed — select it manually'; setTimeout(function () { cp.textContent = was; }, 2600); };
+      var done = function () { cp.textContent = vpT('Copied'); setTimeout(function () { cp.textContent = was; }, 1400); };
+      var fail = function () { cp.textContent = vpT('Copy failed — select it manually'); setTimeout(function () { cp.textContent = was; }, 2600); };
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(v).then(done, function () { fail(); });
       } else { fail(); }
@@ -2097,12 +2112,16 @@
     }
     var sv = e.target.closest('[data-apppw-save]');
     if (sv) {
-      var text = 'VayuMail app password\r\n' +
-        'Mailbox:  ' + (sv.getAttribute('data-apppw-email') || '') + '\r\n' +
-        'Label:    ' + (sv.getAttribute('data-apppw-label') || '') + '\r\n' +
-        'Password: ' + (sv.getAttribute('data-apppw-save') || '') + '\r\n\r\n' +
-        'The dashes are optional when signing in.\r\n' +
-        'This password is shown only once — store it somewhere safe and revoke it if it leaks.\r\n';
+      var text = [
+        vpT('VayuMail app password'),
+        vpT('Mailbox') + ': ' + (sv.getAttribute('data-apppw-email') || ''),
+        vpT('Label') + ': ' + (sv.getAttribute('data-apppw-label') || ''),
+        vpT('Password') + ': ' + (sv.getAttribute('data-apppw-save') || ''),
+        '',
+        vpT('The dashes are optional when signing in.'),
+        vpT('This password is shown only once — store it somewhere safe and revoke it if it leaks.'),
+        ''
+      ].join('\r\n');
       var blob = new Blob([text], { type: 'text/plain' });
       var link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
@@ -2132,10 +2151,10 @@
     rawBtn.addEventListener('click', function () {
       if (rawPre.hasAttribute('hidden')) {
         rawPre.removeAttribute('hidden');
-        rawBtn.textContent = 'Hide raw source';
+        rawBtn.textContent = vpT('Hide raw source');
       } else {
         rawPre.setAttribute('hidden', '');
-        rawBtn.textContent = 'View raw source';
+        rawBtn.textContent = vpT('View raw source');
       }
     });
   }
@@ -2155,23 +2174,30 @@
       help = document.createElement('div');
       help.className = 'vm-help';
       help.setAttribute('role', 'dialog');
-      help.setAttribute('aria-label', 'Keyboard shortcuts');
+      help.setAttribute('aria-label', vpT('Keyboard shortcuts'));
       try { help.setAttribute('popover', 'auto'); } catch (e) { /* older browser */ }
       var pairs = [
-        ['Older · newer message', 'j · k'], ['Open', 'Enter · o'], ['Back to the list', 'u'],
-        ['Reply · reply all · forward', 'r · a · f'], ['Compose', 'c'], ['Search', '/'],
-        ['Select the row', 'x'], ['Archive', 'e'], ['Delete', '#'], ['Snooze', 'b'], ['Pin', 's'],
-        ['Label', 'l'], ['Move to…', 'v'], ['Mark unread', '⇧U'], ['Junk · in Junk, not junk', '!'],
-        ['Full width · the list again', 'w'], ['Go to Inbox · Sent · Drafts · Archive', 'g then i · s · d · a'], ['Switch mailbox', '⌘⇧M · Ctrl+Shift+M'], ['These keys', '?']
+        [vpT('Older · newer message'), 'j · k'], [vpT('Open'), vpT('Enter · o')], [vpT('Back to the list'), 'u'],
+        [vpT('Reply · reply all · forward'), 'r · a · f'], [vpT('Compose'), 'c'], [vpT('Search'), '/'],
+        [vpT('Select the row'), 'x'], [vpT('Archive'), 'e'], [vpT('Delete'), '#'], [vpT('Snooze'), 'b'], [vpT('Pin'), 's'],
+        [vpT('Label'), 'l'], [vpT('Move to…'), 'v'], [vpT('Mark unread'), '⇧U'], [vpT('Junk · in Junk, not junk'), '!'],
+        [vpT('Full width · the list again'), 'w'], [vpT('Go to Inbox · Sent · Drafts · Archive'), vpT('g then i · s · d · a')], [vpT('Switch mailbox'), '⌘⇧M · Ctrl+Shift+M'], [vpT('These keys'), '?']
       ];
-      var h = '<div class="vm-help-title">Keyboard shortcuts</div><div class="vm-help-grid">';
-      pairs.forEach(function (p) { h += '<span></span><span class="vm-kbd"></span>'; });
-      help.innerHTML = h;
-      var spans = help.querySelectorAll('.vm-help-grid > span');
-      pairs.forEach(function (p, i) { spans[i * 2].textContent = p[0]; spans[i * 2 + 1].textContent = p[1]; });
+      var title = document.createElement('div');
+      title.className = 'vm-help-title';
+      title.textContent = vpT('Keyboard shortcuts');
+      var grid = document.createElement('div');
+      grid.className = 'vm-help-grid';
+      pairs.forEach(function (p) {
+        var what = document.createElement('span'); what.textContent = p[0];
+        var keys = document.createElement('span'); keys.className = 'vm-kbd'; keys.textContent = p[1];
+        grid.appendChild(what); grid.appendChild(keys);
+      });
+      help.appendChild(title);
+      help.appendChild(grid);
       var foot = document.createElement('div');
       foot.className = 'vm-help-foot muted text-xs';
-      foot.textContent = 'Press Esc or ? to close';
+      foot.textContent = vpT('Press Esc or ? to close');
       help.appendChild(foot);
       (document.querySelector('.vp-os') || document.body).appendChild(help);
       return help;
@@ -2372,17 +2398,17 @@
       };
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).then(function () {
-          done('Copied');
+          done(vpT('Copied'));
         }).catch(function () {
           // The clipboard API needs a secure context and a permission some
           // browsers refuse. Select the text so Ctrl-C still works rather than
           // leaving a button that silently did nothing.
           ta.focus(); ta.select();
-          done('Press Ctrl-C');
+          done(vpT('Press Ctrl-C'));
         });
       } else {
         ta.focus(); ta.select();
-        done('Press Ctrl-C');
+        done(vpT('Press Ctrl-C'));
       }
     });
   })();
