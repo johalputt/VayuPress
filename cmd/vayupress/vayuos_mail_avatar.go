@@ -9,7 +9,6 @@ package main
 
 import (
 	"bytes"
-	"github.com/johalputt/vayupress/internal/i18n"
 	"io"
 	"net/http"
 	"strconv"
@@ -18,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/johalputt/vayupress/internal/avatar"
+	"github.com/johalputt/vayupress/internal/i18n"
 )
 
 // maxMailAvatarBytes caps a stored profile picture at 500 KB (matches the mail
@@ -56,12 +56,12 @@ func (a *App) avatarAccountEmail(w http.ResponseWriter, r *http.Request, raw str
 // refreshed accounts list. An administrator or the mailbox's holder (3cl), CSRF-protected, multipart.
 func (a *App) handleVayuOSAvatarUpload(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", i18n.T(i18n.Lang(r.Context()), "VayuMail is not active"), "")
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxMailAvatarBytes+64*1024)
 	if err := r.ParseMultipartForm(1 << 20); err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "too-large", "The image exceeds the 500 KB limit.", "")
+		writeAPIError(w, r, http.StatusBadRequest, "too-large", i18n.T(i18n.Lang(r.Context()), "The image exceeds the 500 KB limit."), "")
 		return
 	}
 	email := a.avatarAccountEmail(w, r, r.FormValue("email"))
@@ -75,22 +75,22 @@ func (a *App) handleVayuOSAvatarUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	file, _, err := r.FormFile("avatar")
 	if err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "no-file", "No image was provided.", "")
+		writeAPIError(w, r, http.StatusBadRequest, "no-file", i18n.T(i18n.Lang(r.Context()), "No image was provided."), "")
 		return
 	}
 	defer file.Close()
 	blob, _ := io.ReadAll(io.LimitReader(file, maxMailAvatarBytes+1))
 	if len(blob) == 0 {
-		writeAPIError(w, r, http.StatusBadRequest, "empty", "The image is empty.", "")
+		writeAPIError(w, r, http.StatusBadRequest, "empty", i18n.T(i18n.Lang(r.Context()), "The image is empty."), "")
 		return
 	}
 	if len(blob) > maxMailAvatarBytes {
-		writeAPIError(w, r, http.StatusBadRequest, "too-large", "The image exceeds the 500 KB limit.", "")
+		writeAPIError(w, r, http.StatusBadRequest, "too-large", i18n.T(i18n.Lang(r.Context()), "The image exceeds the 500 KB limit."), "")
 		return
 	}
 	mime, ok := detectAvatarType(blob)
 	if !ok {
-		writeAPIError(w, r, http.StatusBadRequest, "bad-type", "Use a PNG, JPEG, GIF or WebP image.", "")
+		writeAPIError(w, r, http.StatusBadRequest, "bad-type", i18n.T(i18n.Lang(r.Context()), "Use a PNG, JPEG, GIF or WebP image."), "")
 		return
 	}
 	if err := a.vayuMail.Accounts().SetAvatar(r.Context(), email, blob, mime); err != nil {
@@ -106,7 +106,7 @@ func (a *App) handleVayuOSAvatarUpload(w http.ResponseWriter, r *http.Request) {
 // and returns the refreshed accounts list. An administrator or the mailbox's holder (3cl), CSRF-protected.
 func (a *App) handleVayuOSAvatarRemove(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", i18n.T(i18n.Lang(r.Context()), "VayuMail is not active"), "")
 		return
 	}
 	email := a.avatarAccountEmail(w, r, r.FormValue("email"))
@@ -204,7 +204,7 @@ func cartoonIndexParam(raw string) int {
 // scripts, so this is safe. An administrator or the mailbox's holder (3cl), CSRF-protected. Returns the refreshed list.
 func (a *App) handleVayuOSAvatarCartoon(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", i18n.T(i18n.Lang(r.Context()), "VayuMail is not active"), "")
 		return
 	}
 	email := a.avatarAccountEmail(w, r, r.FormValue("email"))

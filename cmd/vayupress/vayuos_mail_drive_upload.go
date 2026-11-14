@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/johalputt/vayupress/internal/i18n"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
@@ -59,7 +60,7 @@ func uploadRefusal(w http.ResponseWriter, r *http.Request, err error, u vmail.Dr
 func (a *App) handleVayuOSDriveUploadStart(w http.ResponseWriter, r *http.Request) {
 	rd, ok := a.driveOwner(r)
 	if !ok {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "Files open only for their holder.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Files open only for their holder."), "")
 		return
 	}
 	_ = r.ParseForm()
@@ -87,7 +88,7 @@ func (a *App) handleVayuOSDriveUploadStart(w http.ResponseWriter, r *http.Reques
 func (a *App) handleVayuOSDriveUploadState(w http.ResponseWriter, r *http.Request) {
 	rd, ok := a.driveOwner(r)
 	if !ok {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "Files open only for their holder.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Files open only for their holder."), "")
 		return
 	}
 	u, err := a.vayuMail.DriveUploadState(rd, chi.URLParam(r, "id"), time.Now())
@@ -102,7 +103,7 @@ func (a *App) handleVayuOSDriveUploadState(w http.ResponseWriter, r *http.Reques
 func (a *App) handleVayuOSDriveUploadPiece(w http.ResponseWriter, r *http.Request) {
 	rd, ok := a.driveOwner(r)
 	if !ok {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "Files open only for their holder.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Files open only for their holder."), "")
 		return
 	}
 	offset, err := strconv.ParseInt(r.URL.Query().Get("offset"), 10, 64)
@@ -127,7 +128,7 @@ func (a *App) handleVayuOSDriveUploadPiece(w http.ResponseWriter, r *http.Reques
 func (a *App) handleVayuOSDriveUploadStop(w http.ResponseWriter, r *http.Request) {
 	rd, ok := a.driveOwner(r)
 	if !ok {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "Files open only for their holder.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Files open only for their holder."), "")
 		return
 	}
 	if err := a.vayuMail.DriveUploadStop(rd, chi.URLParam(r, "id"), time.Now()); err != nil {

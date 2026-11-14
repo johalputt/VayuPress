@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/i18n"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 )
@@ -69,10 +70,10 @@ type mailSeal struct{ Text, Tone string }
 // An S/MIME signature (RFC 8551) is judged by vmail.CheckSMIME against the
 // certificate authorities in roots; nil, as the reader gives, is the
 // system's own, which x509 reads when no pool is named.
-func mailSealFor(roots *x509.CertPool, c sealChecker, account string, stored []byte, fromAddr string) mailSeal {
+func mailSealFor(lang string, roots *x509.CertPool, c sealChecker, account string, stored []byte, fromAddr string) mailSeal {
 	if armored, ok := armoredMessage(stored); ok {
 		if c == nil {
-			return mailSeal{Text: "Encrypted"}
+			return mailSeal{Text: i18n.T(lang, "Encrypted")}
 		}
 		plain, v, err := c.DecryptAndCheck(armored, account, fromAddr)
 		// PGP/MIME is shown as its plaintext alone (rebuildDecryptedMessage,
@@ -82,23 +83,23 @@ func mailSealFor(roots *x509.CertPool, c sealChecker, account string, stored []b
 			showsOnlyBlock(stored, "-----BEGIN PGP MESSAGE-----", "-----END PGP MESSAGE-----")
 		switch {
 		case err != nil:
-			return mailSeal{Text: "Encrypted · this mailbox's key does not open it"}
+			return mailSeal{Text: i18n.T(lang, "Encrypted · this mailbox's key does not open it")}
 		case v == vpgp.SigBad:
-			return mailSeal{Text: "Encrypted, but the signature does not match " + fromAddr + "'s key", Tone: "danger"}
+			return mailSeal{Text: i18n.T(lang, "Encrypted, but the signature does not match {address}'s key", "address", fromAddr), Tone: "danger"}
 		case !whole:
-			return mailSeal{Text: "Part of this message is encrypted; the rest is not"}
+			return mailSeal{Text: i18n.T(lang, "Part of this message is encrypted; the rest is not")}
 		case v == vpgp.SigVerified:
-			return mailSeal{Text: "Signed and encrypted · " + fromAddr + "'s key is verified", Tone: "ok"}
+			return mailSeal{Text: i18n.T(lang, "Signed and encrypted · {address}'s key is verified", "address", fromAddr), Tone: "ok"}
 		case v == vpgp.SigUnknownKey:
-			return mailSeal{Text: "Encrypted and signed · no key on file for " + fromAddr + " to check it with"}
+			return mailSeal{Text: i18n.T(lang, "Encrypted and signed · no key on file for {address} to check it with", "address", fromAddr)}
 		}
-		return mailSeal{Text: "Encrypted"}
+		return mailSeal{Text: i18n.T(lang, "Encrypted")}
 	}
 	v, whole := vpgp.SigNone, false
 	data, sig, sigType, onlyTwo, ok := signedParts(stored)
 	switch {
 	case ok && (sigType == "application/pkcs7-signature" || sigType == "application/x-pkcs7-signature"):
-		return smimeSeal(vmail.CheckSMIME(data, sig, fromAddr, roots, time.Now()), fromAddr, onlyTwo)
+		return smimeSeal(lang, vmail.CheckSMIME(data, sig, fromAddr, roots, time.Now()), fromAddr, onlyTwo)
 	case ok && strings.Contains(string(sig), "PGP SIGNATURE"):
 		v, whole = vpgp.SigUnknownKey, onlyTwo
 		if c != nil {
@@ -115,13 +116,13 @@ func mailSealFor(roots *x509.CertPool, c sealChecker, account string, stored []b
 	case v == vpgp.SigNone:
 		return mailSeal{}
 	case v == vpgp.SigBad:
-		return mailSeal{Text: "The signature does not match " + fromAddr + "'s key", Tone: "danger"}
+		return mailSeal{Text: i18n.T(lang, "The signature does not match {address}'s key", "address", fromAddr), Tone: "danger"}
 	case !whole:
-		return mailSeal{Text: "Part of this message is signed; the rest is not"}
+		return mailSeal{Text: i18n.T(lang, "Part of this message is signed; the rest is not")}
 	case v == vpgp.SigVerified:
-		return mailSeal{Text: "Signed · " + fromAddr + "'s key is verified", Tone: "ok"}
+		return mailSeal{Text: i18n.T(lang, "Signed · {address}'s key is verified", "address", fromAddr), Tone: "ok"}
 	}
-	return mailSeal{Text: "Signed · no key on file for " + fromAddr + " to check it with"}
+	return mailSeal{Text: i18n.T(lang, "Signed · no key on file for {address} to check it with", "address", fromAddr)}
 }
 
 // showsOnlyBlock reports whether the reader shows nothing of stored but one
@@ -221,18 +222,18 @@ func signedParts(stored []byte) (data, sig []byte, sigType string, onlyTwo, ok b
 // that holds, by a certificate for the sender's own address that an
 // authority this server trusts issued and that is valid now, over all the
 // reader shows; red for one that does not hold or is another address's.
-func smimeSeal(v vmail.SMIMEVerdict, fromAddr string, whole bool) mailSeal {
+func smimeSeal(lang string, v vmail.SMIMEVerdict, fromAddr string, whole bool) mailSeal {
 	switch {
 	case v.Status == vmail.SMIMEBad:
-		return mailSeal{Text: "The S/MIME signature does not hold for this message", Tone: "danger"}
+		return mailSeal{Text: i18n.T(lang, "The S/MIME signature does not hold for this message"), Tone: "danger"}
 	case v.Status == vmail.SMIMEOtherAddress:
-		return mailSeal{Text: "Signed with S/MIME by " + v.Signer + ", not by " + fromAddr, Tone: "danger"}
+		return mailSeal{Text: i18n.T(lang, "Signed with S/MIME by {signer}, not by {address}", "signer", v.Signer, "address", fromAddr), Tone: "danger"}
 	case !whole:
-		return mailSeal{Text: "Part of this message is signed; the rest is not"}
+		return mailSeal{Text: i18n.T(lang, "Part of this message is signed; the rest is not")}
 	case v.Status == vmail.SMIMEVerified:
-		return mailSeal{Text: "Signed with S/MIME · " + fromAddr + "'s certificate from " + v.Issuer + " is valid", Tone: "ok"}
+		return mailSeal{Text: i18n.T(lang, "Signed with S/MIME · {address}'s certificate from {issuer} is valid", "address", fromAddr, "issuer", v.Issuer), Tone: "ok"}
 	case v.Status == vmail.SMIMEExpired:
-		return mailSeal{Text: "Signed with S/MIME · " + fromAddr + "'s certificate has expired"}
+		return mailSeal{Text: i18n.T(lang, "Signed with S/MIME · {address}'s certificate has expired", "address", fromAddr)}
 	}
-	return mailSeal{Text: "Signed with S/MIME · " + fromAddr + "'s certificate is from " + v.Issuer + ", which this server does not trust"}
+	return mailSeal{Text: i18n.T(lang, "Signed with S/MIME · {address}'s certificate is from {issuer}, which this server does not trust", "address", fromAddr, "issuer", v.Issuer)}
 }

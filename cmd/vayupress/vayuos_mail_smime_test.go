@@ -96,7 +96,7 @@ func TestTheSealReadsAnSMIMESignature(t *testing.T) {
 		"an untrusted CA":    {raw, x509.NewCertPool(), "dana@example.com", "", "which this server does not trust"},
 		"with more after":    {extra, roots, "dana@example.com", "", "Part of this message is signed"},
 	} {
-		s := mailSealFor(c.roots, nil, "dana@example.com", c.raw, c.from)
+		s := mailSealFor("en", c.roots, nil, "dana@example.com", c.raw, c.from)
 		if s.Tone != c.tone || !strings.Contains(s.Text, c.words) {
 			t.Errorf("%s: %+v", name, s)
 		}
@@ -150,5 +150,24 @@ func TestACertificateIsUploadedFromSettings(t *testing.T) {
 	}
 	if rec := smimeUpload(t, a, admin, p12, "pw"); rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "handed to its holder") {
 		t.Errorf("a handed-over mailbox: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// TestTheSealIsInThePersonsLanguage — the seal line under a message's sender
+// is said in the reader's language, with the addresses it names in place.
+func TestTheSealIsInThePersonsLanguage(t *testing.T) {
+	for _, x := range []struct {
+		lang string
+		v    vmail.SMIMEVerdict
+		want string
+	}{
+		{"de", vmail.SMIMEVerdict{Status: vmail.SMIMEExpired}, "Mit S/MIME signiert · das Zertifikat von eli@example.com ist abgelaufen"},
+		{"ja", vmail.SMIMEVerdict{Status: vmail.SMIMEOtherAddress, Signer: "mallory@example.net"}, "S/MIME で eli@example.com ではなく mallory@example.net が署名しています"},
+		{"de", vmail.SMIMEVerdict{Status: vmail.SMIMEVerified}, "Ein Teil dieser Nachricht ist signiert, der Rest nicht"},
+	} {
+		whole := x.want != "Ein Teil dieser Nachricht ist signiert, der Rest nicht"
+		if got := smimeSeal(x.lang, x.v, "eli@example.com", whole).Text; got != x.want {
+			t.Errorf("%s seal = %q, want %q", x.lang, got, x.want)
+		}
 	}
 }

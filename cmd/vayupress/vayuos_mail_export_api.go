@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
@@ -31,7 +32,7 @@ var mailExportsRunning sync.Map
 func (a *App) handleMemberVayuMailExport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if !a.mailRunning() {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", i18n.T(i18n.Lang(r.Context()), "VayuMail is not active"), "")
 		return
 	}
 	addr, ok := a.vayuMailAppSignIn(w, r)
@@ -40,12 +41,12 @@ func (a *App) handleMemberVayuMailExport(w http.ResponseWriter, r *http.Request)
 	}
 	rd := vmail.ReadAsOwner(mailKeyOf(addr, a.vayuMail.Config().Domain))
 	if _, err := a.vayuMail.FoldersFor(rd); err != nil {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "This mailbox cannot be read from here.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "This mailbox cannot be read from here."), "")
 		return
 	}
 	if _, busy := mailExportsRunning.LoadOrStore(addr, struct{}{}); busy {
 		w.Header().Set("Retry-After", "60")
-		writeAPIError(w, r, http.StatusTooManyRequests, "export-running", "An export of this mailbox is already running. Try again when it has finished.", "")
+		writeAPIError(w, r, http.StatusTooManyRequests, "export-running", i18n.T(i18n.Lang(r.Context()), "An export of this mailbox is already running. Try again when it has finished."), "")
 		return
 	}
 	defer mailExportsRunning.Delete(addr)
