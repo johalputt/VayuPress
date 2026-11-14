@@ -113,10 +113,12 @@
 
 /* One style for metadata, one for labels, one for eyebrows. */
 .h .h-meta { font: 400 13px/1.45 var(--h-sans); color: var(--h-t3); font-variant-numeric: tabular-nums; }
-/* A topic is a link among the grey of the date: its colour alone is about
-   1.1:1 against that grey (WCAG 1.4.1 wants 3:1, or another cue), so it is
-   underlined too. Same for a post's kicker below. */
-.h .h-meta .h-topic, .h .h-meta a.h-topic { color: var(--h-accent); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+/* A topic is a label set before the date, not a word in a sentence, so it
+   is its own box (inline-block), told by its colour and its place. An
+   underline made it read as a link in running text, which it is not; page
+   audits ask a link inside running text for a cue besides colour, and a box
+   of its own is not inside running text. Same for a post's kicker below. */
+.h .h-meta .h-topic, .h .h-meta a.h-topic { color: var(--h-accent); display: inline-block; }
 .h .h-sep { margin: 0 6px; color: var(--h-t4); }
 .h .h-label { font: 500 12px/1.2 var(--h-sans); letter-spacing: 0.01em; color: var(--h-t3); }
 .h .h-n { margin-left: 6px; color: var(--h-t3); font: 400 12px/1 var(--h-sans); font-variant-numeric: tabular-nums; }
@@ -307,7 +309,7 @@
 .h .h-facts dd { margin-top: 6px; font: 400 16px/1.35 var(--h-serif); color: var(--h-t1); overflow-wrap: anywhere; }
 .h .h-facts dd a { color: var(--h-accent); }
 .h .h-kicker { font: 400 13px/1.4 var(--h-sans); color: var(--h-t3); font-variant-numeric: tabular-nums; }
-.h .h-kicker a { color: var(--h-accent); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.h .h-kicker a { color: var(--h-accent); display: inline-block; }
 .h .h-post h1 { font: 500 46px/1.12 var(--h-serif); letter-spacing: -0.018em; margin: 16px 0 26px; text-wrap: balance; overflow-wrap: anywhere; hyphens: manual; }
 .h .h-post--margin h1 { font-weight: 400; font-size: 52px; line-height: 1.08; margin-top: 0; }
 .h .h-standfirst { font: 400 var(--h-rs)/1.65 var(--h-face); color: var(--h-t2); text-wrap: pretty; }
