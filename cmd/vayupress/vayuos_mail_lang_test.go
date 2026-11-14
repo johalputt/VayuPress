@@ -5,6 +5,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"regexp"
 	"strings"
 	"testing"
@@ -308,5 +309,38 @@ func TestModelHelpSaysWhereInThePersonsLanguage(t *testing.T) {
 	}
 	if got := (mailModel{provider: "Example"}).whereIn("de"); got != "an Example gesendet" {
 		t.Errorf("a model outside, in German: %q", got)
+	}
+}
+
+// TestContactsAreInThePersonsLanguage — the address book, its groups and
+// what a change to them did, in German and Russian, whose plurals differ:
+// three people are "3 Personen" and "3 человека", one is "1 Person".
+func TestContactsAreInThePersonsLanguage(t *testing.T) {
+	a := scheduledApp(t)
+	in := func(lang string, vals url.Values) string {
+		req := withUser(httptest.NewRequest(http.MethodPost, "/os/vayumail/contacts/groups", strings.NewReader(vals.Encode())), danaHolder())
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req = req.WithContext(i18n.WithLang(req.Context(), lang))
+		rec := httptest.NewRecorder()
+		a.handleVayuOSContactGroups(rec, req)
+		return rec.Body.String()
+	}
+	de := in("de", url.Values{"action": {"save"}, "name": {"Team"}, "members": {"a@x.com b@x.com c@x.com"}})
+	for _, want := range []string{">Kontakte</h2>", "Team gespeichert.", ">3 Personen</span>", ">Neue Gruppe</summary>", "Als vCard exportieren", "Die Gruppe Team löschen?"} {
+		if !strings.Contains(de, want) {
+			t.Errorf("the German panel has no %q", want)
+		}
+	}
+	for _, english := range []string{">Contacts</h2>", "Saved Team.", "people", "New group", "Export as vCard"} {
+		if strings.Contains(de, english) {
+			t.Errorf("the German panel says %q", english)
+		}
+	}
+	if one := in("de", url.Values{"action": {"save"}, "was": {"Team"}, "name": {"Team"}, "members": {"a@x.com"}}); !strings.Contains(one, ">1 Person</span>") {
+		t.Error("one German person is not \"1 Person\"")
+	}
+	in("ru", url.Values{"action": {"save"}, "name": {"Crew"}, "members": {"a@x.com b@x.com c@x.com"}})
+	if ru := in("ru", url.Values{"action": {"delete"}, "was": {"Team"}}); !strings.Contains(ru, ">3 человека</span>") || !strings.Contains(ru, "Группа Team удалена") {
+		t.Errorf("the Russian panel does not count three people as \"3 человека\" or say the group was deleted:\n%s", ru)
 	}
 }

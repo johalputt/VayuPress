@@ -49,10 +49,12 @@ var i18nMoved = map[string][]string{
 	"sessions_mine.go":       {"securityChecklist", "sessionsBlock"},
 	"passkey.go":             {"passkeysBlock"},
 	// runModelHelp writes the instruction a model reads, in English.
-	"vayuos_mail_modelhelp.go":   {"whereIn", "loopbackEndpoint", "mailModelFor", "maskPersonal", "unmaskPersonal", "mailConfidential", "mailPlainText", "modelHelpBar", "mailboxOf", "handleVayuOSMailModel", "Error", "clipRunes", "modelHelpSetting", "handleVayuOSMailModelSettings"},
-	"vayuos_mail_list.go":        nil,
-	"vayuos_mail_scheduled.go":   nil,
-	"vayuos_mail_unsubscribe.go": nil,
+	"vayuos_mail_modelhelp.go":     {"whereIn", "loopbackEndpoint", "mailModelFor", "maskPersonal", "unmaskPersonal", "mailConfidential", "mailPlainText", "modelHelpBar", "mailboxOf", "handleVayuOSMailModel", "Error", "clipRunes", "modelHelpSetting", "handleVayuOSMailModelSettings"},
+	"vayuos_mail_list.go":          nil,
+	"vayuos_mail_scheduled.go":     nil,
+	"vayuos_mail_unsubscribe.go":   nil,
+	"vayuos_mail_contacts.go":      nil,
+	"vayuos_mail_contactgroups.go": nil,
 }
 
 // i18nExempt are the calls whose words are for the operator or the code, not

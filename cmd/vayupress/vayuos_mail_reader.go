@@ -334,7 +334,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 	if fromAddr != "" && fromAddr != who {
 		c.WriteString(` <span class="mx-msg__addr">` + esc(fromAddr) + `</span>`)
 	}
-	c.WriteString(` ` + contactSaveButton(user, pm.From) + `</div>`)
+	c.WriteString(` ` + contactSaveButton(lang, user, pm.From) + `</div>`)
 	if to := mailRecipientsLine(lang, pm.To, pm.Cc, mbox); to != "" {
 		c.WriteString(`<div class="mx-msg__to">` + esc(to) + `</div>`)
 	}

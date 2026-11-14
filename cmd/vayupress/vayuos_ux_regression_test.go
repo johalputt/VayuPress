@@ -271,11 +271,11 @@ func TestMailContactsExplainARefusedSave(t *testing.T) {
 
 // TestContactErrTextSpeaksToTheOperator keeps store wording out of the panel.
 func TestContactErrTextSpeaksToTheOperator(t *testing.T) {
-	bad := contactErrText(vmail.ErrBadContact)
+	bad := contactErrText("en", vmail.ErrBadContact)
 	if !strings.Contains(bad, "valid email address") {
 		t.Errorf("a bad address should say so plainly, got %q", bad)
 	}
-	other := contactErrText(errors.New("vayumail: no storage"))
+	other := contactErrText("en", errors.New("vayumail: no storage"))
 	if strings.Contains(other, "vayumail:") {
 		t.Errorf("the operator must not be shown the store's internal wording, got %q", other)
 	}

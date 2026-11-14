@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/johalputt/vayupress/internal/i18n"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
@@ -75,6 +76,7 @@ type contactsSaid struct {
 // contactsPanel is the panel, with said beside the part a change was made to.
 func (a *App) contactsPanel(r *http.Request, owner, userKey, errMsg, typedEmail, typedName string, said contactsSaid) string {
 	ctx := r.Context()
+	lang := i18n.Lang(ctx)
 	// Direct html.EscapeString calls, not a local alias: typedEmail and
 	// typedName come straight from the form, and CodeQL credits the escaper
 	// only when it can see the call (go/reflected-xss).
@@ -85,24 +87,24 @@ func (a *App) contactsPanel(r *http.Request, owner, userKey, errMsg, typedEmail,
 	b.WriteString(`<div id="vm-contacts-panel" class="vm-contacts">`)
 	// Where Mail is screens (a phone), Contacts is pushed over the list as a
 	// message is, and comes back the same way.
-	b.WriteString(`<button type="button" class="mx-back" data-mx-go="list">` + saIcon("chev-l") + `Back</button>`)
-	b.WriteString(`<div class="vm-contacts-head"><h2 class="vm-contacts-title">Contacts</h2>` +
-		`<span class="muted text-sm">` + itoaSafe(len(contacts)) + ` saved · ` + html.EscapeString(owner) + `</span></div>`)
-	b.WriteString(`<p class="muted text-sm vm-contacts-sub">Private to this mailbox. These power the recipient suggestions when you compose from here.</p>`)
-	b.WriteString(contactsTransfer(userKey, said.book))
+	b.WriteString(`<button type="button" class="mx-back" data-mx-go="list">` + saIcon("chev-l") + html.EscapeString(i18n.T(lang, "Back")) + `</button>`)
+	b.WriteString(`<div class="vm-contacts-head"><h2 class="vm-contacts-title">` + html.EscapeString(i18n.T(lang, "Contacts")) + `</h2>` +
+		`<span class="muted text-sm">` + html.EscapeString(i18n.T(lang, "{n} saved · {mailbox}", "n", len(contacts), "mailbox", owner)) + `</span></div>`)
+	b.WriteString(`<p class="muted text-sm vm-contacts-sub">` + html.EscapeString(i18n.T(lang, "Private to this mailbox. These power the recipient suggestions when you compose from here.")) + `</p>`)
+	b.WriteString(contactsTransfer(lang, userKey, said.book))
 	if errMsg != "" {
 		b.WriteString(saCallout("danger", html.EscapeString(errMsg)))
 	}
 
 	b.WriteString(`<form class="vm-contacts-add" hx-post="/os/vayumail/contacts/add" hx-target="#vm-contacts-panel" hx-swap="outerHTML">`)
 	b.WriteString(`<input type="hidden" name="user" value="` + html.EscapeString(userKey) + `">`)
-	b.WriteString(`<input class="input input--sm" type="email" name="email" placeholder="name@example.com" required aria-label="Contact email" value="` + html.EscapeString(typedEmail) + `">`)
-	b.WriteString(`<input class="input input--sm" type="text" name="name" placeholder="Name (optional)" aria-label="Contact name" value="` + html.EscapeString(typedName) + `">`)
-	b.WriteString(`<button class="btn btn--primary btn--sm" type="submit">Save contact</button>`)
+	b.WriteString(`<input class="input input--sm" type="email" name="email" placeholder="name@example.com" required aria-label="` + html.EscapeString(i18n.T(lang, "Contact email")) + `" value="` + html.EscapeString(typedEmail) + `">`)
+	b.WriteString(`<input class="input input--sm" type="text" name="name" placeholder="` + html.EscapeString(i18n.T(lang, "Name (optional)")) + `" aria-label="` + html.EscapeString(i18n.T(lang, "Contact name")) + `" value="` + html.EscapeString(typedName) + `">`)
+	b.WriteString(`<button class="btn btn--primary btn--sm" type="submit">` + html.EscapeString(i18n.T(lang, "Save contact")) + `</button>`)
 	b.WriteString(`</form>`)
 
 	if len(contacts) == 0 {
-		b.WriteString(`<p class="muted text-sm">No saved contacts yet. Add one above, or use “Save contact” on any message.</p>`)
+		b.WriteString(`<p class="muted text-sm">` + html.EscapeString(i18n.T(lang, "No saved contacts yet. Add one above, or use “Save contact” on any message.")) + `</p>`)
 	} else {
 		b.WriteString(`<ul class="vm-contacts-list">`)
 		for _, c := range contacts {
@@ -112,7 +114,7 @@ func (a *App) contactsPanel(r *http.Request, owner, userKey, errMsg, typedEmail,
 			}
 			del := `<button class="btn btn--xs btn--ghost vm-contact-del" type="button" hx-post="/os/vayumail/contacts/delete" ` +
 				hxVals("user", userKey, "email", c.Email) +
-				` hx-target="#vm-contacts-panel" hx-swap="outerHTML" hx-confirm="Remove ` + html.EscapeString(c.Email) + ` from this mailbox's contacts?">Remove</button>`
+				` hx-target="#vm-contacts-panel" hx-swap="outerHTML" hx-confirm="` + html.EscapeString(i18n.T(lang, "Remove {address} from this mailbox's contacts?", "address", c.Email)) + `">` + html.EscapeString(i18n.T(lang, "Remove")) + `</button>`
 			compose := "/os/vayumail/compose?user=" + qparam(userKey) + "&to=" + qparam(c.Email)
 			b.WriteString(`<li class="vm-contact">` +
 				`<a class="vm-contact-id" href="` + compose + `">` + mailAvatarImg(c.Email, avSet) +
@@ -135,7 +137,7 @@ func (a *App) contactsPanel(r *http.Request, owner, userKey, errMsg, typedEmail,
 func (a *App) handleVayuOSContacts(w http.ResponseWriter, r *http.Request) {
 	owner, ok := a.contactOwner(r, mailUserParam(r))
 	if !ok {
-		writeOSFragment(w, `<div class="empty-state">Select a mailbox to manage its contacts.</div>`)
+		writeOSFragment(w, `<div class="empty-state">`+html.EscapeString(i18n.T(i18n.Lang(r.Context()), "Select a mailbox to manage its contacts."))+`</div>`)
 		return
 	}
 	writeOSFragment(w, a.vayuContactsPanel(r, owner, mailUserParam(r)))
@@ -155,7 +157,7 @@ func (a *App) handleVayuOSContactAdd(w http.ResponseWriter, r *http.Request) {
 	if err := a.vayuMail.Accounts().AddContact(r.Context(), owner, email, name); err != nil {
 		// Say what was wrong AND keep what they typed. The old silent re-render
 		// was indistinguishable from a dead button.
-		writeOSFragment(w, a.vayuContactsPanelWith(r, owner, userKey, contactErrText(err), email, name))
+		writeOSFragment(w, a.vayuContactsPanelWith(r, owner, userKey, contactErrText(i18n.Lang(r.Context()), err), email, name))
 		return
 	}
 	writeOSFragment(w, a.vayuContactsPanel(r, owner, userKey))
@@ -163,11 +165,11 @@ func (a *App) handleVayuOSContactAdd(w http.ResponseWriter, r *http.Request) {
 
 // contactErrText turns a failed address-book write into something a person can
 // act on; the store's own wording ("vayumail: invalid contact …") is for logs.
-func contactErrText(err error) string {
+func contactErrText(lang string, err error) string {
 	if errors.Is(err, vmail.ErrBadContact) {
-		return "That does not look like a valid email address — check it and try again."
+		return i18n.T(lang, "That does not look like a valid email address — check it and try again.")
 	}
-	return "Could not save that contact — please try again."
+	return i18n.T(lang, "Could not save that contact — please try again.")
 }
 
 // handleVayuOSContactDelete removes a contact and returns the refreshed panel.
@@ -181,7 +183,7 @@ func (a *App) handleVayuOSContactDelete(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := a.vayuMail.Accounts().DeleteContact(r.Context(), owner, r.FormValue("email")); err != nil {
 		writeOSFragment(w, a.vayuContactsPanelWith(r, owner, userKey,
-			"Could not remove that contact — please try again.", "", ""))
+			i18n.T(i18n.Lang(r.Context()), "Could not remove that contact — please try again."), "", ""))
 		return
 	}
 	writeOSFragment(w, a.vayuContactsPanel(r, owner, userKey))
@@ -205,23 +207,24 @@ func (a *App) handleVayuOSContactSave(w http.ResponseWriter, r *http.Request) {
 	if fn := strings.TrimSpace(r.FormValue("name")); fn != "" {
 		name = fn
 	}
+	lang := i18n.Lang(r.Context())
 	if err := a.vayuMail.Accounts().AddContact(r.Context(), owner, addr, name); err != nil {
-		writeOSFragment(w, `<button class="btn btn--xs btn--ghost" type="button" disabled>Could not save</button>`)
+		writeOSFragment(w, `<button class="btn btn--xs btn--ghost" type="button" disabled>`+html.EscapeString(i18n.T(lang, "Could not save"))+`</button>`)
 		return
 	}
-	writeOSFragment(w, `<button class="btn btn--xs vm-contact-saved" type="button" disabled>✓ Saved to contacts</button>`)
+	writeOSFragment(w, `<button class="btn btn--xs vm-contact-saved" type="button" disabled>✓ `+html.EscapeString(i18n.T(lang, "Saved to contacts"))+`</button>`)
 }
 
 // contactSaveButton renders the one-click "Save contact" control for a message's
 // sender/recipient, scoped to the mailbox currently in view.
-func contactSaveButton(userKey, rawFrom string) string {
+func contactSaveButton(lang, userKey, rawFrom string) string {
 	name, addr := mailParseFrom(rawFrom)
 	if addr == "" {
 		addr = rawFrom
 	}
 	return `<button class="btn btn--xs" type="button" hx-post="/os/vayumail/contacts/save" ` +
 		hxVals("user", userKey, "email", addr, "name", name) +
-		` hx-target="this" hx-swap="outerHTML" title="Save ` + html.EscapeString(addr) + ` to this mailbox's contacts">＋ Save contact</button>`
+		` hx-target="this" hx-swap="outerHTML" title="` + html.EscapeString(i18n.T(lang, "Save {address} to this mailbox's contacts", "address", addr)) + `">＋ ` + html.EscapeString(i18n.T(lang, "Save contact")) + `</button>`
 }
 
 // composeContactsDatalistFor builds the native <datalist> the composer's To/Cc/Bcc
@@ -245,7 +248,7 @@ func (a *App) composeContactsDatalistFor(ctx context.Context, owner string) stri
 		// (admin-os-mail.js reads data-group).
 		if groups, err := a.vayuMail.Accounts().ContactGroups(ctx, owner); err == nil {
 			for _, g := range groups {
-				b.WriteString(`<option value="` + html.EscapeString(g.Name) + `" label="Group · ` + itoaSafe(len(g.Members)) + ` ` + pluralWord(len(g.Members), "person", "people") +
+				b.WriteString(`<option value="` + html.EscapeString(g.Name) + `" label="` + html.EscapeString(i18n.T(i18n.Lang(ctx), "Group · {n, plural, one {# person} other {# people}}", "n", len(g.Members))) +
 					`" data-group="` + html.EscapeString(strings.Join(g.Members, ",")) + `">`)
 			}
 		}
