@@ -25,7 +25,7 @@ func TestASendFailureNamesWhoseProblemItIs(t *testing.T) {
 		{"no recipients", "vayumail: no recipients", "Add at least one recipient", ""},
 		{"unrecognised", "vayumail: something new", "has not been delivered", "something new"},
 	} {
-		got := mailSendErrText(errors.New(c.err))
+		got := mailSendErrText("en", errors.New(c.err))
 		if !strings.Contains(got, c.want) {
 			t.Errorf("%s: %q does not say %q", c.name, got, c.want)
 		}

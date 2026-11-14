@@ -31,7 +31,7 @@ func TestSendLaterTimeRefusesWhatCannotBeMeant(t *testing.T) {
 		{at(sendLaterLimit), ""},
 		{"2026-10-04T08:00:00.000+05:30", ""}, // the composer's own form: milliseconds, a zone
 	} {
-		if _, msg := sendLaterTime(c.in, now); (c.want == "" && msg != "") || !strings.Contains(msg, c.want) {
+		if _, msg := sendLaterTime("en", c.in, now); (c.want == "" && msg != "") || !strings.Contains(msg, c.want) {
 			t.Errorf("sendLaterTime(%q) = %q, want it to say %q", c.in, msg, c.want)
 		}
 	}

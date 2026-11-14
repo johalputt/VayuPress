@@ -71,7 +71,14 @@ var i18nMoved = map[string][]string{
 	"vayuos_mail_dns_watch.go":     nil,
 	"vayuos_mail_pictures.go":      nil,
 	"book_public.go":               nil,
-	"vayuos_mail.go":               {"handleVayuOSConnect"},
+	"vayuos_mail.go":               nil,
+}
+
+// i18nNotRead are functions in a moved file whose words no person reads,
+// with what reads them instead.
+var i18nNotRead = map[string]string{
+	// The XML a mail app reads to set itself up (Mozilla autoconfig).
+	"handleMailAutoconfig": "a mail app",
 }
 
 // i18nExempt are the calls whose words are for the operator or the code, not
@@ -166,6 +173,9 @@ func TestAMovedPageHasNoEnglishOutsideT(t *testing.T) {
 				continue
 			}
 			if len(only) > 0 && !only[fd.Name.Name] {
+				continue
+			}
+			if _, notRead := i18nNotRead[fd.Name.Name]; notRead {
 				continue
 			}
 			found[fd.Name.Name] = true

@@ -178,7 +178,7 @@ func (a *App) composePrefill(r *http.Request) (to, cc, bcc, subject, bodyText, q
 			return "", "", "", "", "", ""
 		}
 		return m.Email, "", "", "Re: your message", "",
-			quoteBody(m.Name+" <"+m.Email+">", config.FormatSite(m.Created, "2 Jan 2006"), m.Message)
+			quoteBody(i18n.Lang(r.Context()), m.Name+" <"+m.Email+">", i18n.Date(i18n.Lang(r.Context()), config.InSite(m.Created), i18n.DayMonthYearShort), m.Message)
 	}
 	replyAll := q.Get("replyall") != ""
 	reply := q.Get("reply") != "" || replyAll
@@ -201,7 +201,7 @@ func (a *App) composePrefill(r *http.Request) (to, cc, bcc, subject, bodyText, q
 		return "", "", "", "", "", ""
 	}
 	origFrom, origSubject, origBody, origDate := parseForQuote(raw)
-	quoted := quoteBody(origFrom, origDate, origBody)
+	quoted := quoteBody(i18n.Lang(r.Context()), origFrom, origDate, origBody)
 	// A reply may start from a model's suggestion the holder chose to use
 	// (vayuos_mail_modelhelp.go), carried as body like a direct prefill.
 	if replyAll {
@@ -212,7 +212,7 @@ func (a *App) composePrefill(r *http.Request) (to, cc, bcc, subject, bodyText, q
 		return origFrom, "", "", ensurePrefix(origSubject, "Re: "), q.Get("body"), quoted
 	}
 	// A forward's history is what is being sent, so it stays in the body.
-	return "", "", "", ensurePrefix(origSubject, "Fwd: "), "\r\n\r\n---------- Forwarded message ----------\r\n" + quoted, ""
+	return "", "", "", ensurePrefix(origSubject, "Fwd: "), "\r\n\r\n---------- " + i18n.T(i18n.Lang(r.Context()), "Forwarded message") + " ----------\r\n" + quoted, ""
 }
 
 // parseForQuote extracts From, Subject, Date and a plain-text body from a raw
@@ -273,13 +273,13 @@ func humanMailDate(raw string) string {
 }
 
 // quoteBody prefixes each line of the original body with "> " (RFC 3676 style).
-func quoteBody(from, date, bodyText string) string {
+func quoteBody(lang, from, date, bodyText string) string {
 	var sb strings.Builder
 	if from != "" {
 		if date != "" {
-			sb.WriteString("On " + date + ", " + from + " wrote:\r\n")
+			sb.WriteString(i18n.T(lang, "On {date}, {from} wrote:", "date", date, "from", from) + "\r\n")
 		} else {
-			sb.WriteString("On a previous message, " + from + " wrote:\r\n")
+			sb.WriteString(i18n.T(lang, "On a previous message, {from} wrote:", "from", from) + "\r\n")
 		}
 	}
 	for _, line := range strings.Split(bodyText, "\n") {
@@ -310,7 +310,7 @@ func composeMaxAttachMB() int {
 // on. The engine reports the real reason — "dial tcp: lookup mx.example: no such
 // host" is diagnostic gold in a log and meaningless in a form field. Anything
 // unrecognised keeps a plain sentence; the raw error is never shown.
-func mailSendErrText(err error) string {
+func mailSendErrText(lang string, err error) string {
 	if err == nil {
 		return ""
 	}
@@ -325,23 +325,23 @@ func mailSendErrText(err error) string {
 		// The engine stops at the first local recipient it cannot deliver to,
 		// after the Sent copy is filed, so "not sent" would be false for anyone
 		// delivered before them and "sent" would be false for everyone after.
-		return "The mailbox of " + rcpt + " is full, so sending stopped there and some recipients may not have this message. Your copy is in Sent."
+		return i18n.T(lang, "The mailbox of {address} is full, so sending stopped there and some recipients may not have this message. Your copy is in Sent.", "address", rcpt)
 	}
 	switch {
 	case strings.Contains(msg, "no such host"), strings.Contains(msg, "no such domain"):
-		return "Couldn’t find the recipient’s mail server — check the address after the @ for a typo."
+		return i18n.T(lang, "Couldn’t find the recipient’s mail server — check the address after the @ for a typo.")
 	case strings.Contains(msg, "connection refused"), strings.Contains(msg, "timeout"), strings.Contains(msg, "timed out"):
-		return "The recipient’s mail server didn’t answer in time — try again in a moment."
+		return i18n.T(lang, "The recipient’s mail server didn’t answer in time — try again in a moment.")
 	case strings.Contains(msg, "no recipients"):
-		return "Add at least one recipient."
+		return i18n.T(lang, "Add at least one recipient.")
 	case strings.Contains(msg, "quota"), strings.Contains(msg, "mailbox full"):
-		return "Your mailbox is full (storage quota reached). Delete some mail or ask an administrator to raise your quota."
+		return i18n.T(lang, "Your mailbox is full (storage quota reached). Delete some mail or ask an administrator to raise your quota.")
 	case strings.Contains(msg, "relay"), strings.Contains(msg, "auth"):
-		return "The outgoing relay refused the message. Check the smarthost settings under VayuMail → DNS."
+		return i18n.T(lang, "The outgoing relay refused the message. Check the smarthost settings under VayuMail → DNS.")
 	case strings.Contains(msg, "disabled"), strings.Contains(msg, "domain not set"):
-		return "Outbound mail is not configured yet — set a DOMAIN and check VayuMail → DNS."
+		return i18n.T(lang, "Outbound mail is not configured yet — set a DOMAIN and check VayuMail → DNS.")
 	}
-	return "Could not send the message — it has not been delivered. Try again, and check Deliverability under VayuMail → DNS if it keeps failing."
+	return i18n.T(lang, "Could not send the message — it has not been delivered. Try again, and check Deliverability under VayuMail → DNS if it keeps failing.")
 }
 
 // insertSignature places a plain-text signature after the freshly-written reply
@@ -400,7 +400,7 @@ func parseRecipientList(s string) []string {
 
 func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", i18n.T(i18n.Lang(r.Context()), "VayuMail is not active"), "")
 		return
 	}
 	// Accept EITHER multipart/form-data (when the composer has attachments) or the
@@ -439,7 +439,7 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		// Cap the whole request at the attachment budget + 1 MB of text/fields.
 		r.Body = http.MaxBytesReader(w, r.Body, maxAttachBytes+(1<<20))
 		if err := r.ParseMultipartForm(8 << 20); err != nil {
-			writeAPIError(w, r, 400, "attach-too-large", "The message (with attachments) exceeds the "+strconv.FormatInt(maxAttachMB, 10)+" MB limit.", "")
+			writeAPIError(w, r, 400, "attach-too-large", i18n.T(i18n.Lang(r.Context()), "The message (with attachments) exceeds the {n} MB limit.", "n", maxAttachMB), "")
 			return
 		}
 		in.From = r.FormValue("from")
@@ -466,18 +466,18 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 			for _, fhs := range r.MultipartForm.File["attachments"] {
 				total += fhs.Size
 				if total > maxAttachBytes {
-					writeAPIError(w, r, 400, "attach-too-large", "Attachments exceed the "+strconv.FormatInt(maxAttachMB, 10)+" MB total limit.", "")
+					writeAPIError(w, r, 400, "attach-too-large", i18n.T(i18n.Lang(r.Context()), "Attachments exceed the {n} MB total limit.", "n", maxAttachMB), "")
 					return
 				}
 				f, ferr := fhs.Open()
 				if ferr != nil {
-					writeAPIError(w, r, 400, "attach-read", "Could not read an attachment.", "")
+					writeAPIError(w, r, 400, "attach-read", i18n.T(i18n.Lang(r.Context()), "Could not read an attachment."), "")
 					return
 				}
 				data, rerr := io.ReadAll(io.LimitReader(f, maxAttachBytes+1))
 				f.Close()
 				if rerr != nil {
-					writeAPIError(w, r, 400, "attach-read", "Could not read an attachment.", "")
+					writeAPIError(w, r, 400, "attach-read", i18n.T(i18n.Lang(r.Context()), "Could not read an attachment."), "")
 					return
 				}
 				attachments = append(attachments, vmail.Attachment{
@@ -515,18 +515,18 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
 		_, ownEmail := a.ownMailbox(r)
 		if ownEmail == "" {
-			writeAPIError(w, r, http.StatusForbidden, "no-mailbox", "No mailbox is assigned to your account", "")
+			writeAPIError(w, r, http.StatusForbidden, "no-mailbox", i18n.T(i18n.Lang(r.Context()), "No mailbox is assigned to your account"), "")
 			return
 		}
 		if a.vayuMail.MailboxReadOnly(ownEmail) {
-			writeAPIError(w, r, http.StatusForbidden, "read-only", "This mailbox is read-only: it can read mail but not send it.", "")
+			writeAPIError(w, r, http.StatusForbidden, "read-only", i18n.T(i18n.Lang(r.Context()), "This mailbox is read-only: it can read mail but not send it."), "")
 			return
 		}
 		from = ownEmail
 	}
 	var sendAt time.Time
 	if v := strings.TrimSpace(in.SendAt); v != "" {
-		t, msg := sendLaterTime(v, time.Now())
+		t, msg := sendLaterTime(i18n.Lang(r.Context()), v, time.Now())
 		if msg != "" {
 			writeAPIError(w, r, 400, "send-at", msg, "")
 			return
@@ -538,7 +538,7 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 	cc := splitAddrs(in.CC)
 	bcc := splitAddrs(in.BCC)
 	if len(to)+len(cc)+len(bcc) == 0 {
-		writeAPIError(w, r, 400, "validation_error", "at least one recipient is required", "")
+		writeAPIError(w, r, 400, "validation_error", i18n.T(i18n.Lang(r.Context()), "at least one recipient is required"), "")
 		return
 	}
 	// Finishing a saved draft: carry the files it stored onto this message, so the
@@ -556,7 +556,7 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 					carried += int64(len(f.Data))
 					if carried > maxAttachBytes {
 						writeAPIError(w, r, 400, "attach-too-large",
-							"This draft's saved attachments push the message over the "+strconv.FormatInt(maxAttachMB, 10)+" MB limit.", "")
+							i18n.T(i18n.Lang(r.Context()), "This draft's saved attachments push the message over the {n} MB limit.", "n", maxAttachMB), "")
 						return
 					}
 				}
@@ -567,7 +567,7 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 	// Sending files a copy into the sender's Sent folder, so refuse when the
 	// mailbox is already at/over its storage quota.
 	if a.vayuMail.MailboxOverQuota(from) {
-		writeAPIError(w, r, 400, "over-quota", "Your mailbox is full (storage quota reached). Delete some mail or ask an administrator to raise your quota, then try again.", "")
+		writeAPIError(w, r, 400, "over-quota", i18n.T(i18n.Lang(r.Context()), "Your mailbox is full (storage quota reached). Delete some mail or ask an administrator to raise your quota, then try again."), "")
 		return
 	}
 	// Resolve the sender's PGP userID (best-effort) for signing/encryption.
@@ -615,7 +615,7 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 	if !sendAt.IsZero() {
 		id, err := a.vayuMail.Schedule(r.Context(), from, msg, in.Body, sendAt)
 		if err != nil {
-			writeAPIError(w, r, 500, "schedule-failed", "Could not schedule the message: "+err.Error(), "")
+			writeAPIError(w, r, 500, "schedule-failed", i18n.T(i18n.Lang(r.Context()), "Could not schedule the message: {error}", "error", err.Error()), "")
 			return
 		}
 		writeJSON(w, r, 200, map[string]interface{}{"scheduled": true, "id": id, "sendAt": sendAt.UTC().Format(time.RFC3339)})
@@ -623,11 +623,11 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := a.vayuMail.ComposeRich(r.Context(), msg)
 	if errors.Is(err, vmail.ErrNoSigningKey) {
-		writeAPIError(w, r, 400, "no-signing-key", "Not sent: this mailbox has no key to sign with. Send it unsigned, or ask an administrator for a key.", "")
+		writeAPIError(w, r, 400, "no-signing-key", i18n.T(i18n.Lang(r.Context()), "Not sent: this mailbox has no key to sign with. Send it unsigned, or ask an administrator for a key."), "")
 		return
 	}
 	if err != nil {
-		writeAPIError(w, r, 500, "send-failed", mailSendErrText(err), "")
+		writeAPIError(w, r, 500, "send-failed", mailSendErrText(i18n.Lang(r.Context()), err), "")
 		return
 	}
 	writeJSON(w, r, 200, map[string]interface{}{"queued": true, "id": id, "attachments": len(attachments)})
@@ -638,15 +638,15 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 const sendLaterLimit = 366 * 24 * time.Hour
 
 // sendLaterTime reads a Send later time, or says why it cannot be used.
-func sendLaterTime(v string, now time.Time) (time.Time, string) {
+func sendLaterTime(lang, v string, now time.Time) (time.Time, string) {
 	t, err := time.Parse(time.RFC3339, v)
 	switch {
 	case err != nil:
-		return time.Time{}, "That send time could not be read."
+		return time.Time{}, i18n.T(lang, "That send time could not be read.")
 	case !t.After(now):
-		return time.Time{}, "That time has passed. Choose a later one, or send it now."
+		return time.Time{}, i18n.T(lang, "That time has passed. Choose a later one, or send it now.")
 	case t.Sub(now) > sendLaterLimit:
-		return time.Time{}, "Choose a time within a year."
+		return time.Time{}, i18n.T(lang, "Choose a time within a year.")
 	}
 	return t, ""
 }
@@ -655,7 +655,7 @@ func sendLaterTime(v string, now time.Time) (time.Time, string) {
 // it can be reopened and finished later. CSRF-protected, admin-only.
 func (a *App) handleVayuOSDraft(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", i18n.T(i18n.Lang(r.Context()), "VayuMail is not active"), "")
 		return
 	}
 	var in struct {
@@ -673,7 +673,7 @@ func (a *App) handleVayuOSDraft(w http.ResponseWriter, r *http.Request) {
 		maxAttachBytes := int64(composeMaxAttachMB()) << 20
 		r.Body = http.MaxBytesReader(w, r.Body, maxAttachBytes+(1<<20))
 		if err := r.ParseMultipartForm(8 << 20); err != nil {
-			writeAPIError(w, r, 400, "attach-too-large", "The draft (with attachments) exceeds the size limit.", "")
+			writeAPIError(w, r, 400, "attach-too-large", i18n.T(i18n.Lang(r.Context()), "The draft (with attachments) exceeds the size limit."), "")
 			return
 		}
 		in.From = r.FormValue("from")
@@ -700,7 +700,7 @@ func (a *App) handleVayuOSDraft(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
 		_, ownEmail := a.ownMailbox(r)
 		if ownEmail == "" {
-			writeAPIError(w, r, http.StatusForbidden, "no-mailbox", "No mailbox is assigned to your account", "")
+			writeAPIError(w, r, http.StatusForbidden, "no-mailbox", i18n.T(i18n.Lang(r.Context()), "No mailbox is assigned to your account"), "")
 			return
 		}
 		from = ownEmail
@@ -712,7 +712,7 @@ func (a *App) handleVayuOSDraft(w http.ResponseWriter, r *http.Request) {
 	bcc := parseRecipientList(in.Bcc)
 	// Saving a draft files it into the Drafts folder, so refuse when full.
 	if a.vayuMail.MailboxOverQuota(from) {
-		writeAPIError(w, r, 400, "over-quota", "Your mailbox is full (storage quota reached). Delete some mail or ask an administrator to raise your quota.", "")
+		writeAPIError(w, r, 400, "over-quota", i18n.T(i18n.Lang(r.Context()), "Your mailbox is full (storage quota reached). Delete some mail or ask an administrator to raise your quota."), "")
 		return
 	}
 	fromHeader := from
@@ -723,7 +723,7 @@ func (a *App) handleVayuOSDraft(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// The text is still in the composer, so say that rather than implying
 		// work was lost.
-		writeAPIError(w, r, 500, "draft-failed", "Could not save the draft — your message is still in the editor, so nothing is lost.", "")
+		writeAPIError(w, r, 500, "draft-failed", i18n.T(i18n.Lang(r.Context()), "Could not save the draft — your message is still in the editor, so nothing is lost."), "")
 		return
 	}
 	writeJSON(w, r, 200, map[string]string{"saved": "Drafts", "id": id})
@@ -736,21 +736,22 @@ func readComposeAttachments(r *http.Request, maxBytes int64) ([]vmail.Attachment
 	if r.MultipartForm == nil {
 		return nil, ""
 	}
+	lang := i18n.Lang(r.Context())
 	var out []vmail.Attachment
 	var total int64
 	for _, fhs := range r.MultipartForm.File["attachments"] {
 		total += fhs.Size
 		if total > maxBytes {
-			return nil, "Attachments exceed the total size limit."
+			return nil, i18n.T(lang, "Attachments exceed the total size limit.")
 		}
 		f, ferr := fhs.Open()
 		if ferr != nil {
-			return nil, "Could not read an attachment."
+			return nil, i18n.T(lang, "Could not read an attachment.")
 		}
 		data, rerr := io.ReadAll(io.LimitReader(f, maxBytes+1))
 		f.Close()
 		if rerr != nil {
-			return nil, "Could not read an attachment."
+			return nil, i18n.T(lang, "Could not read an attachment.")
 		}
 		out = append(out, vmail.Attachment{
 			Filename:    fhs.Filename,
@@ -793,7 +794,7 @@ func (a *App) senderDisplayName(ctx context.Context, emailAddr string) string {
 
 func (a *App) handleVayuOSMessageAction(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", i18n.T(i18n.Lang(r.Context()), "VayuMail is not active"), "")
 		return
 	}
 	var in struct {
@@ -818,11 +819,11 @@ func (a *App) handleVayuOSMessageAction(w http.ResponseWriter, r *http.Request) 
 		ids = []string{in.ID}
 	}
 	if in.User == "" || len(ids) == 0 {
-		writeAPIError(w, r, 400, "validation_error", "user and at least one id are required", "")
+		writeAPIError(w, r, 400, "validation_error", i18n.T(i18n.Lang(r.Context()), "user and at least one id are required"), "")
 		return
 	}
 	if len(ids) > 500 {
-		writeAPIError(w, r, 400, "too_many", "at most 500 messages per request", "")
+		writeAPIError(w, r, 400, "too_many", i18n.T(i18n.Lang(r.Context()), "at most 500 messages per request"), "")
 		return
 	}
 	// The mailbox engine key. Admins act on the requested mailbox; a non-admin is
@@ -834,7 +835,7 @@ func (a *App) handleVayuOSMessageAction(w http.ResponseWriter, r *http.Request) 
 	mbox := rd.Key()
 	{
 		if mbox == "" {
-			writeAPIError(w, r, http.StatusForbidden, "forbidden", "you can only manage your own mailbox", "")
+			writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "you can only manage your own mailbox"), "")
 			return
 		}
 	}
@@ -1006,8 +1007,9 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 		a.denyAccess(w, r, "/os/vayumail/inbox")
 		return
 	}
+	lang := i18n.Lang(r.Context())
 	if !a.mailRunning() || a.vayuMail.Accounts() == nil {
-		a.writeMailSetup(w, r, "Mail accounts")
+		a.writeMailSetup(w, r, i18n.T(lang, "Mail accounts"))
 		return
 	}
 	domain := a.vayuMail.Config().Domain
@@ -1019,34 +1021,34 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	addrSuffix := `<span class="vm-suffix">@` + esc(domain) + `</span>`
 	if secs := a.mailSecondaryHosts(r.Context()); len(secs) > 0 {
 		var opts strings.Builder
-		opts.WriteString(`<option value="">@` + esc(domain) + ` (primary)</option>`)
+		opts.WriteString(`<option value="">` + esc(i18n.T(lang, "@{domain} (primary)", "domain", domain)) + `</option>`)
 		for _, h := range secs {
 			opts.WriteString(`<option value="` + esc(h) + `">@` + esc(h) + `</option>`)
 		}
-		addrSuffix = `<select class="input" data-a-domain aria-label="Mailbox domain">` + opts.String() + `</select>`
+		addrSuffix = `<select class="input" data-a-domain aria-label="` + esc(i18n.T(lang, "Mailbox domain")) + `">` + opts.String() + `</select>`
 	}
 	// New mailbox rises in a sheet from the page's button (the grammar keeps
 	// forms out of a list's flow). The form is the one the page's script has
 	// always driven; /os/vayumail/accounts#new-mailbox opens it with the page.
 	form := `<form class="vm-acct-new" data-acct-create>
-  <label class="field"><span class="field-label">Address</span>
-    <span class="vm-addr"><input class="input" type="text" data-a-local placeholder="name" required>` + addrSuffix + `</span></label>
-  <label class="field"><span class="field-label">Full name (optional)</span>
-    <input class="input" type="text" data-a-name placeholder="Display name"></label>
-  <label class="field"><span class="field-label">Role</span>
+  <label class="field"><span class="field-label">` + esc(i18n.T(lang, "Address")) + `</span>
+    <span class="vm-addr"><input class="input" type="text" data-a-local placeholder="` + esc(i18n.T(lang, "name")) + `" required>` + addrSuffix + `</span></label>
+  <label class="field"><span class="field-label">` + esc(i18n.T(lang, "Full name (optional)")) + `</span>
+    <input class="input" type="text" data-a-name placeholder="` + esc(i18n.T(lang, "Display name")) + `"></label>
+  <label class="field"><span class="field-label">` + esc(i18n.T(lang, "Role")) + `</span>
     <select class="input" data-a-role>
-      <option value="mailbox" selected>Mailbox: mail only, no console</option>
-      <option value="reviewer">Reviewer: read-only, mail only</option>
-      <option value="author">Author: mail and the author console</option>
-      <option value="editor">Editor: mail and the editor console</option>
-      <option value="administrator">Administrator: the whole console</option>
+      <option value="mailbox" selected>` + esc(i18n.T(lang, "Mailbox: mail only, no console")) + `</option>
+      <option value="reviewer">` + esc(i18n.T(lang, "Reviewer: read-only, mail only")) + `</option>
+      <option value="author">` + esc(i18n.T(lang, "Author: mail and the author console")) + `</option>
+      <option value="editor">` + esc(i18n.T(lang, "Editor: mail and the editor console")) + `</option>
+      <option value="administrator">` + esc(i18n.T(lang, "Administrator: the whole console")) + `</option>
     </select>
-    <span class="field-hint">Mail-only roles see their own mailbox and nothing else.</span></label>
-  <label class="field"><span class="field-label">Quota in MB (0 for none)</span>
+    <span class="field-hint">` + esc(i18n.T(lang, "Mail-only roles see their own mailbox and nothing else.")) + `</span></label>
+  <label class="field"><span class="field-label">` + esc(i18n.T(lang, "Quota in MB (0 for none)")) + `</span>
     <input class="input" type="number" min="0" step="1" data-a-quota value="0"></label>
-  <label class="field"><span class="field-label">Password (8 characters or more)</span>
+  <label class="field"><span class="field-label">` + esc(i18n.T(lang, "Password (8 characters or more)")) + `</span>
     <input class="input" type="password" data-a-pass required></label>
-  <div class="sa-sheet__foot"><span class="field-hint" data-a-status role="status"></span><button class="btn btn--primary" type="submit">Create mailbox</button></div>
+  <div class="sa-sheet__foot"><span class="field-hint" data-a-status role="status"></span><button class="btn btn--primary" type="submit">` + esc(i18n.T(lang, "Create mailbox")) + `</button></div>
 </form>`
 
 	// Account recovery (ADR-0144), above the list: its readiness view is a
@@ -1062,24 +1064,21 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	noun := "mailboxes"
-	if count == 1 {
-		noun = "mailbox"
-	}
+
 	// The mailboxes: a live, swappable list of the mailbox rows. Every inline
 	// action swaps it in place, and the create, 2FA and set-password flows
 	// refresh it, so the page never reloads. Devices waiting for approval
 	// (ADR-0129) follow, polling themselves.
 	list := a.recoveryCardHTML(r, nonce, boxes) +
-		`<span id="vm-accounts-spin" class="htmx-indicator vm-spin" aria-hidden="true">working…</span>` +
+		`<span id="vm-accounts-spin" class="htmx-indicator vm-spin" aria-hidden="true">` + esc(i18n.T(lang, "working…")) + `</span>` +
 		`<div id="vm-accounts-list">` + a.vayuAccountsList(r.Context()) + `</div>` +
 		`<div id="vm-device-card">` + a.vayuDevicesCard(r.Context()) + `</div>`
-	body := string(ui.List(ui.ListPage{Title: "Mail administration", Count: itoaSafe(count) + " " + noun,
-		Actions: ui.HTML(`<button type="button" class="btn btn--primary btn--sm" data-sheet="new-mailbox">` + saIcon("plus") + `New mailbox</button>`),
+	body := string(ui.List(ui.ListPage{Title: i18n.T(lang, "Mail administration"), Count: i18n.T(lang, "{n, plural, one {# mailbox} other {# mailboxes}}", "n", count),
+		Actions: ui.HTML(`<button type="button" class="btn btn--primary btn--sm" data-sheet="new-mailbox">` + saIcon("plus") + esc(i18n.T(lang, "New mailbox")) + `</button>`),
 		Tabs:    saTabsFor(cfg, "mail", "/os/vayumail/accounts")}, ui.HTML(list), "")) +
-		string(ui.Sheet("new-mailbox", "New mailbox", ui.HTML(form)))
+		string(ui.Sheet("new-mailbox", i18n.T(lang, "New mailbox"), ui.HTML(form)))
 	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`
-	writeOSHTML(w, r, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Mail accounts"), "vayuos", cfg, htmpl.HTML(body)))
 }
 
 // handleVayuOSAutoreplyAction saves a mailbox's autoresponder settings and
@@ -1087,7 +1086,7 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 // holder (3cl).
 func (a *App) handleVayuOSAutoreplyAction(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", i18n.T(i18n.Lang(r.Context()), "VayuMail is not active"), "")
 		return
 	}
 	_ = r.ParseForm()
@@ -1142,7 +1141,7 @@ func (a *App) handleVayuOSAutoreplyAction(w http.ResponseWriter, r *http.Request
 // forwarding only.
 func (a *App) handleVayuOSAliasAction(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", i18n.T(i18n.Lang(r.Context()), "VayuMail is not active"), "")
 		return
 	}
 	_ = r.ParseForm()
@@ -1150,12 +1149,12 @@ func (a *App) handleVayuOSAliasAction(w http.ResponseWriter, r *http.Request) {
 	// out under; aliases are addresses on the operator's domain, and only an
 	// administrator gives them out (3cl, 3cs).
 	if op := r.FormValue("op"); !a.isAdminRequest(r) && (op != "forward-set" && op != "name-set" || !a.isMailboxHolder(r, r.FormValue("email"))) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "administrators only"), "")
 		return
 	}
 	if op := r.FormValue("op"); (op == "forward-set" || op == "name-set") &&
 		a.refusedAsPrivate(r, r.FormValue("email"), "change its forwarding or the name it sends under") {
-		writeAPIError(w, r, http.StatusForbidden, "private-mailbox", "This mailbox is private: only its holder can change where it forwards and the name it sends under.", "")
+		writeAPIError(w, r, http.StatusForbidden, "private-mailbox", i18n.T(i18n.Lang(r.Context()), "This mailbox is private: only its holder can change where it forwards and the name it sends under."), "")
 		return
 	}
 	accts := a.vayuMail.Accounts()
@@ -1670,11 +1669,11 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "admin role required"), "")
 		return
 	}
 	if a.vayuMail == nil || a.vayuMail.Accounts() == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", i18n.T(i18n.Lang(r.Context()), "VayuMail is not active"), "")
 		return
 	}
 	var in struct {
@@ -1700,16 +1699,16 @@ func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) 
 	}
 	local := strings.ToLower(strings.TrimSpace(in.Local))
 	if local == "" || strings.ContainsAny(local, "@ \t") {
-		writeAPIError(w, r, 400, "validation_error", "invalid local part", "")
+		writeAPIError(w, r, 400, "validation_error", i18n.T(i18n.Lang(r.Context()), "invalid local part"), "")
 		return
 	}
 	if len(in.Pass) < 8 {
-		writeAPIError(w, r, 400, "validation_error", "password must be at least 8 characters", "")
+		writeAPIError(w, r, 400, "validation_error", i18n.T(i18n.Lang(r.Context()), "password must be at least 8 characters"), "")
 		return
 	}
 	hash, err := auth.HashSecretArgon2id(in.Pass)
 	if err != nil {
-		writeAPIError(w, r, 500, "hash-failed", "could not hash password", "")
+		writeAPIError(w, r, 500, "hash-failed", i18n.T(i18n.Lang(r.Context()), "could not hash password"), "")
 		return
 	}
 	// VayuDomains Stage 3b: a mailbox may be created on the primary (default) or on
@@ -1720,7 +1719,7 @@ func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) 
 	targetHost := a.vayuMail.Config().Domain
 	if in.Domain = strings.ToLower(strings.TrimSpace(in.Domain)); in.Domain != "" && !strings.EqualFold(in.Domain, targetHost) {
 		if !a.acceptsSecondaryMailDomain(in.Domain) {
-			writeAPIError(w, r, 400, "validation_error", "not a mail-enabled domain — enable mail for it under Domains first", "")
+			writeAPIError(w, r, 400, "validation_error", i18n.T(i18n.Lang(r.Context()), "not a mail-enabled domain — enable mail for it under Domains first"), "")
 			return
 		}
 		mailDomain = in.Domain
@@ -1772,11 +1771,11 @@ func (a *App) provisionMailbox(ctx context.Context, mailDomain, local, targetHos
 
 func (a *App) handleVayuOSAccountDelete(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "admin role required"), "")
 		return
 	}
 	if a.vayuMail == nil || a.vayuMail.Accounts() == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", i18n.T(i18n.Lang(r.Context()), "VayuMail is not active"), "")
 		return
 	}
 	var in struct {
@@ -1805,11 +1804,10 @@ func (a *App) handleVayuOSAccountDelete(w http.ResponseWriter, r *http.Request) 
 	// The operator is told the mail was kept and roughly where, without being
 	// handed a server path — an panel message naming a directory on the box is
 	// infrastructure detail leaking into product copy.
-	msg := "The mailbox was deleted. It had no stored mail."
+	lang := i18n.Lang(r.Context())
+	msg := i18n.T(lang, "The mailbox was deleted. It had no stored mail.")
 	if retired != "" {
-		msg = "The mailbox was deleted. Its messages were moved out of the delivery " +
-			"tree and kept, so the address can be reissued without the new holder " +
-			"seeing them."
+		msg = i18n.T(lang, "The mailbox was deleted. Its messages were moved out of the delivery tree and kept, so the address can be reissued without the new holder seeing them.")
 	}
 	writeJSON(w, r, 200, map[string]any{"deleted": true, "retained": retired != "", "detail": msg})
 }
@@ -1819,7 +1817,7 @@ func (a *App) handleVayuOSAccountDelete(w http.ResponseWriter, r *http.Request) 
 // per call; both are honoured if present.
 func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || a.vayuMail.Accounts() == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", i18n.T(i18n.Lang(r.Context()), "VayuMail is not active"), "")
 		return
 	}
 	var in struct {
@@ -1841,7 +1839,7 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if strings.TrimSpace(in.Email) == "" {
-		writeAPIError(w, r, 400, "validation_error", "email is required", "")
+		writeAPIError(w, r, 400, "validation_error", i18n.T(i18n.Lang(r.Context()), "email is required"), "")
 		return
 	}
 	// Account management is admin-only, with ONE exception: a mailbox holder may
@@ -1852,7 +1850,7 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 		onlySignature := (in.Signature != nil || in.SignByDefault != nil) && in.Pass == "" && in.Active == nil &&
 			strings.TrimSpace(in.Role) == "" && in.QuotaMB == nil && in.RetentionDays == nil
 		if own == "" || !strings.EqualFold(own, in.Email) || !onlySignature {
-			writeAPIError(w, r, http.StatusForbidden, "forbidden", "you can only edit your own signature", "")
+			writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "you can only edit your own signature"), "")
 			return
 		}
 	}
@@ -1883,7 +1881,7 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 	// and keeps is its holder's.
 	if (in.Signature != nil || in.SignByDefault != nil || in.RetentionDays != nil) &&
 		a.refusedAsPrivate(r, in.Email, "change its signature or how long it keeps mail") {
-		writeAPIError(w, r, http.StatusForbidden, "private-mailbox", "This mailbox is private: only its holder can change its signature and what it keeps.", "")
+		writeAPIError(w, r, http.StatusForbidden, "private-mailbox", i18n.T(i18n.Lang(r.Context()), "This mailbox is private: only its holder can change its signature and what it keeps."), "")
 		return
 	}
 	if in.Signature != nil {
@@ -1923,7 +1921,7 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 		// compromised mailbox believed they had cut the attacker off, and had not.
 		deps, ok := a.mailResetDepsFor()
 		if !ok {
-			writeAPIError(w, r, 503, "unavailable", "VayuMail is not running", "")
+			writeAPIError(w, r, 503, "unavailable", i18n.T(i18n.Lang(r.Context()), "VayuMail is not running"), "")
 			return
 		}
 		out, err := applyMailPasswordReset(r.Context(), deps, in.Email, in.Pass,
@@ -1973,11 +1971,11 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 // sign-in without affecting the passwordless magic-link path.
 func (a *App) handleVayuOSAccountTOTP(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "admin role required"), "")
 		return
 	}
 	if a.vayuMail == nil || a.vayuMail.Accounts() == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", i18n.T(i18n.Lang(r.Context()), "VayuMail is not active"), "")
 		return
 	}
 	var in struct {
@@ -1991,7 +1989,7 @@ func (a *App) handleVayuOSAccountTOTP(w http.ResponseWriter, r *http.Request) {
 	}
 	email := strings.ToLower(strings.TrimSpace(in.Email))
 	if email == "" {
-		writeAPIError(w, r, 400, "validation_error", "email is required", "")
+		writeAPIError(w, r, 400, "validation_error", i18n.T(i18n.Lang(r.Context()), "email is required"), "")
 		return
 	}
 	// Stripping the second factor from a mailbox that can sign in to the console
@@ -2005,7 +2003,7 @@ func (a *App) handleVayuOSAccountTOTP(w http.ResponseWriter, r *http.Request) {
 	// A private mailbox's second factor is its holder's: enrolling one for it
 	// hands the administrator the code.
 	if a.refusedAsPrivate(r, email, "change its two-step sign-in") {
-		writeAPIError(w, r, http.StatusForbidden, "private-mailbox", "This mailbox is private: only its holder can change its sign-in.", "")
+		writeAPIError(w, r, http.StatusForbidden, "private-mailbox", i18n.T(i18n.Lang(r.Context()), "This mailbox is private: only its holder can change its sign-in."), "")
 		return
 	}
 	accts := a.vayuMail.Accounts()
@@ -2013,7 +2011,7 @@ func (a *App) handleVayuOSAccountTOTP(w http.ResponseWriter, r *http.Request) {
 	case "begin":
 		secret, err := totp.GenerateSecret()
 		if err != nil {
-			writeAPIError(w, r, 500, "totp-failed", "could not generate a secret", "")
+			writeAPIError(w, r, 500, "totp-failed", i18n.T(i18n.Lang(r.Context()), "could not generate a secret"), "")
 			return
 		}
 		if err := accts.SetTOTPSecret(r.Context(), email, secret); err != nil {
@@ -2029,17 +2027,17 @@ func (a *App) handleVayuOSAccountTOTP(w http.ResponseWriter, r *http.Request) {
 	case "verify":
 		secret, _ := accts.TOTPStatus(r.Context(), email)
 		if secret == "" {
-			writeAPIError(w, r, 400, "totp-failed", "start enrolment first", "")
+			writeAPIError(w, r, 400, "totp-failed", i18n.T(i18n.Lang(r.Context()), "start enrolment first"), "")
 			return
 		}
 		step, ok := totp.MatchAt(secret, in.Code, time.Now())
 		if !ok {
-			writeAPIError(w, r, 400, "totp-invalid", "that code is not valid — check the time on the device", "")
+			writeAPIError(w, r, 400, "totp-invalid", i18n.T(i18n.Lang(r.Context()), "that code is not valid — check the time on the device"), "")
 			return
 		}
 		// Single-use (audit): consume the enabling code like any other.
 		if consumed, cerr := accts.ConsumeTOTPStep(r.Context(), email, int64(step)); cerr != nil || !consumed {
-			writeAPIError(w, r, 400, "totp-invalid", "that code has already been used — try the next one", "")
+			writeAPIError(w, r, 400, "totp-invalid", i18n.T(i18n.Lang(r.Context()), "that code has already been used — try the next one"), "")
 			return
 		}
 		if err := accts.EnableTOTP(r.Context(), email); err != nil {
@@ -2054,7 +2052,7 @@ func (a *App) handleVayuOSAccountTOTP(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, r, 200, map[string]bool{"enabled": false})
 	default:
-		writeAPIError(w, r, 400, "validation_error", "unknown action", "")
+		writeAPIError(w, r, 400, "validation_error", i18n.T(i18n.Lang(r.Context()), "unknown action"), "")
 	}
 }
 
@@ -2189,12 +2187,13 @@ func (a *App) appPasswordMailboxes(r *http.Request) []string {
 // create form is a sheet beside it (vayuAppPasswordSheet), so a swap never
 // takes the open form away.
 func (a *App) vayuAppPasswordsCard(r *http.Request) string {
+	lang := i18n.Lang(r.Context())
 	if a.vayuMail == nil || a.vayuMail.Accounts() == nil {
-		return `<p class="muted text-sm">Mailbox storage is not available yet.</p>`
+		return `<p class="muted text-sm">` + esc(i18n.T(lang, "Mailbox storage is not available yet.")) + `</p>`
 	}
 	emails := a.appPasswordMailboxes(r)
 	if len(emails) == 0 {
-		return `<p class="muted text-sm">No active mailboxes yet. Make one under <a href="/os/vayumail/accounts">Accounts</a>.</p>`
+		return `<p class="muted text-sm">` + escLinked(i18n.T(lang, "No active mailboxes yet. Make one under {link}.", "link", linkMark), "/os/vayumail/accounts", i18n.T(lang, "Accounts")) + `</p>`
 	}
 	post := ` hx-target="#vm-apppw-card" hx-swap="innerHTML"`
 	var rows [][]ui.HTML
@@ -2203,12 +2202,12 @@ func (a *App) vayuAppPasswordsCard(r *http.Request) string {
 			rows = append(rows, []ui.HTML{
 				ui.HTML(`<span class="mono">` + html.EscapeString(p.Email) + `</span>`),
 				ui.Text(p.Label),
-				ui.Text(p.CreatedAt.Format("2 Jan 2006")),
-				ui.HTML(`<button type="button" class="btn btn--sm btn--ghost" hx-post="/os/vayumail/accounts/apppassword/delete"` + post + hxVals("email", p.Email, "id", strconv.FormatInt(p.ID, 10)) + ` hx-confirm="Revoke this app password? Devices signed in with it stop syncing immediately.">Revoke</button>`),
+				ui.Text(i18n.Date(lang, p.CreatedAt, i18n.DayMonthYearShort)),
+				ui.HTML(`<button type="button" class="btn btn--sm btn--ghost" hx-post="/os/vayumail/accounts/apppassword/delete"` + post + hxVals("email", p.Email, "id", strconv.FormatInt(p.ID, 10)) + ` hx-confirm="` + esc(i18n.T(lang, "Revoke this app password? Devices signed in with it stop syncing immediately.")) + `">` + esc(i18n.T(lang, "Revoke")) + `</button>`),
 			})
 		}
 	}
-	return string(ui.Table([]string{"Mailbox", "Device", "Created", ""}, rows, "No app passwords yet. One lets a device sign in without the mailbox password."))
+	return string(ui.Table([]string{i18n.T(lang, "Mailbox"), i18n.T(lang, "Device"), i18n.T(lang, "Created"), ""}, rows, i18n.T(lang, "No app passwords yet. One lets a device sign in without the mailbox password.")))
 }
 
 // vayuAppPasswordSheet is the create form, in the sheet the section's button
@@ -2219,16 +2218,17 @@ func (a *App) vayuAppPasswordSheet(r *http.Request) string {
 	if a.vayuMail == nil || a.vayuMail.Accounts() == nil || len(emails) == 0 {
 		return ""
 	}
+	lang := i18n.Lang(r.Context())
 	var b strings.Builder
 	b.WriteString(`<form class="vm-acct-new" data-apppw-create hx-post="/os/vayumail/accounts/apppassword" hx-target="#vm-apppw-card" hx-swap="innerHTML">`)
-	b.WriteString(`<label class="field"><span class="field-label">Mailbox</span><select class="input" name="email">`)
+	b.WriteString(`<label class="field"><span class="field-label">` + esc(i18n.T(lang, "Mailbox")) + `</span><select class="input" name="email">`)
 	for _, em := range emails {
 		b.WriteString(`<option value="` + html.EscapeString(em) + `">` + html.EscapeString(em) + `</option>`)
 	}
 	b.WriteString(`</select></label>`)
-	b.WriteString(`<label class="field"><span class="field-label">Which device is it for?</span><input class="input" type="text" name="label" placeholder="VayuMail Mobile" maxlength="64"></label>`)
-	b.WriteString(`<div class="sa-sheet__foot"><span class="field-hint">Shown once, then stored only as a hash.</span><button class="btn btn--primary" type="submit">Create app password</button></div></form>`)
-	return string(ui.Sheet("new-app-password", "New app password", ui.HTML(b.String())))
+	b.WriteString(`<label class="field"><span class="field-label">` + esc(i18n.T(lang, "Which device is it for?")) + `</span><input class="input" type="text" name="label" placeholder="VayuMail Mobile" maxlength="64"></label>`)
+	b.WriteString(`<div class="sa-sheet__foot"><span class="field-hint">` + esc(i18n.T(lang, "Shown once, then stored only as a hash.")) + `</span><button class="btn btn--primary" type="submit">` + esc(i18n.T(lang, "Create app password")) + `</button></div></form>`)
+	return string(ui.Sheet("new-app-password", i18n.T(lang, "New app password"), ui.HTML(b.String())))
 }
 
 // handleVayuOSAppPasswordCreate mints a new app password for a mailbox and
@@ -2237,13 +2237,13 @@ func (a *App) vayuAppPasswordSheet(r *http.Request) string {
 // exists solely in this one response.
 func (a *App) handleVayuOSAppPasswordCreate(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", i18n.T(i18n.Lang(r.Context()), "VayuMail is not active"), "")
 		return
 	}
 	_ = r.ParseForm()
 	email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
 	if !a.canManageAppPassword(r, email) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "you can only manage app passwords for your own mailbox", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "you can only manage app passwords for your own mailbox"), "")
 		return
 	}
 	label := strings.TrimSpace(r.FormValue("label"))
@@ -2254,6 +2254,7 @@ func (a *App) handleVayuOSAppPasswordCreate(w http.ResponseWriter, r *http.Reque
 		label = label[:64]
 	}
 	accts := a.vayuMail.Accounts()
+	lang := i18n.Lang(r.Context())
 
 	banner := ""
 	var opErr error
@@ -2261,21 +2262,21 @@ func (a *App) handleVayuOSAppPasswordCreate(w http.ResponseWriter, r *http.Reque
 	case accts.HashFor(r.Context(), email) == "":
 		// Guard: a credential for a non-account address must never exist — the
 		// auth bridge accepts any address with a matching app-password hash.
-		opErr = errors.New("no active mailbox with that address")
+		opErr = errors.New(i18n.T(lang, "There is no active mailbox with that address."))
 	case len(accts.AppPasswordCredentials(r.Context(), email)) >= appPasswordMaxPerMailbox:
 		// Counts device credentials too — the auth path reads back at most
 		// appPasswordMaxPerMailbox rows, so any row beyond the cap would be a
 		// credential that can never authenticate.
-		opErr = errors.New("app-password limit reached for this mailbox — revoke an unused one first")
+		opErr = errors.New(i18n.T(lang, "This mailbox has as many app passwords as it can hold: revoke an unused one first."))
 	default:
 		secret, err := generateAppPasswordSecret()
 		if err != nil {
-			opErr = errors.New("could not generate a secret")
+			opErr = errors.New(i18n.T(lang, "The password could not be made. Try again."))
 			break
 		}
 		hash, err := auth.HashSecretArgon2id(secret)
 		if err != nil {
-			opErr = errors.New("could not hash the secret")
+			opErr = errors.New(i18n.T(lang, "The password could not be stored. Try again."))
 			break
 		}
 		if _, err := accts.CreateAppPassword(r.Context(), email, label, hash); err != nil {
@@ -2291,13 +2292,14 @@ func (a *App) handleVayuOSAppPasswordCreate(w http.ResponseWriter, r *http.Reque
 		// html.EscapeString called directly, not through a local alias: the label
 		// and address come from the form, and CodeQL credits the escaper only
 		// when it can see the call (go/reflected-xss).
-		banner = string(ui.Callout("ok", ui.HTML(`<strong>Copy this app password now.</strong> It is shown only once and stored only as a hash: if it is lost, revoke it and make another.`+
+		banner = string(ui.Callout("ok", ui.HTML(`<strong>`+esc(i18n.T(lang, "Copy this app password now."))+`</strong> `+esc(i18n.T(lang, "It is shown only once and stored only as a hash: if it is lost, revoke it and make another."))+
 			`<pre class="code-block code-block--wrap vm-apppw-secret">`+html.EscapeString(grouped)+`</pre>`+
 			`<span class="vm-row vm-row--tight">`+
-			`<button type="button" class="btn btn--sm" data-apppw-copy="`+html.EscapeString(grouped)+`">Copy password</button>`+
-			`<button type="button" class="btn btn--sm btn--ghost" data-apppw-save="`+html.EscapeString(grouped)+`" data-apppw-label="`+html.EscapeString(label)+`" data-apppw-email="`+html.EscapeString(email)+`">Download .txt</button>`+
+			`<button type="button" class="btn btn--sm" data-apppw-copy="`+html.EscapeString(grouped)+`">`+esc(i18n.T(lang, "Copy password"))+`</button>`+
+			`<button type="button" class="btn btn--sm btn--ghost" data-apppw-save="`+html.EscapeString(grouped)+`" data-apppw-label="`+html.EscapeString(label)+`" data-apppw-email="`+html.EscapeString(email)+`">`+esc(i18n.T(lang, "Download .txt"))+`</button>`+
 			`</span>`+
-			`<span class="muted text-xs">Sign in to <span class="mono">`+html.EscapeString(email)+`</span> (`+html.EscapeString(label)+`) with it as the password, in the VayuMail app or any mail app. The dashes are optional.</span>`)))
+			`<span class="muted text-xs">`+escFill(i18n.T(lang, "Sign in to {address} ({device}) with it as the password, in the VayuMail app or any mail app. The dashes are optional.", "address", htmlMark(0), "device", htmlMark(1)),
+			`<span class="mono">`+html.EscapeString(email)+`</span>`, html.EscapeString(label))+`</span>`)))
 	}
 	card := a.vayuAppPasswordsCard(r)
 	if opErr != nil {
@@ -2310,13 +2312,13 @@ func (a *App) handleVayuOSAppPasswordCreate(w http.ResponseWriter, r *http.Reque
 // mailbox) and returns the refreshed card (HTMX swap).
 func (a *App) handleVayuOSAppPasswordDelete(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", i18n.T(i18n.Lang(r.Context()), "VayuMail is not active"), "")
 		return
 	}
 	_ = r.ParseForm()
 	email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
 	if !a.canManageAppPassword(r, email) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "you can only manage app passwords for your own mailbox", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "you can only manage app passwords for your own mailbox"), "")
 		return
 	}
 	var opErr error
@@ -2346,14 +2348,14 @@ func (a *App) handleVayuOSAppPasswordDelete(w http.ResponseWriter, r *http.Reque
 
 // deviceStatusChip renders a device's approval state. Pending is the state
 // that needs operator action, so it gets its own prominent chip style.
-func deviceStatusChip(status string) string {
+func deviceStatusChip(lang, status string) string {
 	switch status {
 	case vmail.DeviceStatusApproved:
-		return `<span class="badge badge--ok">Approved</span>`
+		return `<span class="badge badge--ok">` + esc(i18n.T(lang, "Approved")) + `</span>`
 	case vmail.DeviceStatusBlocked:
-		return `<span class="badge badge--danger">Blocked</span>`
+		return `<span class="badge badge--danger">` + esc(i18n.T(lang, "Blocked")) + `</span>`
 	default:
-		return `<span class="badge badge--pending">Pending approval</span>`
+		return `<span class="badge badge--pending">` + esc(i18n.T(lang, "Pending approval")) + `</span>`
 	}
 }
 
@@ -2362,6 +2364,7 @@ func deviceStatusChip(status string) string {
 // (label, platform, status, created, last used) with Approve/Block/Remove.
 // All actions POST /os/vayumail/devices/action and swap this card in place.
 func (a *App) vayuDevicesCard(ctx context.Context) string {
+	lang := i18n.Lang(ctx)
 	accts := a.vayuMail.Accounts()
 	accs, _ := accts.List(ctx)
 	devices := accts.ListDevices(ctx)
@@ -2375,58 +2378,54 @@ func (a *App) vayuDevicesCard(ctx context.Context) string {
 		}
 	}
 	var b strings.Builder
-	b.WriteString(`<section class="vm-devices"><div class="vm-card-head"><h2 class="vm-devices__title">Devices</h2><span class="vm-live" title="Updates automatically">● live</span></div>`)
+	b.WriteString(`<section class="vm-devices"><div class="vm-card-head"><h2 class="vm-devices__title">` + esc(i18n.T(lang, "Devices")) + `</h2><span class="vm-live" title="` + esc(i18n.T(lang, "Updates automatically")) + `">● ` + esc(i18n.T(lang, "live")) + `</span></div>`)
 	// Self-refresh: a hidden poller re-fetches this card so a device that registers
 	// out-of-band (from the mobile app) surfaces as "pending approval" within
 	// seconds — no full-page reload (the redesign's headline fix).
 	b.WriteString(`<div class="vm-poller" aria-hidden="true" hx-get="/os/vayumail/devices/fragment" hx-trigger="every 15s" hx-target="#vm-device-card" hx-swap="innerHTML"></div>`)
 	if pending > 0 {
-		noun := "device is"
-		if pending > 1 {
-			noun = "devices are"
-		}
-		b.WriteString(`<div class="vm-attention" role="status"><strong>` + strconv.Itoa(pending) + `</strong> ` + noun + ` awaiting approval — review and Approve or Block below.</div>`)
+		b.WriteString(`<div class="vm-attention" role="status">` + esc(i18n.T(lang, "{n, plural, one {# device is awaiting approval — review and Approve or Block below.} other {# devices are awaiting approval — review and Approve or Block below.}}", "n", pending)) + `</div>`)
 	}
-	b.WriteString(`<p class="text-sm">A <strong>new device</strong> waits here for your approval before it syncs any mail.` +
-		string(ui.Tip("It cannot sync mail even with the correct password until you approve it. With approval required, the mailbox password alone never syncs mail over IMAP, POP3 or SMTP, so a stolen password is useless to an attacker's device.")) + `</p>`)
+	b.WriteString(`<p class="text-sm">` + esc(i18n.T(lang, "A new device waits here for your approval before it syncs any mail.")) +
+		string(ui.Tip(i18n.T(lang, "It cannot sync mail even with the correct password until you approve it. With approval required, the mailbox password alone never syncs mail over IMAP, POP3 or SMTP, so a stolen password is useless to an attacker's device."))) + `</p>`)
 
 	// Registered devices — pending first (they need action).
-	b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Mailbox</th><th>Device</th><th>Platform</th><th>Status</th><th>Registered</th><th>Last used</th><th></th></tr></thead><tbody>`)
+	b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>` + esc(i18n.T(lang, "Mailbox")) + `</th><th>` + esc(i18n.T(lang, "Device")) + `</th><th>` + esc(i18n.T(lang, "Platform")) + `</th><th>` + esc(i18n.T(lang, "Status")) + `</th><th>` + esc(i18n.T(lang, "Registered")) + `</th><th>` + esc(i18n.T(lang, "Last used")) + `</th><th></th></tr></thead><tbody>`)
 	if len(devices) == 0 {
-		b.WriteString(`<tr><td colspan="7" class="muted">No devices registered yet. The VayuMail app registers itself on first sign-in.</td></tr>`)
+		b.WriteString(`<tr><td colspan="7" class="muted">` + esc(i18n.T(lang, "No devices registered yet. The VayuMail app registers itself on first sign-in.")) + `</td></tr>`)
 	}
 	for _, d := range devices {
-		lastUsed := `<span class="muted">never</span>`
+		lastUsed := `<span class="muted">` + esc(i18n.T(lang, "never")) + `</span>`
 		if !d.LastUsedAt.IsZero() {
-			lastUsed = d.LastUsedAt.Format("2006-01-02 15:04")
+			lastUsed = esc(i18n.Date(lang, config.InSite(d.LastUsedAt), i18n.DayMonthYearShortAt))
 		}
 		actions := ""
 		if d.Status != vmail.DeviceStatusApproved {
-			actions += `<button type="button" class="btn btn--primary btn--sm"` + post + hxVals("op", "approve", "email", d.Email, "id", strconv.FormatInt(d.ID, 10)) + `>Approve</button>`
+			actions += `<button type="button" class="btn btn--primary btn--sm"` + post + hxVals("op", "approve", "email", d.Email, "id", strconv.FormatInt(d.ID, 10)) + `>` + esc(i18n.T(lang, "Approve")) + `</button>`
 		}
 		if d.Status != vmail.DeviceStatusBlocked {
-			actions += `<button type="button" class="btn btn--sm"` + post + hxVals("op", "block", "email", d.Email, "id", strconv.FormatInt(d.ID, 10)) + `>Block</button>`
+			actions += `<button type="button" class="btn btn--sm"` + post + hxVals("op", "block", "email", d.Email, "id", strconv.FormatInt(d.ID, 10)) + `>` + esc(i18n.T(lang, "Block")) + `</button>`
 		}
-		actions += `<button type="button" class="btn btn--sm btn--danger"` + post + hxVals("op", "remove", "email", d.Email, "id", strconv.FormatInt(d.ID, 10)) + ` hx-confirm="Remove this device? It stops syncing immediately and must register again.">Remove</button>`
-		b.WriteString(`<tr><td class="mono">` + html.EscapeString(d.Email) + `</td><td>` + html.EscapeString(d.Label) + `</td><td class="muted text-sm">` + html.EscapeString(d.Platform) + `</td><td>` + deviceStatusChip(d.Status) + `</td><td class="muted text-sm">` + d.CreatedAt.Format("2006-01-02") + `</td><td class="muted text-sm">` + lastUsed + `</td><td class="vm-row">` + actions + `</td></tr>`)
+		actions += `<button type="button" class="btn btn--sm btn--danger"` + post + hxVals("op", "remove", "email", d.Email, "id", strconv.FormatInt(d.ID, 10)) + ` hx-confirm="` + esc(i18n.T(lang, "Remove this device? It stops syncing immediately and must register again.")) + `">` + esc(i18n.T(lang, "Remove")) + `</button>`
+		b.WriteString(`<tr><td class="mono">` + html.EscapeString(d.Email) + `</td><td>` + html.EscapeString(d.Label) + `</td><td class="muted text-sm">` + html.EscapeString(d.Platform) + `</td><td>` + deviceStatusChip(lang, d.Status) + `</td><td class="muted text-sm">` + esc(i18n.Date(lang, config.InSite(d.CreatedAt), i18n.DayMonthYearShort)) + `</td><td class="muted text-sm">` + lastUsed + `</td><td class="vm-row">` + actions + `</td></tr>`)
 	}
 	b.WriteString(`</tbody></table></div>`)
 
 	// Per-mailbox enforcement toggle. Turning it OFF restores password sign-in
 	// on the mail protocols for that mailbox (devices are auto-approved).
-	b.WriteString(`<h3 class="vm-devices__sub">Require device approval</h3>`)
-	b.WriteString(`<p class="muted text-sm">Recommended on.` +
-		string(ui.Tip("When required, only approved devices sync mail; the mailbox password still signs into the web console and registers new devices. Turning it off lets the mailbox password sign in from any mail app, unapproved.")) + `</p>`)
-	b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Mailbox</th><th>Device approval</th><th></th></tr></thead><tbody>`)
+	b.WriteString(`<h3 class="vm-devices__sub">` + esc(i18n.T(lang, "Require device approval")) + `</h3>`)
+	b.WriteString(`<p class="muted text-sm">` + esc(i18n.T(lang, "Recommended on.")) +
+		string(ui.Tip(i18n.T(lang, "When required, only approved devices sync mail; the mailbox password still signs into the web console and registers new devices. Turning it off lets the mailbox password sign in from any mail app, unapproved."))) + `</p>`)
+	b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>` + esc(i18n.T(lang, "Mailbox")) + `</th><th>` + esc(i18n.T(lang, "Device approval")) + `</th><th></th></tr></thead><tbody>`)
 	if len(accs) == 0 {
-		b.WriteString(`<tr><td colspan="3" class="muted">No mail accounts yet.</td></tr>`)
+		b.WriteString(`<tr><td colspan="3" class="muted">` + esc(i18n.T(lang, "No mail accounts yet.")) + `</td></tr>`)
 	}
 	for _, ac := range accs {
-		state := `<span class="badge badge--ok">Required</span>`
-		btn := `<button type="button" class="btn btn--sm"` + post + hxVals("op", "require-set", "email", ac.Email, "on", "0") + ` hx-confirm="Allow the mailbox password to sync mail from ANY device without approval?">Turn off</button>`
+		state := `<span class="badge badge--ok">` + esc(i18n.T(lang, "Required")) + `</span>`
+		btn := `<button type="button" class="btn btn--sm"` + post + hxVals("op", "require-set", "email", ac.Email, "on", "0") + ` hx-confirm="` + esc(i18n.T(lang, "Allow the mailbox password to sync mail from ANY device without approval?")) + `">` + esc(i18n.T(lang, "Turn off")) + `</button>`
 		if !ac.RequireDeviceApproval {
-			state = `<span class="badge badge--warn">off — password syncs anywhere</span>`
-			btn = `<button type="button" class="btn btn--primary btn--sm"` + post + hxVals("op", "require-set", "email", ac.Email, "on", "1") + `>Require approval</button>`
+			state = `<span class="badge badge--warn">` + esc(i18n.T(lang, "off — password syncs anywhere")) + `</span>`
+			btn = `<button type="button" class="btn btn--primary btn--sm"` + post + hxVals("op", "require-set", "email", ac.Email, "on", "1") + `>` + esc(i18n.T(lang, "Require approval")) + `</button>`
 		}
 		b.WriteString(`<tr><td class="mono">` + html.EscapeString(ac.Email) + `</td><td>` + state + `</td><td>` + btn + `</td></tr>`)
 	}
@@ -2440,11 +2439,11 @@ func (a *App) vayuDevicesCard(ctx context.Context) string {
 // mailbox holders cannot approve their own devices.
 func (a *App) handleVayuOSDeviceAction(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", i18n.T(i18n.Lang(r.Context()), "VayuMail is not active"), "")
 		return
 	}
 	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "administrators only"), "")
 		return
 	}
 	_ = r.ParseForm()
@@ -2454,7 +2453,7 @@ func (a *App) handleVayuOSDeviceAction(w http.ResponseWriter, r *http.Request) {
 	// Approving a device for a private mailbox lets a sign-in through that its
 	// holder did not let through; its devices are its holder's.
 	if a.refusedAsPrivate(r, email, "change its devices") {
-		writeAPIError(w, r, http.StatusForbidden, "private-mailbox", "This mailbox is private: only its holder can change its devices.", "")
+		writeAPIError(w, r, http.StatusForbidden, "private-mailbox", i18n.T(i18n.Lang(r.Context()), "This mailbox is private: only its holder can change its devices."), "")
 		return
 	}
 	var opErr error
