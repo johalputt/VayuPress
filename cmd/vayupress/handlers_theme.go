@@ -140,6 +140,24 @@ func (a *App) handleHalcyonAsset(name string) http.HandlerFunc {
 	}
 }
 
+// handleHalcyonSiteCSS serves the one stylesheet a Halcyon page links, for
+// the site the request is for (render.HalcyonSiteCSS). A page names the
+// version it was drawn with; asked for that version, these bytes are kept a
+// year. A page drawn before the site's colours or custom CSS changed asks for
+// the old one and is sent today's bytes, kept a minute, so no reader keeps a
+// stylesheet the site has moved on from.
+func (a *App) handleHalcyonSiteCSS(w http.ResponseWriter, r *http.Request) {
+	body, ver := render.HalcyonSiteCSS(a.requestSiteSettings(r))
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if r.URL.Query().Get("v") == ver {
+		w.Header().Set("Cache-Control", "public, immutable, max-age=31536000")
+	} else {
+		w.Header().Set("Cache-Control", "public, max-age=60")
+	}
+	_, _ = w.Write(body)
+}
+
 // handleThemeToggleJS serves the public sun/moon theme switcher script.
 // Same-origin static asset → satisfies `script-src 'self'` without a nonce.
 func (a *App) handleThemeToggleJS(w http.ResponseWriter, r *http.Request) {

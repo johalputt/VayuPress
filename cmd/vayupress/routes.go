@@ -250,6 +250,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Get("/static/css/"+name, a.handleHalcyonAsset(name))
 	}
 	r.Get("/static/js/halcyon.js", a.handleHalcyonAsset("halcyon.js"))
+	r.Get("/static/css/halcyon-site.css", a.handleHalcyonSiteCSS)
 	r.Get("/static/css/{file}", func(w http.ResponseWriter, r *http.Request) {
 		canon, ok := cssAllowlist[chi.URLParam(r, "file")]
 		if !ok {

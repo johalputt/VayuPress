@@ -102,6 +102,27 @@ func halcyonCSSHref() string {
 	return "/static/css/halcyon.css?v=" + halcyonAssets["halcyon.css"].ver
 }
 
+// HalcyonSiteCSS is the one stylesheet a Halcyon page waits on before it is
+// drawn: the theme's rules, then the site's own (its colours, its theme's
+// tokens and its custom CSS, what /theme.css serves), minified. Linked as two,
+// they were two requests ahead of the first paint, and on a phone each is a
+// round trip: PageSpeed counted /theme.css, 2 KB, at 300 ms, more than the
+// theme's 12 KB. The site's part comes last, so its custom CSS still wins as
+// it did when /theme.css was linked after the theme, and a fault in it (an
+// unclosed comment or block) can only swallow what follows it: nothing.
+// ver is the hash of the bytes, so the page's link changes with them.
+func HalcyonSiteCSS(s SiteSettings) (body []byte, ver string) {
+	own := halcyonAssets["halcyon.css"].body
+	body = append(append(make([]byte, 0, len(own)+4096), own...), MinifyCSS([]byte(ThemeCSSFor(s)))...)
+	sum := sha256.Sum256(body)
+	return body, hex.EncodeToString(sum[:5])
+}
+
+func halcyonSiteCSSHref(s SiteSettings) string {
+	_, ver := HalcyonSiteCSS(s)
+	return "/static/css/halcyon-site.css?v=" + ver
+}
+
 // HalcyonMembersHead returns the head links a member page takes under
 // Halcyon: the fonts it sets first, the theme's stylesheet, then the member
 // pages' own, and the reader's saved appearance applied before paint.
@@ -237,7 +258,7 @@ func halcyonChrome(s SiteSettings, cfg theme.HalcyonConfig, kind string) hChrome
 		OGImage:        absoluteURL(config.Cfg.Domain, s.OGImage),
 		Version:        Version,
 		Analytics:      kind != "notfound",
-		CSSHref:        halcyonCSSHref(),
+		CSSHref:        halcyonSiteCSSHref(s),
 		PrefsJS:        template.JS(halcyonPrefsJS), //nolint:gosec // G203: a constant, admitted by its hash
 		FontPreload:    template.HTML(halcyonFontPreload),
 		JSHref:         "/static/js/halcyon.js?v=" + halcyonAssets["halcyon.js"].ver,

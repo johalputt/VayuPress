@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -113,7 +114,7 @@ const halcyonShared = `
 <link rel="prev" href="{{.PrevURL}}">{{end}}{{if .NextURL}}
 <link rel="next" href="{{.NextURL}}">{{end}}
 {{.ArticleHead}}
-{{.FontPreload}}<link rel="stylesheet" href="{{.CSSHref}}"><link rel="stylesheet" href="/theme.css">
+{{.FontPreload}}<link rel="stylesheet" href="{{.CSSHref}}">
 <script>{{.PrefsJS}}</script>
 {{.HeadMeta}}{{pwaHead}}{{pwaJS}}{{.JSONLD}}
 <link rel="alternate" type="application/rss+xml" title="{{.SiteName}}" href="/feed.xml">
@@ -710,17 +711,20 @@ type HalcyonPreview struct {
 // the real page each setting changes. page is home, topic, article, search or
 // signin.
 //
-// cssHref is the stylesheet being edited, which takes the place of the live
-// /theme.css. The reader's saved preferences are not applied (the preview
+// cssHref is the stylesheet being edited, which takes the place of the site's
+// part of the live stylesheet: the preview links the theme's rules alone,
+// then it. The reader's saved preferences are not applied (the preview
 // shows the site's defaults as they are being set) and the analytics beacon
 // is left out, so a preview is never counted as a reader's visit.
+var halcyonSiteCSSLink = regexp.MustCompile(`<link rel="stylesheet" href="/static/css/halcyon-site\.css\?v=[0-9a-f]+">`)
+
 func RenderHalcyonPreview(page string, cfg theme.HalcyonConfig, p HalcyonPreview, cssHref string) (string, error) {
 	out, err := renderHalcyonPreviewPage(page, cfg, p)
 	if err != nil {
 		return "", err
 	}
-	out = strings.Replace(out, `<link rel="stylesheet" href="/theme.css">`,
-		`<link id="vayu-theme-css" rel="stylesheet" href="`+template.HTMLEscapeString(cssHref)+`">`, 1)
+	out = halcyonSiteCSSLink.ReplaceAllLiteralString(out, `<link rel="stylesheet" href="`+halcyonCSSHref()+`">`+
+		`<link id="vayu-theme-css" rel="stylesheet" href="`+template.HTMLEscapeString(cssHref)+`">`)
 	out = strings.Replace(out, `<script>`+halcyonPrefsJS+`</script>`, ``, 1)
 	out = strings.Replace(out, `class="h"`, `class="h js"`, 1)
 	out = strings.Replace(out, `<script defer src="/static/vp-analytics.js"></script>`, ``, 1)

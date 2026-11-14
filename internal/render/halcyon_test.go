@@ -862,3 +862,64 @@ func TestHalcyonDrawsTheAuthorsPictureAndWholeBio(t *testing.T) {
 		t.Error("the author box does not carry the whole bio")
 	}
 }
+
+// ── One stylesheet ahead of the first paint ──────────────────────────────────
+
+// A Halcyon page waits on one stylesheet: the theme's rules, then the site's
+// own. Its address changes when the site's part does, so the year it is kept
+// for cannot hold a reader to colours or custom CSS the site has changed.
+func TestAHalcyonPageLinksOneStylesheetThatCarriesTheSite(t *testing.T) {
+	withHalcyon(t, nil)
+	prev := GetActiveSettings()
+	t.Cleanup(func() { SetActiveSettings(prev) })
+	SetActiveSettings(SiteSettings{Name: "Acme", CustomCSS: ".h-mark-one{color:red}"})
+
+	out := halcyonArticle(t, "<p>x</p>")
+	links := regexp.MustCompile(`<link rel="stylesheet" href="([^"]+)">`).FindAllStringSubmatch(out, -1)
+	if len(links) != 1 {
+		t.Fatalf("a Halcyon page links %d stylesheets ahead of its first paint, want one: %v", len(links), links)
+	}
+	body, ver := HalcyonSiteCSS(GetActiveSettings())
+	if want := "/static/css/halcyon-site.css?v=" + ver; links[0][1] != want {
+		t.Errorf("the page links %s, want %s", links[0][1], want)
+	}
+	own, _, _ := HalcyonAsset("halcyon.css")
+	if !bytes.HasPrefix(body, own) {
+		t.Error("the stylesheet does not open with the theme's rules")
+	}
+	if !bytes.HasSuffix(body, []byte(".h-mark-one{color:red}")) {
+		t.Error("the stylesheet does not end with the site's custom CSS, so it would not win over the theme's rules")
+	}
+
+	SetActiveSettings(SiteSettings{Name: "Acme", CustomCSS: ".h-mark-two{color:red}"})
+	if again := halcyonArticle(t, "<p>x</p>"); strings.Contains(again, ver) {
+		t.Error("the page links the same version after the site's custom CSS changed")
+	}
+}
+
+// The site's part goes out minified, as the theme's does: the custom CSS an
+// operator writes is commented for people, not for every reader's download.
+func TestTheSitesPartIsMinified(t *testing.T) {
+	body, _ := HalcyonSiteCSS(SiteSettings{CustomCSS: "/* why this rule */\n.h-x {\n  color: red;\n}\n"})
+	if bytes.Contains(body, []byte("why this rule")) || !bytes.HasSuffix(body, []byte(".h-x{color: red;}")) {
+		t.Errorf("the site's custom CSS went out as written: %q", body[max(0, len(body)-60):])
+	}
+}
+
+// The Studio's preview shows the stylesheet being edited in place of the
+// site's part, after the theme's own rules, under the id its frame script
+// swaps (static/js/theme-preview-frame.js).
+func TestTheStudioPreviewTakesTheStylesheetBeingEdited(t *testing.T) {
+	withHalcyon(t, nil)
+	out, err := RenderHalcyonPreview("home", theme.ResolveHalcyon(nil), HalcyonPreview{}, "/os/api/theme/preview.css?d=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `<link rel="stylesheet" href="` + halcyonCSSHref() + `"><link id="vayu-theme-css" rel="stylesheet" href="/os/api/theme/preview.css?d=1">`
+	if !strings.Contains(out, want) {
+		t.Errorf("the preview does not link the theme's rules then the edited stylesheet:\n%s", out[:min(len(out), 1200)])
+	}
+	if strings.Contains(out, "halcyon-site.css") {
+		t.Error("the preview still links the site's saved stylesheet, which would override what is being edited")
+	}
+}
