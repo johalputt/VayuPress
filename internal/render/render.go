@@ -589,6 +589,14 @@ func ThemeCSS() string {
 // the primary install calls ThemeCSS() (global settings) so its stylesheet is
 // byte-identical.
 func ThemeCSSFor(s SiteSettings) string {
+	return themeCSSBase(s) + sanitizeCustomCSS(s.CustomCSS)
+}
+
+// themeCSSBase is the site's stylesheet without its custom CSS: the active
+// theme's tokens and the site's colours, all written by the product. The
+// custom CSS is the operator's and is sanitised on its own, after anything
+// else done to it (HalcyonSiteCSS minifies it first).
+func themeCSSBase(s SiteSettings) string {
 	var sb strings.Builder
 	themeTokenMu.RLock()
 	if themeTokenCSS != "" {
@@ -614,9 +622,6 @@ func ThemeCSSFor(s SiteSettings) string {
 			sb.WriteString("--vayu-accent:" + s.AccentDark + ";")
 		}
 		sb.WriteString("}")
-	}
-	if s.CustomCSS != "" {
-		sb.WriteString(sanitizeCustomCSS(s.CustomCSS))
 	}
 	return sb.String()
 }

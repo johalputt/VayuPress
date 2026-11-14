@@ -923,3 +923,22 @@ func TestTheStudioPreviewTakesTheStylesheetBeingEdited(t *testing.T) {
 		t.Error("the preview still links the site's saved stylesheet, which would override what is being edited")
 	}
 }
+
+// Custom CSS never reaches another origin (sanitizeCustomCSS), and minifying
+// it after the sanitiser must not undo that: a comment the sanitiser reads as
+// part of the address is gone once minified, leaving a url() that loads from
+// wherever it names, a beacon on every page view.
+func TestMinifyingTheSitesPartLetsNoAddressOut(t *testing.T) {
+	external := regexp.MustCompile(`(?i)url\(\s*['"]?\s*(?:https?:)?//`)
+	for _, css := range []string{
+		`.x{background:url(/**/https://beacon.example/b.png)}`,
+		`.x{background:url(/* a */ //beacon.example/b.png)}`,
+		`.x{background:url("/**/https://beacon.example/b.png")}`,
+		`@im/**/port url(https://beacon.example/a.css);`,
+	} {
+		body, _ := HalcyonSiteCSS(SiteSettings{CustomCSS: css})
+		if loc := external.FindIndex(body); loc != nil || bytes.Contains(body, []byte("@import")) {
+			t.Errorf("custom CSS %q reaches another origin once minified: %q", css, body[max(0, len(body)-80):])
+		}
+	}
+}

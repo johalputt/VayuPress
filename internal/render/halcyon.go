@@ -110,10 +110,15 @@ func halcyonCSSHref() string {
 // theme's 12 KB. The site's part comes last, so its custom CSS still wins as
 // it did when /theme.css was linked after the theme, and a fault in it (an
 // unclosed comment or block) can only swallow what follows it: nothing.
+// The custom CSS is sanitised after it is minified, never before: minifying
+// drops comments, and `url(/**/https://elsewhere)` passes the sanitiser with
+// its comment and loads from elsewhere without it.
 // ver is the hash of the bytes, so the page's link changes with them.
 func HalcyonSiteCSS(s SiteSettings) (body []byte, ver string) {
 	own := halcyonAssets["halcyon.css"].body
-	body = append(append(make([]byte, 0, len(own)+4096), own...), MinifyCSS([]byte(ThemeCSSFor(s)))...)
+	body = append(make([]byte, 0, len(own)+4096), own...)
+	body = append(body, MinifyCSS([]byte(themeCSSBase(s)))...)
+	body = append(body, sanitizeCustomCSS(string(MinifyCSS([]byte(s.CustomCSS))))...)
 	sum := sha256.Sum256(body)
 	return body, hex.EncodeToString(sum[:5])
 }
