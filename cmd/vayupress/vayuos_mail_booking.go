@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/render"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
@@ -223,7 +224,7 @@ func (a *App) writeBookingPage(w http.ResponseWriter, r *http.Request, rd vmail.
 	if on == 0 {
 		on = -1
 	}
-	side.Place, side.PlaceSide = "calendar", calSide(calViewFor("week", "", home, now), home, midnight(now.In(home)), pages, on)
+	side.Place, side.PlaceSide = "calendar", calSide(calViewFor(i18n.Lang(r.Context()), "week", "", home, now), home, midnight(now.In(home)), pages, on)
 	cfg.MailSide = side
 	writeOSHTML(w, r, adminOSLayout(nonce, "Booking pages", "vayuos", cfg, htmpl.HTML(a.bookingEditor(r, p, bookings, csrf, msg))))
 }

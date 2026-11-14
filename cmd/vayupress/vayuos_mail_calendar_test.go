@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/users"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
@@ -183,7 +184,7 @@ func TestTheEditorsRepeatBecomesARule(t *testing.T) {
 	if editableRule("FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1") || !editableRule("FREQ=WEEKLY;BYDAY=TU,TH;COUNT=3") || editableRule("FREQ=MONTHLY;BYDAY=2TU") {
 		t.Error("editableRule misjudges what the fields can say")
 	}
-	ed := calEditor(vmail.CalEvent{UID: "x@y", Summary: "Payroll", Start: start, End: start, Rule: "FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1", Instance: start}, "", london, "dana@example.com", "")
+	ed := calEditor("en", vmail.CalEvent{UID: "x@y", Summary: "Payroll", Start: start, End: start, Rule: "FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1", Instance: start}, "", london, "dana@example.com", "")
 	if !strings.Contains(ed, `<option value="keep" selected>As it is: Every month</option>`) || !strings.Contains(ed, `name="r_rule" value="FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1"`) {
 		t.Errorf("the editor does not keep a rule it cannot say:\n%s", ed)
 	}
@@ -203,7 +204,7 @@ func TestTheRepeatInWords(t *testing.T) {
 		"FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1": "Every month",
 		"FREQ=SOMETIMES":                                "Repeats",
 	} {
-		if got := repeatWords(rule, start); got != want {
+		if got := repeatWords("en", rule, start); got != want {
 			t.Errorf("%s: %q, want %q", rule, got, want)
 		}
 	}
@@ -287,11 +288,11 @@ func TestGuestsAddedInTheEditorAreOnTheEvent(t *testing.T) {
 func TestAnInvitedEventKeepsItsOrganizersGuests(t *testing.T) {
 	ev := vmail.CalEvent{UID: "o@x", Summary: "Board", Start: time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC), End: time.Date(2026, 11, 10, 10, 0, 0, 0, time.UTC),
 		Organizer: vmail.CalAttendee{Email: "boss@other.example", Name: "The Boss"}, Attendees: []vmail.CalAttendee{{Email: "dana@example.com"}}}
-	ed := calEditor(ev, "", time.UTC, "dana@example.com", "")
+	ed := calEditor("en", ev, "", time.UTC, "dana@example.com", "")
 	if strings.Contains(ed, `name="guests"`) || !strings.Contains(ed, "Organized by The Boss") {
 		t.Fatalf("an invited event's editor: %s", ed)
 	}
-	if own := calEditor(vmail.CalEvent{Start: ev.Start, End: ev.End}, "", time.UTC, "dana@example.com", ""); !strings.Contains(own, `name="guests"`) {
+	if own := calEditor("en", vmail.CalEvent{Start: ev.Start, End: ev.End}, "", time.UTC, "dana@example.com", ""); !strings.Contains(own, `name="guests"`) {
 		t.Error("a new event offers no guests")
 	}
 }
@@ -322,5 +323,40 @@ func TestAReminderIsSetFromTheEditor(t *testing.T) {
 	calSave(a, dana(), base)
 	if evs, _ = a.vayuMail.CalendarBetween(vmail.ReadAsOwner("dana"), from, from.AddDate(0, 0, 1), time.UTC); len(evs) != 1 || evs[0].Remind != nil {
 		t.Fatalf("after No reminder: %+v", evs)
+	}
+}
+
+// TestTheCalendarIsInThePersonsLanguage — the week's title, its heads and
+// its controls in German, and a repeat said whole in Russian and Japanese,
+// each in the order its language says it.
+func TestTheCalendarIsInThePersonsLanguage(t *testing.T) {
+	a := calendarApp(t)
+	calSave(a, dana(), url.Values{"title": {"Planung"}, "sd": {"2026-11-10"}, "st": {"09:00"}, "ed": {"2026-11-10"}, "et": {"10:30"},
+		"zone": {"Europe/London"}, "r_freq": {"WEEKLY"}, "r_int": {"1"}, "r_day": {"TU", "TH"}, "r_end": {"count"}, "r_count": {"4"}})
+	req := withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/calendar?v=week&d=2026-11-10", nil), dana())
+	req.AddCookie(&http.Cookie{Name: calTZCookie, Value: url.QueryEscape("Europe/London")})
+	req = req.WithContext(i18n.WithLang(req.Context(), "de"))
+	rec := httptest.NewRecorder()
+	a.handleVayuOSCalendar(rec, req)
+	week := rec.Body.String()
+	for _, want := range []string{"9. – 15. November 2026", ">Heute<", ">Woche<", "09:00 · wiederholt sich", ">Di<", "Neuer Termin", "Abonnierte Kalender"} {
+		if !strings.Contains(week, want) {
+			t.Errorf("the German week has no %q", want)
+		}
+	}
+	for _, english := range []string{">Today<", ">Week<", "· repeats", "New event", "Subscribed calendars"} {
+		if strings.Contains(week, english) {
+			t.Errorf("the German week says %q", english)
+		}
+	}
+	start := time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC)
+	for _, c := range []struct{ lang, rule, want string }{
+		{"ru", "FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,TH;COUNT=6", "Каждые 2 недели: вторник и четверг, 6 раз"},
+		{"ja", "FREQ=YEARLY;UNTIL=20301110T235959Z", "毎年 11月10日、2030年11月10日 まで"},
+		{"de", "FREQ=MONTHLY", "Jeden Monat am 10."},
+	} {
+		if got := repeatWords(c.lang, c.rule, start); got != c.want {
+			t.Errorf("%s %s: %q, want %q", c.lang, c.rule, got, c.want)
+		}
 	}
 }

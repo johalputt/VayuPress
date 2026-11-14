@@ -21,11 +21,14 @@ type DateForm int
 
 // The forms the pages use.
 const (
-	MonthYear      DateForm = iota // January 2026
-	DayMonth                       // Monday 2 January
-	Day                            // Monday 2
-	DayMonthAt                     // Monday 2 January, 15:04
-	DayMonthYearAt                 // Monday 2 January 2026, 15:04
+	MonthYear         DateForm = iota // January 2026
+	DayMonth                          // Monday 2 January
+	Day                               // Monday 2
+	DayMonthAt                        // Monday 2 January, 15:04
+	DayMonthYearAt                    // Monday 2 January 2026, 15:04
+	DayMonthYear                      // Monday 2 January 2026
+	DayMonthPlain                     // 2 January
+	DayMonthYearPlain                 // 2 January 2026
 	// The short forms a list of mail writes beside each message.
 	Month               // January (standing alone)
 	Weekday             // Mon
@@ -208,12 +211,30 @@ func Date(lang string, t time.Time, form DateForm) string {
 		pattern = n.day
 	case DayMonthYearAt:
 		pattern = n.dayMonthYearAt
+	case DayMonthPlain, DayMonthYearPlain:
+		// The short forms' patterns, which name no weekday, with the
+		// month spelled out as a date writes it.
+		sn, ok := shortDates[lang]
+		if !ok {
+			sn = shortDates["en"]
+		}
+		pattern = sn.dayMonth
+		if form == DayMonthYearPlain {
+			pattern = sn.dayMonthYear
+		}
+	case DayMonthYear:
+		// Each language's dated form with its time taken off: the time
+		// ends every one of them, after a comma or a space.
+		pattern = strings.TrimSuffix(strings.TrimSuffix(n.dayMonthYearAt, " {t}"), ",")
 	case Month:
 		pattern, month = "{m}", n.monthsAlone[t.Month()-1]
 	}
 	return strings.NewReplacer("{wd}", day, "{d}", strconv.Itoa(t.Day()), "{m}", month,
 		"{y}", strconv.Itoa(t.Year()), "{t}", t.Format("15:04")).Replace(pattern)
 }
+
+// WeekdayName is the name of d in lang, standing in a sentence.
+func WeekdayName(lang string, d time.Weekday) string { return namesOf(lang).days[d] }
 
 // WeekdayHeads is the calendar's column heads in lang, Monday first.
 func WeekdayHeads(lang string) [7]string { return namesOf(lang).short }

@@ -134,10 +134,22 @@ func TestDatesAreWrittenAsEachLanguageWritesThem(t *testing.T) {
 		{"ja", WeekdayDayMonthAt, "11月20日(金) 15:04"},
 		{"pt-BR", DayMonthYearShortAt, "20 de nov. de 2026, 15:04"},
 		{"xx", DayMonthShort, "20 Nov"},
+		{"en", DayMonthYear, "Friday 20 November 2026"},
+		{"de", DayMonthYear, "Freitag, 20. November 2026"},
+		{"ru", DayMonthYear, "пятница, 20 ноября 2026 г."},
+		{"ja", DayMonthYear, "2026年11月20日 金曜日"},
+		{"en", DayMonthPlain, "20 November"},
+		{"de", DayMonthYearPlain, "20. November 2026"},
+		{"ru", DayMonthYearPlain, "20 ноября 2026 г."},
+		{"pt-BR", DayMonthPlain, "20 de novembro"},
+		{"ja", DayMonthYearPlain, "2026年11月20日"},
 	} {
 		if got := Date(c.lang, at, c.form); got != c.want {
 			t.Errorf("%s %d: %q, not %q", c.lang, c.form, got, c.want)
 		}
+	}
+	if got := WeekdayName("fr", time.Tuesday); got != "mardi" {
+		t.Errorf("French Tuesday: %q", got)
 	}
 	if heads := WeekdayHeads("de"); heads[0] != "Mo" || heads[6] != "So" {
 		t.Errorf("German heads: %v", heads)
