@@ -2098,7 +2098,7 @@ func (a *App) handleOSLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(osLoginPage(lang, "", "", next, false)))
+	_, _ = w.Write([]byte(osLoginPage(lang, "", "", next, false, languageMenu(lang, r))))
 }
 
 // isLocalURL reports whether s is a safe SAME-ORIGIN path. It must parse as a
@@ -2153,7 +2153,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	pass := r.FormValue("password")
 	if email == "" || pass == "" {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(osLoginPage(lang, email, i18n.T(lang, "Email and password are required."), next, false)))
+		_, _ = w.Write([]byte(osLoginPage(lang, email, i18n.T(lang, "Email and password are required."), next, false, languageMenu(lang, r))))
 		return
 	}
 	if a.userStore == nil || a.sessions == nil {
@@ -2170,12 +2170,12 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	email, signinCtx := a.signinResolve(r.Context(), email)
 	if a.signinRefused(email, ip) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(osLoginPage(lang, email, signinRefused(lang), next, false)))
+		_, _ = w.Write([]byte(osLoginPage(lang, email, signinRefused(lang), next, false, languageMenu(lang, r))))
 		return
 	}
 	if locked, until := auth.CheckAuthLockout(ip); locked {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(osLoginPage(lang, email, loginLockoutMessage(lang, until), next, false)))
+		_, _ = w.Write([]byte(osLoginPage(lang, email, loginLockoutMessage(lang, until), next, false, languageMenu(lang, r))))
 		return
 	}
 	// The account's own lockout, shared by every door: many addresses
@@ -2183,7 +2183,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	if locked, until := auth.CheckAccountLockout(email); locked {
 		a.signinRecord(email, signin.DoorConsole, signin.StagePaused, ip)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(osLoginPage(lang, email, loginLockoutMessage(lang, until), next, false)))
+		_, _ = w.Write([]byte(osLoginPage(lang, email, loginLockoutMessage(lang, until), next, false, languageMenu(lang, r))))
 		return
 	}
 	u, err := a.userStore.Authenticate(signinCtx, email, pass)
@@ -2207,7 +2207,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 					auth.RecordAccountFailure(email, ip)
 					a.signinRecord(email, signin.DoorConsole, signin.StageCode, ip)
 					w.Header().Set("Content-Type", "text/html; charset=utf-8")
-					_, _ = w.Write([]byte(osLoginPage(lang, email, i18n.T(lang, "Enter the 6-digit code from your authenticator app, then re-enter your password."), next, true)))
+					_, _ = w.Write([]byte(osLoginPage(lang, email, i18n.T(lang, "Enter the 6-digit code from your authenticator app, then re-enter your password."), next, true, languageMenu(lang, r))))
 					return
 				}
 			}
@@ -2228,14 +2228,14 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 			auth.RecordAccountFailure(email, ip)
 			a.signinRecord(email, signin.DoorConsole, signin.StageCode, ip)
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = w.Write([]byte(osLoginPage(lang, email, i18n.T(lang, "Enter the 6-digit code from your authenticator app, then re-enter your password."), next, true)))
+			_, _ = w.Write([]byte(osLoginPage(lang, email, i18n.T(lang, "Enter the 6-digit code from your authenticator app, then re-enter your password."), next, true, languageMenu(lang, r))))
 			return
 		}
 		auth.RecordAuthFailure(ip)
 		auth.RecordAccountFailure(email, ip)
 		a.signinRecord(email, signin.DoorConsole, signin.StagePassword, ip)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(osLoginPage(lang, email, i18n.T(lang, "Invalid email or password."), next, false)))
+		_, _ = w.Write([]byte(osLoginPage(lang, email, i18n.T(lang, "Invalid email or password."), next, false, languageMenu(lang, r))))
 		return
 	}
 	// Second factor: if the account has 2FA enabled, a valid TOTP code is required.
@@ -2245,7 +2245,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		auth.RecordAccountFailure(email, ip)
 		a.signinRecord(email, signin.DoorConsole, signin.StageCode, ip)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(osLoginPage(lang, email, i18n.T(lang, "Enter the 6-digit code from your authenticator app, then re-enter your password."), next, true)))
+		_, _ = w.Write([]byte(osLoginPage(lang, email, i18n.T(lang, "Enter the 6-digit code from your authenticator app, then re-enter your password."), next, true, languageMenu(lang, r))))
 		return
 	}
 	token, err := a.startSession(r, u.ID)
@@ -2376,7 +2376,11 @@ func (a *App) handleOSLogout(w http.ResponseWriter, r *http.Request) {
 // osLoginPage builds the sign-in page: a single, calm, centered card on a clean
 // background (light by default, following the OS) with an unobtrusive
 // light/dark/auto theme switch. No gradients, no animation — minimalist premium.
-func osLoginPage(lang, prefillEmail, errMsg, next string, codeAsked bool) string {
+// menu is the page's language menu (languageMenu), under its footer as on
+// mailbox recovery: the sign-in page followed the browser's language and a
+// ?lang= no one could see, so a person could not choose. A test has no
+// request to build it from and passes "".
+func osLoginPage(lang, prefillEmail, errMsg, next string, codeAsked bool, menu string) string {
 	errHTML := ""
 	if errMsg != "" {
 		errHTML = `<div class="login-error" role="alert">` + html.EscapeString(errMsg) + `</div>`
@@ -2432,7 +2436,7 @@ func osLoginPage(lang, prefillEmail, errMsg, next string, codeAsked bool) string
     <p class="text-sm muted" data-passkey-signin-say role="status"></p>
     <p class="login-recover"><a href="/mail/recover">`+esc(i18n.T(lang, "Forgot your mailbox password?"))+`</a></p>
   </div>
-  <div class="login-footer">`+saEdition()+`<span>`+esc(i18n.T(lang, "Sovereign · zero-telemetry · yours completely"))+`</span></div>
+  <div class="login-footer">`+saEdition()+`<span>`+esc(i18n.T(lang, "Sovereign · zero-telemetry · yours completely"))+`</span></div>`+menu+`
   <script src="/os/static/js/passkey.js?v=`+assetVer("js/passkey.js")+`"></script>`)
 }
 

@@ -23,7 +23,7 @@ const recoverHref = "/mail/recover"
 // when the console user store rejects them, and every unauthenticated
 // /os/vayumail/* request is bounced here.
 func TestOSLoginPageLinksToRecovery(t *testing.T) {
-	page := osLoginPage("en", "", "", "", false)
+	page := osLoginPage("en", "", "", "", false, "")
 	if !strings.Contains(page, `href="`+recoverHref+`"`) {
 		t.Errorf("the /os sign-in page does not link to %s — a locked-out mailbox holder cannot find recovery", recoverHref)
 	}

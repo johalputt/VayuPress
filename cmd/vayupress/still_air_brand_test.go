@@ -25,7 +25,7 @@ func TestVayuOSIsNamedStillAirWhereTheOperatorLooks(t *testing.T) {
 		t.Error("the rail foot does not name the console VayuOS Still Air")
 	}
 
-	login := osLoginPage("en", "", "", "", false)
+	login := osLoginPage("en", "", "", "", false, "")
 	j := strings.Index(login, `class="login-footer"`)
 	if j < 0 || !strings.Contains(login[j:], lockup) {
 		t.Error("the sign-in page does not name the console VayuOS Still Air")

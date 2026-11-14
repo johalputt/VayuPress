@@ -43,7 +43,7 @@ func TestHandleOSLoginRendersFormWhenAnonymous(t *testing.T) {
 // (the seamless persistent posture), and stays CSP-safe (no inline styles or
 // external asset hosts).
 func TestOSLoginPageRememberCheckbox(t *testing.T) {
-	out := osLoginPage("en", "", "", "", false)
+	out := osLoginPage("en", "", "", "", false, "")
 	assertCSPSafe(t, "osLoginPage", out)
 
 	if !strings.Contains(out, `name="remember"`) {
