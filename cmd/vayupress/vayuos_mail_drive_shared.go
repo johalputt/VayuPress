@@ -84,7 +84,7 @@ func (a *App) driveSharedBody(r *http.Request, rd vmail.Reader, grant, dir int64
 			b.WriteString(`<p class="drive-empty">` + esc(i18n.T(lang, "Nothing is shared with you yet. When someone on this server shares a file or folder with your address, it is here.")) + `</p>`)
 			return b.String(), false, true
 		}
-		b.WriteString(`<ul class="drive-list">`)
+		b.WriteString(`<ul class="drive-list drive-list--shared">`)
 		for _, g := range gs {
 			gid := strconv.FormatInt(g.ID, 10)
 			b.WriteString(`<li class="drive-row">`)
@@ -97,7 +97,7 @@ func (a *App) driveSharedBody(r *http.Request, rd vmail.Reader, grant, dir int64
 			if g.Write {
 				who = i18n.T(lang, "{address} · can add files", "address", g.Owner)
 			}
-			b.WriteString(`<span class="drive-row__meta">` + esc(who) + `</span><span class="drive-row__meta">` + esc(i18n.Date(lang, g.Created.In(home), i18n.DayMonthYearShort)) + `</span>` +
+			b.WriteString(`<span class="drive-row__meta" title="` + esc(who) + `">` + esc(who) + `</span><span class="drive-row__meta">` + esc(i18n.Date(lang, g.Created.In(home), i18n.DayMonthYearShort)) + `</span>` +
 				`<button type="button" class="btn btn--ghost btn--sm" hx-post="/os/vayumail/drive/action"` + hxVals("op", "leave", "grant", gid) +
 				` hx-confirm="` + esc(i18n.T(lang, "Take this off your list? Its holder sees it is no longer shared with you.")) + `">` + esc(i18n.T(lang, "Leave")) + `</button></li>`)
 		}

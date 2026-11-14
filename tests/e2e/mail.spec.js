@@ -1818,6 +1818,85 @@ test("a file is uploaded to a Drive folder, renamed, and is only ever a download
   await holder.close();
 });
 
+// Shared with me: who shared a file is an address of any length, and it
+// stands beside the date, not under it; the rail's one button (Drive
+// settings) starts its label where the links above it start theirs.
+test("a file shared with another mailbox is listed with its owner and date apart", async ({ page, browser }) => {
+  test.setTimeout(90000);
+  await page.goto("/os/vayumail/accounts");
+  const csrf = (await page.context().cookies()).find((c) => c.name === "vp_csrf");
+  const stamp = Date.now();
+  const owner = "owner" + stamp;
+  const reader = "reader" + stamp;
+  for (const local of [owner, reader]) {
+    const made = await page.request.post("/os/vayumail/accounts/create", {
+      headers: { "X-CSRF-Token": csrf ? decodeURIComponent(csrf.value) : "" },
+      data: { local, name: "Sharing", pass: "e2e-sharing-passphrase-1", role: "mailbox" },
+    });
+    expect(made.ok()).toBeTruthy();
+  }
+  const origin = process.env.MAIL_UPSTREAM;
+  if (!origin) throw new Error("MAIL_UPSTREAM is not set: boot the mail install as .github/actions/boot-vayupress does");
+  const signIn = async (local, viewport) => {
+    const ctx = await browser.newContext({ baseURL: origin, viewport });
+    const p = await ctx.newPage();
+    await p.goto("/os/login");
+    await p.locator("#login-email").fill(local + "@mail.test");
+    await p.locator("#login-password").fill("e2e-sharing-passphrase-1");
+    await p.locator(".login-form button[type=submit]").first().click();
+    await p.waitForURL((u) => !u.pathname.startsWith("/os/login"));
+    return [ctx, p];
+  };
+
+  const [ownerCtx, mine] = await signIn(owner, { width: 1440, height: 900 });
+  await mine.goto("/os/vayumail/drive");
+  await mine.locator("[data-drive-upload]").setInputFiles([{ name: "plan.txt", mimeType: "text/plain", buffer: Buffer.from("The plan.") }]);
+  await mine.locator(".drive-row", { hasText: "plan.txt" }).locator("button.drive-row__name").click();
+  const sheet = mine.locator("#drive-sheet");
+  await sheet.locator("input[name=who]").fill(reader + "@mail.test");
+  await sheet.getByRole("button", { name: "Share", exact: true }).click();
+  await expect(sheet).toContainText("It is under Shared with me in their Drive.");
+  await ownerCtx.close();
+
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 800 }, { width: 390, height: 844 }]) {
+    const [ctx, theirs] = await signIn(reader, viewport);
+    await theirs.goto("/os/vayumail/drive?view=shared");
+    const row = theirs.locator(".drive-row", { hasText: "plan.txt" });
+    const who = row.locator(".drive-row__meta").first();
+    await expect(who).toHaveAttribute("title", owner + "@mail.test · can read");
+    // Where each part's ink ends, not its cell: text that cannot wrap and
+    // is not clipped paints past its cell into the next one.
+    const parts = await row.evaluate((li) =>
+      [...li.children].filter((el) => el.offsetParent !== null).map((el) => {
+        const r = el.getBoundingClientRect();
+        const clips = getComputedStyle(el).overflowX !== "visible";
+        return { x: r.x, end: r.x + (clips ? r.width : Math.max(r.width, el.scrollWidth)) };
+      }),
+    );
+    expect(parts.length).toBeGreaterThanOrEqual(3);
+    for (let i = 1; i < parts.length; i++) {
+      expect(parts[i].x, `part ${i} of the row starts after part ${i - 1} ends at ${viewport.width}px`).toBeGreaterThanOrEqual(parts[i - 1].end - 0.5);
+    }
+    // On a desktop the whole address is read; narrower, it may end in an
+    // ellipsis (its title holds it whole), but never under the date.
+    if (viewport.width >= 1440) {
+      expect(await who.evaluate((el) => el.scrollWidth <= el.clientWidth), "the whole address is shown, not an ellipsis").toBe(true);
+    }
+    if (viewport.width >= 1024) {
+      // The text's own start: the label's box starts in the same place
+      // whether or not the button centres the text inside it.
+      const label = (name) =>
+        theirs.locator(".sa-appside__item", { hasText: name }).locator(".sa-appside__label").evaluate((el) => {
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          return range.getBoundingClientRect().x;
+        });
+      expect(Math.abs((await label("Drive settings")) - (await label("Trash"))), "Drive settings starts where Trash starts").toBeLessThanOrEqual(1);
+    }
+    await ctx.close();
+  }
+});
+
 // Drive inside Mail: a file in Drive is attached to a message from the
 // composer's menu, and the attachment of the message that arrives is saved
 // back to Drive, beside the first and not over it.

@@ -4846,6 +4846,9 @@
 .vp-os[data-ui="still-air"] .sa-appside__item {
   display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px;
   border-radius: var(--radius-control); color: var(--text-2); font: var(--type-body); text-decoration: none;
+  /* A rail item can be a <button> (Drive settings), and a button centres
+     its text: its label would sit apart from every link's above it. */
+  text-align: start;
   transition: background-color var(--duration-micro) var(--ease-enter), color var(--duration-micro) var(--ease-enter);
 }
 .vp-os[data-ui="still-air"] .sa-appside__item .sa-ico { color: var(--text-3); }
@@ -7743,6 +7746,12 @@
 .vp-os[data-ui="still-air"] .drive-row__name > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vp-os[data-ui="still-air"] .drive-row__name .sa-ico { flex: none; color: var(--text-3); }
 .vp-os[data-ui="still-air"] .drive-row__meta { font: var(--type-small); color: var(--text-3); white-space: nowrap; }
+/* Shared with me: the second column is who shared it, an address of any
+   length, not a size; 88px let it run under the date. It takes what it
+   needs up to a third of the row and ends in an ellipsis past that (the
+   whole address is the cell's title). */
+.vp-os[data-ui="still-air"] .drive-list--shared .drive-row { grid-template-columns: minmax(0, 1fr) fit-content(33%) 112px auto; }
+.vp-os[data-ui="still-air"] .drive-list--shared .drive-row__meta { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .vp-os[data-ui="still-air"] .drive-kind { flex: none; min-width: 36px; padding: 1px var(--space-1); border: 1px solid var(--border-1); border-radius: var(--radius-small); font: var(--type-meta); color: var(--text-3); text-align: center; }
 .vp-os[data-ui="still-air"] .drive-preview { display: block; max-width: 100%; max-height: 320px; margin: 0 auto; border-radius: var(--radius-control); }
 /* A file's SHA-256 is one 64-character token; on a phone it breaks anywhere. */
@@ -7751,6 +7760,7 @@
   .vp-os[data-ui="still-air"] .drive { padding: var(--space-3) var(--space-4) var(--space-6); }
   .vp-os[data-ui="still-air"] .drive-row { grid-template-columns: minmax(0, 1fr) auto auto; }
   .vp-os[data-ui="still-air"] .drive-row__meta:nth-of-type(2) { display: none; }
+  .vp-os[data-ui="still-air"] .drive-list--shared .drive-row { grid-template-columns: minmax(0, 1fr) fit-content(40%) auto; }
 }
 /* A booking page as a guest sees it (book_public.go): wider than a sign-in
    card, three parts side by side, one above another on a phone. */
