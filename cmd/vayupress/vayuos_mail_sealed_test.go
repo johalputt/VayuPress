@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/users"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
@@ -97,5 +98,44 @@ func TestOnlyTheHolderIsOfferedSealing(t *testing.T) {
 	m.Own = true
 	if !strings.Contains(saMailSide(m, ""), "/os/vayumail/sealed") {
 		t.Error("the holder's own mailbox does not offer sealing")
+	}
+}
+
+// Sealing is in the holder's language, the link's email included, since the
+// holder wrote the message in it; the public page is in the visitor's.
+func TestASealedMessageIsInThePersonsLanguage(t *testing.T) {
+	a := appWithMailAccounts(t)
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	a.userStore = users.New(db)
+	dana := &users.User{ID: "vmail:dana@example.com", Email: "dana@example.com", Role: users.RoleAuthor, MailAddress: "dana@example.com"}
+	req := withUser(httptest.NewRequest(http.MethodPost, "/os/vayumail/sealed", strings.NewReader(url.Values{"op": {"new"}, "to": {"rohan@outside.example"},
+		"subject": {"Schlüssel"}, "body": {"Hier."}, "passphrase": {"plain old passphrase"}, "days": {"30"}}.Encode())), dana)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = req.WithContext(i18n.WithLang(req.Context(), "de"))
+	rec := httptest.NewRecorder()
+	a.handleVayuOSSealedAction(rec, req)
+	if !strings.Contains(rec.Header().Get("HX-Trigger"), "Versiegelt. Der Link ist unterwegs an rohan@outside.example.") {
+		t.Errorf("the German seal is not said in German: %q", rec.Header().Get("HX-Trigger"))
+	}
+	for _, want := range []string{"Noch nicht geöffnet · bis ", "Versiegeln und Link senden", "Dreißig Tage", "Jetzt schließen"} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Errorf("the German block has no %q", want)
+		}
+	}
+	sent, _ := a.vayuMail.ListFolder(vmail.ReadAsOwner("dana@example.com"), "Sent")
+	if len(sent) != 1 || sent[0].Subject != "Eine versiegelte Nachricht von Dana" || !strings.HasPrefix(sent[0].Preview, "Dana (dana@example.com) hat Ihnen eine versiegelte Nachricht geschickt.") {
+		t.Errorf("the link's email = %+v, want it in German", sent)
+	}
+
+	page := httptest.NewRequest(http.MethodGet, "/sealed/x", nil)
+	page = page.WithContext(i18n.WithLang(page.Context(), "ja"))
+	w := httptest.NewRecorder()
+	a.handleSealedPage(w, page)
+	if !strings.Contains(w.Body.String(), "封印メッセージ") || strings.Contains(w.Body.String(), "A sealed message") {
+		t.Errorf("the Japanese public page is not in Japanese:\n%s", w.Body.String())
 	}
 }

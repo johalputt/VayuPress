@@ -61,6 +61,7 @@ var i18nMoved = map[string][]string{
 	"vayuos_mail_export_api.go":    nil,
 	"vayuos_mail_privatekey.go":    nil,
 	"vayuos_mail_import.go":        nil,
+	"vayuos_mail_sealed.go":        nil,
 }
 
 // i18nExempt are the calls whose words are for the operator or the code, not
