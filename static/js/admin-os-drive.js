@@ -30,17 +30,17 @@
   // One file, in pieces, as a promise of nothing or of the server's reason.
   // grant: a folder another mailbox shares with this one, "" for its own.
   function send(file, dir, grant, n, of) {
-    var which = of > 1 ? " (" + n + " of " + of + ")" : "";
+    var label = of > 1 ? vpT('{name} ({n} of {total})', { name: file.name, n: n, total: of }) : file.name;
     // As a form is sent, not multipart: the server reads these as one.
     var form = new URLSearchParams({ dir: dir, name: file.name, size: String(file.size), type: file.type || "" });
     if (grant) form.set("grant", grant);
-    say("Uploading " + file.name + which + "…");
+    say(vpT('Uploading {file}…', { file: label }));
     return ask("POST", "/os/vayumail/drive/uploads", form).then(function (up) {
       var url = "/os/vayumail/drive/uploads/" + encodeURIComponent(up.id);
       var tries = 0;
       function from(at) {
         var piece = file.slice(at, Math.min(at + up.piece, file.size));
-        say("Uploading " + file.name + which + ": " + (file.size ? Math.floor(at * 100 / file.size) : 0) + "%");
+        say(vpT('Uploading {file}: {percent}%', { file: label, percent: file.size ? Math.floor(at * 100 / file.size) : 0 }));
         return ask("PUT", url + "?offset=" + at, piece).then(function (st) {
           tries = 0;
           if (st.file || st.received >= file.size) return;
@@ -54,7 +54,7 @@
         if (err.status === 409 && typeof err.received === "number") return from(err.received);
         if (err.status || tries >= 5) throw err;
         tries++;
-        say("Uploading " + file.name + which + ": the connection was lost; trying again…");
+        say(vpT('Uploading {file}: the connection was lost; trying again…', { file: label }));
         return new Promise(function (wait) { setTimeout(wait, 2000 * Math.pow(2, tries - 1)); }).then(function () {
           return ask("GET", url).then(function (st) { return from(st.received); }, again);
         });
@@ -123,7 +123,9 @@
       if (t && title) title.textContent = t.getAttribute("data-sheet-title");
       if (sheet && !sheet.open && sheet.showModal) sheet.showModal();
       var name = body.querySelector("form input[name=name]");
-      if (name && t && t.getAttribute("data-sheet-title") === "New folder") name.focus();
+      // Marked by the server, not read from the title: the title is in the
+      // page's language.
+      if (name && body.querySelector("[data-sheet-focus]")) name.focus();
     });
   }
 })();

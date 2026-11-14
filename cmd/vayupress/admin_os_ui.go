@@ -2042,7 +2042,7 @@ func writeOSHTML(w http.ResponseWriter, r *http.Request, body string) {
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(body))
+	_, _ = w.Write([]byte(withScriptWords(body, i18n.Lang(r.Context()))))
 }
 
 // ── Login page ───────────────────────────────────────────────────────────────

@@ -90,6 +90,13 @@ func TestEverySentenceGivenToTIsInTheCatalogue(t *testing.T) {
 			return true
 		})
 	}
+	// The console's scripts say theirs with vpT (script_words.go).
+	for _, msg := range scriptSentences() {
+		used[msg] = true
+		if _, ok := catalogue[msg]; !ok {
+			t.Errorf("a script's vpT(%q) is not in locales/en.json", msg)
+		}
+	}
 	for msg := range catalogue {
 		if !used[msg] {
 			t.Errorf("locales/en.json has %q, which no code says", msg)

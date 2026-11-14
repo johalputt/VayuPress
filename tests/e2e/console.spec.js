@@ -93,3 +93,30 @@ test("YouTube finds a channel in place, and refuses another host's address", asy
   await expect(page.locator("#yt-address")).toHaveValue("https://example.com/@somebody");
   expect(errors).toEqual([]);
 });
+
+// A script's sentence in the page's language: vpT reads the page's #vp-words
+// and fills it as i18n.T does on the server (an exact =1 branch first, then
+// the language's own plural rule, # for the number, names inside branches).
+// A German block is put on a console page as the server puts it.
+test("a script says its sentences in the page's language", async ({ page }) => {
+  await page.goto("/os/");
+  const said = await page.evaluate(() => {
+    document.documentElement.lang = "de";
+    const block = document.createElement("script");
+    block.type = "application/json";
+    block.id = "vp-words";
+    block.textContent = JSON.stringify({
+      "{n, plural, =1 {Just one {what}} one {# {what}} other {# {what}s}}": "{n, plural, =1 {Nur eine {what}} one {# {what}} other {# {what}en}}",
+      "Uploading {file}…": "{file} wird hochgeladen…",
+    });
+    document.body.appendChild(block);
+    const count = "{n, plural, =1 {Just one {what}} one {# {what}} other {# {what}s}}";
+    return [
+      window.vpT("Uploading {file}…", { file: "a.txt" }),
+      window.vpT(count, { n: 1, what: "Datei" }),
+      window.vpT(count, { n: 3, what: "Datei" }),
+      window.vpT("A sentence the block does not have", {}),
+    ];
+  });
+  expect(said).toEqual(["a.txt wird hochgeladen…", "Nur eine Datei", "3 Dateien", "A sentence the block does not have"]);
+});

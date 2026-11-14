@@ -142,6 +142,17 @@ func T(lang, msg string, args ...any) string {
 	return render(text, tag, vals, "")
 }
 
+// Translation is msg's template in lang as the catalogue holds it, its
+// placeholders unfilled, for a script that fills them itself (vpT, in
+// static/js/admin-os.js, fills them as render does); "" when the catalogue
+// has none.
+func Translation(lang, msg string) string {
+	if lang == Pseudo {
+		return pseudo(msg)
+	}
+	return catalogues[lang][msg]
+}
+
 // render fills text's placeholders; hash is what # stands for inside a
 // plural branch.
 func render(text string, tag language.Tag, vals map[string]any, hash string) string {

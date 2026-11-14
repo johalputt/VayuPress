@@ -275,7 +275,7 @@ func (a *App) handleVayuOSDriveEntry(w http.ResponseWriter, r *http.Request) {
 		dir, _ := strconv.ParseInt(q.Get("dir"), 10, 64)
 		// In a folder shared with this mailbox to write, the share goes too.
 		grant, _ := strconv.ParseInt(q.Get("grant"), 10, 64)
-		writeOSHTML(w, r, `<form class="cal-form" data-sheet-title="`+esc(i18n.T(lang, "New folder"))+`"`+post+`><input type="hidden" name="op" value="mkdir"><input type="hidden" name="dir" value="`+strconv.FormatInt(dir, 10)+`">`+
+		writeOSHTML(w, r, `<form class="cal-form" data-sheet-title="`+esc(i18n.T(lang, "New folder"))+`" data-sheet-focus`+post+`><input type="hidden" name="op" value="mkdir"><input type="hidden" name="dir" value="`+strconv.FormatInt(dir, 10)+`">`+
 			`<input type="hidden" name="grant" value="`+strconv.FormatInt(grant, 10)+`">`+
 			`<label class="field"><span class="field-label">`+esc(i18n.T(lang, "Name"))+`</span><input type="text" name="name" required maxlength="255" autocomplete="off"></label>`+
 			`<div class="cal-form__acts"><button type="button" class="btn" data-sheet-close>`+esc(i18n.T(lang, "Cancel"))+`</button><button type="submit" class="btn btn--primary">`+esc(i18n.T(lang, "Make folder"))+`</button></div></form>`)
