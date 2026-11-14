@@ -232,6 +232,9 @@ test.describe("Halcyon", () => {
     for (const width of [390, 1440]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto("/halcyon-long");
+      // A surge's browser check comes first on a busy runner; the post
+      // follows it.
+      await expect(page.locator(".h .content svg.vp-svg")).toBeVisible({ timeout: 30000 });
       const d = await page.evaluate(() => {
         const svg = document.querySelector(".h .content svg.vp-svg");
         if (!svg) return null;
@@ -298,7 +301,14 @@ test.describe("Halcyon", () => {
   // starts; the tabs still choose the window, with nothing fetched.
   test("Home draws Most read in place: nothing moves, and the tabs choose the window", async ({ page }) => {
     await page.setViewportSize({ width: 1350, height: 940 });
-    await expect.poll(async () => (await (await page.request.get("/")).text()).includes("data-vayu-trending data-drawn"), { timeout: 20000 }).toBe(true);
+    // Most read lists posts read on this install, so the test reads one
+    // itself rather than count on the visits of the tests before it, which a
+    // surge does not count. Home is then asked from the page, which has
+    // passed a surge's browser check if one is on; a request from outside a
+    // page never passes it.
+    await page.goto("/halcyon-long");
+    await expect(page.locator(".h .content")).toBeVisible({ timeout: 30000 });
+    await expect.poll(() => page.evaluate(async () => (await (await fetch("/")).text()).includes("data-vayu-trending data-drawn")), { timeout: 20000 }).toBe(true);
     let fetched = false;
     page.on("request", (r) => { if (r.url().includes("/api/trending")) fetched = true; });
     await page.addInitScript(() => {
