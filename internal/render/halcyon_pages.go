@@ -77,6 +77,7 @@ var halcyonFuncs = template.FuncMap{
 		return many
 	},
 	"inc":          func(i int) int { return i + 1 },
+	"trendRanked":  func(it TrendingItem, i int) rankedItem { return rankedItem{it, i + 1} },
 	"firstTopicOf": firstTopic,
 }
 
@@ -162,7 +163,10 @@ const halcyonShared = `
 
 {{define "months"}}{{$caps := .Cfg.SmallCaps}}{{range .Months}}<section class="h-month"><h2>{{.Label}}</h2><ol>{{range .Rows}}<li><a class="h-row" href="/{{.Slug}}"><span class="h-d">{{.Day}}</span><b>{{.Title}}</b><span class="h-t">{{topicName .Topic}}</span>{{if .WithExc}}<span class="h-x">{{caps $caps .Excerpt}}</span>{{end}}</a></li>{{end}}</ol></section>{{end}}{{end}}
 
-{{define "trend"}}{{if or .Cfg.MostRead .Cfg.Pinned}}<section class="h-trend" aria-labelledby="h-trend-h" data-mostread="{{if .Cfg.MostRead}}on{{else}}off{{end}}" data-pinned="{{if .Cfg.Pinned}}on{{else}}off{{end}}"><h2 class="h-sec" id="h-trend-h">{{if .Cfg.MostRead}}Most read{{else}}Pinned{{end}}</h2><div data-vayu-trending hidden></div></section>{{end}}{{end}}
+{{define "trend"}}{{if or .Cfg.MostRead .Cfg.Pinned}}<section class="h-trend" aria-labelledby="h-trend-h" data-mostread="{{if .Cfg.MostRead}}on{{else}}off{{end}}" data-pinned="{{if .Cfg.Pinned}}on{{else}}off{{end}}"><h2 class="h-sec" id="h-trend-h">{{if .Cfg.MostRead}}Most read{{else}}Pinned{{end}}</h2>{{with .Trend}}<div data-vayu-trending data-drawn>{{template "trenddrawn" .}}</div>{{else}}<div data-vayu-trending hidden></div>{{end}}</section>{{end}}{{end}}
+{{define "trenddrawn"}}{{if .Pinned}}<div class="vayu-trending-group" data-group="pinned"><div class="vayu-trending-head"><span class="vayu-trending-label"><span class="vayu-ico" aria-hidden="true">📌 </span>Pinned</span></div><div class="vayu-trending-list">{{range .Pinned}}{{template "trendpin" .}}{{end}}</div></div>{{end}}{{if or .Week .Month}}<div class="vayu-trending-group" data-group="trending"><div class="vayu-trending-head"><span class="vayu-trending-label"><span class="vayu-ico" aria-hidden="true">🔥 </span>Trending</span><div class="vayu-trending-tabs" role="tablist"><button type="button" class="vayu-trending-tab" role="tab" data-w="7" aria-selected="{{if .Week}}true{{else}}false{{end}}"{{if not .Week}} disabled{{end}}>Last 7 days</button><button type="button" class="vayu-trending-tab" role="tab" data-w="30" aria-selected="{{if .Week}}false{{else}}true{{end}}"{{if not .Month}} disabled{{end}}>Last 30 days</button></div></div><div><div class="vayu-trending-list" data-w-list="7"{{if not .Week}} hidden{{end}}>{{range $i, $p := .Week}}{{template "trendrank" (trendRanked $p $i)}}{{end}}</div><div class="vayu-trending-list" data-w-list="30"{{if .Week}} hidden{{end}}>{{range $i, $p := .Month}}{{template "trendrank" (trendRanked $p $i)}}{{end}}</div></div></div>{{end}}{{end}}
+{{define "trendpin"}}<a class="vayu-trending-card" href="/{{.Slug}}"><span class="vayu-trending-pin vayu-ico" aria-hidden="true">📌</span>{{if .Image}}<img class="vayu-trending-thumb" src="{{.Image}}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">{{end}}<span class="vayu-trending-title">{{if .Title}}{{.Title}}{{else}}{{.Slug}}{{end}}</span></a>{{end}}
+{{define "trendrank"}}<a class="vayu-trending-card" href="/{{.Item.Slug}}"><span class="vayu-trending-rank" aria-hidden="true">{{.Rank}}</span>{{if .Item.Image}}<img class="vayu-trending-thumb" src="{{.Item.Image}}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">{{end}}<span class="vayu-trending-title">{{if .Item.Title}}{{.Item.Title}}{{else}}{{.Item.Slug}}{{end}}</span></a>{{end}}
 
 {{define "ixhead"}}<header class="h-ix-head"><div>{{if .Eyebrow}}<p class="h-eyebrow">{{if .EyebrowHref}}<a href="{{.EyebrowHref}}">{{.Eyebrow}}</a>{{else}}{{.Eyebrow}}{{end}}{{if .Topic}} / <a href="{{tagURL .Topic}}">{{topicName .Topic}}</a>{{end}}</p>{{end}}<h1>{{.Heading}}</h1>{{if .Total}}<p class="h-count">{{if .MostRead}}{{num .Listed}} of {{num .Total}} {{plural .Total "article" "articles"}} read in the last {{.ReadDays}} days, most read first.{{else}}{{num .Total}} {{plural .Total "article" "articles"}}, newest first.{{end}}</p>{{end}}</div>
 {{if .ShowSearch}}{{if .Topic}}<form class="h-find" method="get" action="/search" role="search"><label class="h-vh" for="h-find-q">Search {{topicName .Topic}}</label>{{icon "search"}}<input id="h-find-q" type="search" name="q" placeholder="Search {{topicName .Topic}}"><input type="hidden" name="topic" value="{{.Topic}}">{{if .MostRead}}<input type="hidden" name="sort" value="read">{{end}}</form>{{else}}<form class="h-find" method="get" action="/search" role="search" data-vayu-search><label class="h-vh" for="h-find-q">Search the archive</label>{{icon "search"}}<input id="h-find-q" type="search" name="q" placeholder="Search the archive"><kbd class="h-js-only" aria-hidden="true">/</kbd></form>{{end}}{{end}}</header>
@@ -283,8 +287,29 @@ func executeHalcyon(name string, data any) (string, error) {
 // HomeInput is everything Home and its later pages are rendered from. The
 // Topics, TopicTotal and Desks fields feed Halcyon only; the shared templates
 // read the rest.
+// Trending is what the Most read and Pinned widget shows, drawn into Home
+// when the server has it (TrendingJS fills the widget in otherwise). Home
+// draws it so the list is in the page at its first paint: filled in after it,
+// the list pushed everything under it down on a desktop, where it is in view.
+type Trending struct {
+	Pinned      []TrendingItem
+	Week, Month []TrendingItem // the last 7 and the last 30 days, most read first
+}
+
+// TrendingItem is one post in a Trending list.
+type TrendingItem struct {
+	Slug, Title, Image string
+}
+
+// rankedItem is a Trending item with its place in its list, counted from 1.
+type rankedItem struct {
+	Item TrendingItem
+	Rank int
+}
+
 type HomeInput struct {
 	Settings         SiteSettings
+	Trending         *Trending // nil when the server has no list yet
 	Domain, Version  string
 	Articles         []HomeArticle
 	Total            int
@@ -341,6 +366,7 @@ func renderHalcyonHome(in HomeInput, cfg theme.HalcyonConfig) (string, error) {
 	page, totalPages := max(in.Page, 1), max(in.TotalPages, 1)
 	cfg = in.Settings.halcyon(cfg)
 	c := halcyonChrome(in.Settings, cfg, "home")
+	c.Trend = in.Trending
 	origin := seo.Origin(in.Domain)
 	canonical := blogPageURL(in.Settings.blogBase(), page)
 	c.PageTitle = c.SiteName

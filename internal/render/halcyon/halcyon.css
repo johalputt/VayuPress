@@ -462,6 +462,9 @@
 .h .vayu-trending-tab:disabled { display: none; }
 .h .vayu-trending-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 48px; margin-top: 12px; counter-reset: h-t; }
 .h .h-side .vayu-trending-list, .h .h-end .vayu-trending-list { grid-template-columns: minmax(0, 1fr); }
+/* A page drawn with its list holds both windows; the one not chosen is hidden,
+   which display: grid above would otherwise override. */
+.h .vayu-trending-list[hidden] { display: none; }
 .h .vayu-trending-card { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 4px; align-items: baseline; padding: 14px 0; border-bottom: 1px solid var(--h-line); }
 .h .vayu-trending-card:hover .vayu-trending-title { color: var(--h-accent); }
 .h .vayu-trending-rank { font: italic 400 18px/1.35 var(--h-serif); color: var(--h-t3); }

@@ -241,7 +241,8 @@ type hFooterCol struct {
 // and the head.
 type hChrome struct {
 	Cfg            theme.HalcyonConfig
-	Kind           string // home, topic, topics, article, search, notfound, author
+	Trend          *Trending // Most read and Pinned drawn in place; nil, the widget fills itself in
+	Kind           string    // home, topic, topics, article, search, notfound, author
 	SiteName       string
 	Home           string // where the site's name links: its blog's base, "/" or "/blog"
 	About          string

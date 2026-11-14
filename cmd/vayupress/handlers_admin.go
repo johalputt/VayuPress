@@ -2158,6 +2158,7 @@ func (a *App) homeInput(r *http.Request, page, total, totalPages int, domClause 
 	in := render.HomeInput{Settings: s, Domain: config.Cfg.Domain, Version: Version, Articles: articles,
 		Total: total, Page: page, TotalPages: totalPages}
 	if withHalcyon {
+		in.Trending = a.trendingForHome(r)
 		key, scope, scoped, count := a.halcyonScope(r)
 		in.Topics, in.TopicTotal = a.halcyonTopics(key, count)
 		if page == 1 {

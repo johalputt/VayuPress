@@ -257,12 +257,20 @@ test.describe("Halcyon", () => {
   // Most read's range tabs sit on the heading's line when the ranks come
   // first, and on a row of their own after pinned posts: the one pull put
   // them on the last pinned title (operator's screenshot, 1446 px). The
-  // widget's feed is stubbed, so the pinned rows exist on this install.
+  // widget's feed is stubbed, so the pinned rows exist on this install; Home
+  // is served with the widget left to fill itself in, as it is before the
+  // server has a list, so the stub is what it shows (the list Home draws is
+  // the widget's own markup, TestHomeDrawsMostReadAsTheWidgetWould).
   test("Most read's range tabs never sit on a post, with pinned posts or without", async ({ page }) => {
     await page.setViewportSize({ width: 1446, height: 900 });
     const item = (n) => ({ slug: "halcyon-long", title: `A ranked post with a title of an ordinary length, number ${n}` });
     let feed;
     await page.route("**/api/trending*", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(feed) }));
+    await page.route((url) => url.pathname === "/", async (route) => {
+      const res = await route.fetch();
+      const body = (await res.text()).replace(/<div data-vayu-trending data-drawn>[\s\S]*?<\/div><\/section>/, "<div data-vayu-trending hidden></div></section>");
+      await route.fulfill({ response: res, body });
+    });
     const measure = () => page.evaluate(() => {
       const box = (e) => e.getBoundingClientRect();
       const tabs = box(document.querySelector(".h-trend .vayu-trending-tabs"));
@@ -280,6 +288,36 @@ test.describe("Halcyon", () => {
       const m = await measure();
       expect(m.hit, `${name}: the range tabs overlap a post`).toBe(0);
       expect(m.onHeadLine, `${name}: the range tabs on the heading's line`).toBe(onHeadLine);
+    }
+  });
+
+  // Home draws Most read into its page, so nothing moves when the page has
+  // loaded: filled in after the first paint, the list pushed everything
+  // under it down on a desktop (PageSpeed's layout shift, 0.121 on johal.in).
+  // The server has a list once it has computed one, which a first visit
+  // starts; the tabs still choose the window, with nothing fetched.
+  test("Home draws Most read in place: nothing moves, and the tabs choose the window", async ({ page }) => {
+    await page.setViewportSize({ width: 1350, height: 940 });
+    await expect.poll(async () => (await (await page.request.get("/")).text()).includes("data-vayu-trending data-drawn"), { timeout: 20000 }).toBe(true);
+    let fetched = false;
+    page.on("request", (r) => { if (r.url().includes("/api/trending")) fetched = true; });
+    await page.addInitScript(() => {
+      window.__shift = 0;
+      new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__shift += e.value; }).observe({ type: "layout-shift", buffered: true });
+    });
+    await page.goto("/");
+    await expect(page.locator(".h-trend")).toBeVisible();
+    await page.waitForTimeout(800);
+    expect(await page.evaluate(() => window.__shift), "the page moved after its first paint").toBeLessThan(0.01);
+    expect(fetched, "a drawn list was fetched again").toBe(false);
+
+    const tab = (w) => page.locator(`.h-trend .vayu-trending-tab[data-w="${w}"]`);
+    const list = (w) => page.locator(`.h-trend [data-w-list="${w}"]`);
+    if (!(await tab("30").isDisabled())) {
+      await tab("30").click();
+      await expect(list("30")).toBeVisible();
+      await expect(list("7")).toBeHidden();
+      await expect(tab("30")).toHaveAttribute("aria-selected", "true");
     }
   });
 

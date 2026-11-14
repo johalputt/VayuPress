@@ -1127,6 +1127,26 @@ const TrendingJS = `(function () {
   var sections = Array.prototype.slice.call(
     document.querySelectorAll('[data-vayu-trending]')
   );
+  // A section the server drew (data-drawn) is already whole, both windows in
+  // it: its tabs only show one list and hide the other. Nothing is fetched for
+  // it, and it never moves the page under it.
+  sections = sections.filter(function (section) {
+    if (!section.hasAttribute('data-drawn')) return true;
+    var tabs = section.querySelectorAll('.vayu-trending-tab');
+    Array.prototype.forEach.call(tabs, function (b) {
+      b.addEventListener('click', function () {
+        if (b.disabled) return;
+        var w = b.getAttribute('data-w');
+        Array.prototype.forEach.call(tabs, function (t) {
+          t.setAttribute('aria-selected', t === b ? 'true' : 'false');
+        });
+        Array.prototype.forEach.call(section.querySelectorAll('[data-w-list]'), function (l) {
+          l.hidden = l.getAttribute('data-w-list') !== w;
+        });
+      });
+    });
+    return false;
+  });
   if (!sections.length) return;
 
   fetch('/api/trending', { headers: { Accept: 'application/json' } })

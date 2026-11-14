@@ -957,3 +957,45 @@ func TestTheSiteStylesheetIsBuiltOncePerSitePart(t *testing.T) {
 		t.Error("a different site part was answered with another's stylesheet")
 	}
 }
+
+// Home draws Most read in place when the server has a list, in the widget's
+// own markup (TrendingJS builds the same), so Halcyon's rules for it hold and
+// the page does not move when it loads; with no list, the empty widget is
+// left for the script to fill in, as before.
+func TestHomeDrawsMostReadAsTheWidgetWould(t *testing.T) {
+	withHalcyon(t, nil)
+	in := HomeInput{Articles: []HomeArticle{{Title: "One", Slug: "one", CreatedAt: fixedTime}}, Total: 1, Page: 1, TotalPages: 1, Trending: &Trending{
+		Pinned: []TrendingItem{{Slug: "kept", Title: "A pinned <post>"}},
+		Week:   []TrendingItem{{Slug: "first", Title: "Read most this week"}, {Slug: "second"}},
+		Month:  []TrendingItem{{Slug: "month", Title: "Read most this month"}},
+	}}
+	out, err := RenderHomePage(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`<div data-vayu-trending data-drawn>`,
+		`<div class="vayu-trending-group" data-group="pinned">`,
+		`<span class="vayu-trending-title">A pinned &lt;post&gt;</span>`,
+		`<button type="button" class="vayu-trending-tab" role="tab" data-w="7" aria-selected="true">Last 7 days</button>`,
+		`<div class="vayu-trending-list" data-w-list="7"><a class="vayu-trending-card" href="/first"><span class="vayu-trending-rank" aria-hidden="true">1</span>`,
+		`href="/second"><span class="vayu-trending-rank" aria-hidden="true">2</span><span class="vayu-trending-title">second</span>`,
+		`<div class="vayu-trending-list" data-w-list="30" hidden>`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Home's drawn list lacks %s", want)
+		}
+	}
+	if strings.Contains(out, `data-vayu-trending hidden`) {
+		t.Error("a Home with a list still leaves the widget empty for the script")
+	}
+
+	in.Trending = nil
+	out, err = RenderHomePage(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `<div data-vayu-trending hidden></div>`) || strings.Contains(out, "data-drawn") {
+		t.Error("a Home with no list yet does not leave the widget for the script to fill in")
+	}
+}

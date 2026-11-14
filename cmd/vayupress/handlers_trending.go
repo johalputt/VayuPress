@@ -22,10 +22,12 @@ package main
 import (
 	"context"
 	"net/http"
+	"reflect"
 	"sync"
 	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 )
 
@@ -255,12 +257,59 @@ func (a *App) recomputeTrending(site string) trendingPayload {
 	trendingMu.Lock()
 	// Only publish if no invalidation (pin/unpin) landed while we were computing;
 	// otherwise our result predates the change and would mask it for a full TTL.
+	changed := false
 	if trendingGen == gen {
 		e := trendingEntryFor(site)
+		changed = e.payload == nil || !reflect.DeepEqual(e.payload.Pinned, payload.Pinned) || !reflect.DeepEqual(e.payload.Windows, payload.Windows)
 		e.payload, e.expiry = &payload, time.Now().Add(ttl)
 	}
 	trendingMu.Unlock()
+	// Home draws the list into its page (trendingForHome), so a cached Home
+	// holds the list it was drawn with: a new list clears the cached listings,
+	// and the next visit draws it.
+	if changed {
+		render.CachePurgeListings()
+	}
 	return payload
+}
+
+// trendingForHome is the site's list for Home to draw in place, so Most read
+// is in the page at its first paint. Filled in after it by the widget, the
+// list pushed everything under it down on a desktop, where it is in view
+// (PageSpeed's layout shift, 0.121 on johal.in). A fresh list is drawn as it
+// is; a stale one too, refreshed off the request as the widget's fetch would
+// have. With none yet (after a restart), Home is not held for the queries: the
+// list is computed in the background, the widget fills this page in as before,
+// and the purge above lets the next visit draw it. Nil leaves the widget to
+// fill itself in.
+func (a *App) trendingForHome(r *http.Request) *render.Trending {
+	site := a.contentScope(r)
+	if a.siteSettings != nil && !a.siteSettings.FeatureEnabled(r.Context(), siteSettingsScope(site), settings.KeyFeatureTrending) {
+		return nil
+	}
+	trendingMu.Lock()
+	e := trendingEntryFor(site)
+	p := e.payload
+	refresh := !e.computing && (p == nil || !time.Now().Before(e.expiry))
+	if refresh {
+		e.computing = true
+	}
+	trendingMu.Unlock()
+	if refresh {
+		go a.recomputeTrending(site)
+	}
+	if p == nil || p.nothingToShow() {
+		return nil
+	}
+	return &render.Trending{Pinned: trendingDrawn(p.Pinned), Week: trendingDrawn(p.Windows["7"]), Month: trendingDrawn(p.Windows["30"])}
+}
+
+func trendingDrawn(items []trendingItem) []render.TrendingItem {
+	out := make([]render.TrendingItem, len(items))
+	for i, it := range items {
+		out[i] = render.TrendingItem{Slug: it.Slug, Title: it.Title, Image: it.Image}
+	}
+	return out
 }
 
 // trendingWarming builds a cheap payload from only indexed queries (pinned +
