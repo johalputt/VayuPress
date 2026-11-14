@@ -21,6 +21,16 @@
   }
   function say(msg, kind) { if (window.vpToast) window.vpToast(msg, kind); }
 
+  // Whether an htmx request went through. htmx leaves `successful` unset on
+  // a response that asks for a refresh or a redirect (HX-Refresh,
+  // HX-Redirect): it reloads and returns before marking it. So a block that
+  // worked, answered 200 with HX-Refresh, read as "did not go through (200)"
+  // until the page came back. The status is what says it.
+  function wentThrough(d) {
+    var status = d.xhr && d.xhr.status;
+    return !!d.successful || (status >= 200 && status < 300);
+  }
+
   /* ── Menus open from their trigger (Mail plan §8, item 9) ────────────
      One function for every popover in the console. When a panel opens it
      measures the control that opened it (or the pointer, for a context menu)
@@ -288,7 +298,7 @@
     var verb = d.requestConfig && d.requestConfig.verb;
     if (!verb || verb === 'get') return;
     var live = document.querySelector('.page-actions [role="status"]');
-    if (d.successful) {
+    if (wentThrough(d)) {
       if (live) live.textContent = 'Done.';
       return;
     }
@@ -363,7 +373,7 @@
   document.addEventListener('htmx:afterRequest', function (e) {
     var d = e.detail || {};
     var el = d.xhr && htmxOrigin.get(d.xhr);
-    if (el) settle(el, d.successful);
+    if (el) settle(el, wentThrough(d));
   });
 
 })();

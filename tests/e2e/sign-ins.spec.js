@@ -67,3 +67,25 @@ test("the Block menu offers only what it would set, each note under its label", 
   await hours.locator("summary").click();
   await expect(hours).toHaveAttribute("open", "");
 });
+
+// A write that worked and asks the page to reload (200 with HX-Refresh, as
+// every Block and Lift answers) raises no error. htmx leaves such a request
+// unmarked as successful, and the page used to say "That did not go through
+// (200)" until it came back. The toasts are recorded in sessionStorage, which
+// outlives the reload.
+test("a block that worked says nothing went wrong", async ({ page }) => {
+  await page.goto("/os/shield/sign-ins?days=1");
+  await page.evaluate(() => {
+    sessionStorage.removeItem("vp-toasts");
+    const say = window.vpToast;
+    window.vpToast = (msg, kind) => {
+      sessionStorage.setItem("vp-toasts", (sessionStorage.getItem("vp-toasts") || "") + kind + ": " + msg + "\n");
+      return say(msg, kind);
+    };
+  });
+  await Promise.all([
+    page.waitForEvent("load"),
+    page.evaluate(() => window.htmx.ajax("POST", "/os/api/shield/sign-ins/lift?id=999999999", { target: "body", swap: "none" })),
+  ]);
+  expect(await page.evaluate(() => sessionStorage.getItem("vp-toasts") || "")).toBe("");
+});
