@@ -72,19 +72,17 @@
       var line = document.createElement('div');
       var parts = [];
       if (st.codes_remaining > 0) {
-        parts.push(st.codes_remaining + ' unused recovery code' + (st.codes_remaining === 1 ? '' : 's'));
+        parts.push(vpT('{n, plural, one {# unused recovery code} other {# unused recovery codes}}', { n: st.codes_remaining }));
       }
-      if (st.contact) { parts.push('verified address ' + st.contact); }
-      if (st.contact_pending) { parts.push('address ' + st.contact_pending + ' awaiting verification'); }
+      if (st.contact) { parts.push(vpT('verified address {address}', { address: st.contact })); }
+      if (st.contact_pending) { parts.push(vpT('address {address} awaiting verification', { address: st.contact_pending })); }
 
       if (st.ready) {
-        line.textContent = '✓ Can be recovered — ' + parts.join('; ') + '.';
+        line.textContent = '✓ ' + vpT('Can be recovered — {ways}.', { ways: parts.join('; ') });
       } else if (parts.length) {
-        line.textContent = '✕ Cannot be recovered yet — ' + parts.join('; ') +
-          '. An address only counts once it is verified.';
+        line.textContent = '✕ ' + vpT('Cannot be recovered yet — {ways}. An address only counts once it is verified.', { ways: parts.join('; ') });
       } else {
-        line.textContent = '✕ Cannot be recovered — nothing is enrolled. If this holder forgets their ' +
-          'password, only a server operator with shell access can help.';
+        line.textContent = '✕ ' + vpT('Cannot be recovered — nothing is enrolled. If this holder forgets their password, only a server operator with shell access can help.');
       }
       statusEl.appendChild(line);
 
@@ -110,7 +108,7 @@
         { credentials: 'same-origin', cache: 'no-store' })
         .then(function (r) { return r.json(); })
         .then(renderStatus)
-        .catch(function () { setMsg('Could not load recovery status.', true); });
+        .catch(function () { setMsg(vpT('Could not load recovery status.'), true); });
     }
 
     // showCodes renders the one and only time these exist in readable form.
@@ -120,8 +118,7 @@
 
       var warn = document.createElement('p');
       warn.className = 'rec-codes__warn';
-      warn.textContent = 'Save these now — they cannot be shown again. Each code works once. ' +
-        'Any previous codes for this mailbox have stopped working.';
+      warn.textContent = vpT('Save these now — they cannot be shown again. Each code works once. Any previous codes for this mailbox have stopped working.');
       codesEl.appendChild(warn);
 
       var grid = document.createElement('div');
@@ -140,18 +137,18 @@
       var copy = document.createElement('button');
       copy.type = 'button';
       copy.className = 'btn btn--sm btn--ghost';
-      copy.textContent = 'Copy all';
+      copy.textContent = vpT('Copy all');
       copy.addEventListener('click', function () {
         var text = codeSheet(codes);
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(text).then(function () {
-            copy.textContent = 'Copied';
-          }).catch(function () { copy.textContent = 'Copy failed — use Download instead'; });
+            copy.textContent = vpT('Copied');
+          }).catch(function () { copy.textContent = vpT('Copy failed — use Download instead'); });
         } else {
           // The clipboard API needs a secure context and a permission that some
           // browsers refuse. Download always works, so say so rather than leaving
           // the operator with a button that did nothing.
-          copy.textContent = 'Clipboard unavailable — use Download instead';
+          copy.textContent = vpT('Clipboard unavailable — use Download instead');
         }
       });
       actions.appendChild(copy);
@@ -159,14 +156,14 @@
       var dl = document.createElement('button');
       dl.type = 'button';
       dl.className = 'btn btn--sm btn--ghost';
-      dl.textContent = 'Download .txt';
+      dl.textContent = vpT('Download .txt');
       dl.addEventListener('click', function () { downloadCodes(codes); });
       actions.appendChild(dl);
 
       var print = document.createElement('button');
       print.type = 'button';
       print.className = 'btn btn--sm btn--ghost';
-      print.textContent = 'Print';
+      print.textContent = vpT('Print');
       print.addEventListener('click', function () { printCodes(codes); });
       actions.appendChild(print);
 
@@ -181,29 +178,35 @@
     // tells its owner nothing about what it unlocks or where to take it.
     function codeSheet(codes) {
       var mb = current();
+      var title = vpT('VayuMail recovery codes');
       var lines = [
-        'VayuMail recovery codes',
-        '=======================',
+        title,
+        title.replace(/./g, '='),
         '',
-        'Mailbox : ' + mb,
-        'Server  : ' + location.host,
-        'Created : ' + new Date().toISOString().slice(0, 10),
-        '',
-        'Each code can be used ONCE to set a new password for this mailbox at:',
+        vpT('Mailbox') + ': ' + mb,
+        vpT('Server') + ': ' + location.host,
+        vpT('Created') + ': ' + new Date().toISOString().slice(0, 10),
+        ''
+      ].concat(wrap(vpT('Each code can be used ONCE to set a new password for this mailbox at:'), 72), [
         '  ' + location.origin + '/mail/recover/code',
         ''
-      ];
+      ]);
       codes.forEach(function (c) { lines.push('  ' + c); });
-      lines.push(
-        '',
-        'Keep this somewhere you can reach WITHOUT this mailbox — a password',
-        'manager, a printout, or another device. Anyone holding these codes can',
-        'take over the mailbox, so treat them exactly like the password itself.',
-        '',
-        'Generating a new set invalidates every code above.',
-        ''
-      );
+      lines.push('');
+      lines = lines.concat(wrap(vpT('Keep this somewhere you can reach WITHOUT this mailbox — a password manager, a printout, or another device. Anyone holding these codes can take over the mailbox, so treat them exactly like the password itself.'), 72));
+      lines.push('', vpT('Generating a new set invalidates every code above.'), '');
       return lines.join('\n');
+    }
+
+    // wrap breaks a paragraph of the codes sheet at its spaces to width; a
+    // language written without spaces stays one line.
+    function wrap(text, width) {
+      var out = [], line = '';
+      text.split(' ').forEach(function (word) {
+        if (line && (line + ' ' + word).length > width) { out.push(line); line = word; } else { line = line ? line + ' ' + word : word; }
+      });
+      if (line) { out.push(line); }
+      return out;
     }
 
     // safeFileName keeps the mailbox recognisable in the filename without letting
@@ -233,13 +236,13 @@
     function printCodes(codes) {
       var w = window.open('', '_blank', 'width=640,height=760');
       if (!w) {
-        setMsg('Your browser blocked the print window — use Download .txt instead.', true);
+        setMsg(vpT('Your browser blocked the print window — use Download .txt instead.'), true);
         return;
       }
       // Built as text in a <pre>, not as markup: the codes and the mailbox go in
       // through textContent so nothing here can become HTML.
       var doc = w.document;
-      doc.title = 'VayuMail recovery codes';
+      doc.title = vpT('VayuMail recovery codes');
       var pre = doc.createElement('pre');
       pre.style.font = '13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace';
       pre.style.padding = '24px';
@@ -262,16 +265,16 @@
         // Regeneration destroys the previous set, so it is worth one confirmation:
         // an operator who does this by accident has just invalidated the sheet the
         // holder is carrying.
-        vpConfirm({ title: 'Generate new codes', message: 'Generate new codes for ' + m + '? Any codes already given to this holder will stop working.', confirm: 'Generate' }, function () {
+        vpConfirm({ title: vpT('Generate new codes'), message: vpT('Generate new codes for {mailbox}? Any codes already given to this holder will stop working.', { mailbox: m }), confirm: vpT('Generate') }, function () {
           genBtn.disabled = true;
-          setMsg('Generating…', false);
+          setMsg(vpT('Generating…'), false);
           post('/os/api/vayuos/mail/recovery/codes', { email: m }).then(function (res) {
-            if (!res.ok) { setMsg(errText(res, 'Could not generate codes.'), true); return; }
+            if (!res.ok) { setMsg(errText(res, vpT('Could not generate codes.')), true); return; }
             showCodes(res.d.codes || []);
             setMsg('', false);
             loadStatus();
           }).catch(function () {
-            setMsg('Could not reach the server.', true);
+            setMsg(vpT('Could not reach the server.'), true);
           }).finally(function () { genBtn.disabled = false; });
         });
       });
@@ -282,14 +285,14 @@
       if (!m) { return; }
       var payload = { email: m, action: action };
       if (needValue) { payload.contact = (contactEl && contactEl.value) || ''; }
-      setMsg('Saving…', false);
+      setMsg(vpT('Saving…'), false);
       post('/os/api/vayuos/mail/recovery/contact', payload).then(function (res) {
-        if (!res.ok) { setMsg(errText(res, 'That did not work.'), true); return; }
+        if (!res.ok) { setMsg(errText(res, vpT('That did not work.')), true); return; }
         renderStatus(res.d);
-        setMsg(action === 'verify' ? 'Address verified — it is now a working recovery factor.'
-          : action === 'clear' ? 'Recovery address removed.'
-            : 'Saved. It does not count as recovery until you mark it verified.', false);
-      }).catch(function () { setMsg('Could not reach the server.', true); });
+        setMsg(action === 'verify' ? vpT('Address verified — it is now a working recovery factor.')
+          : action === 'clear' ? vpT('Recovery address removed.')
+            : vpT('Saved. It does not count as recovery until you mark it verified.'), false);
+      }).catch(function () { setMsg(vpT('Could not reach the server.'), true); });
     }
 
     var setBtn = panel.querySelector('[data-rec-set]');
@@ -299,7 +302,7 @@
     var clearBtn = panel.querySelector('[data-rec-clear]');
     if (clearBtn) {
       clearBtn.addEventListener('click', function () {
-        vpConfirm({ title: 'Remove recovery address', message: 'Remove the recovery address for ' + current() + '?', confirm: 'Remove' }, function () {
+        vpConfirm({ title: vpT('Remove recovery address'), message: vpT('Remove the recovery address for {mailbox}?', { mailbox: current() }), confirm: vpT('Remove') }, function () {
           contactAction('clear', false);
         });
       });
@@ -346,7 +349,7 @@
       var row = ev.target.closest('[data-rec-req]');
       if (!row) { return; }
       var id = parseInt(row.getAttribute('data-rec-req'), 10);
-      var mb = (row.firstElementChild && row.firstElementChild.textContent) || 'this mailbox';
+      var mb = (row.firstElementChild && row.firstElementChild.textContent) || vpT('this mailbox');
 
       // Approval is the step an attacker would try to talk an administrator
       // through, so it asks out loud who they have actually spoken to.
@@ -364,8 +367,7 @@
           var p = document.createElement('p');
           p.className = 'rec-codes__warn';
           p.textContent = d.warning ? d.warning
-            : 'One-time reset link for ' + (d.email || mb) + ' — shown once. ' +
-              'Hand it over in person or on a call you placed yourself.';
+            : vpT('One-time reset link for {address} — shown once. Hand it over in person or on a call you placed yourself.', { address: d.email || mb });
           out.appendChild(p);
           if (d.link) {
             var code = document.createElement('code');
@@ -379,7 +381,7 @@
         }).catch(function () { /* the row stays; the operator can retry */ });
       }
       if (approve) {
-        vpConfirm({ title: 'Approve recovery', message: 'Approve recovery for ' + mb + '? Only do this if you have confirmed, on a channel you trust, that you are talking to the real holder.', confirm: 'Approve' }, decide);
+        vpConfirm({ title: vpT('Approve recovery'), message: vpT('Approve recovery for {mailbox}? Only do this if you have confirmed, on a channel you trust, that you are talking to the real holder.', { mailbox: mb }), confirm: vpT('Approve') }, decide);
       } else {
         decide();
       }

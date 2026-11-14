@@ -1481,6 +1481,43 @@ test("the vacation reply saves as it is written, and typing goes on through the 
   await expect(page.locator('form.vm-ooo-form textarea[name="body"]')).not.toHaveValue(/Back on Monday/);
 });
 
+// A mailbox's recovery panel says where it stands, makes a set of codes after
+// asking, shows them once, and gives them as a sheet to keep: the codes the
+// page shows, and the sheet's paragraphs whole however they are wrapped.
+test("a mailbox's recovery codes are made after asking, and kept as a sheet", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/os/vayumail/accounts/settings?user=priya%40mail.test");
+  const panel = page.locator("details[data-recovery-panel]");
+  await panel.locator("summary").click();
+  const status = panel.locator("[data-rec-status]");
+  await expect(status).toHaveText(/^(✓ Can be recovered — .+\.|✕ Cannot be recovered.+)$/);
+
+  await panel.locator("[data-rec-gen]").click();
+  const ask = page.locator(".vp-confirm");
+  await expect(ask.locator(".vp-confirm__title")).toHaveText("Generate new codes");
+  await expect(ask.locator(".vp-confirm__msg")).toHaveText("Generate new codes for priya@mail.test? Any codes already given to this holder will stop working.");
+  await ask.getByRole("button", { name: "Generate" }).click();
+
+  const codes = panel.locator("[data-rec-codes]");
+  await expect(codes.locator(".rec-codes__warn")).toHaveText("Save these now — they cannot be shown again. Each code works once. Any previous codes for this mailbox have stopped working.");
+  await expect(codes.locator(".rec-codes__code")).toHaveCount(10);
+  await expect(status).toHaveText("✓ Can be recovered — 10 unused recovery codes.");
+  await expect(codes.getByRole("button", { name: "Print" })).toBeVisible();
+  await expect(codes.getByRole("button", { name: "Copy all" })).toBeVisible();
+
+  const shown = await codes.locator(".rec-codes__code").allTextContents();
+  const [file] = await Promise.all([page.waitForEvent("download"), codes.getByRole("button", { name: "Download .txt" }).click()]);
+  expect(file.suggestedFilename()).toBe("vayumail-recovery-codes-priya@mail.test.txt");
+  const lines = require("fs").readFileSync(await file.path(), "utf8").split("\n");
+  expect(lines.slice(0, 4)).toEqual(["VayuMail recovery codes", "=======================", "", "Mailbox: priya@mail.test"]);
+  for (const c of shown) expect(lines).toContain("  " + c);
+  for (const l of lines) expect(l.length, l).toBeLessThanOrEqual(72);
+  const said = lines.join(" ");
+  expect(said).toContain("Each code can be used ONCE to set a new password for this mailbox at:");
+  expect(said).toContain("Keep this somewhere you can reach WITHOUT this mailbox — a password manager, a printout, or another device. Anyone holding these codes can take over the mailbox, so treat them exactly like the password itself.");
+  expect(lines).toContain("Generating a new set invalidates every code above.");
+});
+
 // On a phone the list is worked by the thumb: Compose is a round button over
 // the list (gone on a message's screen), and a row swiped right past a third
 // of its width is archived. The spec puts the message back where it was.
