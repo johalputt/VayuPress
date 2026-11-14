@@ -168,7 +168,7 @@ func (a *App) handleVayuOSMakePrivate(w http.ResponseWriter, r *http.Request) {
 	}
 	out := a.privateMailboxBlock(r, own)
 	if code != "" {
-		out = strings.Replace(out, `<div id="vm-private">`, `<div id="vm-private">`+recoveryCodeBlock(code,
+		out = strings.Replace(out, `<div id="vm-private">`, `<div id="vm-private">`+recoveryCodeBlock(lang, code,
 			i18n.T(lang, "Your mailbox is private and its mail is sealed. The mail already here is being sealed now.")), 1)
 	}
 	writeOSHTML(w, r, out)

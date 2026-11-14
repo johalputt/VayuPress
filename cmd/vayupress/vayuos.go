@@ -2208,7 +2208,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	// The holder's own sealed mail, while its key is not held open: the
 	// list shows senders and dates, and this says how to open the rest.
 	if _, own := a.ownMailbox(r); own != "" && mailKeyOf(own, a.vayuMail.Config().Domain) == user {
-		body.WriteString(a.sealedNotice(own, ""))
+		body.WriteString(a.sealedNotice(i18n.Lang(r.Context()), own, ""))
 	}
 	body.WriteString(`<span id="vm-inbox-spin" class="htmx-indicator vm-spin" aria-hidden="true">loading…</span>`)
 	// The Mail plan's panes are their own kind, "app": the fidelity plan

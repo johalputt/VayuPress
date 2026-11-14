@@ -27,6 +27,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/auth"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/logging"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 )
@@ -96,44 +97,46 @@ func (a *App) sealStoredMail(own string) {
 	}
 }
 
-// recoveryCodeBlock shows a recovery code, once.
-func recoveryCodeBlock(code, lead string) string {
+// recoveryCodeBlock shows a recovery code, once, under lead, a sentence
+// already in lang.
+func recoveryCodeBlock(lang, code, lead string) string {
 	c := html.EscapeString(code)
-	return saCallout("warning", `<p class="text-sm">`+lead+`</p>`+
-		`<p class="text-sm"><strong>Your recovery code: <code>`+c+`</code></strong></p>`+
-		`<p class="text-sm">Write it down or save it somewhere only you can reach. It is shown this once and kept nowhere on this server. `+
-		`If you forget your password and lose this code, your mail cannot be recovered by anyone, including the site's owner.</p>`+
-		`<p class="text-sm"><a class="btn btn--sm" download="mailbox-recovery-code.txt" href="data:text/plain;charset=utf-8,`+c+`">Save it as a file</a></p>`)
+	return saCallout("warning", `<p class="text-sm">`+html.EscapeString(lead)+`</p>`+
+		`<p class="text-sm"><strong>`+html.EscapeString(i18n.T(lang, "Your recovery code:"))+` <code>`+c+`</code></strong></p>`+
+		`<p class="text-sm">`+html.EscapeString(i18n.T(lang, "Write it down or save it somewhere only you can reach. It is shown this once and kept nowhere on this server. If you forget your password and lose this code, your mail cannot be recovered by anyone, including the site's owner."))+`</p>`+
+		`<p class="text-sm"><a class="btn btn--sm" download="mailbox-recovery-code.txt" href="data:text/plain;charset=utf-8,`+c+`">`+html.EscapeString(i18n.T(lang, "Save it as a file"))+`</a></p>`)
 }
 
 // sealedNotice is what the holder of a sealed mailbox sees at the top of
 // their inbox while its key is not held open.
-func (a *App) sealedNotice(own, result string) string {
+func (a *App) sealedNotice(lang, own, result string) string {
 	if !a.mailSealedShut(own) {
 		return ""
 	}
-	return `<div id="vm-sealed">` + saCallout("info", `<p class="text-sm"><strong>Your mail is sealed.</strong> `+
-		`Only your mailbox password opens it: type it here to read your mail on this site for the next eight hours. `+
-		`Senders and dates show while it is sealed; subjects and messages do not.</p>`+
+	password := `<label class="field"><span class="field-label">` + html.EscapeString(i18n.T(lang, "Mailbox password")) + `</span><input class="input input--sm" type="password" name="current" autocomplete="current-password" required></label>`
+	return `<div id="vm-sealed">` + saCallout("info", `<p class="text-sm"><strong>`+html.EscapeString(i18n.T(lang, "Your mail is sealed."))+`</strong> `+
+		html.EscapeString(i18n.T(lang, "Only your mailbox password opens it: type it here to read your mail on this site for the next eight hours. Senders and dates show while it is sealed; subjects and messages do not."))+`</p>`+
 		`<form class="vm-ooo-form" hx-post="/os/vayumail/unlock" hx-target="#vm-sealed" hx-swap="outerHTML">`+
-		`<label class="field"><span class="field-label">Mailbox password</span><input class="input input--sm" type="password" name="current" autocomplete="current-password" required></label>`+
-		`<button class="btn btn--primary btn--sm" type="submit">Open my mail</button></form>`+
-		`<details class="vm-ooo vm-acct__sub"><summary><span class="field-label">Use your recovery code</span></summary>`+
-		`<p class="text-sm">If your password was reset since you made your mailbox private, your recovery code opens your mail and puts it under the password you use now.</p>`+
+		password+
+		`<button class="btn btn--primary btn--sm" type="submit">`+html.EscapeString(i18n.T(lang, "Open my mail"))+`</button></form>`+
+		`<details class="vm-ooo vm-acct__sub"><summary><span class="field-label">`+html.EscapeString(i18n.T(lang, "Use your recovery code"))+`</span></summary>`+
+		`<p class="text-sm">`+html.EscapeString(i18n.T(lang, "If your password was reset since you made your mailbox private, your recovery code opens your mail and puts it under the password you use now."))+`</p>`+
 		`<form class="vm-ooo-form" hx-post="/os/vayumail/unlock/recover" hx-target="#vm-sealed" hx-swap="outerHTML">`+
-		`<label class="field"><span class="field-label">Recovery code</span><input class="input input--sm" type="text" name="code" autocomplete="off" required></label>`+
-		`<label class="field"><span class="field-label">Mailbox password</span><input class="input input--sm" type="password" name="current" autocomplete="current-password" required></label>`+
-		`<button class="btn btn--sm" type="submit">Open with the code</button></form></details>`+
+		`<label class="field"><span class="field-label">`+html.EscapeString(i18n.T(lang, "Recovery code"))+`</span><input class="input input--sm" type="text" name="code" autocomplete="off" required></label>`+
+		password+
+		`<button class="btn btn--sm" type="submit">`+html.EscapeString(i18n.T(lang, "Open with the code"))+`</button></form></details>`+
 		result) + `</div>`
 }
 
-// sealedRefusal answers a refused unlock or recovery: in the notice while the
-// mail is shut, and on its own while it is open, so it is never lost.
-func (a *App) sealedRefusal(own, msg string) string {
+// sealedRefusal answers a refused unlock or recovery with msg, a sentence
+// already in lang: in the notice while the mail is shut, and on its own
+// while it is open, so it is never lost.
+func (a *App) sealedRefusal(lang, own, msg string) string {
+	said := saCallout("danger", html.EscapeString(msg))
 	if a.mailSealedShut(own) {
-		return a.sealedNotice(own, saCallout("danger", msg))
+		return a.sealedNotice(lang, own, said)
 	}
-	return `<div id="vm-sealed">` + saCallout("danger", msg) + `</div>`
+	return `<div id="vm-sealed">` + said + `</div>`
 }
 
 // ownSealedMailbox is the session's own mailbox, when the request may act on
@@ -155,14 +158,14 @@ func (a *App) handleVayuOSMailUnlock(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	pw := r.FormValue("current")
+	pw, lang := r.FormValue("current"), i18n.Lang(r.Context())
 	if !a.ownMailPasswordOK(r, own, pw) {
-		writeOSHTML(w, r, a.sealedRefusal(own, "That is not your mailbox password."))
+		writeOSHTML(w, r, a.sealedRefusal(lang, own, i18n.T(lang, "That is not your mailbox password.")))
 		return
 	}
 	if err := a.vayuPGP.HoldOpen(own, pw); err != nil {
-		writeOSHTML(w, r, a.sealedRefusal(own,
-			"That is your password, but your mail is locked under an earlier one: open it with your recovery code."))
+		writeOSHTML(w, r, a.sealedRefusal(lang, own,
+			i18n.T(lang, "That is your password, but your mail is locked under an earlier one: open it with your recovery code.")))
 		return
 	}
 	w.Header().Set("HX-Redirect", "/os/vayumail/inbox")
@@ -177,22 +180,22 @@ func (a *App) handleVayuOSMailRecover(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	pw := r.FormValue("current")
+	pw, lang := r.FormValue("current"), i18n.Lang(r.Context())
 	if !a.ownMailPasswordOK(r, own, pw) {
-		writeOSHTML(w, r, a.sealedRefusal(own, "That is not your mailbox password."))
+		writeOSHTML(w, r, a.sealedRefusal(lang, own, i18n.T(lang, "That is not your mailbox password.")))
 		return
 	}
 	next, err := a.vayuPGP.RecoverHolder(own, r.FormValue("code"), pw)
 	if err != nil {
 		// A code is a guess like a password: it counts against the same throttle.
 		mailAuthThrottle.Fail(own)
-		writeOSHTML(w, r, a.sealedRefusal(own, "That recovery code does not open your mail."))
+		writeOSHTML(w, r, a.sealedRefusal(lang, own, i18n.T(lang, "That recovery code does not open your mail.")))
 		return
 	}
 	dbpkg.AuditLog("vayumail.account.recovery-code", own, own, "the holder opened their sealed mail with a recovery code")
-	writeOSHTML(w, r, `<div id="vm-sealed">`+recoveryCodeBlock(next,
-		`Your mail is open, under the password you use now. The code you used no longer works; this is your new one.`)+
-		`<p class="text-sm"><a class="btn btn--sm" href="/os/vayumail/inbox">Read my mail</a></p></div>`)
+	writeOSHTML(w, r, `<div id="vm-sealed">`+recoveryCodeBlock(lang, next,
+		i18n.T(lang, "Your mail is open, under the password you use now. The code you used no longer works; this is your new one."))+
+		`<p class="text-sm"><a class="btn btn--sm" href="/os/vayumail/inbox">`+html.EscapeString(i18n.T(lang, "Read my mail"))+`</a></p></div>`)
 }
 
 // handleVayuOSMailLock closes the session's own sealed mail now.

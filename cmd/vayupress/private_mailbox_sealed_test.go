@@ -20,6 +20,7 @@ import (
 	"github.com/ProtonMail/go-crypto/openpgp"
 
 	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/users"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 )
@@ -122,7 +123,7 @@ func TestSealedMailOpensWithThePasswordOnly(t *testing.T) {
 	a, _, dana := sealedMailApp(t)
 	makeDanaPrivate(t, a, dana)
 	a.vayuPGP.CloseHeld("dana@example.com")
-	if !strings.Contains(a.sealedNotice("dana@example.com", ""), "Your mail is sealed") {
+	if !strings.Contains(a.sealedNotice("en", "dana@example.com", ""), "Your mail is sealed") {
 		t.Fatal("no sealed notice while the key is shut")
 	}
 	if body := postAppPwForm(a.handleVayuOSMailUnlock, "/", url.Values{"current": {"not it"}}, dana).Body.String(); !strings.Contains(body, "not your mailbox password") || a.vayuPGP.HeldOpen("dana@example.com") {
@@ -132,7 +133,7 @@ func TestSealedMailOpensWithThePasswordOnly(t *testing.T) {
 	if rec.Header().Get("HX-Redirect") != "/os/vayumail/inbox" || !a.vayuPGP.HeldOpen("dana@example.com") {
 		t.Fatalf("the password did not open the mail: %d %s", rec.Code, rec.Body.String())
 	}
-	if a.sealedNotice("dana@example.com", "") != "" {
+	if a.sealedNotice("en", "dana@example.com", "") != "" {
 		t.Error("the notice still shows with the mail open")
 	}
 	postAppPwForm(a.handleVayuOSMailLock, "/", nil, dana)
@@ -363,5 +364,28 @@ func TestAResetClosesSealedMail(t *testing.T) {
 	}
 	if closed != "dana@example.com" {
 		t.Errorf("the reset closed %q", closed)
+	}
+}
+
+// TestTheSealedNoticeIsInThePersonsLanguage — the notice over a sealed
+// mailbox, its two ways in and a refused password, in German, with none of
+// the English they replaced.
+func TestTheSealedNoticeIsInThePersonsLanguage(t *testing.T) {
+	a, _, dana := sealedMailApp(t)
+	makeDanaPrivate(t, a, dana)
+	a.vayuPGP.CloseHeld("dana@example.com")
+	notice := a.sealedRefusal("de", "dana@example.com", i18n.T("de", "That is not your mailbox password."))
+	for _, want := range []string{"Ihre E-Mails sind versiegelt.", "Postfach-Passwort", "Meine E-Mails öffnen", "Mit dem Code öffnen", "Das ist nicht Ihr Postfach-Passwort."} {
+		if !strings.Contains(notice, want) {
+			t.Errorf("the German notice has no %q", want)
+		}
+	}
+	for _, english := range []string{"Your mail is sealed", "Mailbox password", "Open my mail", "not your mailbox password"} {
+		if strings.Contains(notice, english) {
+			t.Errorf("the German notice says %q", english)
+		}
+	}
+	if block := recoveryCodeBlock("ja", "AAAA-BBBB", "x"); !strings.Contains(block, "あなたの復旧コード:") || strings.Contains(block, "Save it as a file") {
+		t.Errorf("the Japanese recovery code block is not in Japanese:\n%s", block)
 	}
 }
