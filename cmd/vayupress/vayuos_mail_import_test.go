@@ -6,12 +6,14 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/users"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
@@ -123,5 +125,33 @@ func TestBringMailInIsOfferedOnlyWhereItCanRun(t *testing.T) {
 		if !strings.Contains(side, "/os/vayumail/download?user=dana") {
 			t.Errorf("%s: the sidebar has no Download all mail", role)
 		}
+	}
+}
+
+// Bring mail in is in the person's language: the page and its form in
+// French, and a refusal in Russian with the store's reason placed in it.
+func TestBringMailInIsInThePersonsLanguage(t *testing.T) {
+	a, holder, _ := reviewerApp(t, vmail.RoleMailbox)
+	req := withUser(httptest.NewRequest(http.MethodGet, "/", nil), holder)
+	req = req.WithContext(i18n.WithLang(req.Context(), "fr"))
+	body := a.mailImportBody(req.Context(), a.mailReader(req, ""), "")
+	for _, want := range []string{"Copiez ici votre courrier depuis un autre fournisseur", "Nom d’utilisateur", "TLS, port 993", "Ce qui est récupéré"} {
+		if !strings.Contains(body, html.EscapeString(want)) {
+			t.Errorf("the French page has no %q", want)
+		}
+	}
+	for _, english := range []string{"Copy your mail here", "User name", "What comes across"} {
+		if strings.Contains(body, english) {
+			t.Errorf("the French page says %q", english)
+		}
+	}
+	b := scheduledApp(t)
+	ru := withUser(httptest.NewRequest(http.MethodPost, "/os/vayumail/import/action", strings.NewReader(url.Values{"action": {"start"}, "host": {"imap.example.net"}, "port": {"25"}, "username": {"d"}, "password": {"p"}}.Encode())), danaHolder())
+	ru.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	ru = ru.WithContext(i18n.WithLang(ru.Context(), "ru"))
+	rec := httptest.NewRecorder()
+	b.handleVayuOSMailImportAction(rec, ru)
+	if !strings.Contains(rec.Body.String(), "Не запущено: the port must be 993") {
+		t.Errorf("the Russian refusal does not say it in Russian around the store's reason:\n%s", rec.Body.String())
 	}
 }

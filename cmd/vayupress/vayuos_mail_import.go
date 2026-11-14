@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/pace"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/ui"
@@ -26,7 +26,7 @@ var importPacing = pace.JobConfig{Min: 2, Max: 50, Step: 4, Floor: true}
 // request may change (mailReader, ADR-0152).
 func (a *App) handleVayuOSMailImport(w http.ResponseWriter, r *http.Request) {
 	if !a.mailRunning() {
-		a.writeMailSetup(w, r, "Bring mail in")
+		a.writeMailSetup(w, r, i18n.T(i18n.Lang(r.Context()), "Bring mail in"))
 		return
 	}
 	nonce := render.CSPNonce(r)
@@ -39,7 +39,7 @@ func (a *App) handleVayuOSMailImport(w http.ResponseWriter, r *http.Request) {
 		cfg.MailSide.Importing = true
 	}
 	body := ui.HTML(`<div id="mx-import">` + a.mailImportBody(r.Context(), rd, "") + `</div>`)
-	writeOSHTML(w, r, adminOSLayout(nonce, "Bring mail in", "vayuos", cfg, body))
+	writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(i18n.Lang(r.Context()), "Bring mail in"), "vayuos", cfg, body))
 }
 
 // handleVayuOSMailImportFragment redraws the page while an import runs.
@@ -56,12 +56,13 @@ func (a *App) handleVayuOSMailImportFragment(w http.ResponseWriter, r *http.Requ
 // access record, where its holder sees it.
 func (a *App) handleVayuOSMailImportAction(w http.ResponseWriter, r *http.Request) {
 	if !a.mailRunning() {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", i18n.T(i18n.Lang(r.Context()), "VayuMail is not active"), "")
 		return
 	}
+	lang := i18n.Lang(r.Context())
 	rd := a.mailReader(r, strings.TrimSpace(r.PostFormValue("user")))
 	if rd.Key() == "" {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "No mailbox you can change was named.", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(lang, "No mailbox you can change was named."), "")
 		return
 	}
 	note := ""
@@ -74,18 +75,18 @@ func (a *App) handleVayuOSMailImportAction(w http.ResponseWriter, r *http.Reques
 		if rd.IsOperator() {
 			addr := mailAddrOf(rd.Key(), a.vayuMail.Config().Domain)
 			if err := a.vayuMail.AppendLedger(r.Context(), addr, rd.Actor(), "import", "mail was brought in from "+host); err != nil {
-				note = "Not started: it could not be recorded."
+				note = i18n.T(lang, "Not started: it could not be recorded.")
 				break
 			}
 		}
 		port, _ := strconv.Atoi(r.PostFormValue("port"))
 		req := vmail.ImportRequest{Host: host, Port: port, Username: r.PostFormValue("username"), Password: r.PostFormValue("password")}
 		if err := a.vayuMail.StartImport(rd, req, pace.Host().NewJob(importPacing)); err != nil {
-			note = "Not started: " + err.Error() + "."
+			note = i18n.T(lang, "Not started: {reason}.", "reason", err.Error())
 		}
 	case "stop":
 		if err := a.vayuMail.StopImport(rd); err != nil {
-			note = "Not stopped: " + err.Error() + "."
+			note = i18n.T(lang, "Not stopped: {reason}.", "reason", err.Error())
 		}
 	default:
 		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "unknown action", "")
@@ -97,43 +98,48 @@ func (a *App) handleVayuOSMailImportAction(w http.ResponseWriter, r *http.Reques
 // mailImportBody is the page: what the last import did or is doing, and
 // while none runs, where to bring mail in from.
 func (a *App) mailImportBody(ctx context.Context, rd vmail.Reader, note string) string {
+	lang := i18n.Lang(ctx)
+	title := i18n.T(lang, "Bring mail in")
 	st, err := a.vayuMail.ImportStatusFor(rd)
 	if err != nil {
-		return string(ui.Status(ui.StatusPage{Title: "Bring mail in", Tone: "danger", State: "This mailbox cannot be read from here"}))
+		return string(ui.Status(ui.StatusPage{Title: title, Tone: "danger", State: i18n.T(lang, "This mailbox cannot be read from here")}))
 	}
 	user := rd.Key()
 	vals := func(action string) string {
 		return ` hx-vals='{"user":"` + esc(user) + `","action":"` + action + `"}'`
 	}
-	page := ui.StatusPage{Title: "Bring mail in", Tone: "neutral", State: "Copy your mail here from another provider",
-		Detail: ui.Text("Every folder, with what you have read, in the background at the server's pace. Nothing is deleted there.")}
+	page := ui.StatusPage{Title: title, Tone: "neutral", State: i18n.T(lang, "Copy your mail here from another provider"),
+		Detail: ui.Text(i18n.T(lang, "Every folder, with what you have read, in the background at the server's pace. Nothing is deleted there."))}
 	running := st != nil && st.State == vmail.ImportRunning
 	if st != nil {
-		n := itoaSafe(st.Copied) + " " + map[bool]string{true: "message", false: "messages"}[st.Copied == 1]
 		switch st.State {
 		case vmail.ImportRunning:
-			page.State = "Bringing mail in from " + st.Host
-			detail := n + " copied so far"
-			if st.Total > 0 {
-				detail = itoaSafe(st.Copied+st.Failed) + " of " + itoaSafe(st.Total) + " messages done"
+			page.State = i18n.T(lang, "Bringing mail in from {host}", "host", st.Host)
+			var detail string
+			switch {
+			case st.Total > 0 && st.Folder != "":
+				detail = i18n.T(lang, "{done} of {total} messages done, now {folder}.", "done", st.Copied+st.Failed, "total", st.Total, "folder", st.Folder)
+			case st.Total > 0:
+				detail = i18n.T(lang, "{done} of {total} messages done.", "done", st.Copied+st.Failed, "total", st.Total)
+			case st.Folder != "":
+				detail = i18n.T(lang, "{n, plural, one {# message copied so far, now {folder}.} other {# messages copied so far, now {folder}.}}", "n", st.Copied, "folder", st.Folder)
+			default:
+				detail = i18n.T(lang, "{n, plural, one {# message copied so far.} other {# messages copied so far.}}", "n", st.Copied)
 			}
-			if st.Folder != "" {
-				detail += ", now " + st.Folder
-			}
-			page.Detail = ui.Text(detail + ".")
-			page.Actions = ui.HTML(`<button type="button" class="btn" hx-post="/os/vayumail/import/action"` + vals("stop") + ` hx-target="#mx-import" hx-swap="innerHTML">Stop</button>`)
+			page.Detail = ui.Text(detail)
+			page.Actions = ui.HTML(`<button type="button" class="btn" hx-post="/os/vayumail/import/action"` + vals("stop") + ` hx-target="#mx-import" hx-swap="innerHTML">` + esc(i18n.T(lang, "Stop")) + `</button>`)
 		case vmail.ImportDone:
-			page.Tone, page.State = "ok", "Brought in "+n+" from "+st.Host
-			page.Detail = ui.Text("Finished " + humanAgo(st.Updated, time.Now()) + ". Bringing mail in again copies only what has arrived there since.")
+			page.Tone, page.State = "ok", i18n.T(lang, "{n, plural, one {Brought in # message from {host}} other {Brought in # messages from {host}}}", "n", st.Copied, "host", st.Host)
+			page.Detail = ui.Text(i18n.T(lang, "Finished {when}. Bringing mail in again copies only what has arrived there since.", "when", i18n.Date(lang, st.Updated, i18n.DayMonthYearShortAt)))
 		case vmail.ImportStopped:
-			page.State = "Stopped after " + n + " from " + st.Host
-			page.Detail = ui.Text("Bring mail in again to carry on from there.")
+			page.State = i18n.T(lang, "{n, plural, one {Stopped after # message from {host}} other {Stopped after # messages from {host}}}", "n", st.Copied, "host", st.Host)
+			page.Detail = ui.Text(i18n.T(lang, "Bring mail in again to carry on from there."))
 		default:
-			page.Tone, page.State = "warn", "Bringing mail in from "+st.Host+" stopped after "+n
+			page.Tone, page.State = "warn", i18n.T(lang, "{n, plural, one {Bringing mail in from {host} stopped after # message} other {Bringing mail in from {host} stopped after # messages}}", "n", st.Copied, "host", st.Host)
 			page.Detail = ui.Text(st.Error)
 		}
 		if st.Failed > 0 {
-			page.Detail += ui.Text(" " + itoaSafe(st.Failed) + " could not be copied (larger than this server takes).")
+			page.Detail += ui.Text(" " + i18n.T(lang, "{n} could not be copied (larger than this server takes).", "n", st.Failed))
 		}
 	}
 	var b strings.Builder
@@ -150,22 +156,20 @@ func (a *App) mailImportBody(ctx context.Context, rd vmail.Reader, note string) 
 		host, username = st.Host, st.Username
 	}
 	if a.vayuMail.ReaderReadOnly(rd) {
-		return string(ui.Status(page, ui.HTML(b.String()), ui.Callout("neutral", ui.Text("This mailbox is read-only, so mail cannot be brought into it."))))
+		return string(ui.Status(page, ui.HTML(b.String()), ui.Callout("neutral", ui.Text(i18n.T(lang, "This mailbox is read-only, so mail cannot be brought into it.")))))
 	}
 	field := func(name, typ, value, placeholder, extra string) ui.HTML {
 		return ui.HTML(`<input class="input" name="` + name + `" type="` + typ + `" value="` + esc(value) + `" placeholder="` + esc(placeholder) + `" required autocomplete="off"` + extra + `>`)
 	}
 	form := `<form hx-post="/os/vayumail/import/action" hx-target="#mx-import" hx-swap="innerHTML"><input type="hidden" name="user" value="` + esc(user) + `"><input type="hidden" name="action" value="start">` +
 		string(ui.Rows(
-			ui.Row{Label: "Server", Hint: "Its IMAP server, as the provider's help names it", Control: field("host", "text", host, "imap.example.com", ` spellcheck="false"`)},
-			ui.Row{Label: "Connection", Control: ui.HTML(`<select class="input" name="port"><option value="993">TLS, port 993</option><option value="143">STARTTLS, port 143</option></select>`)},
-			ui.Row{Label: "User name", Hint: "Usually your address there", Control: field("username", "text", username, "you@example.com", ` spellcheck="false"`)},
-			ui.Row{Label: "Password", Hint: "Most large providers ask for an app password and IMAP turned on, not your usual password. It is used for this copy and not kept.", Control: field("password", "password", "", "", "")},
-		)) + `<div><button type="submit" class="btn btn--primary">Bring mail in</button></div></form>`
-	b.WriteString(string(ui.Section("Bring it in from", "", ui.HTML(form))))
-	b.WriteString(string(ui.Disclosure(ui.HTML(saIcon("info")), "What comes across", "", "", false, ui.Text(
-		"Inbox, Sent, Drafts, Junk, Trash and Archive come into theirs here; any other folder becomes one of your own, by its name there. "+
-			"A provider's All Mail and Starred folders are left out, since they repeat mail kept in other folders; where a provider shows labels as folders, a message with two labels arrives twice. "+
-			"What you have read and pinned there is read and pinned here. Running it again copies only what is new."))))
+			ui.Row{Label: i18n.T(lang, "Server"), Hint: i18n.T(lang, "Its IMAP server, as the provider's help names it"), Control: field("host", "text", host, "imap.example.com", ` spellcheck="false"`)},
+			ui.Row{Label: i18n.T(lang, "Connection"), Control: ui.HTML(`<select class="input" name="port"><option value="993">` + esc(i18n.T(lang, "TLS, port 993")) + `</option><option value="143">` + esc(i18n.T(lang, "STARTTLS, port 143")) + `</option></select>`)},
+			ui.Row{Label: i18n.T(lang, "User name"), Hint: i18n.T(lang, "Usually your address there"), Control: field("username", "text", username, "you@example.com", ` spellcheck="false"`)},
+			ui.Row{Label: i18n.T(lang, "Password"), Hint: i18n.T(lang, "Most large providers ask for an app password and IMAP turned on, not your usual password. It is used for this copy and not kept."), Control: field("password", "password", "", "", "")},
+		)) + `<div><button type="submit" class="btn btn--primary">` + esc(title) + `</button></div></form>`
+	b.WriteString(string(ui.Section(i18n.T(lang, "Bring it in from"), "", ui.HTML(form))))
+	b.WriteString(string(ui.Disclosure(ui.HTML(saIcon("info")), i18n.T(lang, "What comes across"), "", "", false, ui.Text(i18n.T(lang,
+		"Inbox, Sent, Drafts, Junk, Trash and Archive come into theirs here; any other folder becomes one of your own, by its name there. A provider's All Mail and Starred folders are left out, since they repeat mail kept in other folders; where a provider shows labels as folders, a message with two labels arrives twice. What you have read and pinned there is read and pinned here. Running it again copies only what is new.")))))
 	return string(ui.Status(page, ui.HTML(b.String())))
 }
