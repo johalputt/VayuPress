@@ -7,7 +7,11 @@ on:
   schedule:
     - cron: '0 3 * * 1'  # weekly Monday 03:00 UTC
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # On main each commit is a group of its own: a group holds one waiting run,
+  # and a newer push replaces it even with cancel-in-progress off, which
+  # left a commit pushed during a 30-minute run marked cancelled. Elsewhere
+  # the ref is the group, so a superseded branch run is still cancelled.
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 permissions:
   contents: read
