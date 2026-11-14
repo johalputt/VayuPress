@@ -8,9 +8,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.42] — 2026-11-14
+
+Mail, its calendar, booking pages and Drive are in thirteen languages; the Halcyon theme loads with one stylesheet and reads better to every reader; and a Block on Sign-in attempts no longer says it failed when it worked.
+
 ### Added
 
-- **Mail's sidebar, message list, reader, compose and Settings in thirteen languages.** The standard
+- **Mail in thirteen languages: its sidebar, list, reader, compose,
+  Settings, contacts, calendar, booking pages and Drive.** The standard
   folders, your own folders and the way to make one, the views and
   categories, saved searches, labels and the Label menus, blocked senders
   and the public keys you added are in the language the console is in,
@@ -19,20 +24,76 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   quick actions, Scheduled, and the dates, written as each language writes
   them ("2. März", "11月20日(金)"). So is an open message: its tools and
   menus, who it went to, the warning when a link or a name pretends, the
-  trackers blocked, its attachments and the reply field. Mail's keys find
-  what they act on by key, not by its English name, so they work in every
-  language. So is writing: the compose sheet, its formatting bar, Send
-  later, templates and signature, the search suggestions, and the
-  addresses made for websites. Settings too: its sections, the field that
-  finds a setting (by words in the language), the password change, the
-  connected tools, the mailbox switcher, and the cards for the name on
-  mail, forwarding, the vacation reply and the PGP key. Rules too: each
-  rule is said as sentences of the language, the editor and its answers,
-  and the page where an address confirms it wants a rule's copies follows
-  the language of that person's browser. So are the sign-in attempts and
-  sign-in name, the S/MIME certificate and the private mailbox, whose
-  promises are said in whole sentences in every language. The rest of
-  Mail follows.
+  trackers blocked, its attachments, the line that says how it was sealed
+  or signed, and the reply field. Mail's keys find what they act on by
+  key, not by its English name, so they work in every language. So is
+  writing: the compose sheet, its formatting bar, Send later, templates
+  and signature, the search suggestions, and the addresses made for
+  websites. Settings too: its sections, the field that finds a setting (by
+  words in the language), the password change, the connected tools, the
+  mailbox switcher, and the cards for the name on mail, forwarding, the
+  vacation reply and the PGP key. Rules too: each rule is said as
+  sentences of the language, the editor and its answers, and the page
+  where an address confirms it wants a rule's copies follows the language
+  of that person's browser. So are the sign-in attempts and sign-in name,
+  the S/MIME certificate and the private mailbox (its sealed notice and
+  its recovery), whose promises are said in whole sentences in every
+  language; contacts and contact groups; Bring mail in; sealed messages;
+  the calendar, its week and month, an event's repeats ("every 2 weeks on
+  Monday and Thursday") and reminders, invitations and subscriptions; the
+  booking pages a guest sees, and the hours a holder sets; Drive, its
+  files, versions, Trash, links and settings, and what is shared between
+  mailboxes. Spanish speaks to you as tú throughout. What Mail's scripts
+  write on the page as they work (a toast, a count) is still in English,
+  and follows.
+
+### Changed
+
+- **Sign-in attempts reads at a glance.** The Block menu shows each choice
+  on two lines, its name and what it does, so nothing spills over the rows
+  below; it offers no block that would lock you out (your own address,
+  network or country) and says why instead. A refused write raises one
+  message, not two, and an error stays until you close it. Blocks in
+  force and Sources fold past their first rows, with counts; each source
+  names the accounts it tried, most tried first, its first and last
+  attempt, and whether it knew a password.
+- **A Halcyon page waits on one stylesheet before it is drawn, not two.**
+  The theme's rules and the site's own (its colours and custom CSS) come
+  as one file, minified, kept a year and renamed when the site's colours
+  or custom CSS change. On a phone the second file was a round trip of its
+  own before anything was drawn.
+
+### Fixed
+
+- **A Block that worked no longer says "That did not go through (200)".**
+  A write that answers by reloading the page was reported as a failure,
+  with the status of its success.
+- **Drive's Shared with me keeps who shared a file apart from its date.**
+  The address ran under the date in a column sized for a file's size; it
+  now takes what it needs, up to a third of the row, and a longer one ends
+  in an ellipsis with the whole address on hover. Drive settings lines up
+  with the rail above it.
+- **A post's topic is underlined in Halcyon.** In the grey line with the
+  date its colour alone told it apart, too faintly to see for many
+  readers.
+- **The mark that closes a post is drawn by the stylesheet.** As text it
+  was read as text too faint to read; it looks the same.
+- **Nothing in Halcyon animates while a page loads.** The appearance and
+  reading buttons played their colour change on every page view, as the
+  reader's saved choice was marked; it is now marked without one. A choice
+  the reader makes still animates.
+
+### Security
+
+- **Custom CSS stays on the site's own origin in the new stylesheet.**
+  Minifying it after the sanitiser let a comment hide an address on
+  another host (`url(/**/https://…)`) from the check and then vanish,
+  leaving a request to that host on every page view. It is now minified
+  first and checked as it is sent. This was never in a release.
+- **The new stylesheet is built once, not on every request.** Any version
+  in its address is answered, so a made-up one reaches the server past
+  every cache; each such request built the file again. It is now built
+  once for each site's colours and custom CSS and kept.
 
 ## [3.18.41] — 2026-11-13
 
