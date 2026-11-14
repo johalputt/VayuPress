@@ -85,7 +85,11 @@ async function lowContrast(page) {
       const el = n.parentElement;
       if (!n.data.trim() || !el || seen.has(el)) continue;
       seen.add(el);
-      if (!el.getClientRects().length || el.closest("[aria-hidden='true'], .h-vh, [hidden], script, style, noscript, :disabled")) continue;
+      // Text hidden from a screen reader is still text on the screen, and a
+      // page audit measures it like any other (the end mark of a post was
+      // 2.3:1). One character on its own (a separator dot) it leaves alone.
+      if (!el.getClientRects().length || el.closest(".h-vh, [hidden], script, style, noscript, :disabled")) continue;
+      if (el.closest("[aria-hidden='true']") && n.data.trim().length < 2) continue;
       const cs = getComputedStyle(el);
       if (cs.visibility === "hidden" || +cs.opacity === 0) continue;
       const back = bg(el), fg = over(rgba(cs.color), back);
@@ -93,6 +97,37 @@ async function lowContrast(page) {
       const need = size >= 24 || (size >= 18.66 && bold) ? 3 : 4.5;
       const r = ratio(fg, back);
       if (r < need) out.push(`${el.tagName.toLowerCase()}.${el.className} "${n.data.trim().slice(0, 30)}" ${r.toFixed(2)}:1 < ${need}`);
+    }
+    return out;
+  });
+}
+
+// A link inside running text is told from the text around it by more than
+// its colour (WCAG 1.4.1): an underline, or 3:1 between the two colours. A
+// block that is nothing but links (a topic row, a footer column) is not
+// running text.
+async function colourOnlyLinks(page) {
+  return page.evaluate(() => {
+    const rgb = (s) => s.match(/[\d.]+/g).slice(0, 3).map(Number);
+    const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+    const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+    const out = [];
+    for (const a of document.querySelectorAll("body a[href]")) {
+      if (!a.textContent.trim() || !a.getClientRects().length || a.closest(".h-vh, [hidden]")) continue;
+      if (getComputedStyle(a).display !== "inline") continue;
+      const blockOf = (el) => { while (el && getComputedStyle(el).display === "inline") el = el.parentElement; return el; };
+      const block = blockOf(a.parentElement);
+      if (!block) continue;
+      // Only text in the link's own block runs beside it: a search result's
+      // title is alone on its line, and the date under it is a block of its own.
+      let around = "";
+      const w = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+      for (let n = w.nextNode(); n; n = w.nextNode()) if (blockOf(n.parentElement) === block && !n.parentElement.closest("a, [aria-hidden='true']")) around += n.data;
+      if (!/[\p{L}\p{N}]/u.test(around)) continue;
+      const cs = getComputedStyle(a);
+      const marked = cs.textDecorationLine.includes("underline") || parseFloat(cs.borderBottomWidth) > 0;
+      const r = ratio(rgb(cs.color), rgb(getComputedStyle(block).color));
+      if (!marked && r < 3) out.push(`a "${a.textContent.trim().slice(0, 30)}" in ${block.tagName.toLowerCase()}.${block.className} ${r.toFixed(2)}:1`);
     }
     return out;
   });
@@ -749,6 +784,7 @@ test.describe("Halcyon", () => {
         await page.goto(p);
         await expect(page.locator("html")).toHaveAttribute("data-theme", scheme);
         expect(await lowContrast(page), `${p} (${scheme})`).toEqual([]);
+        expect(await colourOnlyLinks(page), `${p} (${scheme}) links told apart by colour alone`).toEqual([]);
       }
     });
   }

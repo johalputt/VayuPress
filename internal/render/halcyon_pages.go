@@ -209,7 +209,7 @@ const halcyonArticleTmpl = `{{template "start" .}}<div class="h-page"><main id="
 </header>
 {{if .FeatureImage}}<figure class="h-cover"><img src="{{.FeatureImage}}" alt="" loading="eager" decoding="async" referrerpolicy="no-referrer"></figure>{{end}}
 <aside class="h-rail">{{if .Outline}}<nav class="h-outline" aria-labelledby="h-outline-h"><h2 class="h-label" id="h-outline-h">On this page</h2><ol>{{range .Outline}}<li><a href="#{{.ID}}">{{.Text}}</a></li>{{end}}</ol><p class="h-left h-js-only" data-h-left></p></nav>{{end}}<div class="h-rail-ads" data-ads="sidebar"></div></aside>
-<div class="h-body"><div class="content" itemprop="articleBody">{{.Body}}</div>{{if .ContactForm}}<section id="vayu-contact" class="vayu-contact" aria-label="Contact form"></section>{{end}}{{if not .IsPage}}<p class="h-fin" aria-hidden="true">···</p>{{end}}</div>
+<div class="h-body"><div class="content" itemprop="articleBody">{{.Body}}</div>{{if .ContactForm}}<section id="vayu-contact" class="vayu-contact" aria-label="Contact form"></section>{{end}}{{if not .IsPage}}<p class="h-fin" aria-hidden="true"></p>{{end}}</div>
 </article>
 {{if not .IsPage}}<div class="h-end">
 {{if .Tags}}<p class="h-filed">Filed under {{range $i, $t := .Tags}}{{if $i}}{{if eq (inc $i) (len $.Tags)}} and {{else}}, {{end}}{{end}}<a href="{{tagURL $t}}" rel="tag">{{topicName $t}}</a>{{end}}.</p>{{end}}
