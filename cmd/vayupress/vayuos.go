@@ -1147,6 +1147,7 @@ func redirectLegacyVayuOS(w http.ResponseWriter, r *http.Request) {
 // administrator it held only links their sidebar already has, so they are
 // taken to their mailbox instead.
 func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
+	lang := i18n.Lang(r.Context())
 	if !a.mailRunning() {
 		a.writeMailSetup(w, r, "VayuMail")
 		return
@@ -1171,12 +1172,8 @@ func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
 	if acc := a.vayuMail.Accounts(); acc != nil {
 		counts, _ = acc.CountsByHost(r.Context())
 	}
-	// "mailbox", whose plural plural() cannot spell.
-	count := func(n int, one, many string) string {
-		if n == 1 {
-			return "1 " + one
-		}
-		return itoaSafe(n) + " " + many
+	boxCount := func(n int) string {
+		return i18n.T(lang, "{n, plural, one {# mailbox} other {# mailboxes}}", "n", n)
 	}
 	mailboxes := 0
 	for _, n := range counts {
@@ -1185,39 +1182,39 @@ func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
 
 	// The figures say what is moving; a zero is said in the sentence, not
 	// drawn as a figure (the grammar's rule on empty figures).
-	sentence := count(mailboxes, "mailbox", "mailboxes") + " on " + count(len(domains), "mail domain", "mail domains") + "."
+	sentence := i18n.T(lang, "{boxes} on {domains, plural, one {# mail domain} other {# mail domains}}.", "boxes", boxCount(mailboxes), "domains", len(domains))
 	if pending == 0 && failed == 0 {
-		sentence += " Nothing is waiting to be sent."
+		sentence += " " + i18n.T(lang, "Nothing is waiting to be sent.")
 	}
 	var figs []ui.Figure
 	if pending > 0 {
-		figs = append(figs, ui.Figure{Value: itoaSafe(pending), Label: "Waiting to send"})
+		figs = append(figs, ui.Figure{Value: itoaSafe(pending), Label: i18n.T(lang, "Waiting to send")})
 	}
 	if failed > 0 {
-		figs = append(figs, ui.Figure{Value: itoaSafe(failed), Label: "Failed", Tone: "warn", Note: "See the Outbox"})
+		figs = append(figs, ui.Figure{Value: itoaSafe(failed), Label: i18n.T(lang, "Failed"), Tone: "warn", Note: i18n.T(lang, "See the Outbox")})
 	}
 	if delivered > 0 {
-		figs = append(figs, ui.Figure{Value: itoaSafe(delivered), Label: "Delivered"})
+		figs = append(figs, ui.Figure{Value: itoaSafe(delivered), Label: i18n.T(lang, "Delivered")})
 	}
 
 	// DNS from the remembered verdict: the live lookups belong to the DNS tab.
-	dnsState, dnsHint := ui.State("neutral", "Not checked yet"), "The DNS tab checks every mail domain's records."
+	dnsState, dnsHint := ui.State("neutral", i18n.T(lang, "Not checked yet")), i18n.T(lang, "The DNS tab checks every mail domain's records.")
 	if v := a.mailDNS.Load(); v != nil {
 		if v.AllOK {
-			dnsState, dnsHint = ui.State("ok", "All records found"), "Checked "+relTimeAgo(v.Checked)+"."
+			dnsState, dnsHint = ui.State("ok", i18n.T(lang, "All records found")), i18n.T(lang, "Checked {when}.", "when", i18n.Date(lang, config.InSite(v.Checked), i18n.WeekdayDayMonthAt))
 		} else {
-			dnsState, dnsHint = ui.State("warn", "Needs attention"), "Next: "+v.Next+"."
+			dnsState, dnsHint = ui.State("warn", i18n.T(lang, "Needs attention")), i18n.T(lang, "Next: {step}.", "step", v.Next)
 		}
 	}
-	dnsRows := ui.Rows(ui.Row{Label: "DNS", Hint: dnsHint, Control: dnsState + ` <a class="btn btn--sm" href="/os/vayumail/dns">Open DNS</a>`})
+	dnsRows := ui.Rows(ui.Row{Label: "DNS", Hint: dnsHint, Control: dnsState + ui.HTML(` <a class="btn btn--sm" href="/os/vayumail/dns">`+esc(i18n.T(lang, "Open DNS"))+`</a>`)})
 
 	var doms []ui.Row
 	for i, d := range domains {
-		hint := count(counts[d], "mailbox", "mailboxes")
+		hint := boxCount(counts[d])
 		if i == 0 {
-			hint = "Primary · " + hint
+			hint = i18n.T(lang, "Primary · {boxes}", "boxes", hint)
 		}
-		doms = append(doms, ui.Row{Label: d, Hint: hint, Control: `<a class="btn btn--sm btn--ghost" href="/os/vayumail/accounts">Accounts</a>`})
+		doms = append(doms, ui.Row{Label: d, Hint: hint, Control: ui.HTML(`<a class="btn btn--sm btn--ghost" href="/os/vayumail/accounts">` + esc(i18n.T(lang, "Accounts")) + `</a>`)})
 	}
 
 	// Services: the ones that are not well, each with what it says; when all
@@ -1226,24 +1223,25 @@ func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
 	var svc []ui.Row
 	for _, c := range snap.Components {
 		if !c.OK {
-			svc = append(svc, ui.Row{Label: c.Name, Hint: c.Detail, Control: ui.State("warn", "Degraded")})
+			svc = append(svc, ui.Row{Label: c.Name, Hint: c.Detail, Control: ui.State("warn", i18n.T(lang, "Degraded"))})
 		}
 	}
 	if len(svc) == 0 {
-		svc = append(svc, ui.Row{Label: "Mail services", Hint: count(len(snap.Components), "service", "services") + " checked.", Control: ui.State("ok", "All running")})
+		svc = append(svc, ui.Row{Label: i18n.T(lang, "Mail services"), Hint: i18n.T(lang, "{n, plural, one {# service checked.} other {# services checked.}}", "n", len(snap.Components)), Control: ui.State("ok", i18n.T(lang, "All running"))})
 	}
 
-	page := ui.Overview(ui.OverviewPage{Title: "Mail administration", Tabs: saTabsFor(cfg, "mail", "/os/vayumail")},
-		ui.Band{Title: "Mail", Sentence: sentence, Figures: figs},
-		ui.Section("Delivery", "", dnsRows),
-		ui.Section("Mail domains", "", ui.Rows(doms...)),
-		ui.Section("Services", "", ui.Rows(svc...)))
-	writeOSHTML(w, r, adminOSLayout(nonce, "Mail administration", "vayuos", cfg, page))
+	page := ui.Overview(ui.OverviewPage{Title: i18n.T(lang, "Mail administration"), Tabs: saTabsFor(cfg, "mail", "/os/vayumail")},
+		ui.Band{Title: i18n.T(lang, "Mail"), Sentence: sentence, Figures: figs},
+		ui.Section(i18n.T(lang, "Delivery"), "", dnsRows),
+		ui.Section(i18n.T(lang, "Mail domains"), "", ui.Rows(doms...)),
+		ui.Section(i18n.T(lang, "Services"), "", ui.Rows(svc...)))
+	writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Mail administration"), "vayuos", cfg, page))
 }
 
 func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
+	lang := i18n.Lang(r.Context())
 	// PGP key material is administrator-only — the four non-admin roles never
 	// see it (redirected to their inbox).
 	if !a.isAdminRequest(r) {
@@ -1259,11 +1257,11 @@ func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
 		if isAnonTalkHandle(k.Email) {
 			continue
 		}
-		state := ui.State("ok", "Active")
+		state := ui.State("ok", i18n.T(lang, "Active"))
 		if k.Revoked {
-			state = ui.State("warn", "Revoked")
+			state = ui.State("warn", i18n.T(lang, "Revoked"))
 		} else if time.Now().After(k.ExpiresAt) {
-			state = ui.State("warn", "Expired")
+			state = ui.State("warn", i18n.T(lang, "Expired"))
 		}
 		// Each mailbox's Web Key Directory address under it: where GnuPG,
 		// Thunderbird and the app look its key up.
@@ -1279,8 +1277,8 @@ func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
 		// private key has no admin-facing path at all.
 		pub := `<span class="vm-pgp"><textarea class="vm-pgp__armor hidden-armor" readonly rows="1" aria-hidden="true" tabindex="-1" data-pgp-armor>` +
 			esc(k.PublicArmor) + `</textarea>` +
-			`<button type="button" class="btn btn--sm" data-pgp-copy>Copy</button> ` +
-			`<a class="btn btn--sm btn--ghost" href="/os/vayumail/accounts/pubkey?email=` + qparam(k.Email) + `" download>.asc</a></span>`
+			`<button type="button" class="btn btn--sm" data-pgp-copy>` + esc(i18n.T(lang, "Copy")) + `</button> ` +
+			`<a class="btn btn--sm btn--ghost" href="/os/vayumail/accounts/pubkey?email=` + qparam(k.Email) + `" download>` + esc(pgpFileSuffix) + `</a></span>`
 		// The fingerprint in groups of four, as GnuPG prints it, so a reader
 		// can compare it a group at a time and it wraps between groups.
 		var fp strings.Builder
@@ -1290,18 +1288,19 @@ func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
 			}
 			fp.WriteRune(c)
 		}
-		rows = append(rows, []ui.HTML{ui.HTML(who), ui.HTML(`<span class="mono vm-pgp__fp">` + esc(fp.String()) + `</span>`), state, ui.Text(k.ExpiresAt.Format("2\u00a0Jan\u00a02006")), ui.HTML(pub)})
+		rows = append(rows, []ui.HTML{ui.HTML(who), ui.HTML(`<span class="mono vm-pgp__fp">` + esc(fp.String()) + `</span>`), state, ui.Text(i18n.Date(lang, k.ExpiresAt, i18n.DayMonthYearShort)), ui.HTML(pub)})
 	}
-	count := itoaSafe(len(rows)) + " key" + plural(len(rows))
-	notes := `<p class="sa-list__note">Only the public half of each key is shown.` + string(ui.Tip("Private keys are AES-256-GCM encrypted at rest and have no administrator-facing path at all: a mailbox's own signed-in device is the only thing that can retrieve one. An administrator managing somebody else's mailbox has no business holding its private key, and a key you can read on a web page ends up in a browser cache, a screenshot and a support ticket.")) +
-		` Each key is published at its Web Key Directory address once <code>openpgpkey.&lt;domain&gt;</code> points here with the proxy off.` + string(ui.Tip("Run sudo bash scripts/setup-openpgpkey-subdomain.sh, which also creates the DNS record when Cloudflare credentials are configured. The proxy must be off because a key fetch is machine-to-machine: GnuPG cannot solve a bot challenge, and behind one, discovery fails silently and correspondents quietly fall back to unencrypted mail.")) + `</p>`
-	list := ui.Table([]string{"Mailbox", "Fingerprint", "State", "Expires", "Public key"}, rows, "No keys yet. A key is made with each mailbox.") + ui.HTML(notes)
-	body := string(ui.List(ui.ListPage{Title: "Mail administration", Count: count, Tabs: saTabsFor(cfg, "mail", "/os/vayumail/pgp")}, list, ""))
+	count := i18n.T(lang, "{n, plural, one {# key} other {# keys}}", "n", len(rows))
+	notes := `<p class="sa-list__note">` + esc(i18n.T(lang, "Only the public half of each key is shown.")) + string(ui.Tip(i18n.T(lang, "Private keys are AES-256-GCM encrypted at rest and have no administrator-facing path at all: a mailbox's own signed-in device is the only thing that can retrieve one. An administrator managing somebody else's mailbox has no business holding its private key, and a key you can read on a web page ends up in a browser cache, a screenshot and a support ticket."))) +
+		` ` + escFill(i18n.T(lang, "Each key is published at its Web Key Directory address once {host} points here with the proxy off.", "host", htmlMark(0)), `<code>`+esc(wkdHostPattern)+`</code>`) +
+		string(ui.Tip(i18n.T(lang, "Run sudo bash scripts/setup-openpgpkey-subdomain.sh, which also creates the DNS record when Cloudflare credentials are configured. The proxy must be off because a key fetch is machine-to-machine: GnuPG cannot solve a bot challenge, and behind one, discovery fails silently and correspondents quietly fall back to unencrypted mail."))) + `</p>`
+	list := ui.Table([]string{i18n.T(lang, "Mailbox"), i18n.T(lang, "Fingerprint"), i18n.T(lang, "State"), i18n.T(lang, "Expires"), i18n.T(lang, "Public key")}, rows, i18n.T(lang, "No keys yet. A key is made with each mailbox.")) + ui.HTML(notes)
+	body := string(ui.List(ui.ListPage{Title: i18n.T(lang, "Mail administration"), Count: count, Tabs: saTabsFor(cfg, "mail", "/os/vayumail/pgp")}, list, ""))
 	// The Copy buttons above are handled by the delegated listener in
 	// admin-os-mail.js, so this page has to load it too — without it the buttons
 	// render and do nothing, which is worse than not offering them.
 	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`
-	writeOSHTML(w, r, adminOSLayout(nonce, "PGP keys", "vayuos", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "PGP keys"), "vayuos", cfg, htmpl.HTML(body)))
 }
 
 func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
@@ -1320,9 +1319,10 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/os/vayumail/inbox", http.StatusSeeOther)
 		return
 	}
+	lang := i18n.Lang(r.Context())
 	mc := a.vayuMail.Config()
 	if !mc.Enabled {
-		a.writeMailSetup(w, r, "Mail DNS")
+		a.writeMailSetup(w, r, i18n.T(lang, "Mail DNS"))
 		return
 	}
 	// The checklist first (are we done, and what is next), then the records
@@ -1330,20 +1330,43 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 	// The verdicts are computed once and shared, so the checklist and the
 	// tables under it cannot disagree. The delivery figures are Overview's.
 	health := a.vayuDNSHealth(r.Context())
-	n := len(health.Domains)
-	count := itoaSafe(n) + " mail domain" + plural(n)
+	count := i18n.T(lang, "{n, plural, one {# mail domain} other {# mail domains}}", "n", len(health.Domains))
 	var body strings.Builder
 	body.WriteString(vayuDNSWizard(health))
-	body.WriteString(string(ui.Section("Records to publish", "At each domain's DNS host", ui.HTML(a.vayuDNSPublishSections(r, mc)))))
-	body.WriteString(string(ui.Section("Live verification", "Every mail domain, checked now", ui.HTML(vayuDNSVerifyFragmentWith(health)))))
-	page := string(ui.List(ui.ListPage{Title: "Mail administration", Count: count, Tabs: saTabsFor(cfg, "mail", "/os/vayumail/dns")}, ui.HTML(body.String()), "")) +
+	body.WriteString(string(ui.Section(i18n.T(lang, "Records to publish"), i18n.T(lang, "At each domain's DNS host"), ui.HTML(a.vayuDNSPublishSections(r, mc)))))
+	body.WriteString(string(ui.Section(i18n.T(lang, "Live verification"), i18n.T(lang, "Every mail domain, checked now"), ui.HTML(vayuDNSVerifyFragmentWith(health)))))
+	page := string(ui.List(ui.ListPage{Title: i18n.T(lang, "Mail administration"), Count: count, Tabs: saTabsFor(cfg, "mail", "/os/vayumail/dns")}, ui.HTML(body.String()), "")) +
 		vayuDNSScript(nonce)
-	writeOSHTML(w, r, adminOSLayout(nonce, "Mail DNS", "vayuos", cfg, htmpl.HTML(page)))
+	writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Mail DNS"), "vayuos", cfg, htmpl.HTML(page)))
 }
+
+// wkdHostPattern is the host a mail domain publishes its keys at, as the PGP
+// page names it: a host, the same in every language.
+const wkdHostPattern = "openpgpkey.<domain>"
+
+// pgpFileSuffix is the PGP page's download, named by its file type, the
+// same in every language.
+const pgpFileSuffix = ".asc"
+
+// securityCheckScript runs the Security page's Check now; its messages are
+// read from the button, where the page puts them in its language.
+const securityCheckScript = `
+(function(){'use strict';
+function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):'';}
+var b=document.querySelector('[data-sec-check]'),s=document.querySelector('[data-sec-status]');
+if(b)b.addEventListener('click',function(){
+  b.disabled=true;if(s)s.textContent=b.getAttribute('data-checking');
+  fetch('/os/api/vayuos/security/check',{method:'POST',headers:{'X-CSRF-Token':csrf()}})
+    .then(function(r){if(r.ok){location.reload();}else{b.disabled=false;if(s)s.textContent=b.getAttribute('data-failed');}})
+    .catch(function(e){b.disabled=false;if(s)s.textContent=b.getAttribute('data-offline')+' '+e;});
+});
+})();
+`
 
 func (a *App) handleVayuOSSecurity(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
+	lang := i18n.Lang(r.Context())
 	// The dependency security-update watcher is administrator-only.
 	if !a.isAdminRequest(r) {
 		a.denyAccess(w, r, "/os/vayumail/inbox")
@@ -1367,62 +1390,55 @@ func (a *App) handleVayuOSSecurity(w http.ResponseWriter, r *http.Request) {
 			checked = true
 		}
 	}
-	page := ui.StatusPage{Title: "Mail administration", Tabs: saTabsFor(cfg, "mail", "/os/vayumail/security"),
-		Actions: `<span class="text-xs muted" data-sec-status role="status" aria-live="polite"></span><button type="button" class="btn btn--sm" data-sec-check>Check now</button>`}
+	// The script's messages are put on its button, in the page's language:
+	// a script written into the page is not one vpT's sentences are read from.
+	page := ui.StatusPage{Title: i18n.T(lang, "Mail administration"), Tabs: saTabsFor(cfg, "mail", "/os/vayumail/security"),
+		Actions: ui.HTML(`<span class="text-xs muted" data-sec-status role="status" aria-live="polite"></span><button type="button" class="btn btn--sm" data-sec-check` +
+			` data-checking="` + esc(i18n.T(lang, "Checking upstream releases…")) + `" data-failed="` + esc(i18n.T(lang, "Check failed.")) +
+			`" data-offline="` + esc(i18n.T(lang, "Network error:")) + `">` + esc(i18n.T(lang, "Check now")) + `</button>`)}
 	switch {
 	case rep.UpdatesAvailable > 0:
-		page.Tone, page.State = "warn", itoaSafe(rep.UpdatesAvailable)+" security update"+plural(rep.UpdatesAvailable)+" waiting"
+		page.Tone, page.State = "warn", i18n.T(lang, "{n, plural, one {# security update waiting} other {# security updates waiting}}", "n", rep.UpdatesAvailable)
 		page.Detail = ui.Text(rep.UpgradeHint)
 	case checked:
-		page.Tone, page.State = "ok", "Every library this build embeds is up to date"
-		page.Detail = ui.Text("Checked " + relTimeAgo(rep.CheckedAt) + ".")
+		page.Tone, page.State = "ok", i18n.T(lang, "Every library this build embeds is up to date")
+		page.Detail = ui.Text(i18n.T(lang, "Checked {when}.", "when", i18n.Date(lang, config.InSite(rep.CheckedAt), i18n.WeekdayDayMonthAt)))
 	default:
-		page.State = "Not checked yet"
-		page.Detail = ui.Text("Check now asks GitHub once for these libraries' public releases, and sends nothing about this site.")
+		page.State = i18n.T(lang, "Not checked yet")
+		page.Detail = ui.Text(i18n.T(lang, "Check now asks GitHub once for these libraries' public releases, and sends nothing about this site."))
 	}
-	rows := securityLibraryRows(rep.Components)
-	auto, autoHint := ui.State("neutral", "Off"), "VayuPress never reaches out on its own. To check every day, set VAYUOS_SECURITY_UPDATES=on and restart."
+	rows := securityLibraryRows(lang, rep.Components)
+	auto, autoHint := ui.State("neutral", i18n.T(lang, "Off")), i18n.T(lang, "VayuPress never reaches out on its own. To check every day, set VAYUOS_SECURITY_UPDATES=on and restart.")
 	if rep.Enabled {
-		auto, autoHint = ui.State("ok", "On"), "Checked against each library's public releases."
+		auto, autoHint = ui.State("ok", i18n.T(lang, "On")), i18n.T(lang, "Checked against each library's public releases.")
 	}
 	settings := ui.Rows(
-		ui.Row{Label: "Automatic checks", Hint: autoHint, Control: auto},
+		ui.Row{Label: i18n.T(lang, "Automatic checks"), Hint: autoHint, Control: auto},
 		// One self-contained binary: a patched library arrives inside a signed
 		// release, so updating VayuPress is how these are applied, from the one
 		// place that does it (verified, backed up, rolled back on failure).
-		ui.Row{Label: "Applying an update", Hint: "A patched library arrives inside a signed VayuPress release.", Control: `<a class="btn btn--sm" href="/os/update">Open updates</a>`},
+		ui.Row{Label: i18n.T(lang, "Applying an update"), Hint: i18n.T(lang, "A patched library arrives inside a signed VayuPress release."), Control: ui.HTML(`<a class="btn btn--sm" href="/os/update">` + esc(i18n.T(lang, "Open updates")) + `</a>`)},
 	)
 	body := string(ui.Status(page,
-		ui.Section("Libraries", "PGP and crypto, as this build embeds them", ui.Table([]string{"Library", "In this build", "Latest", "State"}, rows, "")),
-		ui.Section("Updates", "", settings)))
-	body += `<script nonce="` + nonce + `">
-(function(){'use strict';
-function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):'';}
-var b=document.querySelector('[data-sec-check]'),s=document.querySelector('[data-sec-status]');
-if(b)b.addEventListener('click',function(){
-  b.disabled=true;if(s)s.textContent='Checking upstream releases…';
-  fetch('/os/api/vayuos/security/check',{method:'POST',headers:{'X-CSRF-Token':csrf()}})
-    .then(function(r){if(r.ok){location.reload();}else{b.disabled=false;if(s)s.textContent='Check failed.';}})
-    .catch(function(e){b.disabled=false;if(s)s.textContent='Network error: '+e;});
-});
-})();
-</script>`
-	writeOSHTML(w, r, adminOSLayout(nonce, "Mail security", "vayuos", cfg, htmpl.HTML(body)))
+		ui.Section(i18n.T(lang, "Libraries"), i18n.T(lang, "PGP and crypto, as this build embeds them"), ui.Table([]string{i18n.T(lang, "Library"), i18n.T(lang, "In this build"), i18n.T(lang, "Latest"), i18n.T(lang, "State")}, rows, "")),
+		ui.Section(i18n.T(lang, "Updates"), "", settings)))
+	body += `<script nonce="` + nonce + `">` + securityCheckScript + `</script>`
+	writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Mail security"), "vayuos", cfg, htmpl.HTML(body)))
 }
 
 // securityLibraryRows is the Security tab's table: each embedded library, the
 // version in this build, the latest of its line, and whether a release waits.
-func securityLibraryRows(comps []secwatch.Component) [][]ui.HTML {
+func securityLibraryRows(lang string, comps []secwatch.Component) [][]ui.HTML {
 	var rows [][]ui.HTML
 	for _, c := range comps {
-		latest, state := c.Latest, ui.State("ok", "Up to date")
+		latest, state := c.Latest, ui.State("ok", i18n.T(lang, "Up to date"))
 		switch {
 		case c.UpdateAvailable:
-			state = ui.State("warn", "Update waiting")
+			state = ui.State("warn", i18n.T(lang, "Update waiting"))
 		case latest == "":
 			// No upstream version known: the watcher is off or the check
 			// failed. Never "up to date" for what was not compared.
-			state, latest = ui.State("neutral", "Not checked"), "—"
+			state, latest = ui.State("neutral", i18n.T(lang, "Not checked")), "—"
 		}
 		cell := `<span class="mono">` + esc(latest) + `</span>`
 		// A later major is a separate module reached by changing code; no
@@ -1430,7 +1446,7 @@ func securityLibraryRows(comps []secwatch.Component) [][]ui.HTML {
 		// on a line of its own: inline, it ran into the version before it
 		// ("v1.8.7v2.1.11 is a new major version").
 		if c.NewerMajor != "" {
-			cell += `<div class="field-hint">` + esc(c.NewerMajor) + ` is a new major version: a code migration, not a patch</div>`
+			cell += `<div class="field-hint">` + esc(i18n.T(lang, "{version} is a new major version: a code migration, not a patch", "version", c.NewerMajor)) + `</div>`
 		}
 		rows = append(rows, []ui.HTML{ui.Text(c.Name), ui.HTML(`<span class="mono">` + esc(c.Current) + `</span>`), ui.HTML(cell), state})
 	}
@@ -1765,30 +1781,6 @@ func mailAvatarImg(raw string, avatarSet map[string]bool) string {
 	return mailAvatar(raw)
 }
 
-// mailRelTime renders a compact relative timestamp ("just now", "5m", "3h",
-// "2d", "Jan 2") with the absolute time as a tooltip.
-func mailRelTime(t time.Time) string {
-	if t.IsZero() {
-		return ""
-	}
-	abs := t.Format("2006-01-02 15:04")
-	d := time.Since(t)
-	var rel string
-	switch {
-	case d < time.Minute:
-		rel = "just now"
-	case d < time.Hour:
-		rel = itoaSafe(int(d.Minutes())) + "m"
-	case d < 24*time.Hour:
-		rel = itoaSafe(int(d.Hours())) + "h"
-	case d < 7*24*time.Hour:
-		rel = itoaSafe(int(d.Hours()/24)) + "d"
-	default:
-		rel = t.Format("Jan 2")
-	}
-	return `<span title="` + abs + `">` + rel + `</span>`
-}
-
 // jsonStringEscape escapes a value for use inside a JSON string literal
 // (backslash, double-quote and control characters). It does NOT do HTML
 // escaping — the whole attribute is HTML-escaped once, in hxVals.
@@ -2048,7 +2040,7 @@ func (a *App) ownFolders(rd vmail.Reader) []string {
 // the sidebar's folders and views out of band.
 func (a *App) vayuInboxSwap(rd vmail.Reader, folder, view string, limit int) string {
 	body, facts := a.vayuInboxBody(rd, folder, view, limit, "")
-	return body + a.mailNavFor(rd, folder, view, facts.Counts, true) + mailSearchForm(rd.Key(), folder, "", true)
+	return body + a.mailNavFor(rd, folder, view, facts.Counts, true) + mailSearchForm(rd.Lang(), rd.Key(), folder, "", true)
 }
 
 // mailSearchForm is Mail's search, in the top bar. Its results replace the
@@ -2056,7 +2048,7 @@ func (a *App) vayuInboxSwap(rd vmail.Reader, folder, view string, limit int) str
 // JavaScript, so the form still submits there. Each list swap sends it again
 // out of band (oob), so "This folder" is always the folder in view; the
 // Scheduled list is not a folder, so there it searches all mail.
-func mailSearchForm(user, folder, search string, oob bool) string {
+func mailSearchForm(lang, user, folder, search string, oob bool) string {
 	var b strings.Builder
 	b.WriteString(`<form id="mx-search" class="mx-search" role="search" method="get" action="/os/vayumail/search" data-mx-search`)
 	if oob {
@@ -2069,9 +2061,9 @@ func mailSearchForm(user, folder, search string, oob bool) string {
 		b.WriteString(`<input type="hidden" name="folder" value="` + esc(folder) + `">`)
 	}
 	b.WriteString(`<span class="mx-search__field">` + saIcon("search") +
-		`<input class="mx-search__input" type="search" name="q" value="` + esc(search) + `" placeholder="Search mail" aria-label="Search mail" title="Search words, or terms: from:, to:, subject:, in:, after:, before:, has:attachment, is:unread" autocomplete="off"><kbd class="mx-search__key" aria-hidden="true">/</kbd></span>` +
-		`<div class="mx-drop"><div class="mx-scope" role="radiogroup" aria-label="Search in">`)
-	for _, sc := range [][2]string{{"folder", "This folder"}, {"all", "All mail"}, {"from", "From"}, {"attach", "Has attachments"}} {
+		`<input class="mx-search__input" type="search" name="q" value="` + esc(search) + `" placeholder="` + esc(i18n.T(lang, "Search mail")) + `" aria-label="` + esc(i18n.T(lang, "Search mail")) + `" title="` + esc(i18n.T(lang, "Search words, or terms: from:, to:, subject:, in:, after:, before:, has:attachment, is:unread")) + `" autocomplete="off"><kbd class="mx-search__key" aria-hidden="true">/</kbd></span>` +
+		`<div class="mx-drop"><div class="mx-scope" role="radiogroup" aria-label="` + esc(i18n.T(lang, "Search in")) + `">`)
+	for _, sc := range [][2]string{{"folder", i18n.T(lang, "This folder")}, {"all", i18n.T(lang, "All mail")}, {"from", i18n.T(lang, "From")}, {"attach", i18n.T(lang, "Has attachments")}} {
 		if sc[0] == "folder" && !inFolder {
 			continue
 		}
@@ -2079,11 +2071,11 @@ func mailSearchForm(user, folder, search string, oob bool) string {
 		if sc[0] == map[bool]string{true: "folder", false: "all"}[search == "" && inFolder] {
 			checked = " checked"
 		}
-		b.WriteString(`<label class="mx-scope__opt"><input type="radio" name="scope" value="` + sc[0] + `"` + checked + `><span>` + sc[1] + `</span></label>`)
+		b.WriteString(`<label class="mx-scope__opt"><input type="radio" name="scope" value="` + sc[0] + `"` + checked + `><span>` + esc(sc[1]) + `</span></label>`)
 	}
 	// Suggestions for what is typed (vayuos_mail_suggest.go), drawn by
 	// admin-os-mail.js as the field changes.
-	b.WriteString(`</div><div class="mx-suggest" role="listbox" aria-label="Suggestions" data-mx-suggest></div></div></form>`)
+	b.WriteString(`</div><div class="mx-suggest" role="listbox" aria-label="` + esc(i18n.T(lang, "Suggestions")) + `" data-mx-suggest></div></div></form>`)
 	return b.String()
 }
 
@@ -2131,11 +2123,12 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	// CSRF cookie so the HTMX row/bulk POSTs pass the double-submit middleware.
 	csrfTokenFor(w, r)
+	lang := i18n.Lang(r.Context())
 	var body strings.Builder
-	head := `<div class="page-header"><h1>Mailbox</h1></div>`
+	head := `<div class="page-header"><h1>` + esc(i18n.T(lang, "Mailbox")) + `</h1></div>`
 
 	if !a.mailRunning() {
-		a.writeMailSetup(w, r, "Mailbox")
+		a.writeMailSetup(w, r, i18n.T(lang, "Mailbox"))
 		return
 	}
 	domain := a.vayuMail.Config().Domain
@@ -2155,16 +2148,16 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	if mailboxDirectoryRequested(a.isAdminRequest(r), a.ownMailboxKey(r), requested, r.URL.Query().Get("all") != "") {
 		primary, err := a.vayuMail.Mailboxes()
 		if err != nil {
-			page := ui.List(ui.ListPage{Title: "Mailboxes"}, ui.Callout("danger", ui.Text("Could not read the mailboxes: "+err.Error())), "")
-			writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, page))
+			page := ui.List(ui.ListPage{Title: i18n.T(lang, "Mailboxes")}, ui.Callout("danger", ui.Text(i18n.T(lang, "Could not read the mailboxes: {error}", "error", err.Error()))), "")
+			writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Mailbox"), "vayuos", cfg, page))
 			return
 		}
-		sections, boxes, unseen := a.vayuMailboxDirectory(domain, primary, a.mailSecondaryHosts(r.Context()))
-		count := itoaSafe(boxes) + " " + map[bool]string{true: "mailbox", false: "mailboxes"}[boxes == 1]
+		sections, boxes, unseen := a.vayuMailboxDirectory(lang, domain, primary, a.mailSecondaryHosts(r.Context()))
+		count := i18n.T(lang, "{n, plural, one {# mailbox} other {# mailboxes}}", "n", boxes)
 		if unseen > 0 {
-			count += " · " + itoaSafe(unseen) + " unseen"
+			count += " · " + i18n.T(lang, "{n} unseen", "n", unseen)
 		}
-		writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, ui.List(ui.ListPage{Title: "Mailboxes", Count: count}, sections, "")))
+		writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Mailbox"), "vayuos", cfg, ui.List(ui.ListPage{Title: i18n.T(lang, "Mailboxes"), Count: count}, sections, "")))
 		return
 	}
 
@@ -2179,8 +2172,9 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	}
 	if user == "" {
 		body.WriteString(head)
-		body.WriteString(`<div class="empty-state">No mailbox has been assigned to your account yet. Ask an administrator to assign you an email address under <strong>Members → Team &amp; roles</strong>.</div>`)
-		writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
+		body.WriteString(`<div class="empty-state">` + escFill(i18n.T(lang, "No mailbox has been assigned to your account yet. Ask an administrator to assign you an email address under {place}.", "place", htmlMark(0)),
+			`<strong>`+esc(i18n.T(lang, "Members → Team & roles"))+`</strong>`) + `</div>`)
+		writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Mailbox"), "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
 
@@ -2203,14 +2197,14 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	search := strings.TrimSpace(r.URL.Query().Get("search"))
 	list, facts := a.vayuInboxBody(rd, folder, view, pageLimit, search)
 	side := a.mailSide(r, rd, folder, view, facts.Counts)
-	side.Search = mailSearchForm(user, folder, search, false)
+	side.Search = mailSearchForm(rd.Lang(), user, folder, search, false)
 	cfg.MailSide = side
 	// The holder's own sealed mail, while its key is not held open: the
 	// list shows senders and dates, and this says how to open the rest.
 	if _, own := a.ownMailbox(r); own != "" && mailKeyOf(own, a.vayuMail.Config().Domain) == user {
 		body.WriteString(a.sealedNotice(i18n.Lang(r.Context()), own, ""))
 	}
-	body.WriteString(`<span id="vm-inbox-spin" class="htmx-indicator vm-spin" aria-hidden="true">loading…</span>`)
+	body.WriteString(`<span id="vm-inbox-spin" class="htmx-indicator vm-spin" aria-hidden="true">` + esc(i18n.T(lang, "loading…")) + `</span>`)
 	// The Mail plan's panes are their own kind, "app": the fidelity plan
 	// leaves Mail's anatomy to that plan's renders (§3).
 	split := `<div class="vm-split" data-page-kind="app"`
@@ -2229,7 +2223,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	// The newest message is open from the start (Mail plan, decision 3), as
 	// a peek: it is marked read only after two seconds on screen. Drafts open
 	// in compose, so their folder starts with nothing open.
-	pane := vayuReadpaneEmpty("")
+	pane := vayuReadpaneEmpty(lang, "")
 	if facts.Newest != "" && !strings.EqualFold(folder, "Drafts") {
 		if card, ok := a.vayuReaderCard(rd, folder, facts.Newest, readerView{Pane: true, Peek: true, Home: a.calendarHome(r), Places: a.holderPlaces(r)}); ok {
 			pane = card
@@ -2251,7 +2245,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 // the domains are never mixed into one list (VayuDomains). It also returns
 // the counts the page's title carries. The radio-button tabs this replaced
 // shown one domain at a time and only as many as the stylesheet had rules for.
-func (a *App) vayuMailboxDirectory(primaryDom string, primary []vmail.MailboxSummary, secHosts []string) (sections ui.HTML, boxes, unseen int) {
+func (a *App) vayuMailboxDirectory(lang, primaryDom string, primary []vmail.MailboxSummary, secHosts []string) (sections ui.HTML, boxes, unseen int) {
 	type domain struct {
 		name    string
 		list    []vmail.MailboxSummary
@@ -2272,7 +2266,7 @@ func (a *App) vayuMailboxDirectory(primaryDom string, primary []vmail.MailboxSum
 	var news []fresh
 	var directory ui.HTML
 	for _, d := range doms {
-		directory += a.vayuMailboxDomainSection(d.name, primaryDom, d.list, d.primary)
+		directory += a.vayuMailboxDomainSection(lang, d.name, primaryDom, d.list, d.primary)
 		boxes += len(d.list)
 		for _, bx := range d.list {
 			unseen += bx.Unseen
@@ -2293,18 +2287,18 @@ func (a *App) vayuMailboxDirectory(primaryDom string, primary []vmail.MailboxSum
 	})
 	var top ui.HTML
 	if len(news) == 0 {
-		top = ui.Section("New mail", "", ui.Empty("mail", "No unread mail", "Every mailbox is read.", ""))
+		top = ui.Section(i18n.T(lang, "New mail"), "", ui.Empty("mail", i18n.T(lang, "No unread mail"), i18n.T(lang, "Every mailbox is read."), ""))
 	} else {
 		rows := make([][]ui.HTML, len(news))
 		for i, f := range news {
 			rows[i] = f.row
 		}
-		top = ui.Section("New mail", itoaSafe(unseen)+" unseen in "+itoaSafe(len(news))+" "+map[bool]string{true: "mailbox", false: "mailboxes"}[len(news) == 1],
-			ui.Table([]string{"Mailbox", "Unseen", "Inbox"}, rows, ""))
+		top = ui.Section(i18n.T(lang, "New mail"), i18n.T(lang, "{unseen} unseen in {n, plural, one {# mailbox} other {# mailboxes}}", "unseen", unseen, "n", len(news)),
+			ui.Table([]string{i18n.T(lang, "Mailbox"), i18n.T(lang, "Unseen"), i18n.T(lang, "Inbox")}, rows, ""))
 	}
 	// data-mbx-live: admin-os.js refreshes this part in place while the page is
 	// in view, keeping whichever domains are open.
-	return ui.HTML(`<div data-mbx-live>`) + top + ui.Section("All mailboxes", "", directory) + ui.HTML(`</div>`), boxes, unseen
+	return ui.HTML(`<div data-mbx-live>`) + top + ui.Section(i18n.T(lang, "All mailboxes"), "", directory) + ui.HTML(`</div>`), boxes, unseen
 }
 
 // mailboxCell is a mailbox's link into its inbox, with its picture.
@@ -2318,7 +2312,7 @@ func mailboxCell(bx vmail.MailboxSummary, dom, primaryDomain string, avSet map[s
 // is the section's domain; primaryDomain is the install's primary, so the
 // primary's ?user= link stays the bare local part while a secondary links the
 // full address and the read path resolves its own Maildir.
-func (a *App) vayuMailboxDomainSection(dom, primaryDomain string, boxes []vmail.MailboxSummary, isPrimary bool) ui.HTML {
+func (a *App) vayuMailboxDomainSection(lang, dom, primaryDomain string, boxes []vmail.MailboxSummary, isPrimary bool) ui.HTML {
 	avSet := a.mailboxAvatarSet()
 	sorted := append([]vmail.MailboxSummary(nil), boxes...)
 	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Unseen > 0 && sorted[j].Unseen == 0 })
@@ -2333,16 +2327,16 @@ func (a *App) vayuMailboxDomainSection(dom, primaryDomain string, boxes []vmail.
 		}
 		rows = append(rows, []ui.HTML{mailboxCell(bx, dom, primaryDomain, avSet), ui.Text(itoaSafe(bx.Total)), unseen})
 	}
-	hint := []string{"Secondary"}
+	hint := []string{i18n.T(lang, "Secondary")}
 	if isPrimary {
-		hint[0] = "Primary"
+		hint[0] = i18n.T(lang, "Primary")
 	}
-	hint = append(hint, itoaSafe(len(boxes))+" "+map[bool]string{true: "mailbox", false: "mailboxes"}[len(boxes) == 1])
+	hint = append(hint, i18n.T(lang, "{n, plural, one {# mailbox} other {# mailboxes}}", "n", len(boxes)))
 	if unseenTotal > 0 {
-		hint = append(hint, itoaSafe(unseenTotal)+" unseen")
+		hint = append(hint, i18n.T(lang, "{n} unseen", "n", unseenTotal))
 	}
 	return ui.Disclosure(ui.Icon("mail"), dom, strings.Join(hint, " · "), "", false,
-		ui.Table([]string{"Mailbox", "Inbox", "Unseen"}, rows, "No mailboxes on this domain yet. Make one under Accounts."))
+		ui.Table([]string{i18n.T(lang, "Mailbox"), i18n.T(lang, "Inbox"), i18n.T(lang, "Unseen")}, rows, i18n.T(lang, "No mailboxes on this domain yet. Make one under Accounts.")))
 }
 
 // inboxPageSize is how many messages a folder view renders at once. The list is
@@ -2741,8 +2735,9 @@ func normSubject(s string) string {
 // handleVayuOSInboxFragment returns the inbox folder view for HTMX (new-mail
 // poll, folder switch, post-action refresh).
 func (a *App) handleVayuOSInboxFragment(w http.ResponseWriter, r *http.Request) {
+	lang := i18n.Lang(r.Context())
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
-		writeOSFragment(w, `<div class="empty-state">VayuMail is inactive.</div>`)
+		writeOSFragment(w, `<div class="empty-state">`+esc(i18n.T(lang, "VayuMail is inactive."))+`</div>`)
 		return
 	}
 	// One authority decision, minted in mailReader (ADR-0152). The inline
@@ -2755,7 +2750,7 @@ func (a *App) handleVayuOSInboxFragment(w http.ResponseWriter, r *http.Request) 
 		folder = "Inbox"
 	}
 	if user == "" {
-		writeOSFragment(w, `<div class="empty-state">No mailbox selected, and none is assigned to your account.</div>`)
+		writeOSFragment(w, `<div class="empty-state">`+esc(i18n.T(lang, "No mailbox selected, and none is assigned to your account."))+`</div>`)
 		return
 	}
 	// The window the client asked for rides along with the request, so "Load
@@ -2890,23 +2885,24 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 	rd := a.mailReader(r, mailUserParam(r))
 	user := rd.Key()
 	sf := parseSearchFilters(r)
+	lang := i18n.Lang(r.Context())
 	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Search mail</h1><span class="muted text-sm">` + html.EscapeString(mailAddrOf(user, a.cfgDomain())) + `</span></div>`)
+	body.WriteString(`<div class="page-header"><h1>` + esc(i18n.T(lang, "Search mail")) + `</h1><span class="muted text-sm">` + html.EscapeString(mailAddrOf(user, a.cfgDomain())) + `</span></div>`)
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || user == "" {
-		body.WriteString(`<div class="empty-state">VayuMail is inactive or no mailbox selected. <a href="/os/vayumail/inbox">Back to Mailbox</a></div>`)
-		writeOSHTML(w, r, adminOSLayout(nonce, "Search mail", "vayuos", cfg, htmpl.HTML(body.String())))
+		body.WriteString(`<div class="empty-state">` + esc(i18n.T(lang, "VayuMail is inactive or no mailbox selected.")) + ` <a href="/os/vayumail/inbox">` + esc(i18n.T(lang, "Back to Mailbox")) + `</a></div>`)
+		writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Search mail"), "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
 	body.WriteString(`<div class="card"><div class="card-title"><a href="/os/vayumail/inbox?user=` + qparam(user) + `">← ` + html.EscapeString(mailAddrOf(user, a.cfgDomain())) + `</a></div>`)
 	// Filter bar — results update instantly over HTMX as you type or change a
 	// filter (debounced), swapping #vm-search-results with no full-page reload.
-	folderOpts := `<option value="">All folders</option>`
+	folderOpts := `<option value="">` + esc(i18n.T(lang, "All folders")) + `</option>`
 	for _, f := range append(append([]string{}, vmail.StandardFolders...), a.ownFolders(rd)...) {
 		sel := ""
 		if strings.EqualFold(f, sf.folder) {
 			sel = ` selected`
 		}
-		folderOpts += `<option value="` + html.EscapeString(f) + `"` + sel + `>` + html.EscapeString(f) + `</option>`
+		folderOpts += `<option value="` + html.EscapeString(f) + `"` + sel + `>` + html.EscapeString(mailFolderLabel(lang, f)) + `</option>`
 	}
 	unreadChecked := ""
 	if sf.unreadOnly {
@@ -2915,23 +2911,23 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`<form class="vm-search-form" hx-get="/os/vayumail/search/fragment" hx-target="#vm-search-results" hx-swap="innerHTML" hx-indicator="#vm-search-spin" hx-trigger="submit, input changed delay:600ms, change delay:150ms">
   <input type="hidden" name="user" value="` + html.EscapeString(user) + `">
   <div class="vm-search-row">
-    <input class="input" type="search" name="q" value="` + html.EscapeString(sf.q) + `" placeholder="Search mail, or from:, subject:, has:attachment…" aria-label="Search mail" autofocus>
-    <button class="btn btn--primary" type="submit">Search</button>
+    <input class="input" type="search" name="q" value="` + html.EscapeString(sf.q) + `" placeholder="` + esc(i18n.T(lang, "Search mail, or from:, subject:, has:attachment…")) + `" aria-label="` + esc(i18n.T(lang, "Search mail")) + `" autofocus>
+    <button class="btn btn--primary" type="submit">` + esc(i18n.T(lang, "Search")) + `</button>
   </div>
   <div class="vm-search-filters">
-    <select class="input input--sm" name="folder" aria-label="Folder">` + folderOpts + `</select>
-    <input class="input input--sm" type="text" name="from" value="` + html.EscapeString(sf.from) + `" placeholder="From contains…" aria-label="From filter">
-    <label class="vm-filter-date">After <input class="input input--sm" type="date" name="after" value="` + html.EscapeString(sf.after) + `"></label>
-    <label class="vm-filter-date">Before <input class="input input--sm" type="date" name="before" value="` + html.EscapeString(sf.before) + `"></label>
-    <label class="vm-filter-check"><input type="checkbox" name="unread" value="1"` + unreadChecked + `> Unread only</label>
+    <select class="input input--sm" name="folder" aria-label="` + esc(i18n.T(lang, "Folder")) + `">` + folderOpts + `</select>
+    <input class="input input--sm" type="text" name="from" value="` + html.EscapeString(sf.from) + `" placeholder="` + esc(i18n.T(lang, "From contains…")) + `" aria-label="` + esc(i18n.T(lang, "From filter")) + `">
+    <label class="vm-filter-date">` + esc(i18n.T(lang, "After")) + ` <input class="input input--sm" type="date" name="after" value="` + html.EscapeString(sf.after) + `"></label>
+    <label class="vm-filter-date">` + esc(i18n.T(lang, "Before")) + ` <input class="input input--sm" type="date" name="before" value="` + html.EscapeString(sf.before) + `"></label>
+    <label class="vm-filter-check"><input type="checkbox" name="unread" value="1"` + unreadChecked + `> ` + esc(i18n.T(lang, "Unread only")) + `</label>
   </div>
 </form>`)
 	// A mail search can scan thousands of messages; without this the page simply
 	// looks frozen while it does.
-	body.WriteString(`<span id="vm-search-spin" class="htmx-indicator vm-spin" aria-hidden="true">searching…</span>`)
+	body.WriteString(`<span id="vm-search-spin" class="htmx-indicator vm-spin" aria-hidden="true">` + esc(i18n.T(lang, "searching…")) + `</span>`)
 	body.WriteString(`<div id="vm-search-results">` + a.vayuSearchResults(rd, sf) + `</div>`)
 	body.WriteString(`</div>`)
-	writeOSHTML(w, r, adminOSLayout(nonce, "Search mail", "vayuos", cfg, htmpl.HTML(body.String())))
+	writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Search mail"), "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
 // searchFilters holds the query and the refinement filters for a mail search.
@@ -3012,21 +3008,21 @@ func (sf searchFilters) savedQuery() string {
 // filters, returning the results table (or an empty/prompt state) as an HTMX
 // fragment. Matches in From/Subject are highlighted.
 func (a *App) vayuSearchResults(rd vmail.Reader, sf searchFilters) string {
-	user := rd.Key()
+	user, lang := rd.Key(), rd.Lang()
 	var b strings.Builder
 	if sf.q == "" && sf.inList {
 		return "" // the list itself is what an empty search shows
 	}
 	q := sf.query()
 	if q.Empty() {
-		b.WriteString(`<div class="empty-state">Type a search above to find mail across every folder, with terms such as ` + mailSearchTermsHint + ` if you like, or use the filters.</div>`)
+		b.WriteString(`<div class="empty-state">` + escFill(i18n.T(lang, "Type a search above to find mail across every folder, with terms such as {terms} if you like, or use the filters.", "terms", htmlMark(0)), mailSearchTermsHint) + `</div>`)
 		return b.String()
 	}
 	// A one-character query makes the engine scan its whole bounded window for
 	// almost nothing, and the debounced input fires on the way to a real term.
 	// Two characters is the point where a search is worth its cost.
 	if sf.q != "" && len([]rune(strings.TrimSpace(sf.q))) < 2 {
-		b.WriteString(`<div class="empty-state">Keep typing — search starts at two characters.</div>`)
+		b.WriteString(`<div class="empty-state">` + esc(i18n.T(lang, "Keep typing — search starts at two characters.")) + `</div>`)
 		return b.String()
 	}
 	matched, _ := a.vayuMail.Search(rd, q, 200)
@@ -3035,26 +3031,26 @@ func (a *App) vayuSearchResults(rd vmail.Reader, sf searchFilters) string {
 	if sf.inList {
 		return a.mailSearchRows(rd, sf, matched, capped)
 	}
-	b.WriteString(`<div class="vm-search-count text-sm muted">` + itoaSafe(len(matched)) + ` result` + plural(len(matched)) + ` for “` + html.EscapeString(sf.q) + `”`)
+	b.WriteString(`<div class="vm-search-count text-sm muted">` + esc(i18n.T(lang, "{n, plural, one {# result for “{q}”} other {# results for “{q}”}}", "n", len(matched), "q", sf.q)))
 	if capped {
 		// The engine stops at 200 matches (or its bounded scan), so the count
 		// here is a floor, not a total. Saying nothing would read as "that is
 		// all there is".
-		b.WriteString(` · the scan hit its limit — add a filter or a longer term to see the rest`)
+		b.WriteString(` · ` + esc(i18n.T(lang, "the scan hit its limit — add a filter or a longer term to see the rest")))
 	}
 	b.WriteString(`</div>`)
-	b.WriteString(`<div class="table-wrap"><table class="table vm-list"><thead><tr><th>Folder</th><th>From</th><th>Subject</th><th>Date</th></tr></thead><tbody>`)
+	b.WriteString(`<div class="table-wrap"><table class="table vm-list"><thead><tr><th>` + esc(i18n.T(lang, "Folder")) + `</th><th>` + esc(i18n.T(lang, "From")) + `</th><th>` + esc(i18n.T(lang, "Subject")) + `</th><th>` + esc(i18n.T(lang, "Date")) + `</th></tr></thead><tbody>`)
 	if len(matched) == 0 {
-		b.WriteString(`<tr><td colspan="4" class="muted">No matches. Try a different term or relax the filters.</td></tr>`)
+		b.WriteString(`<tr><td colspan="4" class="muted">` + esc(i18n.T(lang, "No matches. Try a different term or relax the filters.")) + `</td></tr>`)
 	}
-	avSet := a.mailboxAvatarSet()
+	avSet, now := a.mailboxAvatarSet(), time.Now()
 	for _, m := range matched {
 		subj := m.Subject
 		if subj == "" {
-			subj = "(no subject)"
+			subj = i18n.T(lang, "(no subject)")
 		}
 		link := "/os/vayumail/message?user=" + qparam(user) + "&folder=" + qparam(m.Folder) + "&id=" + qparam(m.ID)
-		b.WriteString(`<tr><td><span class="badge">` + html.EscapeString(m.Folder) + `</span></td><td><div class="vm-from">` + mailAvatarImg(m.From, avSet) + `<span class="vm-name">` + highlightMatch(mailDisplay(m.From), words) + `</span></div></td><td class="vm-subj"><a href="` + link + `">` + highlightMatch(subj, words) + `</a></td><td class="muted text-sm vm-date">` + mailRelTime(m.Date) + `</td></tr>`)
+		b.WriteString(`<tr><td><span class="badge">` + html.EscapeString(mailFolderLabel(lang, m.Folder)) + `</span></td><td><div class="vm-from">` + mailAvatarImg(m.From, avSet) + `<span class="vm-name">` + highlightMatch(mailDisplay(m.From), words) + `</span></div></td><td class="vm-subj"><a href="` + link + `">` + highlightMatch(subj, words) + `</a></td><td class="muted text-sm vm-date">` + esc(mailListTime(lang, m.Date, now)) + `</td></tr>`)
 	}
 	b.WriteString(`</tbody></table></div>`)
 	return b.String()
@@ -3063,25 +3059,26 @@ func (a *App) vayuSearchResults(rd vmail.Reader, sf searchFilters) string {
 // mailSearchRows is a search's results as Mail's list shows them: the list's
 // own rows, grouped by the folder each was found in, under how many there are.
 func (a *App) mailSearchRows(rd vmail.Reader, sf searchFilters, matched []vmail.SearchResult, capped bool) string {
-	user := rd.Key()
+	user, lang := rd.Key(), rd.Lang()
 	var b strings.Builder
-	b.WriteString(`<p class="mx-results__count">` + itoaSafe(len(matched)) + ` result` + plural(len(matched)) + ` for “` + esc(sf.q) + `”`)
+	count := i18n.T(lang, "{n, plural, one {# result for “{q}”} other {# results for “{q}”}}", "n", len(matched), "q", sf.q)
 	if capped {
-		b.WriteString(`, from the newest 200 matches`)
+		count = i18n.T(lang, "{n} results for “{q}”, from the newest 200 matches", "n", len(matched), "q", sf.q)
 	}
+	b.WriteString(`<p class="mx-results__count">` + esc(count))
 	// Save this search, or, when it is one saved, Forget it.
 	if saved := sf.savedQuery(); saved != "" && !a.vayuMail.ReaderReadOnly(rd) {
 		kept, _ := a.vayuMail.SavedSearches(rd)
-		action, label := "save", "Save this search"
+		action, label := "save", i18n.T(lang, "Save this search")
 		if slices.Contains(kept, saved) {
-			action, label = "forget", "Saved · Forget"
+			action, label = "forget", i18n.T(lang, "Saved · Forget")
 		}
 		b.WriteString(` <button type="button" class="mx-results__save" hx-post="/os/vayumail/searches/action" hx-target="#vm-search-results" hx-swap="innerHTML"` +
-			hxVals("user", user, "q", sf.q, "scope", sf.scope, "folder", sf.folder, "in", "list", "action", action) + `>` + label + `</button>`)
+			hxVals("user", user, "q", sf.q, "scope", sf.scope, "folder", sf.folder, "in", "list", "action", action) + `>` + esc(label) + `</button>`)
 	}
 	b.WriteString(`</p>`)
 	if len(matched) == 0 {
-		b.WriteString(`<p class="mx-empty">Nothing matches. Try another word, all mail, or a term such as ` + mailSearchTermsHint + `.</p>`)
+		b.WriteString(`<p class="mx-empty">` + escFill(i18n.T(lang, "Nothing matches. Try another word, all mail, or a term such as {terms}.", "terms", htmlMark(0)), mailSearchTermsHint) + `</p>`)
 		return b.String()
 	}
 	b.WriteString(`<ol class="mx-list">`)
@@ -3090,7 +3087,7 @@ func (a *App) mailSearchRows(rd vmail.Reader, sf searchFilters, matched []vmail.
 	for _, m := range matched {
 		if m.Folder != group {
 			group = m.Folder
-			b.WriteString(`<li class="mx-group" aria-hidden="true">` + esc(group) + `</li>`)
+			b.WriteString(`<li class="mx-group" aria-hidden="true">` + esc(mailFolderLabel(lang, group)) + `</li>`)
 		}
 		link := "/os/vayumail/message?user=" + qparam(user) + "&folder=" + qparam(m.Folder) + "&id=" + qparam(m.ID)
 		// Search results come from many folders and have no list scope to
@@ -3104,8 +3101,9 @@ func (a *App) mailSearchRows(rd vmail.Reader, sf searchFilters, matched []vmail.
 // handleVayuOSSearchFragment returns the search results for the instant HTMX
 // filter bar.
 func (a *App) handleVayuOSSearchFragment(w http.ResponseWriter, r *http.Request) {
+	lang := i18n.Lang(r.Context())
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
-		writeOSFragment(w, `<div class="empty-state">VayuMail is inactive.</div>`)
+		writeOSFragment(w, `<div class="empty-state">`+esc(i18n.T(lang, "VayuMail is inactive."))+`</div>`)
 		return
 	}
 	// One authority decision, minted in mailReader (ADR-0152). The inline
@@ -3114,7 +3112,7 @@ func (a *App) handleVayuOSSearchFragment(w http.ResponseWriter, r *http.Request)
 	rd := a.mailReader(r, mailUserParam(r))
 	user := rd.Key()
 	if user == "" {
-		writeOSFragment(w, `<div class="empty-state">No mailbox selected.</div>`)
+		writeOSFragment(w, `<div class="empty-state">`+esc(i18n.T(lang, "No mailbox selected."))+`</div>`)
 		return
 	}
 	writeOSFragment(w, a.vayuSearchResults(rd, parseSearchFilters(r)))
@@ -3233,7 +3231,7 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 	// admin-or-own check this replaces existed in seven places; fixing one and
 	// missing another leaves a working operator read path with a green suite.
 	rd := a.mailReader(r, mailUserParam(r))
-	user := rd.Key()
+	user, lang := rd.Key(), i18n.Lang(r.Context())
 	folder := mailFolderParam(r)
 	if folder == "" {
 		folder = "Inbox"
@@ -3246,13 +3244,13 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || user == "" || id == "" {
 		if pane {
-			writeOSHTML(w, r, vayuReadpaneEmpty("Message not available."))
+			writeOSHTML(w, r, vayuReadpaneEmpty(lang, i18n.T(lang, "Message not available.")))
 			return
 		}
 		var body strings.Builder
-		body.WriteString(`<div class="page-header"><h1>Message</h1></div>`)
-		body.WriteString(`<div class="empty-state">Message not available. <a href="/os/vayumail/inbox">Back to Mailbox</a></div>`)
-		writeOSHTML(w, r, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
+		body.WriteString(`<div class="page-header"><h1>` + esc(i18n.T(lang, "Message")) + `</h1></div>`)
+		body.WriteString(`<div class="empty-state">` + esc(i18n.T(lang, "Message not available.")) + ` <a href="/os/vayumail/inbox">` + esc(i18n.T(lang, "Back to Mailbox")) + `</a></div>`)
+		writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Message"), "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
 
@@ -3260,13 +3258,13 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 		HTML: r.URL.Query().Get("html") == "1", Images: r.URL.Query().Get("images") == "1"})
 	if !ok {
 		if pane {
-			writeOSHTML(w, r, vayuReadpaneEmpty("Could not read this message."))
+			writeOSHTML(w, r, vayuReadpaneEmpty(lang, i18n.T(lang, "Could not read this message.")))
 			return
 		}
 		var body strings.Builder
-		body.WriteString(`<div class="page-header"><h1>Message</h1></div>`)
-		body.WriteString(`<div class="empty-state">Could not read message. <a href="/os/vayumail/inbox?user=` + qparam(user) + `">Back</a></div>`)
-		writeOSHTML(w, r, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
+		body.WriteString(`<div class="page-header"><h1>` + esc(i18n.T(lang, "Message")) + `</h1></div>`)
+		body.WriteString(`<div class="empty-state">` + esc(i18n.T(lang, "Could not read this message.")) + ` <a href="/os/vayumail/inbox?user=` + qparam(user) + `">` + esc(i18n.T(lang, "Back")) + `</a></div>`)
+		writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Message"), "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
 	if pane {
@@ -3275,26 +3273,27 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Message</h1><span class="muted text-sm">` + html.EscapeString(mailAddrOf(user, a.cfgDomain())) + ` · ` + html.EscapeString(folder) + `</span></div>`)
+	body.WriteString(`<div class="page-header"><h1>` + esc(i18n.T(lang, "Message")) + `</h1><span class="muted text-sm">` + html.EscapeString(mailAddrOf(user, a.cfgDomain())) + ` · ` + html.EscapeString(mailFolderLabel(lang, folder)) + `</span></div>`)
 	body.WriteString(card)
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
-	writeOSHTML(w, r, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
+	writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Message"), "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
 // vayuReadpaneEmpty renders the reading-pane placeholder (also the "message
 // left the folder" state after a pane move/delete).
 // mailChangeRefusal says why a delete or move did not happen, in the operator's
 // words rather than the engine's.
-func mailChangeRefusal(err error) string {
+func mailChangeRefusal(lang string, err error) string {
 	if errors.Is(err, vmail.ErrReadOnlyMailbox) {
-		return "This mailbox is read-only: messages can be read here but not deleted or moved."
+		return i18n.T(lang, "This mailbox is read-only: messages can be read here but not deleted or moved.")
 	}
-	return "That did not go through: " + err.Error()
+	return i18n.T(lang, "That did not go through: {error}", "error", err.Error())
 }
 
-func vayuReadpaneEmpty(msg string) string {
+// vayuReadpaneEmpty is msg, already in lang, or the pane's own invitation.
+func vayuReadpaneEmpty(lang, msg string) string {
 	if msg == "" {
-		msg = "Select a message to read it here."
+		msg = i18n.T(lang, "Select a message to read it here.")
 	}
 	return `<div class="vm-readpane-empty"><div class="vm-readpane-empty-ico">` + saIcon("mail") + `</div><p class="muted">` + html.EscapeString(msg) + `</p></div>`
 }
@@ -3304,8 +3303,9 @@ func vayuReadpaneEmpty(msg string) string {
 // placeholder when the message leaves the view), firing HX-Trigger:vm-mail-changed
 // so the message list refreshes in place. Pure HTMX — no page-load JS.
 func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Request) {
+	lang := i18n.Lang(r.Context())
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
-		writeOSHTML(w, r, vayuReadpaneEmpty("VayuMail is not active."))
+		writeOSHTML(w, r, vayuReadpaneEmpty(lang, i18n.T(lang, "VayuMail is not active.")))
 		return
 	}
 	_ = r.ParseForm()
@@ -3321,7 +3321,7 @@ func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Reque
 	id := sanitizeMailID(strings.TrimSpace(r.FormValue("id")))
 	// As above: an unresolved mailbox is not a permission verdict.
 	if user == "" || id == "" {
-		writeOSHTML(w, r, vayuReadpaneEmpty("Message not available."))
+		writeOSHTML(w, r, vayuReadpaneEmpty(lang, i18n.T(lang, "Message not available.")))
 		return
 	}
 	// Every branch below changes what the list shows, so refresh it in place.
@@ -3331,40 +3331,40 @@ func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Reque
 	case r.FormValue("notjunk") == "1":
 		sender, err := a.vayuMail.NotJunk(rd, id)
 		if err != nil {
-			writeOSHTML(w, r, vayuReadpaneEmpty(mailChangeRefusal(err)))
+			writeOSHTML(w, r, vayuReadpaneEmpty(lang, mailChangeRefusal(lang, err)))
 			return
 		}
-		msg := "Moved to Inbox."
+		msg := i18n.T(lang, "Moved to Inbox.")
 		if sender != "" {
-			msg += " Mail from " + html.EscapeString(sender) + " is no longer filed as junk."
+			msg += " " + i18n.T(lang, "Mail from {sender} is no longer filed as junk.", "sender", sender)
 		}
-		writeOSHTML(w, r, vayuReadpaneEmpty(msg))
+		writeOSHTML(w, r, vayuReadpaneEmpty(lang, msg))
 	case r.FormValue("snooze") != "":
 		until := snoozeUntil(r.FormValue("snooze"))
 		if err := a.vayuMail.Snooze(rd, folder, id, until); err != nil {
-			writeOSHTML(w, r, vayuReadpaneEmpty(mailChangeRefusal(err)))
+			writeOSHTML(w, r, vayuReadpaneEmpty(lang, mailChangeRefusal(lang, err)))
 			return
 		}
-		writeOSHTML(w, r, vayuReadpaneEmpty("Snoozed — wakes "+until.Local().Format("Mon 15:04")+"."))
+		writeOSHTML(w, r, vayuReadpaneEmpty(lang, i18n.T(lang, "Snoozed — wakes {when}.", "when", i18n.Date(lang, config.InSite(until), i18n.WeekdayDayMonthAt))))
 	case r.FormValue("delete") == "1":
 		// The outcome is read, not assumed: saying "deleted" over a message that
 		// is still in the list is the one wrong answer.
 		if err := a.vayuMail.DeleteMessage(rd, folder, id); err != nil {
-			writeOSHTML(w, r, vayuReadpaneEmpty(mailChangeRefusal(err)))
+			writeOSHTML(w, r, vayuReadpaneEmpty(lang, mailChangeRefusal(lang, err)))
 			return
 		}
-		writeOSHTML(w, r, vayuReadpaneEmpty("Message deleted."))
+		writeOSHTML(w, r, vayuReadpaneEmpty(lang, i18n.T(lang, "Message deleted.")))
 	case strings.TrimSpace(r.FormValue("to")) != "":
 		to := strings.TrimSpace(r.FormValue("to"))
 		if err := a.vayuMail.MoveMessage(rd, id, folder, to); err != nil {
-			writeOSHTML(w, r, vayuReadpaneEmpty(mailChangeRefusal(err)))
+			writeOSHTML(w, r, vayuReadpaneEmpty(lang, mailChangeRefusal(lang, err)))
 			return
 		}
-		writeOSHTML(w, r, vayuReadpaneEmpty("Moved to "+html.EscapeString(to)+"."))
+		writeOSHTML(w, r, vayuReadpaneEmpty(lang, i18n.T(lang, "Moved to {folder}.", "folder", mailFolderLabel(lang, to))))
 	case r.FormValue("mark") == "unread":
 		_, _ = a.vayuMail.MarkUnread(rd, folder, id)
 		// Marking unread closes the reader so the bold row stands out.
-		writeOSHTML(w, r, vayuReadpaneEmpty("Marked unread."))
+		writeOSHTML(w, r, vayuReadpaneEmpty(lang, i18n.T(lang, "Marked unread.")))
 	case r.FormValue("pin") == "1" || r.FormValue("pin") == "0":
 		if nid, err := a.vayuMail.SetPinned(rd, folder, id, r.FormValue("pin") == "1"); err == nil && nid != "" {
 			id = nid
@@ -3374,13 +3374,13 @@ func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Reque
 		if card, ok := a.vayuReaderCard(rd, folder, id, readerView{Pane: true, HTML: r.FormValue("html") == "1", Images: r.FormValue("images") == "1", Home: a.calendarHome(r), Places: a.holderPlaces(r)}); ok {
 			writeOSHTML(w, r, card)
 		} else {
-			writeOSHTML(w, r, vayuReadpaneEmpty(""))
+			writeOSHTML(w, r, vayuReadpaneEmpty(lang, ""))
 		}
 	default:
 		if card, ok := a.vayuReaderCard(rd, folder, id, readerView{Pane: true, HTML: r.FormValue("html") == "1", Images: r.FormValue("images") == "1", Home: a.calendarHome(r), Places: a.holderPlaces(r)}); ok {
 			writeOSHTML(w, r, card)
 		} else {
-			writeOSHTML(w, r, vayuReadpaneEmpty(""))
+			writeOSHTML(w, r, vayuReadpaneEmpty(lang, ""))
 		}
 	}
 }
@@ -3388,7 +3388,7 @@ func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Reque
 // handleVayuOSReadpane returns the empty reading-pane placeholder — the pane's
 // initial split-view state and what its Close button restores.
 func (a *App) handleVayuOSReadpane(w http.ResponseWriter, r *http.Request) {
-	writeOSHTML(w, r, vayuReadpaneEmpty(""))
+	writeOSHTML(w, r, vayuReadpaneEmpty(i18n.Lang(r.Context()), ""))
 }
 
 // snoozeUntil maps a snooze preset to its wake time: "later" (+4h),
@@ -3423,8 +3423,9 @@ func (a *App) cfgDomain() string {
 // HTMX fragment that refreshes itself (delivery state changes on its own) and
 // re-renders in place after an action, with no full-page reload.
 func (a *App) handleVayuOSSent(w http.ResponseWriter, r *http.Request) {
+	lang := i18n.Lang(r.Context())
 	if !a.mailRunning() {
-		a.writeMailSetup(w, r, "Outbox")
+		a.writeMailSetup(w, r, i18n.T(lang, "Outbox"))
 		return
 	}
 	// The delivery queue is the whole server's. Anyone else's sent mail is in
@@ -3441,14 +3442,14 @@ func (a *App) handleVayuOSSent(w http.ResponseWriter, r *http.Request) {
 	// The auto-refresh poller lives INSIDE the body (see vayuOutboxBody) so it
 	// carries the active per-domain filter; a poll on this wrapper would reset it.
 	list := `<div id="vm-outbox-body">` + a.vayuOutboxBody(r.Context(), r.URL.Query().Get("domain")) + `</div>` +
-		`<p class="sa-list__note">Mail is retried with backoff until it is delivered.` +
-		string(ui.Tip("Each message is signed with DKIM and delivered straight to the recipient's mail server. Deleting a row here removes it from the queue only: the copy in the sender's Sent folder stays.")) + `</p>` +
-		string(ui.Sheet("outbox-autoclear", "Auto-clear delivered", ui.HTML(outboxRetentionSelect(a.vayuMail.QueueRetentionDays()))))
+		`<p class="sa-list__note">` + esc(i18n.T(lang, "Mail is retried with backoff until it is delivered.")) +
+		string(ui.Tip(i18n.T(lang, "Each message is signed with DKIM and delivered straight to the recipient's mail server. Deleting a row here removes it from the queue only: the copy in the sender's Sent folder stays."))) + `</p>` +
+		string(ui.Sheet("outbox-autoclear", i18n.T(lang, "Auto-clear delivered"), ui.HTML(outboxRetentionSelect(lang, a.vayuMail.QueueRetentionDays()))))
 	page := ui.List(ui.ListPage{
-		Title:   "Outbox",
-		Actions: ui.HTML(`<button type="button" class="btn btn--sm" data-sheet="outbox-autoclear">Auto-clear</button>`),
+		Title:   i18n.T(lang, "Outbox"),
+		Actions: ui.HTML(`<button type="button" class="btn btn--sm" data-sheet="outbox-autoclear">` + esc(i18n.T(lang, "Auto-clear")) + `</button>`),
 	}, ui.HTML(list), "")
-	writeOSHTML(w, r, adminOSLayout(nonce, "Outbox", "vayuos", cfg, page))
+	writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Outbox"), "vayuos", cfg, page))
 }
 
 // emailDomain returns the lower-cased domain of an email address, or fallback
@@ -3487,23 +3488,26 @@ func outboxChip(label, val string, active bool) string {
 // outboxRetentionSelect renders the "auto-clear delivered" control: an HTMX
 // select that prunes DELIVERED queue rows older than the chosen window (the Sent
 // Maildir copy is never touched). cur is the current window in days (0 = off).
-func outboxRetentionSelect(cur int) string {
+func outboxRetentionSelect(lang string, cur int) string {
 	std := map[int]bool{0: true, 7: true, 30: true, 90: true}
 	opt := func(v int, label string) string {
 		sel := ""
 		if v == cur {
 			sel = " selected"
 		}
-		return `<option value="` + itoaSafe(v) + `"` + sel + `>` + label + `</option>`
+		return `<option value="` + itoaSafe(v) + `"` + sel + `>` + esc(label) + `</option>`
+	}
+	after := func(days int) string {
+		return i18n.T(lang, "{n, plural, one {After # day} other {After # days}}", "n", days)
 	}
 	extra := ""
 	if !std[cur] && cur > 0 {
-		extra = `<option value="` + itoaSafe(cur) + `" selected>After ` + itoaSafe(cur) + ` days</option>`
+		extra = `<option value="` + itoaSafe(cur) + `" selected>` + esc(after(cur)) + `</option>`
 	}
-	return `<label class="field"><span class="field-label">Remove delivered messages from the Outbox</span>` +
+	return `<label class="field"><span class="field-label">` + esc(i18n.T(lang, "Remove delivered messages from the Outbox")) + `</span>` +
 		`<select class="input" name="days" hx-post="/os/vayumail/outbox/retention" hx-trigger="change" hx-target="#vm-outbox-body" hx-swap="innerHTML">` +
-		extra + opt(0, "Never: keep them all") + opt(7, "After 7 days") + opt(30, "After 30 days") + opt(90, "After 90 days") +
-		`</select><span class="field-hint">Applies as you choose. The copy in the sender's Sent folder always stays.</span></label>`
+		extra + opt(0, i18n.T(lang, "Never: keep them all")) + opt(7, after(7)) + opt(30, after(30)) + opt(90, after(90)) +
+		`</select><span class="field-hint">` + esc(i18n.T(lang, "Applies as you choose. The copy in the sender's Sent folder always stays.")) + `</span></label>`
 }
 
 // handleVayuOSOutboxRetention persists the operator's auto-clear window for
@@ -3541,10 +3545,11 @@ func (a *App) handleVayuOSOutboxRetention(w http.ResponseWriter, r *http.Request
 // reaches the rendered attributes. A single-domain install shows no filter and no
 // From column, staying byte-identical.
 func (a *App) vayuOutboxBody(ctx context.Context, filterDomain string) string {
+	lang := i18n.Lang(ctx)
 	var b strings.Builder
 	sent, err := a.vayuMail.Sent(ctx, 100)
 	if err != nil {
-		b.WriteString(`<div class="empty-state">Could not read outbound queue: ` + html.EscapeString(err.Error()) + `</div>`)
+		b.WriteString(`<div class="empty-state">` + esc(i18n.T(lang, "Could not read the outbound queue: {error}", "error", err.Error())) + `</div>`)
 		return b.String()
 	}
 	primary := a.vayuMail.Config().Domain
@@ -3586,7 +3591,7 @@ func (a *App) vayuOutboxBody(ctx context.Context, filterDomain string) string {
 	// An empty queue is one sentence: no counts, no table of headers over
 	// nothing. The poller above stays, so the first message still appears.
 	if len(sent) == 0 {
-		b.WriteString(string(ui.Empty("send", "Nothing has been sent yet", "Mail sent from this server waits here until it is delivered.", "")))
+		b.WriteString(string(ui.Empty("send", i18n.T(lang, "Nothing has been sent yet"), i18n.T(lang, "Mail sent from this server waits here until it is delivered."), "")))
 		return b.String()
 	}
 
@@ -3595,22 +3600,22 @@ func (a *App) vayuOutboxBody(ctx context.Context, filterDomain string) string {
 	for _, c := range []struct {
 		n    int
 		what string
-	}{{pending, "waiting"}, {failed, "failed"}, {delivered, "delivered"}} {
+	}{{pending, i18n.T(lang, "{n} waiting", "n", pending)}, {failed, i18n.T(lang, "{n} failed", "n", failed)}, {delivered, i18n.T(lang, "{n} delivered", "n", delivered)}} {
 		if c.n > 0 {
-			said = append(said, itoaSafe(c.n)+" "+c.what)
+			said = append(said, c.what)
 		}
 	}
 	b.WriteString(`<div class="vm-row vm-row--end vm-outbox-bar">`)
-	b.WriteString(`<span class="vm-outbox-sum vm-grow">` + strings.Join(said, " · ") + `</span>`)
-	b.WriteString(`<button type="button" class="btn btn--sm btn--ghost" hx-get="/os/vayumail/outbox/fragment?domain=` + qparam(filterDomain) + `" hx-target="#vm-outbox-body" hx-swap="innerHTML">` + saIcon("refresh") + `Refresh</button>`)
+	b.WriteString(`<span class="vm-outbox-sum vm-grow">` + esc(strings.Join(said, " · ")) + `</span>`)
+	b.WriteString(`<button type="button" class="btn btn--sm btn--ghost" hx-get="/os/vayumail/outbox/fragment?domain=` + qparam(filterDomain) + `" hx-target="#vm-outbox-body" hx-swap="innerHTML">` + saIcon("refresh") + esc(i18n.T(lang, "Refresh")) + `</button>`)
 	if failed > 0 {
-		b.WriteString(`<button type="button" class="btn btn--sm btn--primary" hx-post="/os/vayumail/outbox/action" hx-vals='{"action":"retry-all","domain":"` + html.EscapeString(filterDomain) + `"}' hx-target="#vm-outbox-body" hx-swap="innerHTML">Retry all failed (` + itoaSafe(failed) + `)</button>`)
+		b.WriteString(`<button type="button" class="btn btn--sm btn--primary" hx-post="/os/vayumail/outbox/action" hx-vals='{"action":"retry-all","domain":"` + html.EscapeString(filterDomain) + `"}' hx-target="#vm-outbox-body" hx-swap="innerHTML">` + esc(i18n.T(lang, "Retry all failed ({n})", "n", failed)) + `</button>`)
 	}
 	b.WriteString(`</div>`)
 
 	// Per-domain filter chips (VayuDomains) — only with more than one mail domain.
 	if multi {
-		b.WriteString(`<div class="vm-fchip-row">` + outboxChip("All domains", "all", filterDomain == ""))
+		b.WriteString(`<div class="vm-fchip-row">` + outboxChip(i18n.T(lang, "All domains"), "all", filterDomain == ""))
 		for _, d := range domains {
 			b.WriteString(outboxChip(d, d, strings.EqualFold(filterDomain, d)))
 		}
@@ -3623,15 +3628,14 @@ func (a *App) vayuOutboxBody(ctx context.Context, filterDomain string) string {
 	// variant that also sizes the From column.
 	fromHead, fromCol, tableCls := "", "", "vm-outbox-table"
 	if multi {
-		fromHead = `<th>From</th>`
+		fromHead = `<th>` + esc(i18n.T(lang, "From")) + `</th>`
 		fromCol = `<col class="vm-ocw-from">`
 		tableCls = "vm-outbox-table vm-outbox-table--multi"
 	}
 	// The attempt count and the last error ride under the subject: as columns of
 	// their own they squeezed an error into a sliver and cut the date short.
 	cols := fromCol + `<col class="vm-ocw-to"><col class="vm-ocw-subj"><col class="vm-ocw-status"><col class="vm-ocw-when"><col class="vm-ocw-act">`
-	b.WriteString(`<div class="table-wrap"><table class="table ` + tableCls + `"><colgroup>` + cols + `</colgroup><thead><tr>` + fromHead + `<th>To</th><th>Subject</th><th>Status</th><th>When</th><th></th></tr></thead><tbody>`)
-	now := time.Now()
+	b.WriteString(`<div class="table-wrap"><table class="table ` + tableCls + `"><colgroup>` + cols + `</colgroup><thead><tr>` + fromHead + `<th>` + esc(i18n.T(lang, "To")) + `</th><th>` + esc(i18n.T(lang, "Subject")) + `</th><th>` + esc(i18n.T(lang, "Status")) + `</th><th>` + esc(i18n.T(lang, "When")) + `</th><th></th></tr></thead><tbody>`)
 	shown := 0
 	for _, s := range sent {
 		if filterDomain != "" && !strings.EqualFold(emailDomain(s.From, primary), filterDomain) {
@@ -3640,18 +3644,18 @@ func (a *App) vayuOutboxBody(ctx context.Context, filterDomain string) string {
 		shown++
 		subj := s.Subject
 		if subj == "" {
-			subj = "(no subject)"
+			subj = i18n.T(lang, "(no subject)")
 		}
-		badge := string(ui.State("ok", "Delivered"))
+		badge := string(ui.State("ok", i18n.T(lang, "Delivered")))
 		switch s.State {
 		case "failed":
-			badge = string(ui.State("warn", "Failed"))
+			badge = string(ui.State("warn", i18n.T(lang, "Failed")))
 		case "pending":
-			badge = string(ui.State("neutral", "Waiting"))
+			badge = string(ui.State("neutral", i18n.T(lang, "Waiting")))
 		}
 		when := s.CreatedAt
 		if t, ok := parseQueueTime(s.CreatedAt); ok {
-			when = humanAgo(t, now)
+			when = i18n.Date(lang, config.InSite(t), i18n.WeekdayDayMonthAt)
 		}
 		detail := ""
 		if s.LastError != "" {
@@ -3659,14 +3663,14 @@ func (a *App) vayuOutboxBody(ctx context.Context, filterDomain string) string {
 			if len(lastErr) > 140 {
 				lastErr = lastErr[:140] + "…"
 			}
-			detail = `<div class="muted text-xs vm-oc-detail" title="` + html.EscapeString(s.LastError) + `">Try ` + itoaSafe(s.Attempts) + ` · ` + html.EscapeString(lastErr) + `</div>`
+			detail = `<div class="muted text-xs vm-oc-detail" title="` + html.EscapeString(s.LastError) + `">` + esc(i18n.T(lang, "Try {n}", "n", s.Attempts)) + ` · ` + html.EscapeString(lastErr) + `</div>`
 		}
 		id := strconv.FormatInt(s.ID, 10)
 		actions := ""
 		if s.State == "failed" || s.State == "pending" {
-			actions += `<button type="button" class="btn btn--xs" hx-post="/os/vayumail/outbox/action" hx-vals='{"action":"resend","id":"` + id + `","domain":"` + html.EscapeString(filterDomain) + `"}' hx-target="#vm-outbox-body" hx-swap="innerHTML">Resend</button> `
+			actions += `<button type="button" class="btn btn--xs" hx-post="/os/vayumail/outbox/action" hx-vals='{"action":"resend","id":"` + id + `","domain":"` + html.EscapeString(filterDomain) + `"}' hx-target="#vm-outbox-body" hx-swap="innerHTML">` + esc(i18n.T(lang, "Resend")) + `</button> `
 		}
-		actions += `<button type="button" class="btn btn--xs btn--danger" hx-post="/os/vayumail/outbox/action" hx-vals='{"action":"delete","id":"` + id + `","domain":"` + html.EscapeString(filterDomain) + `"}' hx-target="#vm-outbox-body" hx-swap="innerHTML">Delete</button>`
+		actions += `<button type="button" class="btn btn--xs btn--danger" hx-post="/os/vayumail/outbox/action" hx-vals='{"action":"delete","id":"` + id + `","domain":"` + html.EscapeString(filterDomain) + `"}' hx-target="#vm-outbox-body" hx-swap="innerHTML">` + esc(i18n.T(lang, "Delete")) + `</button>`
 		fromCell := ""
 		if multi {
 			fd := emailDomain(s.From, primary)
@@ -3686,14 +3690,14 @@ func (a *App) vayuOutboxBody(ctx context.Context, filterDomain string) string {
 	}
 	if shown == 0 {
 		colspan := 5
-		msg := `Nothing sent yet. Mail sent through VayuMail (DKIM-signed, direct-to-MX) appears here; VayuPress keeps retrying with backoff until it sends.`
+		msg := i18n.T(lang, "Nothing sent yet. Mail sent through VayuMail (DKIM-signed, direct-to-MX) appears here; VayuPress keeps retrying with backoff until it sends.")
 		if multi {
 			colspan = 6
 		}
 		if filterDomain != "" {
-			msg = `No outbound mail from ` + html.EscapeString(filterDomain) + ` in the latest queue.`
+			msg = i18n.T(lang, "No outbound mail from {domain} in the latest queue.", "domain", filterDomain)
 		}
-		b.WriteString(`<tr><td colspan="` + itoaSafe(colspan) + `" class="muted">` + msg + `</td></tr>`)
+		b.WriteString(`<tr><td colspan="` + itoaSafe(colspan) + `" class="muted">` + esc(msg) + `</td></tr>`)
 	}
 	b.WriteString(`</tbody></table></div>`)
 	return b.String()
@@ -3702,7 +3706,7 @@ func (a *App) vayuOutboxBody(ctx context.Context, filterDomain string) string {
 // handleVayuOSOutboxFragment returns the outbox body for HTMX auto-refresh.
 func (a *App) handleVayuOSOutboxFragment(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || !a.isAdminRequest(r) {
-		writeOSFragment(w, `<div class="empty-state">Outbox unavailable.</div>`)
+		writeOSFragment(w, `<div class="empty-state">`+esc(i18n.T(i18n.Lang(r.Context()), "Outbox unavailable."))+`</div>`)
 		return
 	}
 	writeOSFragment(w, a.vayuOutboxBody(r.Context(), r.URL.Query().Get("domain")))

@@ -202,7 +202,7 @@ func TestTheSwitcherGroupsByDomainPrimaryFirst(t *testing.T) {
 func TestAnOpenMailboxIsItsOwnApp(t *testing.T) {
 	s := saSession(accessAdmin)
 	s.Route = "/os/vayumail/inbox"
-	s.MailSide = &osMailSide{User: "dana", Address: "dana@example.com", Admin: true, Search: mailSearchForm("dana", "Sent", "", false)}
+	s.MailSide = &osMailSide{User: "dana", Address: "dana@example.com", Admin: true, Search: mailSearchForm("en", "dana", "Sent", "", false)}
 	out := stillAirShellHead("n", "Mailbox", "vayuos", s)
 	bar := out[strings.Index(out, `<header class="sa-sysbar"`):strings.Index(out, `</header>`)]
 	if !strings.Contains(out, `<body class="vp-os sa-mailapp"`) {

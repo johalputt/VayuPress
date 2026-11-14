@@ -63,7 +63,7 @@ func TestALabelFromTheReader(t *testing.T) {
 	if list, _ := a.vayuInboxBody(rd, "Inbox", "", 50, `label:"To do"`); !strings.Contains(list, `aria-live="polite"><p class="mx-results__count">1 result for`) {
 		t.Fatalf("the label's search is not run with the page:\n%s", list)
 	}
-	if form := mailSearchForm("dana", "Inbox", `label:"To do"`, false); !strings.Contains(form, `name="q" value="label:&#34;To do&#34;"`) ||
+	if form := mailSearchForm("en", "dana", "Inbox", `label:"To do"`, false); !strings.Contains(form, `name="q" value="label:&#34;To do&#34;"`) ||
 		!strings.Contains(form, `value="all" checked`) || strings.Contains(form, `value="folder" checked`) {
 		t.Fatalf("the top bar's field does not hold the label's search:\n%s", form)
 	}

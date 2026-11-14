@@ -15,7 +15,7 @@ import (
 // module; no release applies it. The row reads up to date on its own line and
 // names the new major as the migration it is.
 func TestANewerMajorReadsAsAMigrationNotAnUpdate(t *testing.T) {
-	out := string(ui.Table(nil, securityLibraryRows([]secwatch.Component{
+	out := string(ui.Table(nil, securityLibraryRows("en", []secwatch.Component{
 		{Name: "goldmark", Current: "v1.8.6", Latest: "v1.8.6", NewerMajor: "v2.1.5"},
 	}), ""))
 	if strings.Contains(out, "Update waiting") || !strings.Contains(out, "Up to date") {

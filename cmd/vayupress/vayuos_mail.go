@@ -896,7 +896,7 @@ func (a *App) handleVayuOSMessageAction(w http.ResponseWriter, r *http.Request) 
 	// mailbox is a refusal, not a fault, and says so.
 	if failed == len(ids) {
 		if errors.Is(firstErr, vmail.ErrReadOnlyMailbox) {
-			writeAPIError(w, r, http.StatusForbidden, "read-only", mailChangeRefusal(firstErr), "")
+			writeAPIError(w, r, http.StatusForbidden, "read-only", mailChangeRefusal(i18n.Lang(r.Context()), firstErr), "")
 			return
 		}
 		writeAPIError(w, r, 500, "action-failed", firstErr.Error(), "")

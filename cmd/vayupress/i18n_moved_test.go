@@ -23,7 +23,7 @@ import (
 var i18nMoved = map[string][]string{
 	"handlers_mail_recovery_pages.go": nil,
 	"admin_os_ui.go":                  {"osLoginPage"},
-	"vayuos.go":                       {"mailFolderNav", "mailFolderLabel", "mailViewLabel", "vayuInboxBody"},
+	"vayuos.go":                       nil,
 	"vayuos_mail_blocked.go":          nil,
 	"vayuos_mail_folders.go":          nil,
 	"vayuos_mail_keys.go":             nil,

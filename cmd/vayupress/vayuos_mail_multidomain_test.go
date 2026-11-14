@@ -55,14 +55,14 @@ func TestEmailDomain(t *testing.T) {
 // bare local-part link. Neither carries a filled badge (rule 4).
 func TestVayuMailboxDomainSection(t *testing.T) {
 	a := &App{}
-	sec := string(a.vayuMailboxDomainSection("vayupress.com", "example.test",
+	sec := string(a.vayuMailboxDomainSection("en", "vayupress.com", "example.test",
 		[]vmail.MailboxSummary{{Username: "hello", Domain: "vayupress.com", Total: 3, Unseen: 1}}, false))
 	for _, want := range []string{"vayupress.com", "Secondary · 1 mailbox · 1 unseen", "hello@vayupress.com", "user=hello%40vayupress.com"} {
 		if !strings.Contains(sec, want) {
 			t.Errorf("secondary section missing %q\n%s", want, sec)
 		}
 	}
-	prim := string(a.vayuMailboxDomainSection("example.test", "example.test",
+	prim := string(a.vayuMailboxDomainSection("en", "example.test", "example.test",
 		[]vmail.MailboxSummary{{Username: "admin", Domain: "example.test", Total: 2}}, true))
 	if !strings.Contains(prim, `user=admin"`) {
 		t.Errorf("primary section should link the bare local part:\n%s", prim)
@@ -95,7 +95,7 @@ func TestOutboxChip(t *testing.T) {
 // it shows the unread ones first.
 func TestTheMailboxDirectoryPutsNewMailFirst(t *testing.T) {
 	a := &App{}
-	dir, boxes, unseen := a.vayuMailboxDirectory("example.test", []vmail.MailboxSummary{
+	dir, boxes, unseen := a.vayuMailboxDirectory("en", "example.test", []vmail.MailboxSummary{
 		{Username: "quiet", Domain: "example.test", Total: 9},
 		{Username: "some", Domain: "example.test", Total: 4, Unseen: 2},
 		{Username: "most", Domain: "example.test", Total: 8, Unseen: 5},
@@ -126,7 +126,7 @@ func TestTheMailboxDirectoryPutsNewMailFirst(t *testing.T) {
 		t.Error("the directory is not marked for the live refresh")
 	}
 
-	none, _, _ := a.vayuMailboxDirectory("example.test", []vmail.MailboxSummary{{Username: "quiet", Domain: "example.test", Total: 9}}, nil)
+	none, _, _ := a.vayuMailboxDirectory("en", "example.test", []vmail.MailboxSummary{{Username: "quiet", Domain: "example.test", Total: 9}}, nil)
 	if !strings.Contains(string(none), "No unread mail") {
 		t.Errorf("with nothing unread, New mail does not say so:\n%s", none)
 	}

@@ -101,7 +101,7 @@ func labelMenu(lang, user, folder, id string, all, mine []string) string {
 // word to the list that it changed.
 func (a *App) handleVayuOSLabelsAction(w http.ResponseWriter, r *http.Request) {
 	if !a.mailRunning() {
-		writeOSHTML(w, r, vayuReadpaneEmpty("VayuMail is not active."))
+		writeOSHTML(w, r, vayuReadpaneEmpty(i18n.Lang(r.Context()), i18n.T(i18n.Lang(r.Context()), "VayuMail is not active.")))
 		return
 	}
 	rd := a.mailReader(r, sanitizeMailUser(strings.TrimSpace(r.PostFormValue("user"))))
@@ -113,7 +113,7 @@ func (a *App) handleVayuOSLabelsAction(w http.ResponseWriter, r *http.Request) {
 	}
 	msgID, err := a.storedMessageID(rd, folder, id)
 	if err != nil {
-		writeOSHTML(w, r, vayuReadpaneEmpty(i18n.T(rd.Lang(), "Message not available.")))
+		writeOSHTML(w, r, vayuReadpaneEmpty(rd.Lang(), i18n.T(rd.Lang(), "Message not available.")))
 		return
 	}
 	if err := a.vayuMail.SetLabel(rd, msgID, r.PostFormValue("label"), r.PostFormValue("on") == "1"); err != nil {
@@ -123,7 +123,7 @@ func (a *App) handleVayuOSLabelsAction(w http.ResponseWriter, r *http.Request) {
 	}
 	card, ok := a.vayuReaderCard(rd, folder, id, readerView{Pane: true, Peek: true, Home: a.calendarHome(r), Places: a.holderPlaces(r)})
 	if !ok {
-		card = vayuReadpaneEmpty(i18n.T(rd.Lang(), "Message not available."))
+		card = vayuReadpaneEmpty(rd.Lang(), i18n.T(rd.Lang(), "Message not available."))
 	}
 	labels, _ := a.vayuMail.Labels(rd)
 	writeOSHTML(w, r, card+mailLabelsGroup(rd.Lang(), rd.Key(), labels, true))
