@@ -587,7 +587,10 @@ test.describe("Halcyon", () => {
     await page.setViewportSize({ width: 390, height: 900 });
     await page.goto("/halcyon-wide");
     const cells = page.locator(".h .content .tbl[data-stack] td");
-    expect(await cells.count()).toBe(35);
+    // Waited for, not counted once: under load Shield may meet the first
+    // visit with its browser check (a surge), which a headless browser takes
+    // about 13 s to pass before the post is reloaded in its place.
+    await expect(cells).toHaveCount(35, { timeout: 30000 });
     await expect(page.locator('.h .content td[data-label="GitKraken"]').first()).toBeVisible();
     await expect(page.locator(".h .content thead")).toBeHidden();
   });
