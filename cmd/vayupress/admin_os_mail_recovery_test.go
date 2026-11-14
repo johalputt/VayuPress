@@ -227,7 +227,8 @@ func TestRecoveryCodesCanBeSavedWithoutTheClipboard(t *testing.T) {
 	// The saved sheet must identify what it unlocks — a bare list of twelve
 	// character strings found later tells its owner nothing.
 	if !strings.Contains(js, "function codeSheet") ||
-		!strings.Contains(js, "'Mailbox : '") ||
+		!strings.Contains(js, "vpT('Mailbox') + ': ' + mb") ||
+		!strings.Contains(js, "vpT('Server') + ': ' + location.host") ||
 		!strings.Contains(js, "/mail/recover/code") {
 		t.Error("the saved sheet must name the mailbox, the server and where the codes are used")
 	}
