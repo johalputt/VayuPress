@@ -942,3 +942,18 @@ func TestMinifyingTheSitesPartLetsNoAddressOut(t *testing.T) {
 		}
 	}
 }
+
+// The route answers any ?v=, so a made-up version reaches the server past
+// every cache: the stylesheet is built once per site part, not per request.
+func TestTheSiteStylesheetIsBuiltOncePerSitePart(t *testing.T) {
+	s := SiteSettings{CustomCSS: ".h-built-once{color:red}"}
+	a, _ := HalcyonSiteCSS(s)
+	b, _ := HalcyonSiteCSS(s)
+	if &a[0] != &b[0] {
+		t.Error("the stylesheet was built again for the same site part")
+	}
+	c, _ := HalcyonSiteCSS(SiteSettings{CustomCSS: ".h-built-twice{color:red}"})
+	if !bytes.HasSuffix(c, []byte(".h-built-twice{color:red}")) {
+		t.Error("a different site part was answered with another's stylesheet")
+	}
+}

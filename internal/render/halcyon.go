@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -114,14 +115,44 @@ func halcyonCSSHref() string {
 // drops comments, and `url(/**/https://elsewhere)` passes the sanitiser with
 // its comment and loads from elsewhere without it.
 // ver is the hash of the bytes, so the page's link changes with them.
+//
+// Each stylesheet is built once per site part and kept (siteCSSMemo): the
+// route answers any ?v=, so a request with a made-up version reaches the
+// server past every cache, and building it each time was ten times the work
+// of /theme.css and 66 KB of garbage per request.
 func HalcyonSiteCSS(s SiteSettings) (body []byte, ver string) {
+	base := themeCSSBase(s)
+	key := base + "\x00" + s.CustomCSS
+	siteCSSMemo.Lock()
+	defer siteCSSMemo.Unlock()
+	if m, ok := siteCSSMemo.byPart[key]; ok {
+		return m.body[:len(m.body):len(m.body)], m.ver
+	}
 	own := halcyonAssets["halcyon.css"].body
 	body = append(make([]byte, 0, len(own)+4096), own...)
-	body = append(body, MinifyCSS([]byte(themeCSSBase(s)))...)
+	body = append(body, MinifyCSS([]byte(base))...)
 	body = append(body, sanitizeCustomCSS(string(MinifyCSS([]byte(s.CustomCSS))))...)
 	sum := sha256.Sum256(body)
-	return body, hex.EncodeToString(sum[:5])
+	ver = hex.EncodeToString(sum[:5])
+	// A new site part comes only from an operator saving colours or custom
+	// CSS; past a few dozen, the old ones are dropped rather than kept for
+	// the life of the process.
+	if len(siteCSSMemo.byPart) >= 64 {
+		clear(siteCSSMemo.byPart)
+	}
+	siteCSSMemo.byPart[key] = siteCSS{body: body, ver: ver}
+	return body[:len(body):len(body)], ver
 }
+
+type siteCSS struct {
+	body []byte
+	ver  string
+}
+
+var siteCSSMemo = struct {
+	sync.Mutex
+	byPart map[string]siteCSS
+}{byPart: map[string]siteCSS{}}
 
 func halcyonSiteCSSHref(s SiteSettings) string {
 	_, ver := HalcyonSiteCSS(s)
