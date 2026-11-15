@@ -33,7 +33,7 @@ const mailDNSWatchInterval = 6 * time.Hour
 
 // recordMailDNS stores a completed check.
 func (a *App) recordMailDNS(h dnsHealth) {
-	next, _ := firstDNSUnfinished(h)
+	next, _ := firstDNSUnfinished("", h)
 	a.mailDNS.Store(&mailDNSVerdict{AllOK: h.AllOK, Next: next, Checked: time.Now()})
 }
 

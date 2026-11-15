@@ -1332,9 +1332,9 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 	health := a.vayuDNSHealth(r.Context())
 	count := i18n.T(lang, "{n, plural, one {# mail domain} other {# mail domains}}", "n", len(health.Domains))
 	var body strings.Builder
-	body.WriteString(vayuDNSWizard(health))
+	body.WriteString(vayuDNSWizard(lang, health))
 	body.WriteString(string(ui.Section(i18n.T(lang, "Records to publish"), i18n.T(lang, "At each domain's DNS host"), ui.HTML(a.vayuDNSPublishSections(r, mc)))))
-	body.WriteString(string(ui.Section(i18n.T(lang, "Live verification"), i18n.T(lang, "Every mail domain, checked now"), ui.HTML(vayuDNSVerifyFragmentWith(health)))))
+	body.WriteString(string(ui.Section(i18n.T(lang, "Live verification"), i18n.T(lang, "Every mail domain, checked now"), ui.HTML(vayuDNSVerifyFragmentWith(lang, health)))))
 	page := string(ui.List(ui.ListPage{Title: i18n.T(lang, "Mail administration"), Count: count, Tabs: saTabsFor(cfg, "mail", "/os/vayumail/dns")}, ui.HTML(body.String()), "")) +
 		vayuDNSScript(nonce)
 	writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Mail DNS"), "vayuos", cfg, htmpl.HTML(page)))

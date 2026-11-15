@@ -13,7 +13,7 @@ import (
 // A/AAAA mail-host records, the reverse-DNS hint, the inbound ports, and the
 // load-bearing "must not be proxied / DNS only" warning.
 func TestVayuMailHostSection(t *testing.T) {
-	out := vayuMailHostSection(mail.Config{Domain: "example.com", Hostname: "mail.example.com"})
+	out := vayuMailHostSection("", mail.Config{Domain: "example.com", Hostname: "mail.example.com"})
 	for _, want := range []string{"mail.example.com", "DNS only", "Do not proxy", "AAAA", "PTR", "25"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("mail host section missing %q", want)
@@ -25,7 +25,7 @@ func TestVayuMailHostSection(t *testing.T) {
 // per-value copy control, and starts open when asked.
 func TestVayuDNSRecordsSection(t *testing.T) {
 	recs := []mail.DNSRecord{{Type: "MX", Name: "example.com.", Value: "mail.example.com.", Priority: 10}}
-	out := vayuDNSRecordsSection("Records to publish — example.com", "sub", recs, true)
+	out := vayuDNSRecordsSection("", "Records to publish — example.com", "sub", recs, true)
 	for _, want := range []string{"vm-sec", "vm-tag", "mail.example.com.", `data-copy="mail.example.com."`, "<details", " open>"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("records section missing %q\n%s", want, out)
@@ -53,7 +53,7 @@ func TestVayuDNSVerifyDomainTable(t *testing.T) {
 		{Type: "MX", OK: false, Message: "MX does not point to mail.example.com — mail for this domain is delivered elsewhere"},
 		{Type: "SPF", OK: true, Found: "v=spf1 a mx ~all"},
 	}}
-	out := vayuDNSVerifyDomainTable("shop.example", hc)
+	out := vayuDNSVerifyDomainTable("", "shop.example", hc)
 	for _, want := range []string{"shop.example", `sa-dot--warn" aria-hidden="true"></span>Check records<`, "delivered elsewhere", "v=spf1 a mx ~all",
 		`sa-dot--warn" aria-hidden="true"></span>To do<`, `sa-dot--ok" aria-hidden="true"></span>OK<`} {
 		if !strings.Contains(out, want) {

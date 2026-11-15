@@ -34,7 +34,7 @@ func okDNSHealth() dnsHealth {
 }
 
 func TestTheWizardSaysWhenThereIsNothingToDo(t *testing.T) {
-	out := vayuDNSWizard(okDNSHealth())
+	out := vayuDNSWizard("", okDNSHealth())
 	if !strings.Contains(out, ">All checks pass<") {
 		t.Error("an aligned install must say so plainly")
 	}
@@ -58,7 +58,7 @@ func TestTheWizardNamesTheNextThingToFix(t *testing.T) {
 	h.Domains[0].Health.AllOK = false
 	h.Domains[0].Health.Records[2] = vmail.RecordHealth{Type: "DKIM", OK: false, Message: "no key found at selector._domainkey.example.com"}
 
-	out := vayuDNSWizard(h)
+	out := vayuDNSWizard("", h)
 	if !strings.Contains(out, "Needs attention") || !strings.Contains(out, "sa-dot--warn") {
 		t.Error("a failing check must be labelled as needing action")
 	}
@@ -83,7 +83,7 @@ func TestTheWizardPrefersADomainFailureOverADeliverabilityOne(t *testing.T) {
 	h.Domains[0].Health.Records[0] = vmail.RecordHealth{Type: "MX", OK: false, Message: "no MX record"}
 	h.Deliverability = []vmail.RecordHealth{{Type: "PTR", OK: false, Message: "missing reverse DNS"}}
 
-	out := vayuDNSWizard(h)
+	out := vayuDNSWizard("", h)
 	next := out[strings.Index(out, "Next:"):]
 	if !strings.Contains(next, "MX") {
 		t.Errorf("the next step should be the earliest failing check (MX), got:\n%s", next)
@@ -92,7 +92,7 @@ func TestTheWizardPrefersADomainFailureOverADeliverabilityOne(t *testing.T) {
 
 func TestTheWizardHandlesADomainWithNoHealth(t *testing.T) {
 	h := dnsHealth{AllOK: true, Domains: []dnsDomainHealth{{Domain: "broken.example"}}}
-	out := vayuDNSWizard(h)
+	out := vayuDNSWizard("", h)
 	if !strings.Contains(out, `id="vm-dns-wizard"`) || !strings.Contains(out, "All checks pass") {
 		t.Error("a domain with no health report must not take the card down with it")
 	}
@@ -100,14 +100,14 @@ func TestTheWizardHandlesADomainWithNoHealth(t *testing.T) {
 
 func TestTheWizardRefreshIsOutOfBand(t *testing.T) {
 	h := okDNSHealth()
-	oob := vayuDNSWizardOOB(h)
+	oob := vayuDNSWizardOOB("", h)
 	if !strings.Contains(oob, `hx-swap-oob="true"`) {
 		t.Error("the Re-check response must swap the checklist too, or it keeps showing the previous verdict")
 	}
 	if strings.Count(oob, `id="vm-dns-wizard"`) != 1 {
 		t.Error("the out-of-band copy must carry exactly one swap id")
 	}
-	if strings.Contains(vayuDNSWizard(h), "hx-swap-oob") {
+	if strings.Contains(vayuDNSWizard("", h), "hx-swap-oob") {
 		t.Error("the page-rendered card must not swap itself out of band")
 	}
 }
