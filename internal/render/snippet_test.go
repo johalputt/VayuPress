@@ -44,11 +44,25 @@ func TestASnippetsScriptFromElsewhereNamesItsOrigin(t *testing.T) {
 	}
 }
 
+// An image may carry itself as a data: address; a link to a page that
+// begins "javascript" is a link, not code.
+func TestASnippetKeepsWhatIsOnlyAnAddress(t *testing.T) {
+	for _, ok := range []string{`<img src="data:image/png;base64,iVBORw0KGgo=" alt="">`, `<a href="/javascript:notes">Notes</a>`, `<a href="javascript-guide.html">Guide</a>`} {
+		if _, err := ParseSnippet(ok); err != nil {
+			t.Errorf("%q refused: %v", ok, err)
+		}
+	}
+}
+
 // What a hash cannot allow, one seed per rule, each refused with its reason.
 func TestASnippetRefusesWhatAHashCannotAllow(t *testing.T) {
 	for _, c := range []struct{ snippet, reason string }{
 		{`<button onclick="go()">Go</button>`, "inline handler"},
 		{`<a href=" JavaScript:go()">Go</a>`, "javascript:"},
+		{"<a href=\"java&#9;script:go()\">Go</a>", "javascript:"},
+		{"<a href=\"\x01javascript:go()\">Go</a>", "javascript:"},
+		{`<iframe src="data:text/html,<script>go()</script>"></iframe>`, "data: address"},
+		{`<a href="data:text/html,x">Go</a>`, "data: address"},
 		{`<base href="https://elsewhere.example/">`, "<base>"},
 		{`<meta http-equiv="refresh" content="0;url=https://elsewhere.example/">`, "http-equiv"},
 		{`<script src="http://cdn.example.com/a.js"></script>`, "only over https"},

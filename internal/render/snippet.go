@@ -85,8 +85,11 @@ func ParseSnippet(raw string) (Snippet, error) {
 				}
 				switch key {
 				case "href", "src", "action", "formaction", "xlink:href", "data":
-					if scheme := strings.ToLower(strings.TrimSpace(string(v))); strings.HasPrefix(scheme, "javascript:") || strings.HasPrefix(scheme, "vbscript:") {
+					switch scheme := addressScheme(string(v)); {
+					case scheme == "javascript" || scheme == "vbscript":
 						return Snippet{}, errors.New("a javascript: address cannot be allowed: load the code from a script instead")
+					case scheme == "data" && (tag != "img" || key != "src"):
+						return Snippet{}, errors.New("a data: address is allowed only as an image's src: link to the content instead")
 					}
 				}
 			}
@@ -113,6 +116,28 @@ func ParseSnippet(raw string) (Snippet, error) {
 			}
 		}
 	}
+}
+
+// addressScheme is the scheme a browser reads in an attribute's address,
+// lower case, or "" for a relative one. It reads it as the URL standard
+// does: control characters and spaces at either end are dropped, and a tab
+// or newline anywhere, so "java&#9;script:" (the tokenizer has already
+// decoded the entity) is javascript:, which a prefix test on the raw value
+// missed.
+func addressScheme(v string) string {
+	v = strings.TrimFunc(v, func(r rune) bool { return r <= ' ' })
+	v = strings.NewReplacer("\t", "", "\n", "", "\r", "").Replace(v)
+	i := strings.IndexByte(v, ':')
+	if i <= 0 {
+		return ""
+	}
+	for j, c := range v[:i] {
+		alpha := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+		if !alpha && (j == 0 || !(c >= '0' && c <= '9' || c == '+' || c == '-' || c == '.')) {
+			return ""
+		}
+	}
+	return strings.ToLower(v[:i])
 }
 
 // scriptOrigin is the origin a <script src> loads from: "" for the site's
