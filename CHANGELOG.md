@@ -8,6 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **A malformed event from a calendar app is refused with a reason.** An
+  event the calendar library cannot read was decoded by it before VayuPress
+  saw it, and the app's connection was dropped; it is now answered with a
+  400 that says why.
+- **One unreadable event no longer hides the whole calendar.** A stored
+  event the calendar library cannot read is left out of the calendar's list,
+  instead of making every listing fail.
+
 ## [3.18.43] — 2026-11-15
 
 Mail and the console around it in the language you choose, a site's own code

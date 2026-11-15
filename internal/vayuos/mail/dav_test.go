@@ -558,3 +558,39 @@ func TestAPropfindWithNoBodyIsAnswered(t *testing.T) {
 		}
 	}
 }
+
+// An event go-ical's decoder would panic on is refused with a 400 before
+// caldav.Handler reads it, one seed per panic: a parameter that ends the
+// line, and a character after a quoted value. A good event is still kept.
+// One stored event the decoder cannot read is left out of the calendar's
+// listing, not the reason the listing fails.
+func TestAMalformedEventIsRefusedAndOneBadEntryHidesNothing(t *testing.T) {
+	f := newDAV(t)
+	ev := eventText("good", "VEVENT", "")
+	for name, body := range map[string]string{
+		"a parameter ending the line": strings.Replace(ev, "SUMMARY:Standup\r\n", "SUMMARY:Standup\r\nATTENDEE;CN=\"Alice\"\r\n", 1),
+		"a character after a quote":   strings.Replace(ev, "SUMMARY:Standup\r\n", "SUMMARY:Standup\r\nATTENDEE;CN=\"Alice\"x:mailto:a@x.test\r\n", 1),
+	} {
+		code, _, out := f.req(http.MethodPut, davCal+"bad.ics", body, "Content-Type", "text/calendar")
+		if code != http.StatusBadRequest || !strings.Contains(out, "not a calendar this server can read") {
+			t.Errorf("%s: %d %s", name, code, out)
+		}
+	}
+	if code, _, out := f.req(http.MethodPut, davCal+"good.ics", ev, "Content-Type", "text/calendar"); code != http.StatusCreated {
+		t.Fatalf("a good event: %d %s", code, out)
+	}
+	if code, _, out := f.req(http.MethodPut, davCal+"other.ics", eventText("other", "VEVENT", ""), "Content-Type", "text/calendar"); code != http.StatusCreated {
+		t.Fatalf("a second event: %d %s", code, out)
+	}
+	if _, err := f.s.db.Exec(`UPDATE vayumail_dav SET data=? WHERE kind=? AND name='other.ics'`, []byte("0;0="), davEvent); err != nil {
+		t.Fatal(err)
+	}
+	kc, _ := caldav.NewClient(f.hc, f.srv.URL)
+	got, err := kc.QueryCalendar(context.Background(), davCal, &caldav.CalendarQuery{
+		CompRequest: caldav.CalendarCompRequest{Name: "VCALENDAR", AllProps: true, AllComps: true},
+		CompFilter:  caldav.CompFilter{Name: "VCALENDAR"},
+	})
+	if err != nil || len(got) != 1 || !strings.HasSuffix(got[0].Path, "good.ics") {
+		t.Errorf("the calendar with one unreadable entry: %v, %d entries", err, len(got))
+	}
+}

@@ -38,6 +38,8 @@ import (
 	"github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/caldav"
 	"github.com/emersion/go-webdav/carddav"
+
+	"github.com/johalputt/vayupress/internal/logging"
 )
 
 const (
@@ -130,9 +132,39 @@ func (e *Engine) DAVHandler(signIn func(user, password string) (string, bool)) h
 			return
 		}
 		r.Body = davBounded(w, r.Body, maxDAVRequest)
+		if h == cals && r.Method == http.MethodPut && !davCalendarReadable(w, r) {
+			return
+		}
 		rq := davRequest{mailbox: mailbox, cond: davConditionOf(webdav.ConditionalMatch(r.Header.Get("If-Match")), webdav.ConditionalMatch(r.Header.Get("If-None-Match")))}
 		h.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), davCtxKey{}, rq)))
 	})
+}
+
+// davCalendarReadable reads an event a PUT sends and answers 400 when it is
+// not a calendar decodeCalendar can read, putting the bytes back for the
+// handler otherwise. caldav.Handler decodes the body itself, before any of
+// this package runs, with go-ical's decoder, which panics on two malformed
+// parameter shapes instead of returning an error (calendar_decode.go): read
+// there, a bad event was a dropped connection. Reading it here first makes it
+// a refusal the app can show.
+func davCalendarReadable(w http.ResponseWriter, r *http.Request) bool {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			http.Error(w, "The event is larger than this server keeps.", http.StatusRequestEntityTooLarge)
+		} else {
+			http.Error(w, "The event could not be read.", http.StatusBadRequest)
+		}
+		return false
+	}
+	if _, err := decodeCalendar(body); err != nil {
+		http.Error(w, "The event is not a calendar this server can read: "+err.Error(), http.StatusBadRequest)
+		return false
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	r.ContentLength = int64(len(body))
+	return true
 }
 
 // davBounded is a request body cut off at limit, as http.MaxBytesReader
@@ -407,7 +439,12 @@ func (c davCals) ListCalendarObjects(ctx context.Context, p string, _ *caldav.Ca
 	for _, o := range list {
 		co, err := calObject(calPath(ctx)+o.Name, o)
 		if err != nil {
-			return nil, err
+			// One stored event the decoder cannot read is left out, not the
+			// whole calendar: returning here made every listing and date
+			// query fail for the sake of one entry. It is still there to
+			// fetch, or to write over, by its own name.
+			logging.LogError("vayumail", "a stored calendar event cannot be read and is left out of the listing", o.Name+": "+err.Error())
+			continue
 		}
 		out = append(out, co)
 	}
