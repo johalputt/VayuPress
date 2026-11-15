@@ -155,7 +155,7 @@ func (s *servedStatus) Write(b []byte) (int, error) {
 	if s.code == 0 {
 		s.code = http.StatusOK
 	}
-	return s.ResponseWriter.Write(b)
+	return forwardBody(s.ResponseWriter, b)
 }
 
 func (s *servedStatus) served() bool {

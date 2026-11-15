@@ -152,7 +152,7 @@ func (w *frameWriter) WriteHeader(code int) {
 
 func (w *frameWriter) Write(b []byte) (int, error) {
 	w.apply()
-	return w.ResponseWriter.Write(b)
+	return forwardBody(w.ResponseWriter, b)
 }
 
 // Unwrap lets http.ResponseController reach the connection's own writer.

@@ -220,7 +220,7 @@ func (w *policyWriter) WriteHeader(code int) {
 
 func (w *policyWriter) Write(b []byte) (int, error) {
 	w.apply()
-	return w.ResponseWriter.Write(b)
+	return forwardBody(w.ResponseWriter, b)
 }
 
 // Unwrap lets http.ResponseController reach the connection's own writer for

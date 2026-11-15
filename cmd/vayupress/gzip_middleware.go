@@ -31,9 +31,20 @@ package main
 
 import (
 	"compress/gzip"
+	"io"
 	"net/http"
 	"strings"
 )
+
+// forwardBody hands a handler's bytes on to the writer a middleware wraps.
+// It takes an io.Writer, not the http.ResponseWriter, on purpose. The bytes
+// are the handler's own write, and that write is where code scanning judges
+// them, against the Content-Type the handler set. Read again as a
+// ResponseWriter.Write inside a wrapper, where no Content-Type can be seen,
+// every JSON or text body passing through would count as HTML reflected back
+// to the reader. A wrapper forwards exactly what the handler wrote and adds
+// nothing to it, so the handler's call is the one to judge.
+func forwardBody(to io.Writer, b []byte) (int, error) { return to.Write(b) }
 
 // gzipCompressible reports whether a response of this content type benefits
 // from gzip. Text families, JSON, JavaScript and XML (including SVG and feed
@@ -130,7 +141,7 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 	if w.compress {
 		return w.gz.Write(b)
 	}
-	return w.ResponseWriter.Write(b)
+	return forwardBody(w.ResponseWriter, b)
 }
 
 // Flush passes through so streaming handlers (htmx partial pushes, exports)
