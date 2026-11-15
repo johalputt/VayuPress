@@ -1,0 +1,72 @@
+# Fuzzing of the parsers that read outside input: a message and its headers,
+# an invitation, a calendar feed, a contacts file, an IMAP sequence set, a
+# YouTube feed, an uploaded SVG, a message's HTML, the analytics beacon,
+# Shield's policies and operator rules.
+#
+# Every target's seeds already run with go test on each push, which is the
+# gate. This is the exploration from them, which takes minutes per target and
+# so runs nightly, not on a push. A target that fails uploads the input that
+# broke it (testdata/fuzz), which is then added to that target's seeds with
+# the fix, so it is checked on every push from then on.
+name: Fuzz
+on:
+  schedule:
+    - cron: "41 2 * * *"
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: "How long each target runs (a Go duration)"
+        default: "60s"
+concurrency:
+  group: fuzz
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  fuzz:
+    name: "go test -fuzz (each target)"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install C build tools
+        run: sudo apt-get install -y gcc build-essential
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: 'stable'
+          cache: true
+      - name: Pin the Go toolchain to go.mod
+        run: |
+          TC=$(sed -n 's/^toolchain //p' go.mod)
+          [ -n "$TC" ] || { echo "::error::go.mod has no toolchain directive"; exit 1; }
+          echo "GOTOOLCHAIN=$TC" >> "$GITHUB_ENV"
+      - name: Fuzz every target
+        env:
+          FUZZTIME: ${{ inputs.fuzztime || '60s' }}
+        # The targets are found, not listed, so a new one is fuzzed from the
+        # night it lands. Each runs on its own (go test takes one -fuzz per
+        # run), and every failure is reported before the job fails.
+        run: |
+          failed=0 n=0
+          while IFS=: read -r file name; do
+            dir=./$(dirname "$file")
+            n=$((n + 1))
+            echo "::group::$dir $name"
+            if ! go test -run '^$' -fuzz "^${name}\$" -fuzztime "$FUZZTIME" "$dir"; then
+              echo "::error file=$file::$name failed; the input is in $(dirname "$file")/testdata/fuzz/$name"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done < <(grep -rhoE --include='*_test.go' -H '^func Fuzz[A-Za-z0-9_]+' cmd internal | sed 's/func //')
+          [ "$n" -gt 0 ] || { echo "::error::no fuzz target was found"; exit 1; }
+          echo "$n targets fuzzed for $FUZZTIME each"
+          exit $failed
+      - name: Keep the inputs that broke a target
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: fuzz-failures
+          path: |
+            cmd/**/testdata/fuzz/
+            internal/**/testdata/fuzz/
+          if-no-files-found: ignore

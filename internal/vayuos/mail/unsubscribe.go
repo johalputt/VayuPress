@@ -56,6 +56,10 @@ func ParseListUnsubscribe(raw []byte) UnsubscribeOffer {
 		}
 		switch strings.ToLower(u.Scheme) {
 		case "https":
+			// "https:/x" parses, with no host: there is nowhere to post it.
+			if u.Host == "" {
+				continue
+			}
 			if o.Link == "" {
 				o.Link = u.String()
 			}

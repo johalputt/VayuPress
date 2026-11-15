@@ -1553,12 +1553,20 @@ func atoiDefault(s string, def int) int {
 	if s == "" {
 		return def
 	}
+	// A number past any mailbox stops growing rather than wrapping: a client
+	// that sends twenty digits asked for "to the end", not for a negative.
+	const most = 1 << 31
 	n := 0
 	for _, r := range s {
 		if r < '0' || r > '9' {
 			return def
 		}
-		n = n*10 + int(r-'0')
+		if n < most {
+			n = n*10 + int(r-'0')
+		}
+	}
+	if n > most {
+		n = most
 	}
 	return n
 }

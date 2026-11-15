@@ -84,9 +84,15 @@ func ParseVCards(data []byte) ([]VCard, error) {
 }
 
 // vcardAddress is the address an EMAIL value holds, which some apps write
-// as a mailto: link.
+// as a mailto: link. A value with a control character in it is no address:
+// a quoted-printable =0D=0A decodes to a line break, and an address becomes
+// a recipient, so it would write a header of its own into the message.
 func vcardAddress(v string) string {
-	return strings.TrimSpace(strings.TrimPrefix(v, "mailto:"))
+	v = strings.TrimSpace(strings.TrimPrefix(v, "mailto:"))
+	if strings.IndexFunc(v, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+		return ""
+	}
+	return v
 }
 
 // unfoldVCard splits data into its logical lines: a line that begins with a
