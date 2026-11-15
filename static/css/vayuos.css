@@ -4471,6 +4471,9 @@
 .vp-os[data-ui="still-air"] h3,
 .vp-os[data-ui="still-air"] h4 { font: var(--type-strong); font-weight: 600; letter-spacing: 0; }
 .vp-os[data-ui="still-air"] a { color: var(--accent); }
+/* The skip link is a link on an accent ground: without this the rule above
+   outranks .skip-link's own colour, and it showed accent text on accent. */
+.vp-os[data-ui="still-air"] a.skip-link { color: var(--on-accent); }
 .vp-os[data-ui="still-air"] :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .vp-os[data-ui="still-air"] ::selection { background: var(--surface-select); }
 /* The browser draws <strong> and <b> at 700 and <pre> in its own monospace;

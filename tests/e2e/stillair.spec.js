@@ -11,6 +11,7 @@
 // The keyboard checks drive the command bar, the account menu and the
 // confirmation dialog without a pointer.
 const { test, expect } = require("@playwright/test");
+const { lowContrast } = require("./contrast");
 
 // Opens the console and waits until the first visit has settled: a test that
 // acts before the CSRF cookie exists is refused.
@@ -298,8 +299,9 @@ async function colourTokens(page) {
   return [...block.matchAll(/(--[a-z0-9-]+):\s*(?:#|rgba?\()/g)].map((m) => m[1]);
 }
 
-test("every element of every page is on the Still Air scale, in both schemes", async ({ page }) => {
-  test.setTimeout(600000);
+// Walks every page the rail offers in each [scheme, width] pass and returns
+// what the scale lint, the icon set and the contrast probe found on it.
+async function walkScale(page, passes) {
   await openConsole(page);
   const tokens = await colourTokens(page);
   expect(tokens.length).toBeGreaterThan(30); // an empty palette would fail everything for the wrong reason
@@ -326,10 +328,63 @@ test("every element of every page is on the Still Air scale, in both schemes", a
       // Messages shipped one on their date button ("calendar") in 3.17.92,
       // which the chrome-only unit test never renders.
       if (await page.locator(".sa-ico--missing").count()) findings.push(`${scheme} ${width}px ${href}: an icon missing from the set`);
+      // Text the reader cannot read is a fault the scale cannot see: every
+      // colour can be a token and still sit too close to the one under it.
+      // It is judged at rest, like the scale: Updates re-enables its button
+      // when the check it starts on opening returns, often after the wait
+      // above, and read inside that 90 ms fade the button is its disabled
+      // grey. So a finding is read again once the page has settled, and
+      // only what is still there counts.
+      let low = await lowContrast(page);
+      if (low.length) {
+        await page.waitForTimeout(500);
+        await page.evaluate(() => Promise.all(document.getAnimations()
+          .filter((a) => a.effect && a.effect.getComputedTiming().endTime !== Infinity)
+          .map((a) => a.finished.catch(() => {}))));
+        low = await lowContrast(page);
+      }
+      for (const f of low) findings.push(`${scheme} ${width}px ${href}: contrast ${f}`);
     }
   }
-  expect(findings).toEqual([]);
+  return findings;
+}
+
+test("every element of every page is on the Still Air scale and its text reaches its contrast, in both schemes", async ({ page }) => {
+  test.setTimeout(900000);
+  expect(await walkScale(page, [["dark", 1280], ["light", 1280], ["dark", 390]])).toEqual([]);
 });
+
+// Walks every app and section the rail offers and returns what the design
+// lint and the page's own scripts found.
+async function lintWalk(page) {
+  await openConsole(page);
+  const hrefs = await page.evaluate(() => [...new Set([...document.querySelectorAll("[data-sa-index] a")].map((a) => a.getAttribute("href")))]);
+  expect(hrefs.length).toBeGreaterThan(30); // the index is the rail's, so an empty one means the walk checked nothing
+
+  const findings = [];
+  for (const href of hrefs) {
+    const errors = [];
+    const onError = (e) => errors.push(e.message);
+    page.on("pageerror", onError);
+    await page.goto(href);
+    await page.waitForLoadState("load");
+    // A page counted in the background (Analytics) answers its first
+    // visit with a placeholder. The lint is for the page, so it waits
+    // for it: read once, the result hung on whichever spec had opened
+    // the page before.
+    const counting = page.getByText("This is counted in the background");
+    for (let i = 0; i < 20 && (await counting.count()) > 0; i++) {
+      await page.waitForTimeout(1000);
+      await page.reload();
+      await page.waitForLoadState("load");
+    }
+    if ((await counting.count()) > 0) findings.push(`${href}: still counting after 20 s`);
+    const found = await page.evaluate(lintPage);
+    page.off("pageerror", onError);
+    for (const f of [...found, ...errors.map((e) => "script error: " + e)]) findings.push(`${href}: ${f}`);
+  }
+  return findings;
+}
 
 // The phone is a touch screen, not a narrow desktop: with no hover, anything
 // the page reveals only on hover is never revealed at all.
@@ -348,36 +403,37 @@ for (const [device, use] of [
     test.use(use);
     test(`every app and section passes the design lint, on ${device}`, async ({ page }) => {
       test.setTimeout(300000);
-      await openConsole(page);
-      const hrefs = await page.evaluate(() => [...new Set([...document.querySelectorAll("[data-sa-index] a")].map((a) => a.getAttribute("href")))]);
-      expect(hrefs.length).toBeGreaterThan(30); // the index is the rail's, so an empty one means the walk checked nothing
-
-      const findings = [];
-      for (const href of hrefs) {
-        const errors = [];
-        const onError = (e) => errors.push(e.message);
-        page.on("pageerror", onError);
-        await page.goto(href);
-        await page.waitForLoadState("load");
-        // A page counted in the background (Analytics) answers its first
-        // visit with a placeholder. The lint is for the page, so it waits
-        // for it: read once, the result hung on whichever spec had opened
-        // the page before.
-        const counting = page.getByText("This is counted in the background");
-        for (let i = 0; i < 20 && (await counting.count()) > 0; i++) {
-          await page.waitForTimeout(1000);
-          await page.reload();
-          await page.waitForLoadState("load");
-        }
-        if ((await counting.count()) > 0) findings.push(`${href}: still counting after 20 s`);
-        const found = await page.evaluate(lintPage);
-        page.off("pageerror", onError);
-        for (const f of [...found, ...errors.map((e) => "script error: " + e)]) findings.push(`${href}: ${f}`);
-      }
-      expect(findings).toEqual([]);
+      expect(await lintWalk(page)).toEqual([]);
     });
   });
 }
+
+// The Tor world (VAYUOS_MODE=tor, ADR-0141) is the same console in another
+// accent, and the accent is what most of its text and controls are drawn in.
+// It is walked on an install of its own booted in that mode (TOR_BASE_URL),
+// not by setting the attribute on a clearnet page, because the mode also
+// changes what the pages say and show.
+test.describe("in the Tor world", () => {
+  const base = process.env.TOR_BASE_URL;
+  if (!base) throw new Error("TOR_BASE_URL is not set: boot the Tor-world install (.github/actions/boot-vayupress)");
+  test.use({ baseURL: base });
+
+  test("the Tor-world install wears the Tor world", async ({ page }) => {
+    await openConsole(page);
+    await expect(page.locator('body[data-space="tor"]')).toHaveCount(1);
+  });
+
+  test("every element of every page is on the Still Air scale and its text reaches its contrast, in the Tor world", async ({ page }) => {
+    test.setTimeout(900000);
+    expect(await walkScale(page, [["dark", 1280], ["light", 1280]])).toEqual([]);
+  });
+
+  test("every app and section passes the design lint, in the Tor world", async ({ page }) => {
+    test.setTimeout(300000);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    expect(await lintWalk(page)).toEqual([]);
+  });
+});
 
 // Analytics is a bar of views, and the lint above reads only the overview.
 // So the same lint reads every view, at each width. The explanation count is

@@ -115,3 +115,28 @@ runs:
           sleep 1
         done
         echo "the mail install did not start"; cat $M/server.log $M/proxy.log; exit 1
+
+    # A third install in the Tor world (VAYUOS_MODE=tor), for the specs that
+    # walk the console in its Tor accent (stillair.spec.js reads TOR_BASE_URL).
+    # The mode binds to 127.0.0.1 and refuses clearnet egress; it needs no Tor
+    # to serve its pages, only to publish them as an onion.
+    - name: Start a third install in the Tor world
+      shell: bash
+      run: |
+        T=/tmp/vayutor
+        mkdir -p $T/cache $T/tmp $T/media
+        DB_PATH=$T/vayupress.db CACHE_DIR=$T/cache MEDIA_DIR=$T/media TMP_DIR=$T/tmp \
+          PORT=8070 DOMAIN=localhost VAYUOS_MODE=tor \
+          /tmp/vayupress/vayupress > $T/server.log 2>&1 &
+        echo $! > $T/server.pid
+        LISTEN=:8078 UPSTREAM=http://127.0.0.1:8070 API_KEY=$API_KEY \
+          go run ./scripts/screenshot-proxy > $T/proxy.log 2>&1 &
+        echo $! > $T/proxy.pid
+        for i in $(seq 1 90); do
+          if curl -fsS http://localhost:8078/health/live >/dev/null 2>&1; then
+            echo "TOR_BASE_URL=http://localhost:8078" >> "$GITHUB_ENV"
+            echo "Tor-world install up"; exit 0
+          fi
+          sleep 1
+        done
+        echo "the Tor-world install did not start"; cat $T/server.log $T/proxy.log; exit 1
