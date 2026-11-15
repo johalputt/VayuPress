@@ -165,11 +165,10 @@ func TestStillAirFindsTheCurrentSection(t *testing.T) {
 
 // pictograph finds a character standing in for an icon: any "other symbol"
 // (emoji, dingbats, technical symbols such as ⏸) or an emoji variation
-// selector. ⌘ and ↵ are allowed: each is a key's name on the keyboard (the
-// search button's and the command palette's keycaps), not a picture.
+// selector. ⌘ is allowed: it is the key's name on the keyboard, not a picture.
 func pictograph(s string) string {
 	for _, r := range s {
-		if r == '⌘' || r == '↵' {
+		if r == '⌘' {
 			continue
 		}
 		if unicode.Is(unicode.So, r) || r == '\uFE0F' {

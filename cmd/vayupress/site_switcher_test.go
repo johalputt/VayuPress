@@ -67,7 +67,7 @@ func TestTheBarNamesTheSiteThePageBelongsTo(t *testing.T) {
 	sites := []osSite{{ID: "d1", Host: "bakery.example", Active: true}, {ID: "d2", Host: "studio.example"}}
 	in := &osSettings{Sites: sites}
 	in.Scope = &in.Sites[0]
-	out := saBrand("en", in, "/os/", "Johal")
+	out := saBrand(in, "/os/", "Johal")
 	if !strings.Contains(out, `<span class="sa-mark__site">bakery.example</span>`) {
 		t.Errorf("inside bakery.example the bar does not name it:\n%s", out)
 	}
@@ -81,7 +81,7 @@ func TestTheBarNamesTheSiteThePageBelongsTo(t *testing.T) {
 		t.Errorf("the switcher offers no way back to the install's own console:\n%s", out)
 	}
 
-	alone := saBrand("en", &osSettings{}, "/os/", "Johal")
+	alone := saBrand(&osSettings{}, "/os/", "Johal")
 	if strings.Contains(alone, "sa-sites") || !strings.Contains(alone, `<span class="sa-mark__site">Johal</span>`) {
 		t.Errorf("with no hosted sites the bar grows a switcher, or loses the site's name:\n%s", alone)
 	}

@@ -66,16 +66,6 @@ function cookie(name) {
    being dressed up as "Network error"; and an expired CSRF token says so,
    because "reload the page" is the actual remedy. */
 window.vpCsrf = function () { return cookie('vp_csrf'); };
-
-/* The account menu's language choice is a plain form post: the token and the
-   page to come back to are only known as it is sent (the double-submit cookie
-   is rotated by each render, and the menu is drawn without the page's path). */
-document.addEventListener('submit', function (e) {
-  var f = e.target;
-  if (!f.matches || !f.matches('[data-lang-form]')) return;
-  f.elements.csrf_token.value = window.vpCsrf();
-  f.elements.back.value = location.pathname + location.search;
-});
 window.vpPost = function (url, body, onok, onerr) {
   fetch(url, {
     method: 'POST',
@@ -375,9 +365,6 @@ document.addEventListener('click', function (e) {
   if (!backdrop || !input || !results) return;
 
   var KINDS = ['All', 'Go to', 'Actions', 'Settings'];
-  // What the chip says for each kind, in the page's language; KINDS stays the
-  // kind's name in the code.
-  var KIND_NAMES = [vpT('All'), vpT('Go to'), vpT('Actions'), vpT('Settings')];
   var kind = 0;
   var index = null;
   var items = [];      // [{el, data}]
@@ -389,7 +376,7 @@ document.addEventListener('click', function (e) {
     backdrop.removeAttribute('hidden');
     input.value = '';
     kind = 0;
-    if (kindChip) kindChip.textContent = KIND_NAMES[kind];
+    if (kindChip) kindChip.textContent = KINDS[kind];
     input.focus();
     loadIndex();
     render();
@@ -416,7 +403,7 @@ document.addEventListener('click', function (e) {
   if (kindChip) kindChip.addEventListener('click', function () { cycleKind(1); input.focus(); });
   function cycleKind(step) {
     kind = (kind + step + KINDS.length) % KINDS.length;
-    if (kindChip) kindChip.textContent = KIND_NAMES[kind];
+    if (kindChip) kindChip.textContent = KINDS[kind];
     render();
   }
   backdrop.addEventListener('click', function (e) { if (e.target === backdrop) close(); });
@@ -496,7 +483,7 @@ document.addEventListener('click', function (e) {
     if (!index) {
       var loading = document.createElement('div');
       loading.className = 'cmd-group-label';
-      loading.textContent = vpT('Loading…');
+      loading.textContent = 'Loading…';
       results.appendChild(loading);
       showPreview(null);
       return;
@@ -512,13 +499,13 @@ document.addEventListener('click', function (e) {
       var posts = (index.posts || []).filter(function (p) { return q && (hit(p.label) || p.slug.indexOf(q) >= 0); }).map(function (p) {
         return { kind: 'post', text: p.label, href: '/os/editor/' + p.slug, icon: 'content', where: p.status === 'draft' ? 'Draft' : 'Post', post: null, p: p };
       });
-      group(vpT('Go to'), pages.concat(posts).slice(0, cap), q);
+      group('Go to', pages.concat(posts).slice(0, cap), q);
     }
     if (want('Actions')) {
       // What this page offers by name (data-cmd on a control, as Mail's
       // reader and selection mark theirs): only controls that are on screen,
       // so the bar never offers what the page does not.
-      group(vpT('On this page'), $$('[data-cmd]').filter(function (b) {
+      group('On this page', $$('[data-cmd]').filter(function (b) {
         return b.getClientRects().length > 0 && !b.disabled && !b.closest('[inert]') && hit(b.getAttribute('data-cmd'));
       }).slice(0, cap).map(function (b) {
         var use = b.querySelector('use');
@@ -526,12 +513,12 @@ document.addEventListener('click', function (e) {
         var keys = b.getAttribute('aria-keyshortcuts');
         return { kind: 'here', text: b.getAttribute('data-cmd'), where: b.getAttribute('data-cmd-where') || '', icon: icon, hint: keys ? 'Key: ' + keys : '', target: b };
       }), q);
-      group(vpT('Actions'), (index.actions || []).filter(function (a) { return hit(a.label); }).slice(0, cap).map(function (a) {
+      group('Actions', (index.actions || []).filter(function (a) { return hit(a.label); }).slice(0, cap).map(function (a) {
         return { kind: 'action', text: a.label, href: a.href || null, post: a.post || null, icon: a.icon, hint: a.hint, done: a.done };
       }), q);
     }
     if (want('Settings') && (q || kind !== 0)) {
-      group(vpT('Settings'), (index.settings || []).filter(function (st) { return hit(st.label + ' ' + st.where); }).slice(0, cap).map(function (st) {
+      group('Settings', (index.settings || []).filter(function (st) { return hit(st.label + ' ' + st.where); }).slice(0, cap).map(function (st) {
         return { kind: 'setting', text: st.label, href: st.href, icon: 'settings', where: st.where, hint: st.hint };
       }), q);
     }
@@ -543,12 +530,12 @@ document.addEventListener('click', function (e) {
     // session that may write.
     var title = input.value.trim();
     if (!items.length && title && want('Actions') && (index.actions || []).some(function (a) { return a.href === '/os/editor'; })) {
-      group(vpT('New'), [{ kind: 'start', text: vpT('Start a post titled “{title}”', { title: title }), icon: 'pencil', hint: vpT('A draft with this title, opened in the editor'), start: title }], q);
+      group('New', [{ kind: 'start', text: 'Start a post titled “' + title + '”', icon: 'pencil', hint: 'A draft with this title, opened in the editor', start: title }], q);
     }
     if (!items.length) {
       var empty = document.createElement('div');
       empty.className = 'cmd-group-label';
-      empty.textContent = q ? vpT('Nothing matches “{query}”.', { query: input.value.trim() }) : vpT('Nothing to show.');
+      empty.textContent = q ? 'Nothing matches “' + input.value.trim() + '”.' : 'Nothing to show.';
       results.appendChild(empty);
     }
     setActive(0);
@@ -608,7 +595,7 @@ document.addEventListener('click', function (e) {
     if (!d) return;
     if (d.kind === 'page') {
       var parts = d.text.split(' › ');
-      preview.appendChild(line('cmd-preview__path', parts.slice(0, -1).join(' › ') || vpT('Go to')));
+      preview.appendChild(line('cmd-preview__path', parts.slice(0, -1).join(' › ') || 'Go to'));
       preview.appendChild(line('cmd-preview__title', parts[parts.length - 1]));
       // The page itself, as it is now: its line under the title and its
       // figures. Fetched only while the pane is on screen, once per page.
@@ -633,26 +620,26 @@ document.addEventListener('click', function (e) {
       return;
     }
     if (d.kind === 'post') {
-      preview.appendChild(line('cmd-preview__path', d.p.status === 'draft' ? vpT('Draft') : vpT('Published')));
+      preview.appendChild(line('cmd-preview__path', d.p.status === 'draft' ? 'Draft' : 'Published'));
       preview.appendChild(line('cmd-preview__title', d.text));
-      if (d.p.updated && window.vpRelTime) preview.appendChild(line('cmd-preview__meta', vpT('Updated {when}', { when: window.vpRelTime(d.p.updated) })));
+      if (d.p.updated && window.vpRelTime) preview.appendChild(line('cmd-preview__meta', 'Updated ' + window.vpRelTime(d.p.updated)));
       if (d.p.excerpt) preview.appendChild(line('cmd-preview__text', d.p.excerpt));
       return;
     }
     if (d.kind === 'here') {
-      preview.appendChild(line('cmd-preview__path', d.where || vpT('This page')));
+      preview.appendChild(line('cmd-preview__path', d.where || 'This page'));
       preview.appendChild(line('cmd-preview__title', d.text));
       if (d.hint) preview.appendChild(line('cmd-preview__text', d.hint));
       return;
     }
     if (d.kind === 'action') {
-      preview.appendChild(line('cmd-preview__path', d.post ? vpT('Runs now') : vpT('Opens')));
+      preview.appendChild(line('cmd-preview__path', d.post ? 'Runs now' : 'Opens'));
       preview.appendChild(line('cmd-preview__title', d.text));
       if (d.hint) preview.appendChild(line('cmd-preview__text', d.hint));
-      if (d.post) preview.appendChild(line('cmd-preview__meta', vpT('What the server answers is shown when it finishes.')));
+      if (d.post) preview.appendChild(line('cmd-preview__meta', 'What the server answers is shown when it finishes.'));
       return;
     }
-    preview.appendChild(line('cmd-preview__path', vpT('Settings') + ' › ' + d.where));
+    preview.appendChild(line('cmd-preview__path', 'Settings › ' + d.where));
     preview.appendChild(line('cmd-preview__title', d.text));
     if (d.hint) preview.appendChild(line('cmd-preview__text', d.hint));
   }
@@ -1299,8 +1286,8 @@ window.vpRelTime = relativeTime;
         empty.className = 'topbar-notif__empty';
         empty.setAttribute('data-notif-empty', '');
         empty.textContent = needs() > 0
-          ? vpT('All cleared. What still needs you comes back when it changes, or tomorrow; Home lists it meanwhile.')
-          : vpT('Nothing needs you, and nothing has happened in the last day.');
+          ? 'All cleared. What still needs you comes back when it changes, or tomorrow; Home lists it meanwhile.'
+          : 'Nothing needs you, and nothing has happened in the last day.';
         list.replaceChildren(empty);
       }
       wrap.setAttribute('data-notif-needs', '0');
@@ -1354,10 +1341,7 @@ window.vpRelTime = relativeTime;
   function connect() {
     if (es) es.close();
     clearTimeout(retry);
-    // The stream draws the bell in the page's language, which its own path
-    // (an English one) would not give it.
-    es = new EventSource('/os/api/notifications/stream?sig=' + encodeURIComponent(wrap.getAttribute('data-notif-sig') || '') +
-      '&lang=' + encodeURIComponent(document.documentElement.lang || 'en'));
+    es = new EventSource('/os/api/notifications/stream?sig=' + encodeURIComponent(wrap.getAttribute('data-notif-sig') || ''));
     es.addEventListener('open', function () { window.vpBellLive = wasLive = true; tries = 0; });
     es.addEventListener('bell', function (e) {
       try { var b = JSON.parse(e.data); swap(b.html, b.sig); } catch (err) { /* a torn frame: the next one redraws */ }

@@ -64,17 +64,17 @@ func TestAnAdministratorsOwnMailboxIsTheirsInMail(t *testing.T) {
 		t.Errorf("the administrator is offered %+v beside their own mail", got)
 	}
 	side := a.mailSide(req, a.mailReader(req, ""), "Inbox", "", nil)
-	if !side.Own || !strings.Contains(mailPlaces("en", side), `href="/os/vayumail/calendar"`) || !strings.Contains(mailPlaces("en", side), `href="/os/vayumail/drive"`) {
-		t.Errorf("Mail's top bar for the administrator's own mailbox: %s", mailPlaces("en", side))
+	if !side.Own || !strings.Contains(mailPlaces(side), `href="/os/vayumail/calendar"`) || !strings.Contains(mailPlaces(side), `href="/os/vayumail/drive"`) {
+		t.Errorf("Mail's top bar for the administrator's own mailbox: %s", mailPlaces(side))
 	}
-	if tools := mailTopTools("en", side, ""); !strings.Contains(tools, `href="/os/vayumail/settings"`) {
+	if tools := mailTopTools(side, ""); !strings.Contains(tools, `href="/os/vayumail/settings"`) {
 		t.Errorf("All settings for their own mailbox does not open their own Settings: %s", tools)
 	}
 	other := a.mailSide(req, a.mailReader(req, "eli"), "Inbox", "", nil)
-	if other.Own || strings.Contains(mailPlaces("en", other), "calendar") {
-		t.Errorf("someone else's mailbox offers its places: %s", mailPlaces("en", other))
+	if other.Own || strings.Contains(mailPlaces(other), "calendar") {
+		t.Errorf("someone else's mailbox offers its places: %s", mailPlaces(other))
 	}
-	if tools := mailTopTools("en", other, ""); !strings.Contains(tools, `href="/os/vayumail/accounts/settings?user=eli%40example.com"`) {
+	if tools := mailTopTools(other, ""); !strings.Contains(tools, `href="/os/vayumail/accounts/settings?user=eli%40example.com"`) {
 		t.Errorf("All settings in someone else's mailbox is not that mailbox's page: %s", tools)
 	}
 	// The Calendar opens for them, on their own mailbox.

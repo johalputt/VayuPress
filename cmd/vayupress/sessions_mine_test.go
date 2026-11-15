@@ -55,7 +55,7 @@ func TestMySessions(t *testing.T) {
 	open := func(uid, ua string) string {
 		r := httptest.NewRequest(http.MethodPost, "/os/login", nil)
 		r.Header.Set("User-Agent", ua)
-		tok, err := a.startSession(httptest.NewRecorder(), r, uid)
+		tok, err := a.startSession(r, uid)
 		if err != nil {
 			t.Fatal(err)
 		}

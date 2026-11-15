@@ -730,25 +730,6 @@ func (s *Store) MailLayout(ctx context.Context, userID string) string {
 // MailLayoutFull is the one layout besides the default.
 const MailLayoutFull = "full"
 
-// ConsoleLang is the language userID chose to read the console in, "" for
-// none (their browser's). Read at sign-in only, to put the choice in the new
-// browser's cookie; the cookie is what each page reads.
-func (s *Store) ConsoleLang(ctx context.Context, userID string) string {
-	var v string
-	if err := s.reader.QueryRowContext(ctx, `SELECT COALESCE(console_lang,'') FROM users WHERE id=?`, userID).Scan(&v); err != nil {
-		return ""
-	}
-	return v
-}
-
-// SetConsoleLang keeps the language userID reads the console in. The caller
-// has checked lang is one of the console's (i18n.Choose); this writes only
-// that column.
-func (s *Store) SetConsoleLang(ctx context.Context, userID, lang string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE users SET console_lang=? WHERE id=?`, lang, userID)
-	return err
-}
-
 // SetMailLayout stores how userID reads mail; anything but MailLayoutFull is
 // the default, so no other value reaches the column.
 func (s *Store) SetMailLayout(ctx context.Context, userID, layout string) error {

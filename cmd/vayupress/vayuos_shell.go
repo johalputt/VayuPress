@@ -28,7 +28,6 @@ import (
 
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/domain"
-	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/ui"
 )
@@ -197,10 +196,17 @@ func saVisibleApps(s *osSettings) []saApp {
 		src = saTorApps
 	}
 	if s != nil && s.MailOnly {
-		src = []saApp{saClearnetApps[3], saProfileApp}
+		src = []saApp{saClearnetApps[3], {Key: "settings", Label: "Profile", Icon: "audience", Href: "/os/profile"}}
 	}
 	if s != nil && s.UserRole == roleClientName {
-		src = saClientApps
+		src = []saApp{
+			{Key: "mysite", Label: "My site", Icon: "site", Href: "/os/mysite", Sections: []saSection{
+				{Label: "My site", Href: "/os/mysite", Icon: "site"},
+				{Label: "Visitors", Href: "/os/mysite/traffic", Icon: "pulse"},
+			}},
+			{Key: "mail", Label: "Mail", Icon: "mail", Href: "/os/vayumail/inbox"},
+			{Key: "settings", Label: "Profile", Icon: "audience", Href: "/os/profile"},
+		}
 	}
 	reach := func(href string, adminOnly bool) bool {
 		if adminOnly && (lvl < accessAdmin || (s != nil && (s.MailOnly || s.UserRole == roleClientName))) {
@@ -232,41 +238,7 @@ func saVisibleApps(s *osSettings) []saApp {
 		}
 		out = append(out, a)
 	}
-	if s != nil && s.Lang != "" && s.Lang != "en" {
-		for i := range out {
-			out[i] = saAppIn(s.Lang, out[i])
-		}
-	}
 	return out
-}
-
-// saProfileApp is a mailbox-only session's second app, beside Mail.
-var saProfileApp = saApp{Key: "settings", Label: "Profile", Icon: "audience", Href: "/os/profile"}
-
-// saClientApps are an agency client's apps: their own site, their mail and
-// their profile.
-var saClientApps = []saApp{
-	{Key: "mysite", Label: "My site", Icon: "site", Href: "/os/mysite", Sections: []saSection{
-		{Label: "My site", Href: "/os/mysite", Icon: "site"},
-		{Label: "Visitors", Href: "/os/mysite/traffic", Icon: "pulse"},
-	}},
-	{Key: "mail", Label: "Mail", Icon: "mail", Href: "/os/vayumail/inbox"},
-	saProfileApp,
-}
-
-// saAppIn is app with its labels in lang (saWord), its sections copied so
-// the registry itself is never changed.
-func saAppIn(lang string, app saApp) saApp {
-	app.Label = saWord(lang, app.Label)
-	app.TabGroup = saWord(lang, app.TabGroup)
-	secs := make([]saSection, len(app.Sections))
-	for i, sec := range app.Sections {
-		sec.Label = saWord(lang, sec.Label)
-		sec.Group = saWord(lang, sec.Group)
-		secs[i] = sec
-	}
-	app.Sections = secs
-	return app
 }
 
 // saRouteMatch reports how well href matches the current route: the length of
@@ -350,18 +322,18 @@ func saModeTone(m mode.Mode) string {
 // of actions (read-only, quarantined), worded from saModeEffects so it can only
 // name refusals the code enforces. Every other mode stays in the status area:
 // a banner for a state that changes little teaches people to ignore banners.
-func saModeStrip(lang string, m mode.Mode, since time.Time, admin bool) string {
+func saModeStrip(m mode.Mode, since time.Time, admin bool) string {
 	if m != mode.ModeReadOnly && m != mode.ModeQuarantined {
 		return ""
 	}
 	what := saModeStripText(m)
 	when := ""
 	if !since.IsZero() {
-		when = " " + i18n.T(lang, "since {time}", "time", config.InSite(since).Format("15:04"))
+		when = " since " + config.InSite(since).Format("15:04")
 	}
 	details := ""
 	if admin {
-		details = `<a class="sa-strip__link" href="/os/modes">` + esc(i18n.T(lang, "Details")) + `</a>`
+		details = `<a class="sa-strip__link" href="/os/modes">Details</a>`
 	}
 	return `<div class="sa-strip sa-strip--` + saModeTone(m) + `" role="status">` + saIcon("warn") +
 		`<span class="sa-strip__text"><b>` + html.EscapeString(saModeLabel(m)+when) + `.</b> ` + html.EscapeString(what) + `</span>` + details + `</div>`
@@ -402,7 +374,7 @@ func saRailItem(href, label, icon, count string, current bool) string {
 // the account, its folders and views; then, folded away, the rest of Mail
 // (more); then the foot, pinned to the bottom, with contacts, the mailbox's
 // rules and its storage.
-func saMailSide(lang string, m *osMailSide, admin, more string) string {
+func saMailSide(m *osMailSide, admin, more string) string {
 	var b strings.Builder
 	// For an administrator the account block opens the mailbox switcher (Mail
 	// plan §4), whose list is read when it opens (handleVayuOSMailSwitcher);
@@ -410,7 +382,7 @@ func saMailSide(lang string, m *osMailSide, admin, more string) string {
 	// The phone's Folders screen is this sidebar, under its own title. It was
 	// called Mailboxes, as Apple's Mail has it, and read as a list of
 	// accounts: on a phone Sent and every other folder went unfound behind it.
-	b.WriteString(`<h2 class="mx-boxes__title">` + esc(i18n.T(lang, "Folders")) + `</h2>`)
+	b.WriteString(`<h2 class="mx-boxes__title">Folders</h2>`)
 	who := `<span class="mx-account__who">`
 	if m.Name != "" {
 		who += `<span class="mx-account__name">` + esc(m.Name) + `</span>`
@@ -418,9 +390,9 @@ func saMailSide(lang string, m *osMailSide, admin, more string) string {
 	who += `<span class="mx-account__addr">` + esc(m.Address) + `</span></span>`
 	if m.Admin {
 		b.WriteString(`<details class="sa-pop mx-switch" data-mx-switch hx-get="/os/vayumail/switcher?user=` + qparam(m.User) + `" hx-trigger="toggle once" hx-target="find .mx-switch__list" hx-swap="innerHTML">` +
-			`<summary class="mx-account" aria-label="` + esc(i18n.T(lang, "Switch mailbox, {address} open", "address", m.Address)) + `" aria-keyshortcuts="Meta+Shift+M Control+Shift+M">` + m.Avatar + who + `<span class="mx-account__chev" aria-hidden="true">` + saIcon("chev-ud") + `</span></summary>` +
-			`<div class="sa-pop__panel mx-switch__panel"><label class="mx-switch__search">` + saIcon("search") + `<input type="search" placeholder="` + esc(i18n.T(lang, "Find a mailbox")) + `" aria-label="` + esc(i18n.T(lang, "Find a mailbox")) + `" autocomplete="off" spellcheck="false" data-mx-switch-find></label>` +
-			`<div class="mx-switch__list" role="menu" aria-label="` + esc(i18n.T(lang, "Mailboxes")) + `"><p class="mx-switch__wait">` + esc(i18n.T(lang, "Reading the mailboxes…")) + `</p></div></div></details>`)
+			`<summary class="mx-account" aria-label="Switch mailbox, ` + esc(m.Address) + ` open" aria-keyshortcuts="Meta+Shift+M Control+Shift+M">` + m.Avatar + who + `<span class="mx-account__chev" aria-hidden="true">` + saIcon("chev-ud") + `</span></summary>` +
+			`<div class="sa-pop__panel mx-switch__panel"><label class="mx-switch__search">` + saIcon("search") + `<input type="search" placeholder="Find a mailbox" aria-label="Find a mailbox" autocomplete="off" spellcheck="false" data-mx-switch-find></label>` +
+			`<div class="mx-switch__list" role="menu" aria-label="Mailboxes"><p class="mx-switch__wait">Reading the mailboxes…</p></div></div></details>`)
 	} else {
 		b.WriteString(`<div class="mx-account">` + m.Avatar + who + `</div>`)
 	}
@@ -432,17 +404,17 @@ func saMailSide(lang string, m *osMailSide, admin, more string) string {
 		// The one filled button in Mail: what is done here most after
 		// reading. The list's pencil stays for the phone, whose folders are a
 		// screen of their own.
-		b.WriteString(`<a class="btn btn--primary mx-compose-btn" href="/os/vayumail/compose?user=` + qparam(m.User) + `"` + mailCmd(i18n.T(lang, "Compose"), i18n.T(lang, "Mail"), "c") + `>` + saIcon("pencil") + esc(i18n.T(lang, "Compose")) + `</a>`)
+		b.WriteString(`<a class="btn btn--primary mx-compose-btn" href="/os/vayumail/compose?user=` + qparam(m.User) + `"` + mailCmd("Compose", "Mail", "c") + `>` + saIcon("pencil") + `Compose</a>`)
 	}
 	b.WriteString(m.Folders)
 	if admin != "" {
-		b.WriteString(`<div class="sa-appside__group">` + esc(i18n.T(lang, "Administration")) + `</div>` + admin)
+		b.WriteString(`<div class="sa-appside__group">Administration</div>` + admin)
 	}
 	if more != "" {
-		b.WriteString(`<details class="mx-more"><summary class="sa-appside__item">` + saIcon("more") + `<span class="sa-appside__label">` + esc(i18n.T(lang, "More in Mail")) + `</span></summary>` + more + `</details>`)
+		b.WriteString(`<details class="mx-more"><summary class="sa-appside__item">` + saIcon("more") + `<span class="sa-appside__label">More in Mail</span></summary>` + more + `</details>`)
 	}
 	b.WriteString(`<div class="mx-foot">`)
-	b.WriteString(`<button type="button" class="sa-appside__item" hx-get="/os/vayumail/contacts?user=` + qparam(m.User) + `" hx-target="#vm-readpane" hx-swap="innerHTML">` + saIcon("audience") + `<span class="sa-appside__label">` + esc(i18n.T(lang, "Contacts")) + `</span></button>`)
+	b.WriteString(`<button type="button" class="sa-appside__item" hx-get="/os/vayumail/contacts?user=` + qparam(m.User) + `" hx-target="#vm-readpane" hx-swap="innerHTML">` + saIcon("audience") + `<span class="sa-appside__label">Contacts</span></button>`)
 	// Every folder as mbox files in a zip: the way to take the mail
 	// elsewhere (vayuos_mail_download.go).
 	if m.Writable {
@@ -450,21 +422,21 @@ func saMailSide(lang string, m *osMailSide, admin, more string) string {
 		if m.Importing {
 			cur = ` aria-current="page"`
 		}
-		b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/import?user=` + qparam(m.User) + `"` + cur + `>` + saIcon("upload") + `<span class="sa-appside__label">` + esc(i18n.T(lang, "Bring mail in")) + `</span></a>`)
+		b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/import?user=` + qparam(m.User) + `"` + cur + `>` + saIcon("upload") + `<span class="sa-appside__label">Bring mail in</span></a>`)
 	}
 	if m.Writable && m.Own {
-		b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/sealed">` + saIcon("lock") + `<span class="sa-appside__label">` + esc(i18n.T(lang, "Send a sealed message")) + `</span></a>`)
+		b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/sealed">` + saIcon("lock") + `<span class="sa-appside__label">Send a sealed message</span></a>`)
 	}
-	b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/download?user=` + qparam(m.User) + `" download>` + saIcon("download") + `<span class="sa-appside__label">` + esc(i18n.T(lang, "Download all mail")) + `</span></a>`)
+	b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/download?user=` + qparam(m.User) + `" download>` + saIcon("download") + `<span class="sa-appside__label">Download all mail</span></a>`)
 	if m.Admin {
-		b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/accounts/settings?user=` + qparam(m.Address) + `">` + saIcon("filter") + `<span class="sa-appside__label">` + esc(i18n.T(lang, "Rules and replies")) + `</span></a>`)
+		b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/accounts/settings?user=` + qparam(m.Address) + `">` + saIcon("filter") + `<span class="sa-appside__label">Rules and replies</span></a>`)
 	}
 	if m.Reading {
 		// Reading (pipeline 3y): beside the list, or over it at full width.
 		// The person's own choice, kept on their account (POST
 		// /os/vayumail/layout) and applied at once by admin-os-mail.js.
-		b.WriteString(`<details class="sa-pop mx-reading"><summary class="sa-appside__item">` + saIcon("columns") + `<span class="sa-appside__label">` + esc(i18n.T(lang, "Reading")) + `</span></summary>` +
-			`<div class="sa-pop__panel sa-menu" role="menu" aria-label="` + esc(i18n.T(lang, "Open messages")) + `">` + mailReadingChoices(lang, m) + `</div></details>`)
+		b.WriteString(`<details class="sa-pop mx-reading"><summary class="sa-appside__item">` + saIcon("columns") + `<span class="sa-appside__label">Reading</span></summary>` +
+			`<div class="sa-pop__panel sa-menu" role="menu" aria-label="Open messages">` + mailReadingChoices(m) + `</div></details>`)
 	}
 	if m.Quota > 0 {
 		pct := int(float64(m.Used) / float64(m.Quota) * 100)
@@ -479,8 +451,8 @@ func saMailSide(lang string, m *osMailSide, admin, more string) string {
 		case pct >= 75:
 			tone = " sa-meter__fill--warn"
 		}
-		b.WriteString(`<div class="mx-storage"><span class="mx-storage__row"><span>` + esc(i18n.T(lang, "Storage")) + `</span><span>` + esc(i18n.T(lang, "{used} of {quota}", "used", humanBytes(m.Used), "quota", humanBytes(m.Quota))) + `</span></span>` +
-			`<svg class="sa-meter" viewBox="0 0 100 4" preserveAspectRatio="none" role="img" aria-label="` + esc(i18n.T(lang, "{pct}% of the mailbox's storage used", "pct", pct)) + `">` +
+		b.WriteString(`<div class="mx-storage"><span class="mx-storage__row"><span>Storage</span><span>` + esc(humanBytes(m.Used)) + ` of ` + esc(humanBytes(m.Quota)) + `</span></span>` +
+			`<svg class="sa-meter" viewBox="0 0 100 4" preserveAspectRatio="none" role="img" aria-label="` + strconv.Itoa(pct) + `% of the mailbox's storage used">` +
 			`<rect class="sa-meter__track" width="100" height="4" rx="2"/><rect class="sa-meter__fill` + tone + `" width="` + strconv.Itoa(pct) + `" height="4" rx="2"/></svg></div>`)
 	}
 	b.WriteString(`</div>`)
@@ -492,10 +464,10 @@ func saMailSide(lang string, m *osMailSide, admin, more string) string {
 // administrator who opened someone's mailbox sees Mail alone, because a
 // calendar and the files open only for their holder; so does a session
 // whose surface carries the mailbox and neither place.
-func mailPlaces(lang string, m *osMailSide) string {
+func mailPlaces(m *osMailSide) string {
 	mail := `/os/vayumail/inbox?user=` + qparam(m.User)
 	if !m.Own || (!m.Places.Calendar && !m.Places.Drive) {
-		return `<a class="sa-appname" href="` + mail + `">` + esc(i18n.T(lang, "Mail")) + `</a>`
+		return `<a class="sa-appname" href="` + mail + `">Mail</a>`
 	}
 	place := func(href, icon, label string, on bool) string {
 		cur := ""
@@ -504,12 +476,12 @@ func mailPlaces(lang string, m *osMailSide) string {
 		}
 		return `<a class="sa-places__a" href="` + href + `"` + cur + `>` + saIcon(icon) + `<span>` + label + `</span></a>`
 	}
-	nav := `<nav class="sa-places" aria-label="` + esc(i18n.T(lang, "Mail and the places beside it")) + `">` + place(mail, "mail", esc(i18n.T(lang, "Mail")), m.Place == "")
+	nav := `<nav class="sa-places" aria-label="Mail and the places beside it">` + place(mail, "mail", "Mail", m.Place == "")
 	if m.Places.Calendar {
-		nav += place("/os/vayumail/calendar", "calendar", esc(i18n.T(lang, "Calendar")), m.Place == "calendar")
+		nav += place("/os/vayumail/calendar", "calendar", "Calendar", m.Place == "calendar")
 	}
 	if m.Places.Drive {
-		nav += place("/os/vayumail/drive", "folder", esc(i18n.T(lang, "Drive")), m.Place == "drive")
+		nav += place("/os/vayumail/drive", "folder", "Drive", m.Place == "drive")
 	}
 	return nav + `</nav>`
 }
@@ -518,17 +490,17 @@ func mailPlaces(lang string, m *osMailSide) string {
 // list or over it at full width. The sidebar's Reading menu and the top
 // bar's quick settings both draw it; admin-os-mail.js applies and keeps a
 // choice from either.
-func mailReadingChoices(lang string, m *osMailSide) string {
+func mailReadingChoices(m *osMailSide) string {
 	opt := func(value, label string, on bool) string {
 		return `<button type="button" class="sa-menu__item" role="menuitemradio" aria-checked="` + strconv.FormatBool(on) + `" data-mx-layout-choice="` + value + `"><span class="sa-menu__text">` + label + `</span></button>`
 	}
-	return `<p class="sa-menu__label">` + esc(i18n.T(lang, "Open messages")) + `</p>` + opt("", esc(i18n.T(lang, "Beside the list")), !m.FullOpen) + opt("full", esc(i18n.T(lang, "Full width")), m.FullOpen)
+	return `<p class="sa-menu__label">Open messages</p>` + opt("", "Beside the list", !m.FullOpen) + opt("full", "Full width", m.FullOpen)
 }
 
 // mailTopTools are Mail's own tools in the top bar, beside its search: the
 // keyboard sheet, which ? also opens, and the settings people change most
 // (where a message opens, the colour scheme), then the way to all of them.
-func mailTopTools(lang string, m *osMailSide, theme string) string {
+func mailTopTools(m *osMailSide, theme string) string {
 	// The holder's own Settings, an administrator's included; an
 	// administrator in someone else's mailbox gets that mailbox's page.
 	settings := "/os/vayumail/settings"
@@ -537,24 +509,21 @@ func mailTopTools(lang string, m *osMailSide, theme string) string {
 	}
 	reading := ""
 	if m.Reading {
-		reading = mailReadingChoices(lang, m) + `<div class="sa-menu__sep" role="separator"></div>`
+		reading = mailReadingChoices(m) + `<div class="sa-menu__sep" role="separator"></div>`
 	}
-	quick := esc(i18n.T(lang, "Quick settings"))
-	return `<button type="button" class="sa-iconbtn" data-mx-help aria-label="` + esc(i18n.T(lang, "Keyboard shortcuts")) + `" aria-keyshortcuts="Shift+Slash" title="` + esc(i18n.T(lang, "Keyboard shortcuts (?)")) + `">` + saIcon("keyboard") + `</button>` +
-		`<details class="sa-pop mx-quick"><summary class="sa-iconbtn" aria-label="` + quick + `" title="` + quick + `">` + saIcon("settings") + `</summary>` +
-		`<div class="sa-pop__panel sa-menu" role="menu" aria-label="` + quick + `">` + reading + saAppearance(lang, theme) +
+	return `<button type="button" class="sa-iconbtn" data-mx-help aria-label="Keyboard shortcuts" aria-keyshortcuts="Shift+Slash" title="Keyboard shortcuts (?)">` + saIcon("keyboard") + `</button>` +
+		`<details class="sa-pop mx-quick"><summary class="sa-iconbtn" aria-label="Quick settings" title="Quick settings">` + saIcon("settings") + `</summary>` +
+		`<div class="sa-pop__panel sa-menu" role="menu" aria-label="Quick settings">` + reading +
+		`<div class="sa-menu__row"><span>Appearance</span><span class="sa-seg" role="group" aria-label="Colour scheme">` +
+		saSeg("light", "Light", theme) + saSeg("dark", "Dark", theme) + saSeg("auto", "System", theme) + `</span></div>` +
 		`<div class="sa-menu__sep" role="separator"></div>` +
-		`<a class="sa-menu__item" role="menuitem" href="` + settings + `"><span class="sa-menu__text">` + esc(i18n.T(lang, "All settings")) + `</span></a></div></details>`
+		`<a class="sa-menu__item" role="menuitem" href="` + settings + `"><span class="sa-menu__text">All settings</span></a></div></details>`
 }
 
 // stillAirShellHead is adminOSShellHead for the Still Air design. Same contract:
 // it opens <main id="main-content">, and adminOSShellFoot closes it.
 func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 	et := html.EscapeString(title)
-	lang := "en"
-	if s != nil && s.Lang != "" {
-		lang = s.Lang
-	}
 	theme := "auto"
 	if s.AdminTheme != "" {
 		theme = s.AdminTheme
@@ -640,7 +609,7 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 						cur = ` aria-current="page"`
 					}
 					if s.MailDNSAttention {
-						mark = `<span class="sa-attn" role="img" aria-label="` + esc(i18n.T(lang, "needs attention")) + `" title="` + esc(i18n.T(lang, "A mail domain's DNS is not finished")) + `"></span>`
+						mark = `<span class="sa-attn" role="img" aria-label="needs attention" title="A mail domain's DNS is not finished"></span>`
 					}
 					to.WriteString(`<a class="sa-appside__item" href="` + x.Href + `"` + cur + `>` + saIcon(app.TabIcon) +
 						`<span class="sa-appside__label">` + html.EscapeString(app.TabGroup) + `</span>` + mark + `</a>`)
@@ -658,7 +627,7 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 				`<span class="sa-appside__label">` + html.EscapeString(x.Label) + `</span></a>`)
 		}
 		if mailOpen {
-			side.WriteString(saMailSide(lang, s.MailSide, admin.String(), more.String()))
+			side.WriteString(saMailSide(s.MailSide, admin.String(), more.String()))
 		}
 		side.WriteString(`</nav>`)
 	}
@@ -675,9 +644,9 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 	} else {
 		modeHTML = `<span class="sa-state sa-state--` + saModeTone(m) + `" title="` + html.EscapeString(modeDesc) + `">` + modeHTML + `</span>`
 	}
-	world := i18n.T(lang, "Clearnet")
+	world := "Clearnet"
 	if config.Cfg.OnionMode {
-		world = i18n.T(lang, "Tor")
+		world = "Tor"
 	}
 	worldHTML := `<span class="sa-state"><span class="sa-dot sa-dot--accent"></span>` + world + `</span>`
 	// The switch is offered in both worlds. The Tor world is a separate
@@ -685,11 +654,11 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 	// entered it with no way back to Clearnet; spaceSwitch gives it the
 	// Clearnet link, which the parent always answers.
 	if admin {
-		worldHTML = `<details class="sa-pop sa-world"><summary class="sa-state" aria-label="` + esc(i18n.T(lang, "World: {world}", "world", world)) + `"><span class="sa-dot sa-dot--accent"></span>` + world + `</summary>` +
+		worldHTML = `<details class="sa-pop sa-world"><summary class="sa-state" aria-label="World: ` + world + `"><span class="sa-dot sa-dot--accent"></span>` + world + `</summary>` +
 			`<div class="sa-pop__panel sa-world__panel">` + spaceSwitch(s.AccessLevel, s) + `</div></details>`
 	}
 
-	strip := saModeStrip(lang, m, s.ModeSince, admin)
+	strip := saModeStrip(m, s.ModeSince, admin)
 
 	// ── Account menu ──
 	// An API-key or legacy session has no person behind it, so no initials:
@@ -703,19 +672,19 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 	}
 	role := s.RoleLabel
 	if role == "" {
-		role = i18n.T(lang, "Administrator")
+		role = "Administrator"
 	}
-	account := `<details class="sa-pop"><summary class="sa-account__btn" aria-label="` + esc(i18n.T(lang, "Account and preferences")) + `">` + avatar + `</summary>
+	account := `<details class="sa-pop"><summary class="sa-account__btn" aria-label="Account and preferences">` + avatar + `</summary>
 <div class="sa-pop__panel sa-menu" role="menu">
-  <div class="sa-menu__who"><div class="sa-menu__name">` + html.EscapeString(saDisplayName(lang, s)) + `</div><div class="sa-menu__role">` + html.EscapeString(role) + `</div></div>
-  <a class="sa-menu__item" role="menuitem" href="/os/profile">` + saIcon("audience") + ` ` + esc(i18n.T(lang, "My profile")) + `</a>
-  ` + saAppearance(lang, theme) + `
-  ` + saLanguageRow(lang) + `
+  <div class="sa-menu__who"><div class="sa-menu__name">` + html.EscapeString(saDisplayName(s)) + `</div><div class="sa-menu__role">` + html.EscapeString(role) + `</div></div>
+  <a class="sa-menu__item" role="menuitem" href="/os/profile">` + saIcon("audience") + ` My profile</a>
+  <div class="sa-menu__row"><span>Appearance</span><span class="sa-seg" role="group" aria-label="Colour scheme">` +
+		saSeg("light", "Light", theme) + saSeg("dark", "Dark", theme) + saSeg("auto", "System", theme) + `</span></div>
   <div class="sa-menu__sep"></div>
-  <button type="button" class="sa-menu__item" role="menuitem" data-pwa-install hidden>` + saIcon("download") + ` ` + esc(i18n.T(lang, "Install the app")) + `</button>
-  <a class="sa-menu__item" role="menuitem" href="/os/vayumail/compose?feedback=1">` + saIcon("send") + ` ` + esc(i18n.T(lang, "Send feedback")) + `</a>
+  <button type="button" class="sa-menu__item" role="menuitem" data-pwa-install hidden>` + saIcon("download") + ` Install the app</button>
+  <a class="sa-menu__item" role="menuitem" href="/os/vayumail/compose?feedback=1">` + saIcon("send") + ` Send feedback</a>
   <div class="sa-menu__sep"></div>
-  <form method="POST" action="/os/logout"><button type="submit" class="sa-menu__item sa-menu__item--quiet" role="menuitem">` + esc(i18n.T(lang, "Sign out")) + `</button></form>
+  <form method="POST" action="/os/logout"><button type="submit" class="sa-menu__item sa-menu__item--quiet" role="menuitem">Sign out</button></form>
 </div></details>`
 
 	// ── Phone tab bar ──
@@ -733,7 +702,7 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 			tabs.WriteString(tab(a.Key, a.Href, a.Label, a.Icon))
 		}
 	}
-	tabs.WriteString(`<button type="button" class="sa-tab" data-action="toggle-sidebar" aria-controls="vp-sidebar" aria-expanded="false">` + saIcon("more") + ` <span>` + esc(i18n.T(lang, "More")) + `</span></button>`)
+	tabs.WriteString(`<button type="button" class="sa-tab" data-action="toggle-sidebar" aria-controls="vp-sidebar" aria-expanded="false">` + saIcon("more") + ` <span>More</span></button>`)
 
 	spaceAttr := ""
 	if config.Cfg.OnionMode {
@@ -750,19 +719,23 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 	// the mode and world pair gives its place to Mail's search, and "Mail"
 	// beside the mark goes to the Inbox while the mark goes to the console.
 	// The mode strip stays: a read-only install refuses mail's writes too.
-	brand := saBrand(lang, s, home, siteName)
-	search := `<button type="button" class="topbar-cmd sa-search" aria-keyshortcuts="Control+K Meta+K">` + saIcon("search") + ` <span class="sa-search__text">` + esc(i18n.T(lang, "Search or run a command")) + `</span><kbd aria-hidden="true">⌘K</kbd></button>`
-	status := `<div class="sa-status" role="status" aria-label="` + esc(i18n.T(lang, "System status")) + `">` + modeHTML + `<span class="sa-sep" aria-hidden="true"></span>` + worldHTML + `</div>`
+	brand := saBrand(s, home, siteName)
+	search := `<button type="button" class="topbar-cmd sa-search" aria-keyshortcuts="Control+K Meta+K">` + saIcon("search") + ` <span class="sa-search__text">Search or run a command</span><kbd aria-hidden="true">⌘K</kbd></button>`
+	status := `<div class="sa-status" role="status" aria-label="System status">` + modeHTML + `<span class="sa-sep" aria-hidden="true"></span>` + worldHTML + `</div>`
 	bodyCls := "vp-os"
 	if mailOpen {
 		bodyCls += " sa-mailapp"
-		brand += mailPlaces(lang, s.MailSide)
+		brand += mailPlaces(s.MailSide)
 		status = ""
 		if s.MailSide.Search != "" {
-			search = `<div class="sa-topsearch">` + s.MailSide.Search + `</div>` + mailTopTools(lang, s.MailSide, theme)
+			search = `<div class="sa-topsearch">` + s.MailSide.Search + `</div>` + mailTopTools(s.MailSide, theme)
 		}
 	}
 
+	lang := "en"
+	if s != nil && s.Lang != "" {
+		lang = s.Lang
+	}
 	return `<!DOCTYPE html>
 <html lang="` + esc(lang) + `">
 <head>
@@ -786,11 +759,11 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 <script src="/os/static/js/vayuos.js?v=` + assetVer("js/vayuos.js") + `" defer></script>
 </head>
 <body class="` + bodyCls + `" data-ui="still-air" data-theme="` + html.EscapeString(theme) + `" data-admin-theme="` + html.EscapeString(theme) + `" data-mode="` + html.EscapeString(string(m)) + `"` + spaceAttr + `>
-<a href="#main-content" class="skip-link">` + esc(i18n.T(lang, "Skip to main content")) + `</a>
-` + saPalette(lang) + `<div class="sidebar-overlay" aria-hidden="true"></div>
+<a href="#main-content" class="skip-link">Skip to main content</a>
+<div class="sidebar-overlay" aria-hidden="true"></div>
 <div class="shell sa-shell">
 <header class="sa-sysbar" role="banner">
-  <button type="button" class="menu-toggle sa-iconbtn" data-action="toggle-sidebar" aria-label="` + esc(i18n.T(lang, "Show or hide the app list")) + `" aria-controls="vp-sidebar" aria-expanded="true">` + saIcon("list") + `</button>
+  <button type="button" class="menu-toggle sa-iconbtn" data-action="toggle-sidebar" aria-label="Show or hide the app list" aria-controls="vp-sidebar" aria-expanded="true">` + saIcon("list") + `</button>
   ` + brand + `
   ` + search + `
   ` + status + `
@@ -798,11 +771,11 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
   ` + account + `
 </header>
 ` + strip + `
-<aside id="vp-sidebar" class="sidebar sa-rail" aria-label="` + esc(i18n.T(lang, "Apps")) + `">
-  <nav class="sa-rail__apps" aria-label="` + esc(i18n.T(lang, "Apps")) + `">` + rail.String() + `</nav>
+<aside id="vp-sidebar" class="sidebar sa-rail" aria-label="Apps">
+  <nav class="sa-rail__apps" aria-label="Apps">` + rail.String() + `</nav>
   <div class="sa-rail__foot">` + settingsItem + `<div class="sa-rail__version">` + saEdition() + `<span>` + html.EscapeString(Version) + `</span></div></div>
 </aside>
-<nav class="sa-tabbar" aria-label="` + esc(i18n.T(lang, "Apps")) + `">` + tabs.String() + `</nav>
+<nav class="sa-tabbar" aria-label="Apps">` + tabs.String() + `</nav>
 ` + saPaletteIndex(apps) + saSprite + `<script nonce="` + nonce + `">` + vpIconScript + vpTScript + `</script>
 <div class="main sa-main` + sideCls + `">
 ` + side.String() + `
@@ -820,54 +793,13 @@ func saSeg(value, label, current string) string {
 	return `<button type="button" class="sa-seg__opt" data-sa-theme="` + value + `"` + on + `>` + label + `</button>`
 }
 
-// kbdTab and kbdEsc are the palette's keycaps: what the key says, which
-// is not translated.
-const kbdTab, kbdEsc = "tab", "esc"
-
-// saPalette is the command palette (admin-os.js opens it with ⌘K), drawn
-// with the rest of the shell so it is in the page's language; it is hidden
-// and outside the shell's grid, so where it sits in the page changes nothing
-// a person sees or tabs through.
-func saPalette(lang string) string {
-	search := esc(i18n.T(lang, "Search or run a command"))
-	return `<div id="cmd-backdrop" class="cmd-backdrop" hidden role="dialog" aria-modal="true" aria-label="` + esc(i18n.T(lang, "Command palette")) + `">
-  <div class="cmd-panel">
-    <div class="cmd-input-wrap">
-      <svg class="cmd-search-icon" viewBox="0 0 20 20" fill="none" width="18" height="18" aria-hidden="true">
-        <path d="M8 15A7 7 0 108 1a7 7 0 000 14zm5-1l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      </svg>
-      <input id="cmd-input" class="cmd-input" type="text" placeholder="` + search + `" autocomplete="off" aria-label="` + search + `" aria-controls="cmd-results">
-      <button type="button" class="cmd-kind" data-cmd-kind aria-live="polite" aria-label="` + esc(i18n.T(lang, "Filter by kind")) + `">` + esc(i18n.T(lang, "All")) + `</button>
-    </div>
-    <div class="cmd-body">
-      <div id="cmd-results" class="cmd-results" role="listbox" aria-label="` + esc(i18n.T(lang, "Results")) + `"></div>
-      <aside class="cmd-preview" data-cmd-preview aria-label="` + esc(i18n.T(lang, "Preview")) + `"></aside>
-    </div>
-    <div class="cmd-footer">
-      <span class="cmd-footer-hint"><kbd>↑</kbd><kbd>↓</kbd> ` + esc(i18n.T(lang, "move")) + `</span>
-      <span class="cmd-footer-hint"><kbd>↵</kbd> ` + esc(i18n.T(lang, "open or run")) + `</span>
-      <span class="cmd-footer-hint"><kbd>` + kbdTab + `</kbd> ` + esc(i18n.T(lang, "filter by kind")) + `</span>
-      <span class="cmd-footer-hint cmd-footer-hint--end"><kbd>` + kbdEsc + `</kbd> ` + esc(i18n.T(lang, "close")) + `</span>
-    </div>
-  </div>
-</div>
-`
-}
-
-// saAppearance is the colour-scheme row the account menu and Mail's quick
-// settings both draw.
-func saAppearance(lang, theme string) string {
-	return `<div class="sa-menu__row"><span>` + esc(i18n.T(lang, "Appearance")) + `</span><span class="sa-seg" role="group" aria-label="` + esc(i18n.T(lang, "Colour scheme")) + `">` +
-		saSeg("light", esc(i18n.T(lang, "Light")), theme) + saSeg("dark", esc(i18n.T(lang, "Dark")), theme) + saSeg("auto", esc(i18n.T(lang, "System")), theme) + `</span></div>`
-}
-
 // saDisplayName names the session in the account menu: the person, or what the
 // session is when there is no person (an API key signs in as the install).
-func saDisplayName(lang string, s *osSettings) string {
+func saDisplayName(s *osSettings) string {
 	if n := strings.TrimSpace(s.UserName); n != "" {
 		return n
 	}
-	return i18n.T(lang, "API key session")
+	return "API key session"
 }
 
 // saAppHref is where an app lands for this session: its first reachable page,
@@ -933,7 +865,7 @@ func (a *App) hubRedirect(app string) http.HandlerFunc {
 // site's console (ADR-0154, one console per site); inside one, it names that
 // site, never the install's, so an operator always sees whose site they are
 // changing.
-func saBrand(lang string, s *osSettings, home, siteName string) string {
+func saBrand(s *osSettings, home, siteName string) string {
 	label := siteName
 	if s.Scope != nil {
 		label = s.Scope.Host
@@ -952,18 +884,18 @@ func saBrand(lang string, s *osSettings, home, siteName string) string {
 		return `<a class="sa-menu__item" role="menuitem" href="` + href + `"` + cur + `>` + saIcon(icon) + `<span class="sa-menu__text">` + html.EscapeString(text) + `</span>` + meta + `</a>`
 	}
 	var menu strings.Builder
-	menu.WriteString(`<div class="sa-menu__label">` + esc(i18n.T(lang, "Sites")) + `</div>`)
-	menu.WriteString(item(osHome, "home", siteName, i18n.T(lang, "Your console"), s.Scope == nil))
+	menu.WriteString(`<div class="sa-menu__label">Sites</div>`)
+	menu.WriteString(item(osHome, "home", siteName, "Your console", s.Scope == nil))
 	for _, site := range s.Sites {
 		meta := ""
 		if !site.Active {
-			meta = i18n.T(lang, "Off")
+			meta = "Off"
 		}
 		menu.WriteString(item("/os/d/"+site.ID, "globe", site.Host, meta, s.Scope != nil && s.Scope.ID == site.ID))
 	}
-	menu.WriteString(`<div class="sa-menu__sep"></div>` + item("/os/domains", "list", i18n.T(lang, "All sites"), "", false))
-	return `<a class="sa-mark sa-mark--glyph" href="` + home + `" aria-label="` + esc(i18n.T(lang, "VayuOS home")) + `">` + saMark() + `</a>` +
-		`<details class="sa-pop sa-sites"><summary class="sa-sites__btn" aria-label="` + esc(i18n.T(lang, "Switch site, now {site}", "site", label)) + `">` +
+	menu.WriteString(`<div class="sa-menu__sep"></div>` + item("/os/domains", "list", "All sites", "", false))
+	return `<a class="sa-mark sa-mark--glyph" href="` + home + `" aria-label="VayuOS home">` + saMark() + `</a>` +
+		`<details class="sa-pop sa-sites"><summary class="sa-sites__btn" aria-label="Switch site, now ` + html.EscapeString(label) + `">` +
 		`<span class="sa-mark__site">` + html.EscapeString(label) + `</span>` + saIcon("chev-ud") + `</summary>` +
 		`<div class="sa-pop__panel sa-menu sa-sites__menu" role="menu">` + menu.String() + `</div></details>`
 }

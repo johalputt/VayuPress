@@ -194,10 +194,7 @@ func TestComposeSendsFromTheMailboxItWasOpenedFrom(t *testing.T) {
 	if !strings.Contains(body, `<option value="dana@example.com" data-sig="" selected>`) {
 		t.Errorf("dana@example.com is not the selected sender")
 	}
-	// Counted in the page's own content: the shell's language choice has a
-	// selected option of its own.
-	_, content, _ := strings.Cut(body, `id="main-content"`)
-	if strings.Count(content, " selected>") != 1 {
-		t.Errorf("exactly one sender must be selected, found %d", strings.Count(content, " selected>"))
+	if strings.Count(body, " selected>") != 1 {
+		t.Errorf("exactly one sender must be selected, found %d", strings.Count(body, " selected>"))
 	}
 }

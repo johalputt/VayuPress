@@ -17,18 +17,11 @@ import (
 )
 
 // startSession opens a console session for userID and records the device
-// the request came from, so its owner's list can say which is which. The
-// language the account reads the console in goes into this browser's cookie,
-// so a new browser is in it from the first page.
-func (a *App) startSession(w http.ResponseWriter, r *http.Request, userID string) (string, error) {
+// the request came from, so its owner's list can say which is which.
+func (a *App) startSession(r *http.Request, userID string) (string, error) {
 	token, err := a.sessions.Create(r.Context(), userID)
 	if err == nil {
 		_ = a.sessions.Describe(r.Context(), token, deviceLabel(r.UserAgent()))
-		if a.userStore != nil {
-			if lang := a.userStore.ConsoleLang(r.Context(), userID); lang != "" {
-				setLangCookie(w, r, lang)
-			}
-		}
 	}
 	return token, err
 }

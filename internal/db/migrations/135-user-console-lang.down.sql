@@ -1,2 +1,0 @@
--- The added column is harmless if the migration is rolled back; SQLite
--- DROP COLUMN support is version-dependent, so it is intentionally retained.
