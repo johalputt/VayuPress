@@ -4610,8 +4610,12 @@
   background: var(--surface-overlay); border: 1px solid var(--border-2); border-radius: var(--radius-surface);
   box-shadow: var(--shadow-4);
   transform-origin: top right;
-  animation: sa-pop-in var(--duration-standard) var(--ease-enter);
 }
+/* Only an open menu's panel animates. Given to every panel, the account
+   menu's (which holds a form) ran its entrance while closed, and a closed
+   panel's animation never settles: anything that waits for the page's
+   animations to end waited for ever. */
+.vp-os[data-ui="still-air"] .sa-pop[open] > .sa-pop__panel { animation: sa-pop-in var(--duration-standard) var(--ease-enter); }
 /* The transform-origin set here is the fallback; vpOpenFrom (vayuos.js) moves
    it to the control that opened the panel, as each one opens. */
 @keyframes sa-pop-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
