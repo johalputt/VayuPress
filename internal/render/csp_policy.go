@@ -43,6 +43,10 @@ type SitePolicy struct {
 	InlineStyles bool `json:"inline_styles,omitempty"`
 	// ReportUntil is when report-only ends. Set on save, never by the client.
 	ReportUntil time.Time `json:"report_until,omitempty"`
+	// ScriptHashes allow the inline scripts of the site's own snippets
+	// (ParseSnippet), whatever the mode. They are read from the snippets
+	// each time, never stored with the policy.
+	ScriptHashes []string `json:"-"`
 }
 
 // CustomDirectives are the directives an operator may add origins to by hand,
@@ -207,9 +211,27 @@ func (p SitePolicy) Enforced(now time.Time) string {
 	return p.Mode
 }
 
+// ScriptSources are the script origins the policy's services allow: the only
+// way a script from outside is allowed (a typed script source is refused).
+func (p SitePolicy) ScriptSources() []string {
+	var out []string
+	for _, id := range p.Services {
+		if s, ok := serviceByID(id); ok {
+			out = append(out, s.Sources["script-src"]...)
+		}
+	}
+	return out
+}
+
 // additions is every origin the policy adds, by directive.
 func (p SitePolicy) additions() map[string][]string {
 	add := map[string][]string{}
+	if len(p.ScriptHashes) > 0 {
+		add["script-src"] = append(add["script-src"], p.ScriptHashes...)
+	}
+	if p.Mode == PolicyStrict {
+		return add
+	}
 	for _, id := range p.Services {
 		if s, ok := serviceByID(id); ok {
 			for d, list := range s.Sources {
@@ -234,11 +256,12 @@ func (p SitePolicy) additions() map[string][]string {
 // Apply merges the policy into a Content-Security-Policy header value that a
 // handler has already built — the baseline, an embed page's, an ad page's or
 // an eval-opted bundle's — so every page type gains the same allowances and
-// nothing else changes. A strict policy returns the header untouched. A
+// nothing else changes. A strict policy returns the header untouched, but
+// for its snippets' hashes. A
 // directive the header lacks is created with 'self' first, because its
 // absence meant default-src 'self'. The result still passes the Tor strip.
 func (p SitePolicy) Apply(csp string) string {
-	if p.Mode == PolicyStrict {
+	if p.Mode == PolicyStrict && len(p.ScriptHashes) == 0 {
 		return csp
 	}
 	add := p.additions()

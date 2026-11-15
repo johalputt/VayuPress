@@ -83,12 +83,24 @@ func (a *App) siteCSPMiddleware(next http.Handler) http.Handler {
 		if d, ok := activeDomain(r); ok {
 			w = a.applySiteHeaders(w, r, d)
 		}
+		var snip *snippetWriter
 		if !strictPath(r.URL.Path) {
-			if p := a.sitePolicy(r); p.Mode != render.PolicyStrict {
+			sc := siteSettingsScopeOf(r)
+			p := a.sitePolicyIn(r.Context(), sc)
+			head, foot := a.siteSnippetsIn(r.Context(), sc)
+			p.ScriptHashes = append(append([]string(nil), head.Hashes...), foot.Hashes...)
+			if p.Mode != render.PolicyStrict || len(p.ScriptHashes) > 0 {
 				w = &policyWriter{ResponseWriter: w, policy: p, now: time.Now()}
+			}
+			if head.HTML != "" || foot.HTML != "" {
+				snip = &snippetWriter{ResponseWriter: w, head: head.HTML, foot: foot.HTML}
+				w = snip
 			}
 		}
 		next.ServeHTTP(w, r)
+		if snip != nil {
+			snip.finish()
+		}
 	})
 }
 
@@ -170,14 +182,13 @@ func strictPath(p string) bool {
 	return false
 }
 
-// sitePolicy is the outside-services policy of the site this request is for:
+// siteSettingsScopeOf is the settings scope of the site this request is for:
 // the primary's, or the hosted domain's own.
-func (a *App) sitePolicy(r *http.Request) render.SitePolicy {
-	sc := settings.ForPrimary()
+func siteSettingsScopeOf(r *http.Request) settings.Scope {
 	if d, ok := activeDomain(r); ok && !d.IsPrimary {
-		sc = settings.ForDomain(d.ID)
+		return settings.ForDomain(d.ID)
 	}
-	return a.sitePolicyIn(r.Context(), sc)
+	return settings.ForPrimary()
 }
 
 // policyWriter merges a site's outside services into the policy the handler

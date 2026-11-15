@@ -326,6 +326,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			// primary's, scoped by the path.
 			dr.Get("/services", a.handleOSServices)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/csp", a.handleOSServicesSave)
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/snippets", a.handleOSSnippetsSave)
 			dr.Get("/analytics", a.handleOSScopedAnalytics)
 			dr.Get("/analytics/realtime", a.handleOSScopedRealtime)
 			dr.Get("/analytics/explore", a.handleOSExplore)
@@ -416,6 +417,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// other sites. "website" is an administrator's area.
 		pr.Get("/os/website/services", a.handleOSServices)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/csp", a.handleOSServicesSave)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/snippets", a.handleOSSnippetsSave)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayukeep/backup", a.handleOSVayuKeepBackup)
 		pr.Get("/os/vayukeep/run", a.handleOSVayuKeepRun)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayukeep/drill", a.handleOSVayuKeepDrill)

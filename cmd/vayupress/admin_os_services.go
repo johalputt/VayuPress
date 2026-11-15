@@ -9,6 +9,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"html"
 	htmpl "html/template"
 	"net/http"
 	"sort"
@@ -171,6 +172,21 @@ func (a *App) handleOSServices(w http.ResponseWriter, r *http.Request) {
 			`<div class="field"><label class="field-label" for="csp-add-src">Address</label><input type="text" class="input" id="csp-add-src" data-csp-add-src placeholder="https://images.example.com" autocomplete="off" spellcheck="false"></div>`+
 			`<div class="mt-3"><button type="button" class="btn btn--primary btn--sm" data-csp-add>Add the source</button></div>`)))
 
+	head, foot := a.siteSnippetsIn(r.Context(), sc)
+	var codeNote ui.HTML
+	if missing := unallowedScriptOrigins(p, head, foot); len(missing) > 0 {
+		codeNote = ui.Callout("warn", ui.Text("Not allowed yet, so its script does not run: "+strings.Join(missing, ", ")+". Turn on the service that covers it above."))
+	}
+	codeField := func(id, label, value string) string {
+		return `<div class="field"><label class="field-label" for="` + id + `">` + label + `</label><textarea id="` + id + `" class="textarea font-mono" rows="5" spellcheck="false" autocomplete="off" data-snippet="` + id + `">` + html.EscapeString(value) + `</textarea></div>`
+	}
+	secs = append(secs, ui.Section("Your own code", "", ui.Join(codeNote, ui.HTML(
+		`<p class="muted csp-note">Pasted as is into every public page of this site: an analytics tag, a chat widget, a verification tag.`+
+			string(ui.Tip("Each script written into the code runs by its own fingerprint, and nothing else written into a page can. A script from another site runs once the service that covers it is on above. Never on sign-in, member, checkout or mail pages, or in this console."))+`</p>`+
+			codeField("snip-head", "At the end of the head", head.HTML)+
+			codeField("snip-foot", "At the end of the page", foot.HTML)+
+			`<div class="mt-3"><button type="button" class="btn btn--sm" data-snippets-save="`+strings.TrimSuffix(save, "csp")+`snippets">Save the code</button></div>`))))
+
 	var blockRows [][]ui.HTML
 	for _, bl := range cspBlocksFor(hosts) {
 		what := cspDirectiveWords[bl.Directive]
@@ -243,6 +259,13 @@ const servicesScript = `(function(){
         var p=policy(); if(p.mode==='strict')p.mode='custom'; (p.sources[d]=p.sources[d]||[]).push(o); save(p,b);
       });
     });
+  });
+  var code=document.querySelector('[data-snippets-save]');
+  if(code)code.addEventListener('click',function(){
+    var v=function(id){return (document.querySelector('[data-snippet="'+id+'"]')||{}).value||'';};
+    window.vpPost(code.getAttribute('data-snippets-save'),{head:v('snip-head'),foot:v('snip-foot')},function(d){
+      window.vpToast(d.detail||'Saved.','ok'); setTimeout(function(){location.reload();},400);
+    },function(d,msg){window.vpToast(msg||'Not saved.','error');});
   });
   Array.prototype.forEach.call(document.querySelectorAll('[data-csp-turn-on]'),function(b){
     b.addEventListener('click',function(){

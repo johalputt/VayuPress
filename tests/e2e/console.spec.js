@@ -120,3 +120,38 @@ test("a script says its sentences in the page's language", async ({ page }) => {
   });
   expect(said).toEqual(["a.txt wird hochgeladen…", "Nur eine Datei", "3 Dateien", "A sentence the block does not have"]);
 });
+
+// A site's own code runs on its public pages by its hash, under the page's
+// real policy: the hash the server puts in script-src is the one this
+// browser computes, or the script is refused and the page says so in the
+// console. An inline handler, which no hash can allow, is refused on save.
+// The snippet is a script that draws nothing, and it is taken off at the
+// end: other specs read the same public pages at the same time.
+test("a site's own code runs on its public pages by its hash", async ({ page }) => {
+  const save = async (head) => {
+    await page.goto("/os/website/services");
+    await page.locator('[data-snippet="snip-head"]').fill(head);
+    await page.locator('[data-snippet="snip-foot"]').fill("");
+    const answered = page.waitForResponse((r) => r.url().includes("/os/api/website/snippets"));
+    await page.locator("[data-snippets-save]").click();
+    return answered;
+  };
+  const refused = await save('<button onclick="x()">x</button>');
+  expect(refused.status()).toBe(400);
+  await expect(page.locator(".toast", { hasText: "inline handler" })).toBeVisible();
+
+  const mark = "e2e" + Date.now().toString(36);
+  const saved = await save(`<script>\r\ndocument.documentElement.dataset.vpSnippet = "${mark}";\r\n</script>`);
+  expect(saved.status(), await saved.text()).toBe(200);
+  try {
+    const blocked = [];
+    page.on("console", (m) => { if (/Content Security Policy/i.test(m.text())) blocked.push(m.text()); });
+    await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("data-vp-snippet", mark);
+    expect(blocked).toEqual([]);
+  } finally {
+    expect((await save("")).status()).toBe(200);
+  }
+  await page.goto("/");
+  await expect(page.locator("html")).not.toHaveAttribute("data-vp-snippet", mark);
+});

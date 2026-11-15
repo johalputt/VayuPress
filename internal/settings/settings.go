@@ -201,6 +201,13 @@ const (
 	// Per site, so a hosted domain's choice never widens another's.
 	KeyCSPPolicy = "csp.policy"
 
+	// KeySnippetHead and KeySnippetFoot are a site's own code for its public
+	// pages: HTML put in at the end of <head> and at the end of <body>. Each
+	// inline script runs by its hash in that site's policy
+	// (render.ParseSnippet), and only on that site.
+	KeySnippetHead = "code.head"
+	KeySnippetFoot = "code.foot"
+
 	// Feature flags — operator-toggleable platform modules surfaced in the
 	// Tools & Plugins panel. Each value is "on" (default) or "off". Disabling a
 	// flag turns the corresponding public surface off at the request boundary;
@@ -599,6 +606,8 @@ var NotPortable = map[string]bool{
 	KeyMediaAlt:                   true,
 	KeyMediaNames:                 true,
 	KeyCSPPolicy:                  true,
+	KeySnippetHead:                true,
+	KeySnippetFoot:                true,
 	KeyThemeHeroImage:             true,
 	KeyThemeHeroImageType:         true,
 	KeyThemeOGImage:               true,
@@ -743,6 +752,8 @@ var AllKeys = map[string]bool{
 	KeyMediaAlt:                true,
 	KeyMediaNames:              true,
 	KeyCSPPolicy:               true,
+	KeySnippetHead:             true,
+	KeySnippetFoot:             true,
 	KeySiteName:                true,
 	KeySiteTagline:             true,
 	KeySiteDescription:         true,

@@ -63,8 +63,8 @@ it, and counts distinct visitors (hashed, never stored raw).
 - A blocked script is answered with the service that covers it, never with a
   typed allowance.
 
-## 4. Not decided here
+## 4. Decided later
 
-Code injection (head and footer snippets on the templated blog). Without it,
-a templated site uses allowances for what it already loads; a custom site can
-use them for anything.
+Code on a templated site (head and footer snippets) is decided in
+[ADR-0179](ADR-0179-a-sites-own-code-runs-by-its-hash.md): each inline
+script runs by its hash, a script from elsewhere only through a service.
