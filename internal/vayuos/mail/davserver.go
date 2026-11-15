@@ -375,7 +375,7 @@ func (c davCals) GetCalendar(ctx context.Context, p string) (*caldav.Calendar, e
 func (davCals) CreateCalendar(context.Context, *caldav.Calendar) error { return errDAVFixed }
 
 func calObject(p string, o davObject) (caldav.CalendarObject, error) {
-	cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
+	cal, err := decodeCalendar(o.Data)
 	if err != nil {
 		return caldav.CalendarObject{}, err
 	}

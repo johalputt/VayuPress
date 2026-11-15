@@ -541,7 +541,7 @@ func (e *Engine) CalendarBetween(rd Reader, from, to time.Time, home *time.Locat
 	budget := maxCalendarSteps
 	var out []CalEvent
 	for _, o := range objs {
-		cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
+		cal, err := decodeCalendar(o.Data)
 		if err != nil {
 			continue
 		}
@@ -798,7 +798,7 @@ func (e *Engine) SaveEvent(rd Reader, in EventInput, scope string, instance time
 	if err != nil {
 		return "", err
 	}
-	cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
+	cal, err := decodeCalendar(o.Data)
 	if err != nil {
 		return "", err
 	}
@@ -959,7 +959,7 @@ func (e *Engine) DeleteEvent(rd Reader, uid, scope string, instance time.Time) e
 	if err != nil {
 		return err
 	}
-	cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
+	cal, err := decodeCalendar(o.Data)
 	if err != nil {
 		return err
 	}

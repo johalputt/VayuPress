@@ -17,7 +17,6 @@ package mail
 // shows it cut short.
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -128,10 +127,10 @@ func (e *Engine) fetchCalendar(ctx context.Context, addr string) ([]byte, error)
 
 // parseFeed is a feed's calendars, or why it is not one.
 func parseFeed(data []byte) ([]*ical.Calendar, error) {
-	dec := ical.NewDecoder(bytes.NewReader(data))
+	dec := calendarsIn(data)
 	var out []*ical.Calendar
 	for {
-		cal, err := dec.Decode()
+		cal, err := dec.next()
 		if errors.Is(err, io.EOF) {
 			break
 		}

@@ -95,7 +95,7 @@ func (e *Engine) sendReminders(now time.Time) {
 		return
 	}
 	for _, o := range objs {
-		cal, err := ical.NewDecoder(bytes.NewReader(o.data)).Decode()
+		cal, err := decodeCalendar(o.data)
 		if err != nil {
 			continue
 		}

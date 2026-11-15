@@ -337,7 +337,7 @@ func (e *Engine) sendInvitations(ctx context.Context, mbox string, before, after
 		if b == nil {
 			return nil
 		}
-		cal, err := ical.NewDecoder(bytes.NewReader(b)).Decode()
+		cal, err := decodeCalendar(b)
 		if err != nil {
 			return nil
 		}
@@ -449,7 +449,7 @@ func (e *Engine) applyCalendarReply(mbox string, raw []byte) bool {
 	if data == nil {
 		return false
 	}
-	reply, err := ical.NewDecoder(bytes.NewReader(data)).Decode()
+	reply, err := decodeCalendar(data)
 	if err != nil || !strings.EqualFold(textOf(reply.Component, ical.PropMethod), "REPLY") {
 		return false
 	}
@@ -481,7 +481,7 @@ func (e *Engine) applyCalendarReply(mbox string, raw []byte) bool {
 	if err != nil {
 		return false
 	}
-	cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
+	cal, err := decodeCalendar(o.Data)
 	if err != nil {
 		return false
 	}
@@ -553,7 +553,7 @@ func invitationOf(raw []byte, mbox string) (string, *ical.Calendar, *ical.Compon
 	if data == nil {
 		return "", nil, nil, false
 	}
-	cal, err := ical.NewDecoder(bytes.NewReader(data)).Decode()
+	cal, err := decodeCalendar(data)
 	if err != nil {
 		return "", nil, nil, false
 	}
@@ -606,7 +606,7 @@ func (e *Engine) InvitationIn(rd Reader, raw []byte, home *time.Location) (Invit
 	inv := Invitation{Method: method, Event: ev, Organizer: ev.Organizer}
 	if o, err := e.accounts.eventByUID(context.Background(), mbox, ev.UID); err == nil {
 		inv.Stored = true
-		if stored, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode(); err == nil {
+		if stored, err := decodeCalendar(o.Data); err == nil {
 			if m, _ := parts(stored); m != nil {
 				inv.Answer = partStatOfSelf(m, mbox)
 			}
@@ -676,7 +676,7 @@ func (e *Engine) AnswerInvitation(rd Reader, folder, id, answer string) error {
 	name, cond := "", davCondition{ifNoneMatch: "*"}
 	if o, err := e.accounts.eventByUID(ctx, mbox, uid); err == nil {
 		name, cond = o.Name, davCondition{ifMatch: o.ETag}
-		if stored, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode(); err == nil {
+		if stored, err := decodeCalendar(o.Data); err == nil {
 			if m, _ := parts(stored); m != nil && seqOf(m) > seqOf(first) {
 				keep = stored // a later version is already here
 			}
@@ -751,7 +751,7 @@ func (e *Engine) RemoveCancelled(rd Reader, folder, id string) error {
 	if err != nil {
 		return err
 	}
-	stored, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
+	stored, err := decodeCalendar(o.Data)
 	if err != nil {
 		return err
 	}

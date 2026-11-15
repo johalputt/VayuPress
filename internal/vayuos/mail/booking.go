@@ -23,7 +23,6 @@ package mail
 // single-purpose and stored hashed.
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -35,8 +34,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/emersion/go-ical"
 )
 
 const (
@@ -866,7 +863,7 @@ func (e *Engine) moveEvent(ctx context.Context, mbox, uid string, start, end tim
 	if err != nil {
 		return err
 	}
-	cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
+	cal, err := decodeCalendar(o.Data)
 	if err != nil {
 		return err
 	}

@@ -18,15 +18,12 @@ package mail
 // when; the latest maxToolCalls are kept.
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"mime"
 	netmail "net/mail"
 	"strings"
 	"time"
-
-	"github.com/emersion/go-ical"
 )
 
 // What a connection may do.
@@ -349,7 +346,7 @@ func (e *Engine) EventOf(rd Reader, uid string) (CalEvent, int, error) {
 	if err != nil {
 		return CalEvent{}, 0, err
 	}
-	cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
+	cal, err := decodeCalendar(o.Data)
 	if err != nil {
 		return CalEvent{}, 0, err
 	}

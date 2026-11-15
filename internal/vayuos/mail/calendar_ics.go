@@ -17,7 +17,6 @@ package mail
 // event, and is not kept; nobody on an imported event is invited by it.
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -83,7 +82,7 @@ func (e *Engine) CalendarExport(rd Reader, name string, w io.Writer) error {
 	enc := ical.NewEncoder(w)
 	zones := map[string]bool{}
 	for _, o := range objs {
-		cal, err := ical.NewDecoder(bytes.NewReader(o.Data)).Decode()
+		cal, err := decodeCalendar(o.Data)
 		if err != nil {
 			continue
 		}
@@ -121,10 +120,10 @@ func (e *Engine) CalendarImport(rd Reader, r io.Reader, now time.Time) (CalImpor
 	if len(data) > MaxCalendarImport {
 		return res, ErrICSTooLarge
 	}
-	dec := ical.NewDecoder(bytes.NewReader(data))
+	dec := calendarsIn(data)
 	read := 0
 	for {
-		cal, err := dec.Decode()
+		cal, err := dec.next()
 		if errors.Is(err, io.EOF) {
 			break
 		}
