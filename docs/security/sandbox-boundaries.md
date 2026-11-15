@@ -37,9 +37,9 @@
 │  │  │                firmware, latency_stats, timer_*   │  │  │
 │  │  └─────────────────────────────────────────────────────┘  │  │
 │  │                                                           │  │
-│  │  Seccomp-BPF allowlist: written, NOT applied (see below) │  │
+│  │  Seccomp-BPF allowlist: applied in the child step        │  │
 │  │                                                           │  │
-│  │  capset(2) capability drop: written, NOT applied         │  │
+│  │  capset(2) capability drop: applied in the child step    │  │
 │  │                                                           │  │
 │  │  FD CLOEXEC sweep before exec                            │  │
 │  └───────────────────────────────────────────────────────────┘  │
@@ -48,12 +48,15 @@
 
 ---
 
-**Not yet enforced (checked 2026-10-25).** The seccomp filter
-(`buildSeccompFilter`, `ApplySeccompFilter`), `NoNewPrivs` and the capability
-drop are in `internal/sandbox/confinement_linux.go`, but nothing calls them for
-a plugin process: they must run in the child between fork and `exec`, which
-the launcher does not have yet. The namespaces, cgroup limits, `RunAs`, the
-binary hash and the allowlists above are applied.
+**The child step (since 3.18.32, ADR-0176).** The seccomp filter, `NoNewPrivs`
+and the capability drop act on the thread that sets them and survive
+`execve`, so they are set inside the child, between fork and `exec`. The host
+starts itself (`/proc/self/exe`) as that step: it makes the mounts, empties
+the bounding set, becomes `RunAs`, drops its capabilities, sets `NoNewPrivs`
+and installs the filter, then execs the plugin (`confineSelf` in
+`internal/sandbox/helper_linux.go`). Any step that fails stops the plugin from
+starting, and nothing runs unconfined. The namespaces, cgroup limits, `RunAs`,
+the binary hash and the allowlists above are applied as well.
 
 ---
 

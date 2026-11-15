@@ -100,10 +100,12 @@ and releases remain a single native build.
 
 The reproducibility gate proves the build is deterministic: two cold builds,
 each from an empty module cache and its own temporary directory, are
-byte-identical. `go.mod` pins the Go toolchain and the release builds with
-`GOTOOLCHAIN=auto`, so a tag decides its own compiler rather than inheriting
-whatever the runner happened to have — which is what makes the property a
-statement about the tag instead of about one afternoon.
+byte-identical. `go.mod` pins the Go toolchain, and every workflow that sets
+Go up, the release among them, sets `GOTOOLCHAIN` to exactly that toolchain
+line (`TestReleaseToolchainIsPinned` refuses a workflow that does not, or that
+uses `GOTOOLCHAIN=auto`). So a tag decides its own compiler rather than
+inheriting whatever the runner happened to have — which is what makes the
+property a statement about the tag instead of about one afternoon.
 
 The remaining variable is the C side: the release links SQLite statically, so
 the host's gcc and libc still participate. Reproducing a published binary

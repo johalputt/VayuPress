@@ -55,6 +55,6 @@ the code on 2026-09-25 (ADR-0061's status says which).
 
 | Risk | Current Status | Planned Mitigation |
 |------|---------------|-------------------|
-| Seccomp on an unlisted architecture | The filter covers amd64, arm64, riscv64, ppc64le, s390x, arm and 386 (`internal/sandbox/seccomp_arch_linux.go`); elsewhere none is installed, never one built for another architecture | Add an architecture when a build targets it |
+| Seccomp on an unlisted architecture | The filter covers amd64, arm64, riscv64, ppc64le, s390x, arm and 386 (`internal/sandbox/seccomp_arch_linux.go`); elsewhere the filter cannot be built, so the child step refuses and the plugin does not start (`confineSelf`, `internal/sandbox/helper_linux.go`) | Add an architecture when a build targets it |
 | Mutual TLS for plugin IPC | Not implemented | When the plugin SDK is external |
 | `PRAGMA integrity_check` at start-up | Not run when the database is opened | Run on each staged update and in each restore drill |

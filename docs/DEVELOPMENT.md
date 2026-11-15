@@ -7,7 +7,7 @@ make their first change.
 
 ## Prerequisites
 
-- **Go** — the version in `go.mod`'s `toolchain` line (go1.27.2 today). With
+- **Go** — the version in `go.mod`'s `toolchain` line (go1.27.4 today). With
   `GOTOOLCHAIN=auto`, an older Go downloads it for you.
 - **A C compiler** (`build-essential`): SQLite is linked through CGO.
 - **Chromium and Node**, only for the browser tests (`tests/e2e`).
