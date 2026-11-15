@@ -237,7 +237,7 @@ func (a *App) handlePasskeySignInFinish(w http.ResponseWriter, r *http.Request) 
 		session = id
 	}
 	_ = a.passkeys.Used(r.Context(), cred)
-	token, err := a.startSession(r, session)
+	token, err := a.startSession(w, r, session)
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "session", "could not start session", "")
 		return

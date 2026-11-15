@@ -31,6 +31,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/auth"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/mode"
 )
 
@@ -222,6 +223,13 @@ func (a *App) handleOSNotificationsStream(w http.ResponseWriter, r *http.Request
 	rc := http.NewResponseController(w)
 	ctx := r.Context()
 	sent := r.URL.Query().Get("sig")
+	// The page's language, which the bell is drawn in (admin-os.js sends it):
+	// this path is English to consoleLanguage, and a bell redrawn in English
+	// would replace a translated one. One the console lacks is English.
+	lang := r.URL.Query().Get("lang")
+	if i18n.Choose(lang, "") != lang {
+		lang = "en"
+	}
 	token := auth.SessionTokenFromRequest(r)
 	var drawn time.Time
 	send := func() bool {
@@ -233,7 +241,9 @@ func (a *App) handleOSNotificationsStream(w http.ResponseWriter, r *http.Request
 				return false
 			}
 		}
-		bell, sig := osNotifBellSig(a.getOSSettings(ctx))
+		s := a.getOSSettings(ctx)
+		s.Lang = lang
+		bell, sig := osNotifBellSig(s)
 		if sig == sent {
 			return true
 		}

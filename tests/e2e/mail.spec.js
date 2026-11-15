@@ -2030,3 +2030,62 @@ test("a file from Drive is attached to a message, and an attachment is saved to 
   await holder.close();
 });
 
+
+// Mail in the pseudo-language (every sentence accented and made longer) has no
+// English left on it: a word with a plain vowel, outside what the mailbox
+// holds (its messages, people and addresses), is a sentence that missed
+// i18n.T or vpT. Visible text and the labels a screen reader reads both count.
+test("Mail in another language has no English left on it", async ({ page }) => {
+  await openInbox(page, inbox + "&lang=en-XA");
+  await expect(page.locator("html")).toHaveAttribute("lang", "en-XA");
+  const english = await page.evaluate(() => {
+    // What the mailbox holds, and what is a name rather than a sentence.
+    const data = "#vm-inbox-list, #vm-readpane [data-mx-reader], .mx-account, .mx-switch__list, .sa-menu__name, .sa-sites__btn, " +
+      "kbd, code, option[lang], [translate=no], .sa-mark, .sa-appname, .mx-boxes a[data-folder-custom], .mx-labels";
+    const plain = /(^|[^\p{L}])([A-Za-z]*[aeiou][A-Za-z]{2,})(?=$|[^\p{L}])/u;
+    const names = new Set(["VayuOS", "VayuMail", "VayuPress", "VayuTalk", "VayuMCP", "VayuShield", "VayuVeil", "VayuFlow", "YouTube", "Tor", "Clearnet", "PGP", "DNS", "SEO", "API", "Claude", "Code", "Shield", "Buzz", "Talk", "ankush", "Ankush", "Johal", "priya", "Priya", "Raman"]);
+    const found = new Set();
+    const check = (text, where) => {
+      for (const part of text.split(/\s+/)) {
+        const m = part.match(plain);
+        if (m && !names.has(m[2])) found.add(where + ": " + text.trim().slice(0, 80));
+      }
+    };
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const el = n.parentElement;
+      if (!el || el.closest(data) || el.closest("script, style, template") || !n.textContent.trim()) continue;
+      if (!el.checkVisibility({ visibilityProperty: true })) continue;
+      check(n.textContent, el.tagName.toLowerCase());
+    }
+    for (const el of document.body.querySelectorAll("[aria-label], [title], [placeholder]")) {
+      if (el.closest(data)) continue;
+      for (const a of ["aria-label", "title", "placeholder"]) if (el.hasAttribute(a)) check(el.getAttribute(a), "@" + a);
+    }
+    return [...found];
+  });
+  expect(english).toEqual([]);
+});
+
+// The language chosen in the account menu is the one Mail is drawn in from
+// then on, on this page and the next, and back to English after.
+test("the account menu changes the language Mail is drawn in", async ({ page }) => {
+  await openInbox(page);
+  const choose = async (label) => {
+    await page.locator(".sa-account__btn").click();
+    const form = page.locator("[data-lang-form]");
+    await form.locator("select").selectOption({ label });
+    await Promise.all([page.waitForURL(/\/os\/vayumail\/inbox\?user=ankush$/), form.locator("button").click()]);
+  };
+  try {
+    await choose("Deutsch");
+    await expect(page.locator("html")).toHaveAttribute("lang", "de");
+    await expect(page.locator(".skip-link")).toHaveText("Zum Hauptinhalt springen");
+    await page.goto("/os/vayumail/compose");
+    await expect(page.locator("html")).toHaveAttribute("lang", "de");
+  } finally {
+    await page.goto(inbox);
+    await choose("English");
+  }
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+});

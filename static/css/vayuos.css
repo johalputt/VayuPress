@@ -4654,6 +4654,8 @@
 .vp-os[data-ui="still-air"] .sa-cell-sub { display: block; margin-top: var(--space-1); font: var(--type-small); color: var(--text-3); overflow-wrap: anywhere; }
 .vp-os[data-ui="still-air"] .sa-menu__sep { height: 1px; background: var(--border-1); margin: 4px 6px; }
 .vp-os[data-ui="still-air"] .sa-menu__row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; font: var(--type-small); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .sa-menu__lang label { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.vp-os[data-ui="still-air"] .sa-menu__lang select { flex: 1; min-width: 0; height: 28px; padding: 0 6px; border-radius: var(--radius-control); border: 1px solid var(--border-1); background: var(--surface-1); color: var(--text-1); font: var(--type-small); }
 .vp-os[data-ui="still-air"] .sa-seg { display: inline-flex; padding: 2px; border-radius: var(--radius-control); background: var(--surface-sunken); border: 1px solid var(--border-1); }
 .vp-os[data-ui="still-air"] .sa-seg__opt { padding: 2px 8px; border-radius: var(--radius-small); font: var(--type-meta); color: var(--text-2); }
 .vp-os[data-ui="still-air"] .sa-seg__opt[aria-pressed="true"] { background: var(--surface-2); color: var(--text-1); font-weight: 500; box-shadow: 0 0 0 1px var(--border-1); }
