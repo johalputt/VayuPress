@@ -22,6 +22,7 @@ import (
 	"github.com/johalputt/vayupress/internal/ads"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/members"
 	"github.com/johalputt/vayupress/internal/payments"
 	"github.com/johalputt/vayupress/internal/render"
@@ -301,14 +302,14 @@ func orderProductLabel(tierSlug string) string {
 }
 
 // premiumGrantPill maps a premium-address grant's status to a coloured pill.
-func premiumGrantPill(status string) string {
+func premiumGrantPill(lang, status string) string {
 	switch status {
 	case members.GrantClaimed:
-		return `<span class="status-pill status-pill--live">● active</span>`
+		return `<span class="status-pill status-pill--live">● ` + esc(i18n.T(lang, "active")) + `</span>`
 	case members.GrantPaid:
-		return `<span class="status-pill status-pill--draft">● paid · awaiting activation</span>`
+		return `<span class="status-pill status-pill--draft">● ` + esc(i18n.T(lang, "paid · awaiting activation")) + `</span>`
 	case members.GrantPending:
-		return `<span class="status-pill">● awaiting payment</span>`
+		return `<span class="status-pill">● ` + esc(i18n.T(lang, "awaiting payment")) + `</span>`
 	default:
 		return `<span class="status-pill">● ` + html.EscapeString(status) + `</span>`
 	}

@@ -74,6 +74,8 @@ var i18nMoved = map[string][]string{
 	"vayuos_mail.go":               nil,
 	"admin_os_mail_recovery.go":    nil,
 	"vayuos_mail_dns.go":           nil,
+	"admin_os_mailids.go":          nil,
+	"vayuos_mail_setup.go":         nil,
 }
 
 // i18nNotRead are functions in a moved file whose words no person reads,
