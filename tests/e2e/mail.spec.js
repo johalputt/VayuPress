@@ -1482,16 +1482,22 @@ test("the vacation reply saves as it is written, and typing goes on through the 
   await expect(form.locator('button[type="submit"]')).toBeHidden();
   const subject = form.locator('input[name="subject"]');
   const was = await subject.inputValue();
+  // A subject of this run's own: a run that stopped before its Undo leaves
+  // its subject saved, and the same words filled again are no change, so a
+  // retry would wait for a save that is never sent.
+  const away = "Away this week " + Date.now().toString(36);
   const saved = page.waitForResponse((r) => r.url().includes("/os/vayumail/autoreply/action") && r.request().method() === "POST");
-  await subject.fill("Away this week");
+  await subject.fill(away);
   const body = page.locator('form.vm-ooo-form textarea[name="body"]');
   await body.click();
   await page.keyboard.press("End");
   await page.keyboard.type(" Back on Monday.");
-  await saved;
+  // "Saved" shows only for a save the server took; say what it answered.
+  const res = await saved;
+  expect(res.status(), (await res.text()).slice(0, 300)).toBe(200);
   await expect(page.locator("[data-mx-saved]")).toBeVisible();
   await expect(page.locator("details.vm-ooo:has(form.vm-ooo-form[data-mx-autosave])")).toHaveAttribute("open", "");
-  await expect(page.locator('form.vm-ooo-form input[name="subject"]')).toHaveValue("Away this week");
+  await expect(page.locator('form.vm-ooo-form input[name="subject"]')).toHaveValue(away);
   await expect(page.locator('form.vm-ooo-form textarea[name="body"]')).toBeFocused();
   await expect(page.locator('form.vm-ooo-form textarea[name="body"]')).toHaveValue(/Back on Monday\.$/);
   // A second edit whose save is still on its way when Undo is pressed: Undo
