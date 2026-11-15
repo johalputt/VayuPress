@@ -8,6 +8,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.43] — 2026-11-15
+
+Mail and the console around it in the language you choose, a site's own code
+in its pages, and fixes from fuzzing.
+
+**Correction to 3.18.41 and 3.18.42.** Their notes said sign-in had a
+language menu and that Mail was in thirteen languages. Neither could be seen:
+sign-in had no menu, and every console page, Mail included, was drawn in
+English whatever was chosen. Sign-in's menu arrived after 3.18.42, and with
+this release Mail follows the language chosen in the account menu.
+
 ### Added
 
 - **A site's own code on its public pages.** Outside services has a place
