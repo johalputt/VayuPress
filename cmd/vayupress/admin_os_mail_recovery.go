@@ -21,6 +21,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/safefetch"
 	"github.com/johalputt/vayupress/internal/seo"
 	"github.com/johalputt/vayupress/internal/ui"
@@ -149,7 +150,7 @@ func (a *App) handleVayuOSRecoveryContact(w http.ResponseWriter, r *http.Request
 	// which is the whole check the round-trip exists to perform.
 	if action == "verify" && !a.isAdminRequest(r) {
 		writeAPIError(w, r, 403, "forbidden",
-			"An administrator confirms a recovery address. Yours is saved and waiting.", "")
+			i18n.T(i18n.Lang(r.Context()), "An administrator confirms a recovery address. Yours is saved and waiting."), "")
 		return
 	}
 
@@ -198,6 +199,7 @@ func (a *App) recoveryCardHTML(r *http.Request, nonce string, mailboxes []string
 	if !ok {
 		return ""
 	}
+	lang := i18n.Lang(r.Context())
 	stuck := accts.UnrecoverableAccounts(r.Context())
 	total := len(mailboxes)
 	covered := total - len(stuck)
@@ -205,34 +207,29 @@ func (a *App) recoveryCardHTML(r *http.Request, nonce string, mailboxes []string
 	// The state says the honest number. "Recovery enabled" would be true of the
 	// feature and false of the mailboxes, which is the distinction that matters;
 	// with no mailbox there is nothing covered to be proud of.
-	chip := string(ui.State("ok", strconv.Itoa(covered)+"/"+strconv.Itoa(total)+" covered"))
+	chip := string(ui.State("ok", i18n.T(lang, "{covered}/{total} covered", "covered", covered, "total", total)))
 	switch {
 	case total == 0:
-		chip = string(ui.State("neutral", "No mailboxes yet"))
+		chip = string(ui.State("neutral", i18n.T(lang, "No mailboxes yet")))
 	case len(stuck) > 0:
-		chip = string(ui.State("warn", strconv.Itoa(len(stuck))+" cannot be recovered"))
+		chip = string(ui.State("warn", i18n.T(lang, "{n} cannot be recovered", "n", len(stuck))))
 	}
 
+	strong := func(s string) string { return `<strong>` + esc(s) + `</strong>` }
 	var b strings.Builder
-	b.WriteString(`<p class="text-sm muted mb-4">Recovery has to be enrolled <strong>before</strong> a password is forgotten.` +
-		string(ui.Tip("A mailbox holder who forgets their password cannot be helped by email: the reset link would be delivered to the mailbox they cannot open.")) + `</p>`)
+	b.WriteString(`<p class="text-sm muted mb-4">` + escFill(i18n.T(lang, "Recovery has to be enrolled {before} a password is forgotten.", "before", htmlMark(0)), strong(i18n.T(lang, "before"))) +
+		string(ui.Tip(i18n.T(lang, "A mailbox holder who forgets their password cannot be helped by email: the reset link would be delivered to the mailbox they cannot open."))) + `</p>`)
 
 	// Readiness first: it is the actionable part.
-	b.WriteString(`<div class="section-head"><span class="section-head__title">Readiness</span>
-<span class="section-head__hint">Who could actually get back in</span></div>`)
+	b.WriteString(`<div class="section-head"><span class="section-head__title">` + esc(i18n.T(lang, "Readiness")) + `</span>
+<span class="section-head__hint">` + esc(i18n.T(lang, "Who could actually get back in")) + `</span></div>`)
 	if total == 0 {
-		b.WriteString(`<div class="empty-state">No mailboxes yet.</div>`)
+		b.WriteString(`<div class="empty-state">` + esc(i18n.T(lang, "No mailboxes yet.")) + `</div>`)
 	} else if len(stuck) == 0 {
-		b.WriteString(`<p class="text-sm">✓ Every mailbox has at least one working recovery factor.</p>`)
+		b.WriteString(`<p class="text-sm">✓ ` + esc(i18n.T(lang, "Every mailbox has at least one working recovery factor.")) + `</p>`)
 	} else {
-		// "mailboxes": plural() only adds an s.
-		noun := " mailboxes"
-		if len(stuck) == 1 {
-			noun = " mailbox"
-		}
-		b.WriteString(`<p class="text-sm"><strong>` + strconv.Itoa(len(stuck)) +
-			`</strong>` + noun + ` cannot be recovered at all. If the holder forgets
-their password, only a server operator with shell access can help:</p><ul class="rec-list">`)
+		b.WriteString(`<p class="text-sm">` + escFill(i18n.T(lang, "{n, plural, one {{count} mailbox cannot be recovered at all. If the holder forgets their password, only a server operator with shell access can help:} other {{count} mailboxes cannot be recovered at all. If the holder forgets their password, only a server operator with shell access can help:}}",
+			"n", len(stuck), "count", htmlMark(0)), strong(strconv.Itoa(len(stuck)))) + `</p><ul class="rec-list">`)
 		for _, e := range stuck {
 			b.WriteString(`<li><code>` + html.EscapeString(e) + `</code></li>`)
 		}
@@ -242,30 +239,28 @@ their password, only a server operator with shell access can help:</p><ul class=
 	// Tor mode disables the address factor, and saying so here is the difference
 	// between a considered design and a silent failure at the worst moment.
 	if safefetch.ClearnetBlocked() {
-		b.WriteString(`<p class="text-sm muted mt-4"><strong>Tor mode:</strong> there is no clearnet egress,
-so a reset link cannot be delivered to an outside address. <strong>Recovery codes are the only factor
-that works here</strong> — generate them for every mailbox.</p>`)
+		b.WriteString(`<p class="text-sm muted mt-4">` + strong(i18n.T(lang, "Tor mode:")) + ` ` +
+			escFill(i18n.T(lang, "there is no clearnet egress, so a reset link cannot be delivered to an outside address. {only} — generate them for every mailbox.", "only", htmlMark(0)),
+				strong(i18n.T(lang, "Recovery codes are the only factor that works here"))) + `</p>`)
 	}
 
-	b.WriteString(`<p class="text-sm muted mt-4">Enrol a mailbox from <strong>its own row</strong> below —
-recovery sits with that mailbox's other settings, next to forwarding and aliases.</p>`)
+	b.WriteString(`<p class="text-sm muted mt-4">` + escFill(i18n.T(lang, "Enrol a mailbox from {row} below — recovery sits with that mailbox's other settings, next to forwarding and aliases.", "row", htmlMark(0)),
+		strong(i18n.T(lang, "its own row"))) + `</p>`)
 	// Assisted-recovery queue. Shown only when someone is actually waiting: an
 	// empty section every day trains the eye to skip the one day it is not empty.
 	pending := accts.PendingRecoveryRequests(r.Context())
 	if len(pending) > 0 {
-		b.WriteString(`<div class="section-head mt-4"><span class="section-head__title">Waiting for you</span>
-<span class="section-head__hint">Holders who are locked out with nothing enrolled</span></div>`)
-		b.WriteString(`<p class="text-sm muted">Approving does not set or reveal a password — it creates a
-one-time link you hand over through a channel you trust, and the holder chooses their own. Confirm who you
-are talking to first: this is the step an attacker would try to talk you through.</p>`)
+		b.WriteString(`<div class="section-head mt-4"><span class="section-head__title">` + esc(i18n.T(lang, "Waiting for you")) + `</span>
+<span class="section-head__hint">` + esc(i18n.T(lang, "Holders who are locked out with nothing enrolled")) + `</span></div>`)
+		b.WriteString(`<p class="text-sm muted">` + esc(i18n.T(lang, "Approving does not set or reveal a password — it creates a one-time link you hand over through a channel you trust, and the holder chooses their own. Confirm who you are talking to first: this is the step an attacker would try to talk you through.")) + `</p>`)
 		b.WriteString(`<div class="table-wrap"><table class="table"><tbody data-rec-queue>`)
 		for _, q := range pending {
 			b.WriteString(`<tr data-rec-req="` + strconv.FormatInt(q.ID, 10) + `">` +
 				`<td class="mono">` + html.EscapeString(q.Email) + `</td>` +
 				`<td class="text-xs muted">` + html.EscapeString(q.Note) + `</td>` +
 				`<td class="text-xs muted">` + html.EscapeString(q.IP) + `</td>` +
-				`<td><button type="button" class="btn btn--xs btn--primary" data-rec-approve>Approve</button> ` +
-				`<button type="button" class="btn btn--xs btn--ghost" data-rec-decline>Decline</button></td></tr>`)
+				`<td><button type="button" class="btn btn--xs btn--primary" data-rec-approve>` + esc(i18n.T(lang, "Approve")) + `</button> ` +
+				`<button type="button" class="btn btn--xs btn--ghost" data-rec-decline>` + esc(i18n.T(lang, "Decline")) + `</button></td></tr>`)
 		}
 		b.WriteString(`</tbody></table></div>`)
 		b.WriteString(`<div class="rec-codes" data-rec-approved hidden></div>`)
@@ -279,7 +274,7 @@ are talking to first: this is the step an attacker would try to talk you through
 
 	// Open, and the bell's link lands on it, when someone is waiting: a
 	// request folded away is one the administrator was never told of.
-	return `<div id="recovery">` + monAcc(saIcon("key"), "Account recovery", "Who could get back in if they forgot their password", chip,
+	return `<div id="recovery">` + monAcc(saIcon("key"), i18n.T(lang, "Account recovery"), i18n.T(lang, "Who could get back in if they forgot their password"), chip,
 		len(stuck) > 0 || len(pending) > 0, b.String()) + `</div>`
 }
 
@@ -302,10 +297,11 @@ func (a *App) selfRecovery(r *http.Request, nonce string) (row ui.Row, sheet str
 	if own == "" || !accts.Exists(r.Context(), own) {
 		return ui.Row{}, "", false
 	}
+	lang := i18n.Lang(r.Context())
 	st := accts.RecoveryStatusFor(r.Context(), own)
-	state := ui.State("warn", "No way back in")
+	state := ui.State("warn", i18n.T(lang, "No way back in"))
 	if st.Ready {
-		state = ui.State("ok", "Ready")
+		state = ui.State("ok", i18n.T(lang, "Ready"))
 	}
 
 	var b strings.Builder
@@ -313,31 +309,29 @@ func (a *App) selfRecovery(r *http.Request, nonce string) (row ui.Row, sheet str
   <input type="hidden" data-rec-mailbox value="` + html.EscapeString(own) + `">
   <div class="rec-status text-sm muted" data-rec-status></div>
 
-  <h3 class="sa-sheet__sub">Recovery codes</h3>
-  <p class="text-sm muted">Ten single-use codes, shown once. The most reliable option: they need no
-  network and no second mailbox, so they work even when mail itself is broken. Keep them somewhere you can
-  reach without this mailbox. A new set <strong>replaces the previous one</strong>.</p>
-  <button type="button" class="btn btn--primary btn--sm" data-rec-gen>Generate my codes</button>
+  <h3 class="sa-sheet__sub">` + esc(i18n.T(lang, "Recovery codes")) + `</h3>
+  <p class="text-sm muted">` + escFill(i18n.T(lang, "Ten single-use codes, shown once. The most reliable option: they need no network and no second mailbox, so they work even when mail itself is broken. Keep them somewhere you can reach without this mailbox. A new set {replaces}.", "replaces", htmlMark(0)),
+		`<strong>`+esc(i18n.T(lang, "replaces the previous one"))+`</strong>`) + `</p>
+  <button type="button" class="btn btn--primary btn--sm" data-rec-gen>` + esc(i18n.T(lang, "Generate my codes")) + `</button>
   <div class="rec-codes" data-rec-codes hidden></div>
 
-  <h3 class="sa-sheet__sub">Recovery address</h3>
-  <p class="text-sm muted">On a different mail provider: an address this server hosts is refused, since
-  losing this mailbox would lose it too. Your administrator confirms the address before it counts.</p>
-  <label class="field"><span class="field-label">Address</span>
+  <h3 class="sa-sheet__sub">` + esc(i18n.T(lang, "Recovery address")) + `</h3>
+  <p class="text-sm muted">` + esc(i18n.T(lang, "On a different mail provider: an address this server hosts is refused, since losing this mailbox would lose it too. Your administrator confirms the address before it counts.")) + `</p>
+  <label class="field"><span class="field-label">` + esc(i18n.T(lang, "Address")) + `</span>
     <input class="input" type="email" data-rec-contact placeholder="you@another-provider.com"></label>
   <div class="sa-sheet__foot"><span class="text-sm" data-rec-msg role="status" aria-live="polite"></span>
-    <button type="button" class="btn btn--sm btn--ghost" data-rec-clear>Remove</button>
-    <button type="button" class="btn btn--primary btn--sm" data-rec-set>Save</button></div>
+    <button type="button" class="btn btn--sm btn--ghost" data-rec-clear>` + esc(i18n.T(lang, "Remove")) + `</button>
+    <button type="button" class="btn btn--primary btn--sm" data-rec-set>` + esc(i18n.T(lang, "Save")) + `</button></div>
 </div>`)
 	b.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail-recovery.js?v=` +
 		assetVer("js/admin-os-mail-recovery.js") + `"></script>`)
 
 	row = ui.Row{
-		Label:   "Recover " + own,
-		Hint:    "If you forget this mailbox's password, a reset link is no use: it would arrive in the mailbox you cannot open. Set this up while you still can.",
-		Control: ui.HTML(string(state) + `<button type="button" class="btn btn--sm" data-sheet="my-recovery">Set up</button>`),
+		Label:   i18n.T(lang, "Recover {address}", "address", own),
+		Hint:    i18n.T(lang, "If you forget this mailbox's password, a reset link is no use: it would arrive in the mailbox you cannot open. Set this up while you still can."),
+		Control: ui.HTML(string(state) + `<button type="button" class="btn btn--sm" data-sheet="my-recovery">` + esc(i18n.T(lang, "Set up")) + `</button>`),
 	}
-	return row, string(ui.Sheet("my-recovery", "Recover "+own, ui.HTML(b.String()))), true
+	return row, string(ui.Sheet("my-recovery", i18n.T(lang, "Recover {address}", "address", own), ui.HTML(b.String()))), true
 }
 
 // vayuCardRecovery renders one mailbox's recovery controls INSIDE its own card,
@@ -358,43 +352,43 @@ func (a *App) vayuCardRecovery(ctx context.Context, email string) string {
 	}
 	st := accts.RecoveryStatusFor(ctx, email)
 	he := html.EscapeString(email)
+	lang := i18n.Lang(ctx)
 
 	// The summary badge is the whole point at a glance: scanning the mailbox list
 	// should show which accounts have no way back in.
-	state := string(ui.State("warn", "No recovery"))
+	state := string(ui.State("warn", i18n.T(lang, "No recovery")))
 	if st.Ready {
 		bits := []string{}
 		if st.CodesRemaining > 0 {
-			bits = append(bits, strconv.Itoa(st.CodesRemaining)+" codes")
+			bits = append(bits, i18n.T(lang, "{n, plural, one {# code} other {# codes}}", "n", st.CodesRemaining))
 		}
 		if st.Contact != "" {
-			bits = append(bits, "address")
+			bits = append(bits, i18n.T(lang, "address"))
 		}
 		state = string(ui.State("ok", strings.Join(bits, " + ")))
 	} else if st.ContactPending != "" {
-		state = string(ui.State("warn", "Unverified address"))
+		state = string(ui.State("warn", i18n.T(lang, "Unverified address")))
 	}
 
 	var b strings.Builder
 	b.WriteString(`<details class="vm-ooo vm-acct__sub" data-recovery-panel><summary>` +
-		`<span class="field-label">Account recovery</span> ` + state + `</summary>`)
+		`<span class="field-label">` + esc(i18n.T(lang, "Account recovery")) + `</span> ` + state + `</summary>`)
 	b.WriteString(`<input type="hidden" data-rec-mailbox value="` + he + `">`)
-	b.WriteString(`<p class="muted text-xs">If this holder forgets their password, a reset link is no use — ` +
-		`it would be delivered to the mailbox they cannot open. Enrol one of these before that happens.</p>`)
+	b.WriteString(`<p class="muted text-xs">` + esc(i18n.T(lang, "If this holder forgets their password, a reset link is no use — it would be delivered to the mailbox they cannot open. Enrol one of these before that happens.")) + `</p>`)
 	b.WriteString(`<div class="rec-status text-xs muted" data-rec-status></div>`)
 
 	b.WriteString(`<div class="vm-row vm-row--end mt-2">
-  <button type="button" class="btn btn--primary btn--xs" data-rec-gen>Generate recovery codes</button>
+  <button type="button" class="btn btn--primary btn--xs" data-rec-gen>` + esc(i18n.T(lang, "Generate recovery codes")) + `</button>
 </div>
 <div class="rec-codes" data-rec-codes hidden></div>`)
 
 	b.WriteString(`<div class="vm-row vm-row--end mt-2">
-  <label class="field vm-grow"><span class="field-label">Recovery address (different provider)</span>
+  <label class="field vm-grow"><span class="field-label">` + esc(i18n.T(lang, "Recovery address (different provider)")) + `</span>
     <input class="input input--sm" type="email" data-rec-contact placeholder="someone@another-provider.com"
-           aria-label="Recovery address for ` + he + `"></label>
-  <button type="button" class="btn btn--xs" data-rec-set>Save</button>
-  <button type="button" class="btn btn--xs" data-rec-verify>Mark verified</button>
-  <button type="button" class="btn btn--xs btn--ghost" data-rec-clear>Remove</button>
+           aria-label="` + esc(i18n.T(lang, "Recovery address for {address}", "address", email)) + `"></label>
+  <button type="button" class="btn btn--xs" data-rec-set>` + esc(i18n.T(lang, "Save")) + `</button>
+  <button type="button" class="btn btn--xs" data-rec-verify>` + esc(i18n.T(lang, "Mark verified")) + `</button>
+  <button type="button" class="btn btn--xs btn--ghost" data-rec-clear>` + esc(i18n.T(lang, "Remove")) + `</button>
 </div>
 <div class="text-xs" data-rec-msg role="status" aria-live="polite"></div>`)
 
@@ -454,7 +448,7 @@ func (a *App) handleVayuOSRecoveryDecide(w http.ResponseWriter, r *http.Request)
 	if !accts.Exists(r.Context(), email) {
 		writeJSON(w, r, 200, map[string]interface{}{
 			"decision": decision, "email": email,
-			"warning": "There is no mailbox at that address, so no reset link was created.",
+			"warning": i18n.T(i18n.Lang(r.Context()), "There is no mailbox at that address, so no reset link was created."),
 		})
 		return
 	}
@@ -468,22 +462,20 @@ func (a *App) handleVayuOSRecoveryDecide(w http.ResponseWriter, r *http.Request)
 	if accts.IsHandedOver(email) {
 		writeJSON(w, r, 200, map[string]interface{}{
 			"decision": decision, "email": email,
-			"warning": "That mailbox has been handed over to its owner, so no reset link was created. " +
-				"If access is genuinely required, use the break-glass emergency override — it records itself in the holder's access ledger.",
+			"warning": i18n.T(i18n.Lang(r.Context()), "That mailbox has been handed over to its owner, so no reset link was created. If access is genuinely required, use the break-glass emergency override — it records itself in the holder's access ledger."),
 		})
 		return
 	}
 	token, terr := accts.CreateRecoveryToken(r.Context(), email)
 	if terr != nil {
-		writeAPIError(w, r, 500, "token-failed", "could not create a reset link", "")
+		writeAPIError(w, r, 500, "token-failed", i18n.T(i18n.Lang(r.Context()), "could not create a reset link"), "")
 		return
 	}
 	writeJSON(w, r, 200, map[string]interface{}{
 		"decision": decision,
 		"email":    email,
 		"link":     seo.Origin(config.Cfg.Domain) + "/mail/recover/reset?token=" + token,
-		"detail": "Give this link to the holder through a channel you trust — in person, or a call you " +
-			"placed yourself. It works once, expires in 30 minutes, and lets them choose their own password.",
+		"detail":   i18n.T(i18n.Lang(r.Context()), "Give this link to the holder through a channel you trust — in person, or a call you placed yourself. It works once, expires in 30 minutes, and lets them choose their own password."),
 	})
 }
 
@@ -491,7 +483,7 @@ func (a *App) handleVayuOSRecoveryDecide(w http.ResponseWriter, r *http.Request)
 
 // resetEvent is one entry from the WORM audit log.
 type resetEvent struct {
-	When   string
+	At     time.Time
 	Target string
 	Actor  string
 	Detail string
@@ -527,7 +519,7 @@ func recentResets(ctx context.Context, limit int) []resetEvent {
 		var e resetEvent
 		var ts time.Time
 		if err := rows.Scan(&ts, &e.Target, &e.Actor, &e.Detail); err == nil {
-			e.When = ts.UTC().Format("2 Jan 15:04")
+			e.At = ts
 			out = append(out, e)
 		}
 	}
@@ -541,14 +533,14 @@ func resetTrailHTML(ctx context.Context) string {
 	if len(events) == 0 {
 		return ""
 	}
+	lang := i18n.Lang(ctx)
 	var b strings.Builder
-	b.WriteString(`<div class="section-head mt-4"><span class="section-head__title">Recent password resets</span>
-<span class="section-head__hint">From the append-only audit log</span></div>`)
-	b.WriteString(`<p class="text-sm muted">A reset also notifies the holder, but the copy filed into their
-mailbox can be deleted by whoever holds the new password. This record cannot.</p>`)
+	b.WriteString(`<div class="section-head mt-4"><span class="section-head__title">` + esc(i18n.T(lang, "Recent password resets")) + `</span>
+<span class="section-head__hint">` + esc(i18n.T(lang, "From the append-only audit log")) + `</span></div>`)
+	b.WriteString(`<p class="text-sm muted">` + esc(i18n.T(lang, "A reset also notifies the holder, but the copy filed into their mailbox can be deleted by whoever holds the new password. This record cannot.")) + `</p>`)
 	b.WriteString(`<div class="table-wrap"><table class="table"><tbody>`)
 	for _, e := range events {
-		b.WriteString(`<tr><td class="text-xs muted">` + html.EscapeString(e.When) + `</td>` +
+		b.WriteString(`<tr><td class="text-xs muted">` + html.EscapeString(i18n.Date(lang, config.InSite(e.At), i18n.WeekdayDayMonthAt)) + `</td>` +
 			`<td class="mono">` + html.EscapeString(e.Target) + `</td>` +
 			`<td class="text-xs">` + html.EscapeString(e.Actor) + `</td>` +
 			`<td class="text-xs muted">` + html.EscapeString(e.Detail) + `</td></tr>`)
