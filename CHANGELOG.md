@@ -8,6 +8,45 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **A site's own code on its public pages.** Outside services has a place
+  for code put in at the end of every public page's head and body: an
+  analytics tag, a chat widget, a verification tag. Each script written into
+  it runs by its own fingerprint in that site's policy, and nothing else
+  written into a page can; a script from another site runs once the service
+  that covers it is on, and the page names any that is not. A handler such
+  as `onclick=`, a `javascript:` address, a `<base>` or a `<meta
+  http-equiv>` is refused with the reason. It never reaches sign-in,
+  member, checkout or mail pages, or the console.
+- **Account recovery in Mail speaks the page's language**: the
+  administrator's recovery card and each holder's recovery panel, in the 13
+  languages.
+
+### Changed
+
+- **The console reads from its own pool.** Posts, the editor, messages,
+  the bell, the site editor, media, alerts and the admin traces now read
+  from the pool reserved for the console, so a busy public site cannot make
+  the console wait behind it.
+- **The README** says what VayuPress is and how ready each part is; each
+  product's full description is in `docs/FEATURES.md`.
+
+### Fixed
+
+- **A calendar that cannot be read no longer stops the server.** A feed
+  answering six particular bytes made the calendar reader crash, and a
+  subscribed feed is read in the background, where that ended the whole
+  process. It is now an unreadable calendar like any other.
+- **The skip link is readable.** On every console page it drew its text in
+  the colour of its own background, so the first Tab showed an empty box.
+- A List-Unsubscribe address with no host is no longer taken as the place
+  to send a one-click unsubscribe.
+- An address imported from a contacts file can no longer hold a line break.
+- An IMAP client's very long sequence number now means "to the end" rather
+  than wrapping to the first message alone.
+- The published span contract describes what the trace endpoints send.
+
 ## [3.18.42] — 2026-11-14
 
 Mail, its calendar, booking pages and Drive are in thirteen languages; the Halcyon theme loads with one stylesheet and reads better to every reader; and a Block on Sign-in attempts no longer says it failed when it worked.
