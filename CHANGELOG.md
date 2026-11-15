@@ -8,6 +8,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.44] — 2026-11-15
+
+Calendar apps: a malformed event is refused with a reason, and one unreadable
+event no longer hides the rest.
+
 ### Fixed
 
 - **A malformed event from a calendar app is refused with a reason.** An
