@@ -1555,18 +1555,20 @@ func atoiDefault(s string, def int) int {
 	}
 	// A number past any mailbox stops growing rather than wrapping: a client
 	// that sends twenty digits asked for "to the end", not for a negative.
-	const most = 1 << 31
-	n := 0
+	// The cap fits a 32-bit int, and the sum is kept in an int64 so the last
+	// multiply before it cannot wrap either.
+	const most = 1 << 30
+	var n int64
 	for _, r := range s {
 		if r < '0' || r > '9' {
 			return def
 		}
 		if n < most {
-			n = n*10 + int(r-'0')
+			n = n*10 + int64(r-'0')
 		}
 	}
 	if n > most {
 		n = most
 	}
-	return n
+	return int(n)
 }
