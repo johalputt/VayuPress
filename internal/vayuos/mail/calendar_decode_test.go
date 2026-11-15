@@ -15,7 +15,11 @@ import (
 // panic: found by fuzzing parseFeed, "0;0=" crashed the decoder, and a
 // subscribed feed is read where nothing recovers one.
 func TestAMalformedCalendarIsAnErrorNotACrash(t *testing.T) {
-	for _, data := range []string{"0;0=", "BEGIN:VCALENDAR\r\nX;A=", "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID;X="} {
+	// The first three end a parameter with nothing after its "=", which
+	// indexes an empty slice; the last puts a character after a quoted value,
+	// which the decoder answers with a panic of its own.
+	for _, data := range []string{"0;0=", "BEGIN:VCALENDAR\r\nX;A=", "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID;X=",
+		"BEGIN:VCALENDAR\r\nX;A=\"b\"c:d\r\nEND:VCALENDAR\r\n"} {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
