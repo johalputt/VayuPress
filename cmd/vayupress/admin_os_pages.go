@@ -65,7 +65,7 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 		// `COALESCE(is_page,0)=1` with no LIMIT scanned the whole catalog on the
 		// writer connection — a 502-class stall once the catalog is large. Read
 		// pool + an explicit cap keep this O(pages), not O(catalog).
-		if rows, err := dbpkg.Reader().QueryContext(r.Context(),
+		if rows, err := dbpkg.AdminReader().QueryContext(r.Context(),
 			`SELECT title,slug,status,updated_at FROM articles WHERE is_page=1 ORDER BY updated_at DESC LIMIT 1000`); err == nil {
 			defer rows.Close() //nolint:errcheck
 			for rows.Next() {

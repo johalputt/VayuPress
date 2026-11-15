@@ -81,7 +81,7 @@ func loadBlocksJSON(ctx context.Context, slug string) string {
 		return ""
 	}
 	var bj string
-	_ = dbpkg.Reader().QueryRowContext(ctx,
+	_ = dbpkg.AdminReader().QueryRowContext(ctx,
 		`SELECT COALESCE(blocks_json,'') FROM articles WHERE slug = ?`, slug).Scan(&bj)
 	return bj
 }
@@ -297,7 +297,7 @@ var errPostNotFound = errors.New("no article with that slug")
 // endpoint, so the three can never disagree about what a status flip does.
 func (a *App) applyPostStatus(ctx context.Context, slug, status string) error {
 	var tagsCSV string
-	if err := dbpkg.Reader().QueryRowContext(ctx, `SELECT COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&tagsCSV); err != nil {
+	if err := dbpkg.AdminReader().QueryRowContext(ctx, `SELECT COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&tagsCSV); err != nil {
 		return errPostNotFound
 	}
 	if _, err := dbpkg.WDB.Exec(`UPDATE articles SET status=?, updated_at=? WHERE slug=?`, status, time.Now().UTC(), slug); err != nil {
@@ -386,7 +386,7 @@ func (a *App) handleOSPostShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var status string
-	if err := dbpkg.Reader().QueryRowContext(r.Context(), `SELECT COALESCE(status,'published') FROM articles WHERE slug=?`, slug).Scan(&status); err != nil {
+	if err := dbpkg.AdminReader().QueryRowContext(r.Context(), `SELECT COALESCE(status,'published') FROM articles WHERE slug=?`, slug).Scan(&status); err != nil {
 		writeAPIError(w, r, http.StatusNotFound, "not-found", "No article with that slug", "")
 		return
 	}
@@ -419,7 +419,7 @@ func (a *App) handleOSPostIndexNowFragment(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var status string
-	if err := dbpkg.Reader().QueryRowContext(r.Context(), `SELECT COALESCE(status,'published') FROM articles WHERE slug=?`, slug).Scan(&status); err != nil {
+	if err := dbpkg.AdminReader().QueryRowContext(r.Context(), `SELECT COALESCE(status,'published') FROM articles WHERE slug=?`, slug).Scan(&status); err != nil {
 		http.Error(w, "no article with that slug", http.StatusNotFound)
 		return
 	}
@@ -452,7 +452,7 @@ func (a *App) handleOSPostPinFragment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var tagsCSV string
-	if err := dbpkg.Reader().QueryRowContext(r.Context(), `SELECT COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&tagsCSV); err != nil {
+	if err := dbpkg.AdminReader().QueryRowContext(r.Context(), `SELECT COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&tagsCSV); err != nil {
 		http.Error(w, "no article with that slug", http.StatusNotFound)
 		return
 	}
@@ -524,7 +524,7 @@ func (a *App) deletePostBySlug(ctx context.Context, r *http.Request, slug string
 		return errors.New("posts cannot be deleted in " + string(cur) + " mode")
 	}
 	var id, tagsCSV string
-	if err := dbpkg.Reader().QueryRowContext(ctx, `SELECT id,COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&id, &tagsCSV); err != nil {
+	if err := dbpkg.AdminReader().QueryRowContext(ctx, `SELECT id,COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&id, &tagsCSV); err != nil {
 		return errPostNotFound
 	}
 	if reason := a.articleWriteRefusal(r, slug); reason != "" {
@@ -652,7 +652,7 @@ func (a *App) handleOSPostsBulk(w http.ResponseWriter, r *http.Request) {
 // same reasoning as the posts page's count query).
 func postStatusCounts(ctx context.Context) (map[string]int, error) {
 	counts := map[string]int{"all": 0, "published": 0, "draft": 0}
-	rows, err := dbpkg.Reader().QueryContext(ctx, `SELECT status, COUNT(1) FROM articles GROUP BY status`)
+	rows, err := dbpkg.AdminReader().QueryContext(ctx, `SELECT status, COUNT(1) FROM articles GROUP BY status`)
 	if err != nil {
 		return nil, err
 	}
@@ -781,7 +781,7 @@ func (a *App) handleOSEditorVersionList(w http.ResponseWriter, r *http.Request) 
 	}
 	slug := chi.URLParam(r, "slug")
 	var articleID string
-	if err := dbpkg.Reader().QueryRowContext(r.Context(), `SELECT id FROM articles WHERE slug=?`, slug).Scan(&articleID); err != nil {
+	if err := dbpkg.AdminReader().QueryRowContext(r.Context(), `SELECT id FROM articles WHERE slug=?`, slug).Scan(&articleID); err != nil {
 		writeAPIError(w, r, http.StatusNotFound, "article-not-found", "No article with that slug", "")
 		return
 	}

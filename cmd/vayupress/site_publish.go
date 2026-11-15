@@ -55,7 +55,7 @@ func (a *App) checkSiteSlugs(ctx context.Context, scope string, d sitedoc.Docume
 			}
 		}
 		var n int
-		if err := dbpkg.Reader().QueryRowContext(ctx,
+		if err := dbpkg.AdminReader().QueryRowContext(ctx,
 			`SELECT COUNT(1) FROM articles WHERE slug=? AND domain_id=?`, p.Slug, scope).Scan(&n); err != nil {
 			return err
 		}
@@ -84,7 +84,7 @@ func saveSiteDraft(ctx context.Context, scope string, d sitedoc.Document, author
 func siteDraft(ctx context.Context, scope string) (sitedoc.Document, time.Time, bool) {
 	var raw string
 	var at time.Time
-	if err := dbpkg.Reader().QueryRowContext(ctx,
+	if err := dbpkg.AdminReader().QueryRowContext(ctx,
 		`SELECT doc, updated_at FROM site_drafts WHERE domain_id=?`, scope).Scan(&raw, &at); err != nil {
 		return sitedoc.Document{}, time.Time{}, false
 	}
@@ -154,7 +154,7 @@ type siteRevision struct {
 }
 
 func siteRevisions(ctx context.Context, scope string) ([]siteRevision, error) {
-	rows, err := dbpkg.Reader().QueryContext(ctx,
+	rows, err := dbpkg.AdminReader().QueryContext(ctx,
 		`SELECT id, author, published_at FROM site_revisions WHERE domain_id=? ORDER BY id DESC LIMIT ?`,
 		scope, siteRevisionsKept)
 	if err != nil {
@@ -177,7 +177,7 @@ func siteRevisions(ctx context.Context, scope string) ([]siteRevision, error) {
 // another site's id through this site's URL finds nothing.
 func siteRevisionDoc(ctx context.Context, scope string, id int64) (sitedoc.Document, error) {
 	var raw string
-	err := dbpkg.Reader().QueryRowContext(ctx,
+	err := dbpkg.AdminReader().QueryRowContext(ctx,
 		`SELECT doc FROM site_revisions WHERE id=? AND domain_id=?`, id, scope).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return sitedoc.Document{}, errNoSuchRevision

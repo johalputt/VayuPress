@@ -62,7 +62,7 @@ func markMessageRead(ctx context.Context, id string) {
 func unreadMessages(ctx context.Context) int {
 	n := 0
 	if dbpkg.DB != nil {
-		_ = dbpkg.Reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM contact_messages WHERE is_read=0`).Scan(&n)
+		_ = dbpkg.AdminReader().QueryRowContext(ctx, `SELECT COUNT(1) FROM contact_messages WHERE is_read=0`).Scan(&n)
 	}
 	return n
 }
@@ -155,7 +155,7 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
 	total := 0
 	unread := unreadMessages(r.Context()) // independent of the filter: it is the view's count
 	if dbpkg.DB != nil {
-		_ = dbpkg.Reader().QueryRowContext(r.Context(), `SELECT COUNT(1) FROM contact_messages`).Scan(&total)
+		_ = dbpkg.AdminReader().QueryRowContext(r.Context(), `SELECT COUNT(1) FROM contact_messages`).Scan(&total)
 		where := []string{}
 		args := []any{}
 		if q != "" {
@@ -178,7 +178,7 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
 		if len(where) > 0 {
 			clause = " WHERE " + strings.Join(where, " AND ")
 		}
-		if rows, err := dbpkg.Reader().QueryContext(r.Context(),
+		if rows, err := dbpkg.AdminReader().QueryContext(r.Context(),
 			`SELECT `+contactMessageCols+` FROM contact_messages`+clause+` ORDER BY created_at DESC LIMIT 500`, args...); err == nil {
 			defer rows.Close() //nolint:errcheck
 			for rows.Next() {
@@ -360,7 +360,7 @@ func (a *App) handleOSMessageInspector(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no database", http.StatusServiceUnavailable)
 		return
 	}
-	m, err := scanContactMessage(dbpkg.Reader().QueryRowContext(r.Context(), `SELECT `+contactMessageCols+` FROM contact_messages WHERE id=?`, id))
+	m, err := scanContactMessage(dbpkg.AdminReader().QueryRowContext(r.Context(), `SELECT `+contactMessageCols+` FROM contact_messages WHERE id=?`, id))
 	if err == sql.ErrNoRows {
 		http.Error(w, "no such message", http.StatusNotFound)
 		return
@@ -437,7 +437,7 @@ func (a *App) handleOSMessagesExportCSV(w http.ResponseWriter, r *http.Request) 
 	if dbpkg.DB == nil {
 		return
 	}
-	rows, err := dbpkg.Reader().QueryContext(r.Context(),
+	rows, err := dbpkg.AdminReader().QueryContext(r.Context(),
 		`SELECT created_at,name,email,page,country,region,city,is_read,message FROM contact_messages ORDER BY created_at DESC`)
 	if err != nil {
 		return

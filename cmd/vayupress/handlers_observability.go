@@ -76,7 +76,7 @@ type outboxEventRow struct {
 // handleOutboxStats returns aggregated counts for the event_outbox table.
 // GET /api/v1/admin/outbox/stats
 func (a *App) handleOutboxStats(w http.ResponseWriter, r *http.Request) {
-	rows, err := dbpkg.Reader().Query(`SELECT status, COUNT(1) FROM event_outbox GROUP BY status`)
+	rows, err := dbpkg.AdminReader().Query(`SELECT status, COUNT(1) FROM event_outbox GROUP BY status`)
 	if err != nil {
 		writeAPIError(w, r, 500, "db_error", err.Error(), "")
 		return
@@ -92,10 +92,10 @@ func (a *App) handleOutboxStats(w http.ResponseWriter, r *http.Request) {
 	_ = rows.Err()
 
 	var totalDelivered int
-	dbpkg.Reader().QueryRow(`SELECT COUNT(1) FROM delivered_events`).Scan(&totalDelivered)
+	dbpkg.AdminReader().QueryRow(`SELECT COUNT(1) FROM delivered_events`).Scan(&totalDelivered)
 
 	var oldestPendingSec float64
-	dbpkg.Reader().QueryRow(`SELECT COALESCE(CAST((julianday('now')-julianday(MIN(created_at)))*86400 AS INTEGER),0) FROM event_outbox WHERE status='pending'`).Scan(&oldestPendingSec)
+	dbpkg.AdminReader().QueryRow(`SELECT COALESCE(CAST((julianday('now')-julianday(MIN(created_at)))*86400 AS INTEGER),0) FROM event_outbox WHERE status='pending'`).Scan(&oldestPendingSec)
 
 	writeJSON(w, r, 200, map[string]interface{}{
 		"pending":             counts["pending"],
@@ -127,7 +127,7 @@ func (a *App) handleOutboxEvents(w http.ResponseWriter, r *http.Request) {
 	query += ` ORDER BY id DESC LIMIT ?`
 	args = append(args, limit)
 
-	rows, err := dbpkg.Reader().Query(query, args...)
+	rows, err := dbpkg.AdminReader().Query(query, args...)
 	if err != nil {
 		writeAPIError(w, r, 500, "db_error", err.Error(), "")
 		return
@@ -183,7 +183,7 @@ func (a *App) handleOutboxEvent(w http.ResponseWriter, r *http.Request) {
 	var deadReason sql.NullString
 	var payloadJSON string
 
-	err = dbpkg.Reader().QueryRow(
+	err = dbpkg.AdminReader().QueryRow(
 		`SELECT id,event_type,status,retries,created_at,delivered_at,retry_at,dead_reason,payload
 		 FROM event_outbox WHERE id=?`, id,
 	).Scan(&row.ID, &row.EventType, &row.Status, &row.Retries,
@@ -220,7 +220,7 @@ func (a *App) handleCorrelationTrace(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Search outbox payloads for the correlation ID embedded in the envelope JSON.
-	rows, err := dbpkg.Reader().Query(
+	rows, err := dbpkg.AdminReader().Query(
 		`SELECT id,event_type,status,retries,created_at,delivered_at,payload
 		 FROM event_outbox
 		 WHERE json_extract(payload,'$.correlation_id')=?

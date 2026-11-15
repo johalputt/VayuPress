@@ -135,7 +135,7 @@ func (a *App) mediaUsage(ctx context.Context) (map[string][]mediaUse, error) {
 		return uses, nil
 	}
 	scan := func(query string, row func(*sql.Rows) error) error {
-		rows, err := dbpkg.Reader().QueryContext(ctx, query)
+		rows, err := dbpkg.AdminReader().QueryContext(ctx, query)
 		if err != nil {
 			return err
 		}

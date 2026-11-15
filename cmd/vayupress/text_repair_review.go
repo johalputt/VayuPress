@@ -33,7 +33,7 @@ func (a *App) postsToReview(ctx context.Context, prune bool) int {
 		_, _ = dbpkg.WDB.ExecContext(ctx, `DELETE FROM text_repair_offer WHERE slug NOT IN (SELECT slug FROM articles)`)
 	}
 	var n int
-	_ = dbpkg.Reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM text_repair_offer o JOIN articles a ON a.slug=o.slug WHERE o.state='offered' AND a.is_page=0`).Scan(&n)
+	_ = dbpkg.AdminReader().QueryRowContext(ctx, `SELECT COUNT(1) FROM text_repair_offer o JOIN articles a ON a.slug=o.slug WHERE o.state='offered' AND a.is_page=0`).Scan(&n)
 	return n
 }
 
@@ -41,7 +41,7 @@ func (a *App) postsToReview(ctx context.Context, prune bool) int {
 // for review, from its text as it is now; nil when it is not offered.
 func textChangesToReview(ctx context.Context, slug, title string) []textfix.Change {
 	var content string
-	if err := dbpkg.Reader().QueryRowContext(ctx,
+	if err := dbpkg.AdminReader().QueryRowContext(ctx,
 		`SELECT a.content FROM articles a JOIN text_repair_offer o ON o.slug=a.slug WHERE a.slug=? AND o.state='offered'`, slug).Scan(&content); err != nil {
 		return nil
 	}

@@ -150,7 +150,7 @@ func (a *App) bellDigest(ctx context.Context) string {
 	if dbpkg.DB == nil {
 		return b.String()
 	}
-	rdb := dbpkg.Reader()
+	rdb := dbpkg.AdminReader()
 	for _, q := range bellWatchSQL {
 		var v sql.NullString
 		_ = rdb.QueryRowContext(ctx, q).Scan(&v)

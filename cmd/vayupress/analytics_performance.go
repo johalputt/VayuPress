@@ -96,7 +96,7 @@ func (a *App) serverMeasured(ctx context.Context, scope string, days int) (panel
 	if scope == analytics.ScopeAllDomains {
 		site = sitehttp.AllSites
 	}
-	sum, byDay, err := sitehttp.Read(ctx, dbpkg.Reader(), site, days)
+	sum, byDay, err := sitehttp.Read(ctx, dbpkg.AdminReader(), site, days)
 	if err != nil {
 		return string(ui.Callout("danger", ui.Text("Not counted: "+err.Error()))), ""
 	}

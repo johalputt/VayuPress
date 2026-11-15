@@ -756,7 +756,7 @@ func buildExport(parent context.Context, pc update.Pacing) (string, int64, error
 	path := archive.Name()
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), exportTimeout)
 	defer cancel()
-	err = update.ExportSnapshot(ctx, archive, dbpkg.Reader(), config.Cfg.DBPath, filepath.Dir(path), Version, pc)
+	err = update.ExportSnapshot(ctx, archive, dbpkg.AdminReader(), config.Cfg.DBPath, filepath.Dir(path), Version, pc)
 	if cerr := archive.Close(); err == nil && cerr != nil {
 		err = fmt.Errorf("flushing the archive: %w", cerr)
 	}

@@ -929,7 +929,7 @@ func main() {
 
 	// Privacy-first analytics + outbound webhooks + social posting (Tier 2).
 	a.analytics = analytics.New(dbpkg.DB)
-	a.alerts = alerts.New(dbpkg.DB, dbpkg.Reader())
+	a.alerts = alerts.New(dbpkg.DB, dbpkg.AdminReader())
 	// Route the admin Analytics panel's heavy aggregate reads at the WAL read
 	// pool so they never serialise behind the pageview write stream on the single
 	// writer connection (which made the Analytics tab 502). Writes stay on the

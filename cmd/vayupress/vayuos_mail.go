@@ -172,7 +172,7 @@ func (a *App) composePrefill(r *http.Request) (to, cc, bcc, subject, bodyText, q
 		if !a.isAdminRequest(r) {
 			return "", "", "", "", "", ""
 		}
-		m, err := scanContactMessage(dbpkg.Reader().QueryRowContext(r.Context(),
+		m, err := scanContactMessage(dbpkg.AdminReader().QueryRowContext(r.Context(),
 			`SELECT `+contactMessageCols+` FROM contact_messages WHERE id=?`, id))
 		if err != nil {
 			return "", "", "", "", "", ""

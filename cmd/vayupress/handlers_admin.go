@@ -199,7 +199,7 @@ func (a *App) handleAdminCachePurge(w http.ResponseWriter, r *http.Request) {
 		// out of date and rebuilt in the background at the pacer's pace. A
 		// full delete here made every request a database render at once.
 		// purged is the number of published posts the refresh will rebuild.
-		dbpkg.Reader().QueryRowContext(r.Context(), `SELECT COUNT(1) FROM articles WHERE status='published'`).Scan(&purged)
+		dbpkg.AdminReader().QueryRowContext(r.Context(), `SELECT COUNT(1) FROM articles WHERE status='published'`).Scan(&purged)
 		a.refreshEveryPage(false, "api:"+rid)
 	}
 	logging.LogJSON(logging.LogFields{Level: "info", Component: "cache-purge", RequestID: rid, Msg: fmt.Sprintf("type=%s purged=%d", purgeType, purged)})

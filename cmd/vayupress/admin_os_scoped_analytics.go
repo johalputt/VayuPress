@@ -418,7 +418,7 @@ func (a *App) pageTitles(ctx context.Context, v analyticsView, pages []analytics
 		q += ` AND domain_id=?`
 		args = append(args, v.scope)
 	}
-	rows, err := dbpkg.Reader().QueryContext(ctx, q, args...)
+	rows, err := dbpkg.AdminReader().QueryContext(ctx, q, args...)
 	if err != nil {
 		return out
 	}
@@ -481,7 +481,7 @@ func (a *App) postsByDay(ctx context.Context, v analyticsView, from, until strin
 		q += ` AND domain_id=?`
 		args = append(args, v.scope)
 	}
-	rows, err := dbpkg.Reader().QueryContext(ctx, q+` ORDER BY created_at LIMIT 1000`, args...)
+	rows, err := dbpkg.AdminReader().QueryContext(ctx, q+` ORDER BY created_at LIMIT 1000`, args...)
 	if err != nil {
 		return out
 	}

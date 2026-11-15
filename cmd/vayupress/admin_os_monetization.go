@@ -60,7 +60,7 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
 	premiumSold := gPaid + gClaimed
 	paidMembers := 0
 	if dbpkg.DB != nil {
-		_ = dbpkg.Reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM members WHERE tier NOT IN ('free','')`).Scan(&paidMembers)
+		_ = dbpkg.AdminReader().QueryRowContext(ctx, `SELECT COUNT(1) FROM members WHERE tier NOT IN ('free','')`).Scan(&paidMembers)
 	}
 
 	var stats payments.Stats

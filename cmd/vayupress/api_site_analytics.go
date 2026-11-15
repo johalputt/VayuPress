@@ -278,7 +278,7 @@ func (a *App) handleSiteAnalyticsPerformance(w http.ResponseWriter, r *http.Requ
 		if site == analytics.ScopeAllDomains {
 			site = sitehttp.AllSites
 		}
-		sum, byDay, err := sitehttp.Read(r.Context(), dbpkg.Reader(), site, days)
+		sum, byDay, err := sitehttp.Read(r.Context(), dbpkg.AdminReader(), site, days)
 		if err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
 			return

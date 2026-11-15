@@ -1773,7 +1773,7 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 	// Unread contact messages drive the sidebar badge. Best-effort: any error
 	// (nil DB / missing table on a pre-046 schema) just leaves the badge off.
 	if dbpkg.DB != nil {
-		_ = dbpkg.Reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM contact_messages WHERE is_read=0`).Scan(&s.UnreadMessages)
+		_ = dbpkg.AdminReader().QueryRowContext(ctx, `SELECT COUNT(1) FROM contact_messages WHERE is_read=0`).Scan(&s.UnreadMessages)
 	}
 	// Surface the authenticated user (if any) so the shell can show their
 	// avatar/name/role. The user is attached to the context by
@@ -1914,7 +1914,7 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 	for _, n := range a.alertNotices(ctx) {
 		add(n.Href, n.Title, n.Detail, n.Kind, n.Count, n.Severity)
 	}
-	rdb := dbpkg.Reader()
+	rdb := dbpkg.AdminReader()
 	// Unread contact-form mail (already counted for the sidebar badge).
 	add("/os/messages", "New messages", "unread in your inbox", "message", s.UnreadMessages)
 	// Comments awaiting moderation.
@@ -2552,7 +2552,7 @@ func (a *App) osFirstRunChecklist(ctx context.Context, accessLevel int) []osChec
 
 	published := 0
 	if dbpkg.DB != nil {
-		_ = dbpkg.Reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM articles WHERE status='published'`).Scan(&published)
+		_ = dbpkg.AdminReader().QueryRowContext(ctx, `SELECT COUNT(1) FROM articles WHERE status='published'`).Scan(&published)
 	}
 	add(osChecklistItem{
 		Label:  "Publish your first post",
@@ -2853,7 +2853,7 @@ func (a *App) postDetailFor(ctx context.Context, slug string) (postDetail, bool)
 	p := postDetail{Slug: slug}
 	var tagsCSV string
 	var featured int
-	if err := dbpkg.Reader().QueryRowContext(ctx,
+	if err := dbpkg.AdminReader().QueryRowContext(ctx,
 		`SELECT title,COALESCE(tags,''),created_at,updated_at,COALESCE(status,'published'),COALESCE(featured,0),COALESCE(feature_image,'') FROM articles WHERE slug=? AND is_page=0`, slug).
 		Scan(&p.Title, &tagsCSV, &p.Created, &p.Updated, &p.Status, &featured, &p.Image); err != nil {
 		return p, false
@@ -2961,7 +2961,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 		// the bare column — `COALESCE(status,'published')` would defeat
 		// idx_articles_status and force a full-table scan (a 502-class stall on a
 		// large catalog). With no search/date filter this is an index-only count.
-		if rows, err := dbpkg.Reader().QueryContext(ctx,
+		if rows, err := dbpkg.AdminReader().QueryContext(ctx,
 			`SELECT status s, COUNT(1) c FROM articles`+filterClause+` GROUP BY status`, args...); err == nil {
 			for rows.Next() {
 				var s string
@@ -3012,7 +3012,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	var posts []osPostRow
 	listArgs := append(append([]any{}, args...), osPostsPageSize, offset)
 	if dbpkg.DB != nil {
-		if rows, err := dbpkg.Reader().QueryContext(ctx, osPostsListSQL(where, status), listArgs...); err == nil {
+		if rows, err := dbpkg.AdminReader().QueryContext(ctx, osPostsListSQL(where, status), listArgs...); err == nil {
 			defer rows.Close()
 			for rows.Next() {
 				var p osPostRow
@@ -3396,7 +3396,7 @@ func commentSlugs(ctx context.Context, cs []comments.Comment) map[string]string 
 		return slugByID
 	}
 	ph := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
-	if rows, err := dbpkg.Reader().QueryContext(ctx, `SELECT id, slug FROM articles WHERE id IN (`+ph+`)`, ids...); err == nil {
+	if rows, err := dbpkg.AdminReader().QueryContext(ctx, `SELECT id, slug FROM articles WHERE id IN (`+ph+`)`, ids...); err == nil {
 		defer rows.Close() //nolint:errcheck
 		for rows.Next() {
 			var id, slug string
@@ -3939,7 +3939,7 @@ func (a *App) handleOSActivity(w http.ResponseWriter, r *http.Request) {
 	// this feed told), so the feed reads the five newest rows directly, status
 	// included: a draft row says "drafted" and links into the editor either way.
 	if dbpkg.DB != nil {
-		if rows, err := dbpkg.Reader().QueryContext(r.Context(),
+		if rows, err := dbpkg.AdminReader().QueryContext(r.Context(),
 			`SELECT slug,title,COALESCE(status,'published'),created_at FROM articles ORDER BY created_at DESC LIMIT 5`); err == nil {
 			for rows.Next() {
 				var slug, title, status string
@@ -4041,7 +4041,7 @@ func (a *App) handleOSCmdIndex(w http.ResponseWriter, r *http.Request) {
 	// Read directly: the article list projection carries neither status nor
 	// content. The first 2,000 characters are plenty for an excerpt.
 	if can("/os/editor") && dbpkg.DB != nil {
-		if rows, err := dbpkg.Reader().QueryContext(r.Context(),
+		if rows, err := dbpkg.AdminReader().QueryContext(r.Context(),
 			`SELECT slug, title, COALESCE(NULLIF(status,''),'published'), updated_at, substr(COALESCE(content,''),1,2000) FROM articles ORDER BY updated_at DESC LIMIT 50`); err == nil {
 			for rows.Next() {
 				var p cmdPost
@@ -4260,7 +4260,7 @@ func (a *App) postsWithLostText(ctx context.Context, prune bool) int {
 	}
 	if prune {
 		var clean []string
-		if rows, err := dbpkg.Reader().QueryContext(ctx, `SELECT l.slug, COALESCE(a.title,''), COALESCE(a.content,''), a.id IS NULL FROM text_repair_lost l LEFT JOIN articles a ON a.slug=l.slug LIMIT 500`); err == nil {
+		if rows, err := dbpkg.AdminReader().QueryContext(ctx, `SELECT l.slug, COALESCE(a.title,''), COALESCE(a.content,''), a.id IS NULL FROM text_repair_lost l LEFT JOIN articles a ON a.slug=l.slug LIMIT 500`); err == nil {
 			for rows.Next() {
 				var slug, title, content string
 				var gone bool
@@ -4282,6 +4282,6 @@ func (a *App) postsWithLostText(ctx context.Context, prune bool) int {
 		}
 	}
 	var n int
-	_ = dbpkg.Reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM text_repair_lost l JOIN articles a ON a.slug=l.slug WHERE a.is_page=0`).Scan(&n)
+	_ = dbpkg.AdminReader().QueryRowContext(ctx, `SELECT COUNT(1) FROM text_repair_lost l JOIN articles a ON a.slug=l.slug WHERE a.is_page=0`).Scan(&n)
 	return n
 }

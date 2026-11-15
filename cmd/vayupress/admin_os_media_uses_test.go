@@ -143,15 +143,17 @@ func TestAScanThatFailsKeepsTheLastCompleteOne(t *testing.T) {
 	mediaUsesMemo.uses, mediaUsesMemo.at = kept, at
 	mediaUsesMemo.Unlock()
 
-	prevDB, prevRDB := dbpkg.DB, dbpkg.RDB
+	// Every pool goes: the scan is a console read (dbpkg.AdminReader), which
+	// falls back through the public pool to the writer.
+	prevDB, prevRDB, prevARDB := dbpkg.DB, dbpkg.RDB, dbpkg.ARDB
 	broken, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "gone.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	broken.Close()
-	dbpkg.DB, dbpkg.RDB = broken, nil
+	dbpkg.DB, dbpkg.RDB, dbpkg.ARDB = broken, nil, nil
 	a.refreshMediaUses()
-	dbpkg.DB, dbpkg.RDB = prevDB, prevRDB
+	dbpkg.DB, dbpkg.RDB, dbpkg.ARDB = prevDB, prevRDB, prevARDB
 
 	mediaUsesMemo.Lock()
 	defer mediaUsesMemo.Unlock()

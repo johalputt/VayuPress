@@ -60,7 +60,7 @@ func (a *App) osRecentEvents(ctx context.Context, s *osSettings, now time.Time) 
 			if args == nil {
 				args = []any{cut}
 			}
-			rows, err := dbpkg.Reader().QueryContext(ctx, q, args...)
+			rows, err := dbpkg.AdminReader().QueryContext(ctx, q, args...)
 			if err != nil {
 				return // a table missing on an old schema just yields no events
 			}
@@ -129,7 +129,7 @@ func (a *App) osRecentEvents(ctx context.Context, s *osSettings, now time.Time) 
 func notifSeenAt(ctx context.Context, userID string) time.Time {
 	var at time.Time
 	if dbpkg.DB != nil {
-		_ = dbpkg.Reader().QueryRowContext(ctx, `SELECT seen_at FROM notification_seen WHERE user_id = ?`, userID).Scan(&at)
+		_ = dbpkg.AdminReader().QueryRowContext(ctx, `SELECT seen_at FROM notification_seen WHERE user_id = ?`, userID).Scan(&at)
 	}
 	return at
 }
@@ -139,7 +139,7 @@ func notifSeenAt(ctx context.Context, userID string) time.Time {
 func notifClearedAt(ctx context.Context, userID string) time.Time {
 	var at sql.NullTime
 	if dbpkg.DB != nil {
-		_ = dbpkg.Reader().QueryRowContext(ctx, `SELECT cleared_at FROM notification_seen WHERE user_id = ?`, userID).Scan(&at)
+		_ = dbpkg.AdminReader().QueryRowContext(ctx, `SELECT cleared_at FROM notification_seen WHERE user_id = ?`, userID).Scan(&at)
 	}
 	return at.Time
 }
@@ -151,7 +151,7 @@ func notifDismissed(ctx context.Context, userID string, now time.Time) map[strin
 	if dbpkg.DB == nil {
 		return out
 	}
-	rows, err := dbpkg.Reader().QueryContext(ctx, `SELECT fingerprint FROM notification_dismissed WHERE user_id = ? AND until > ?`, userID, now.UTC())
+	rows, err := dbpkg.AdminReader().QueryContext(ctx, `SELECT fingerprint FROM notification_dismissed WHERE user_id = ? AND until > ?`, userID, now.UTC())
 	if err != nil {
 		return out
 	}
