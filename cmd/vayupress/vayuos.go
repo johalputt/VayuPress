@@ -2234,7 +2234,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	if side.Writable {
 		// On a phone, Compose is a round button above the thumb, over the
 		// list; wider screens have it at the head of the folders.
-		body.WriteString(`<a class="mx-fab" href="/os/vayumail/compose?user=` + qparam(user) + `" aria-label="Compose">` + saIcon("pencil") + `</a>`)
+		body.WriteString(`<a class="mx-fab" href="/os/vayumail/compose?user=` + qparam(user) + `" aria-label="` + esc(i18n.T(lang, "Compose")) + `">` + saIcon("pencil") + `</a>`)
 	}
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))

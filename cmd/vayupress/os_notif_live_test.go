@@ -289,3 +289,31 @@ func TestTheBellStopsWhenItsSessionEnds(t *testing.T) {
 		t.Fatal("the stream stayed open after its session ended")
 	}
 }
+
+// The stream draws the bell in the language the page sends: its own path is
+// English to the console, and a German page's bell redrawn in English would
+// replace the German one. A German bell the page already has is current, so
+// nothing is sent; a language the console lacks is English.
+func TestTheStreamDrawsTheBellInThePagesLanguage(t *testing.T) {
+	openMigratedDB(t)
+	a := &App{}
+	s := a.getOSSettings(context.Background())
+	s.Lang = "de"
+	_, deSig := osNotifBellSig(s)
+	events := bellStream(t, a, deSig+"&lang=de")
+	select {
+	case b := <-events:
+		t.Fatalf("a German page's current bell was redrawn:\n%s", b.HTML)
+	case <-time.After(bellSettle + 200*time.Millisecond):
+	}
+
+	events = bellStream(t, a, "stale&lang=xx")
+	select {
+	case b := <-events:
+		if !strings.Contains(b.HTML, ">Notifications<") {
+			t.Errorf("a language the console lacks drew another bell:\n%s", b.HTML)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a stale bell was not redrawn")
+	}
+}

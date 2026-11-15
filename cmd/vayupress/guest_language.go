@@ -10,6 +10,7 @@ package main
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -24,8 +25,7 @@ const langCookie = "vp_lang"
 func requestLang(w http.ResponseWriter, r *http.Request) string {
 	if want := r.URL.Query().Get("lang"); want != "" {
 		if got := i18n.Choose(want, ""); got == want {
-			http.SetCookie(w, &http.Cookie{Name: langCookie, Value: got, Path: "/", MaxAge: int((365 * 24 * time.Hour).Seconds()),
-				HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteLaxMode})
+			setLangCookie(w, r, got)
 			return got
 		}
 	}
@@ -34,6 +34,69 @@ func requestLang(w http.ResponseWriter, r *http.Request) string {
 		chosen = c.Value
 	}
 	return i18n.Choose(chosen, r.Header.Get("Accept-Language"))
+}
+
+// setLangCookie keeps lang as this browser's language for a year.
+func setLangCookie(w http.ResponseWriter, r *http.Request, lang string) {
+	http.SetCookie(w, &http.Cookie{Name: langCookie, Value: lang, Path: "/", MaxAge: int((365 * 24 * time.Hour).Seconds()),
+		HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteLaxMode})
+}
+
+// saLanguageRow is the account menu's language choice. It posts to
+// /os/profile/language (handleOSProfileLanguage), which keeps it on the
+// account and in this browser, and comes back to the page it was chosen on;
+// admin-os.js fills the token and the page to come back to as it is sent.
+func saLanguageRow(lang string) string {
+	var b strings.Builder
+	b.WriteString(`<form class="sa-menu__row sa-menu__lang" method="POST" action="/os/profile/language" data-lang-form>` +
+		`<input type="hidden" name="csrf_token" value=""><input type="hidden" name="back" value="">` +
+		`<label><span>` + esc(i18n.T(lang, "Language")) + `</span><select name="lang">`)
+	for _, l := range i18n.Languages {
+		sel := ""
+		if l.Tag == lang {
+			sel = " selected"
+		}
+		b.WriteString(`<option value="` + esc(l.Tag) + `" lang="` + esc(l.Tag) + `"` + sel + `>` + esc(l.Name) + `</option>`)
+	}
+	b.WriteString(`</select></label><button class="btn btn--sm" type="submit">` + esc(i18n.T(lang, "Change")) + `</button></form>`)
+	return b.String()
+}
+
+// handleOSProfileLanguage keeps the language chosen in the account menu: on
+// the account, when the session has one (a mailbox signed in on its own has
+// none, and keeps it in this browser alone), and in this browser's cookie.
+// It answers with the page it was chosen on, by a local path only, with any
+// ?lang= taken off so the old choice in the address does not win over it.
+func (a *App) handleOSProfileLanguage(w http.ResponseWriter, r *http.Request) {
+	lang := strings.TrimSpace(r.FormValue("lang"))
+	if got := i18n.Choose(lang, ""); got != lang {
+		http.Error(w, "unknown language", http.StatusBadRequest)
+		return
+	}
+	if u := currentUser(r); u != nil && a.userStore != nil && !strings.HasPrefix(u.ID, "vmail:") {
+		if err := a.userStore.SetConsoleLang(r.Context(), u.ID, lang); err != nil {
+			http.Error(w, "could not keep the language", http.StatusInternalServerError)
+			return
+		}
+	}
+	setLangCookie(w, r, lang)
+	http.Redirect(w, r, consoleBack(r.FormValue("back")), http.StatusSeeOther)
+}
+
+// consoleBack is back when it is a console page on this host, without its
+// lang parameter; /os otherwise. "//host/os" parses with a host and
+// "javascript:/os" with a scheme, so either is refused; "/\\host", which a
+// browser reads as another host, is not under /os/.
+func consoleBack(back string) string {
+	u, err := url.Parse(back)
+	if err != nil || u.Scheme != "" || u.Host != "" || (u.Path != "/os" && !strings.HasPrefix(u.Path, "/os/")) {
+		return "/os"
+	}
+	q := u.Query()
+	q.Del("lang")
+	u.RawQuery = q.Encode()
+	u.Fragment = ""
+	return u.String()
 }
 
 // languageMenu is the form that shows the page in another language.
@@ -68,7 +131,7 @@ func languageMenu(lang string, r *http.Request) string {
 // every other page of it is English. A section joins when the last of its
 // sentences has moved into i18n.T, so no release shows a page half in one
 // language and half in another while a section is being moved.
-var consoleSpeaks []string
+var consoleSpeaks = []string{"/os/vayumail"}
 
 // consoleLanguage puts the language a console page is written in on its
 // request: the person's (their choice from ?lang=, kept, then their

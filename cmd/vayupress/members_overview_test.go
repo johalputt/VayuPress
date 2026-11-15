@@ -98,7 +98,10 @@ func TestEveryoneIsAListWithPlansChangedInTheInspector(t *testing.T) {
 	if !strings.Contains(page, `data-page-kind="list"`) || strings.Count(page, "data-list-row") != 3 {
 		t.Fatalf("the list does not hold the three members")
 	}
-	flow, inspector, ok := strings.Cut(page, "data-list-inspector")
+	// The page's own flow, after the shell (whose account menu has the
+	// language select).
+	_, content, _ := strings.Cut(page, `id="main-content"`)
+	flow, inspector, ok := strings.Cut(content, "data-list-inspector")
 	if !ok || strings.Contains(flow, "<select") || !strings.Contains(inspector, `data-member-tier data-email="ann@readers.example"`) {
 		t.Error("a member's plan is not changed in the inspector, or a select sits in the page flow")
 	}

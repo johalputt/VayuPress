@@ -69,7 +69,7 @@ func TestTheMailSidebarIsTheOpenMailbox(t *testing.T) {
 	// The foot: contacts, the mailbox's rules, and its storage, warned at 75%.
 	foot := side[strings.Index(side, `<div class="mx-foot">`):]
 	for _, want := range []string{`hx-get="/os/vayumail/contacts?user=dana"`, `href="/os/vayumail/accounts/settings?user=dana%40example.com">`,
-		`900.0 MiB of 1.0 GiB`, `aria-label="87% of the mailbox's storage used"`, `class="sa-meter__fill sa-meter__fill--warn" width="87"`} {
+		`900.0 MiB of 1.0 GiB`, `aria-label="87% of the mailbox&#39;s storage used"`, `class="sa-meter__fill sa-meter__fill--warn" width="87"`} {
 		if !strings.Contains(foot, want) {
 			t.Errorf("the foot is missing %q:\n%s", want, foot)
 		}

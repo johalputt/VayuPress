@@ -19,9 +19,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   as `onclick=`, a `javascript:` address, a `<base>` or a `<meta
   http-equiv>` is refused with the reason. It never reaches sign-in,
   member, checkout or mail pages, or the console.
-- **Account recovery in Mail speaks the page's language**: the
-  administrator's recovery card and each holder's recovery panel, in the 13
-  languages.
+- **The language is chosen in the account menu, and kept with the
+  account.** The menu under your picture has a Language choice; it is kept
+  on the account, so another browser you sign in on is in it from the first
+  page.
+- **Mail speaks the language you chose.** Mail and the console around it
+  (the app rail, the top bar, the account menu, the bell, the command
+  palette) are drawn in it, in the 13 languages; the rest of the console is
+  still in English. A test opens Mail in a pseudo-language and fails on any
+  English the page still shows. Still in English: the command palette's
+  list of actions and settings, and the notifications themselves.
+- **Account recovery, the DNS page, Premium Mail IDs and the Mail and Talk
+  setup pages speak the page's language**, in the 13 languages.
 
 ### Changed
 
@@ -40,6 +49,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   process. It is now an unreadable calendar like any other.
 - **The skip link is readable.** On every console page it drew its text in
   the colour of its own background, so the first Tab showed an empty box.
+- **A site's own code refuses a disguised `javascript:` address.** A tab
+  written into the address as `&#9;` hid the scheme from the check; the
+  scheme is now read as a browser reads it. A `data:` address is refused
+  everywhere but an image's `src`.
 - A List-Unsubscribe address with no host is no longer taken as the place
   to send a one-click unsubscribe.
 - An address imported from a contacts file can no longer hold a line break.

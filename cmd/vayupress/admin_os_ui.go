@@ -469,6 +469,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/newsletter/broadcast", a.handleOSNewsletterBroadcastSend)
 		// Self-service author profile + admin team/role management (session mirrors).
 		pr.Get("/os/profile", a.handleOSProfile)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/profile/language", a.handleOSProfileLanguage)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/profile", a.handleProfileSave)
 		pr.Get("/os/api/users", a.handleUserList)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/users", a.handleUserCreate)
@@ -1175,6 +1176,10 @@ func osNotifBellSig(s *osSettings) (bell, sig string) {
 	var recent []osRecentEvent
 	var seen time.Time
 	hidden := 0
+	lang := "en"
+	if s != nil && s.Lang != "" {
+		lang = s.Lang
+	}
 	if s != nil {
 		seen = s.RecentSeen
 		for _, n := range s.Notifications {
@@ -1223,35 +1228,35 @@ func osNotifBellSig(s *osSettings) (bell, sig string) {
 		activeCls = " topbar-notif__btn--active"
 	}
 	if unread > 0 {
-		markAll = `<button type="button" class="btn btn--ghost btn--xs" data-notif-seen>Mark all read</button>`
+		markAll = `<button type="button" class="btn btn--ghost btn--xs" data-notif-seen>` + esc(i18n.T(lang, "Mark all read")) + `</button>`
 	}
 	if len(notifs)+len(recent) > 0 {
-		clearAll = `<button type="button" class="btn btn--ghost btn--xs" data-notif-clear>Clear all</button>`
+		clearAll = `<button type="button" class="btn btn--ghost btn--xs" data-notif-clear>` + esc(i18n.T(lang, "Clear all")) + `</button>`
 	}
 	var list strings.Builder
 	if len(notifs) > 0 {
-		list.WriteString(`<div class="notif-group" role="group" aria-labelledby="notif-needs"><div class="notif-group__label" id="notif-needs">Needs action</div>`)
+		list.WriteString(`<div class="notif-group" role="group" aria-labelledby="notif-needs"><div class="notif-group__label" id="notif-needs">` + esc(i18n.T(lang, "Needs action")) + `</div>`)
 		for _, n := range notifs {
 			list.WriteString(osNotifItem(n))
 		}
 		list.WriteString(`</div>`)
 	}
 	if len(recent) > 0 {
-		list.WriteString(`<div class="notif-group" role="group" aria-labelledby="notif-recent" data-notif-recent><div class="notif-group__label" id="notif-recent">Last 24 hours</div>`)
+		list.WriteString(`<div class="notif-group" role="group" aria-labelledby="notif-recent" data-notif-recent><div class="notif-group__label" id="notif-recent">` + esc(i18n.T(lang, "Last 24 hours")) + `</div>`)
 		for _, e := range recent {
 			list.WriteString(osRecentItem(e, e.At.After(seen)))
 		}
 		list.WriteString(`</div>`)
 	}
 	if list.Len() == 0 {
-		list.WriteString(notifEmpty(hidden))
+		list.WriteString(notifEmpty(lang, hidden))
 	}
 	inner := `
   <button type="button" class="btn--icon topbar-notif__btn` + activeCls + `" data-notif-toggle aria-haspopup="true" aria-expanded="false">
-    ` + iconBell + `<span class="vp-sr-only">Notifications</span>` + badge + `
+    ` + iconBell + `<span class="vp-sr-only">` + esc(i18n.T(lang, "Notifications")) + `</span>` + badge + `
   </button>
   <div class="topbar-notif__panel" data-notif-panel hidden>
-    <div class="topbar-notif__head"><span>Notifications</span><span class="topbar-notif__actions">` + markAll + clearAll + `</span></div>
+    <div class="topbar-notif__head"><span>` + esc(i18n.T(lang, "Notifications")) + `</span><span class="topbar-notif__actions">` + markAll + clearAll + `</span></div>
     <div class="topbar-notif__list">` + list.String() + `</div>
   </div>
 `
@@ -1270,11 +1275,11 @@ func bellSig(bell string) string {
 // notifEmpty is the bell with nothing to show. After Clear all it says what
 // was hidden and when it comes back, so an empty bell is never mistaken for
 // nothing being wrong.
-func notifEmpty(hidden int) string {
+func notifEmpty(lang string, hidden int) string {
 	if hidden > 0 {
-		return `<div class="topbar-notif__empty" data-notif-empty>All cleared. What still needs you comes back when it changes, or tomorrow; Home lists it meanwhile.</div>`
+		return `<div class="topbar-notif__empty" data-notif-empty>` + esc(i18n.T(lang, "All cleared. What still needs you comes back when it changes, or tomorrow; Home lists it meanwhile.")) + `</div>`
 	}
-	return `<div class="topbar-notif__empty" data-notif-empty>Nothing needs you, and nothing has happened in the last day.</div>`
+	return `<div class="topbar-notif__empty" data-notif-empty>` + esc(i18n.T(lang, "Nothing needs you, and nothing has happened in the last day.")) + `</div>`
 }
 
 // svgIcon returns a minimal inline SVG for the sidebar.
@@ -1516,29 +1521,6 @@ function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return 
 </div><!-- .main -->
 </div><!-- .shell -->
 ` + ops + `
-<!-- Command palette -->
-<div id="cmd-backdrop" class="cmd-backdrop" hidden role="dialog" aria-modal="true" aria-label="Command palette">
-  <div class="cmd-panel">
-    <div class="cmd-input-wrap">
-      <svg class="cmd-search-icon" viewBox="0 0 20 20" fill="none" width="18" height="18" aria-hidden="true">
-        <path d="M8 15A7 7 0 108 1a7 7 0 000 14zm5-1l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      </svg>
-      <input id="cmd-input" class="cmd-input" type="text" placeholder="Search or run a command" autocomplete="off" aria-label="Search or run a command" aria-controls="cmd-results">
-      <button type="button" class="cmd-kind" data-cmd-kind aria-live="polite" aria-label="Filter by kind">All</button>
-    </div>
-    <div class="cmd-body">
-      <div id="cmd-results" class="cmd-results" role="listbox" aria-label="Results"></div>
-      <aside class="cmd-preview" data-cmd-preview aria-label="Preview"></aside>
-    </div>
-    <div class="cmd-footer">
-      <span class="cmd-footer-hint"><kbd>↑</kbd><kbd>↓</kbd> move</span>
-      <span class="cmd-footer-hint"><kbd>↵</kbd> open or run</span>
-      <span class="cmd-footer-hint"><kbd>tab</kbd> filter by kind</span>
-      <span class="cmd-footer-hint cmd-footer-hint--end"><kbd>esc</kbd> close</span>
-    </div>
-  </div>
-</div>
-
 <!-- Toast container -->
 <div class="toast-container" aria-live="polite" aria-atomic="true"></div>
 
@@ -2213,7 +2195,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-			token, terr := a.startSession(r, "vmail:"+addr)
+			token, terr := a.startSession(w, r, "vmail:"+addr)
 			if terr != nil {
 				http.Error(w, "could not start session", http.StatusInternalServerError)
 				return
@@ -2250,7 +2232,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(osLoginPage(lang, email, i18n.T(lang, "Enter the 6-digit code from your authenticator app, then re-enter your password."), next, true, languageMenu(lang, r))))
 		return
 	}
-	token, err := a.startSession(r, u.ID)
+	token, err := a.startSession(w, r, u.ID)
 	if err != nil {
 		http.Error(w, "could not start session", http.StatusInternalServerError)
 		return

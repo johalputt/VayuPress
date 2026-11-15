@@ -6,10 +6,17 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/config"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/i18n"
+	"github.com/johalputt/vayupress/internal/users"
 )
 
 // consoleLangOf is the language consoleLanguage gives a request to path from
@@ -61,5 +68,130 @@ func TestTheConsoleShellSaysThePagesLanguage(t *testing.T) {
 func TestTheConsoleSettingsCarryThePagesLanguage(t *testing.T) {
 	if got := (&App{}).getOSSettings(i18n.WithLang(context.Background(), "ko")).Lang; got != "ko" {
 		t.Errorf("the settings' language is %q, not the request's", got)
+	}
+}
+
+// Mail is the section that speaks the person's language as shipped, not only
+// when a test sets the list.
+func TestMailSpeaksThePersonsLanguage(t *testing.T) {
+	if lang, _ := consoleLangOf("/os/vayumail/inbox"); lang != "de" {
+		t.Errorf("Mail answered a German browser in %q", lang)
+	}
+	if lang, _ := consoleLangOf("/os/posts"); lang != "en" {
+		t.Errorf("Posts, still English, answered in %q", lang)
+	}
+}
+
+// The shell of a German page is German: its own sentences, the app labels and
+// the account menu's language choice, with German chosen. Drawing it in German
+// leaves the registry, which every href and test is written against, English.
+func TestTheShellIsDrawnInThePagesLanguage(t *testing.T) {
+	head := stillAirShellHead("n", "Mail", "mail", &osSettings{Lang: "de", AccessLevel: accessAdmin})
+	for _, want := range []string{
+		">Zum Hauptinhalt springen<", ">Suchen oder Befehl ausführen<", ">Inhalte<", ">Inhalte › Beiträge<",
+		`action="/os/profile/language"`, `<option value="de" lang="de" selected>Deutsch</option>`,
+	} {
+		if !strings.Contains(head, want) {
+			t.Errorf("the German shell lacks %q", want)
+		}
+	}
+	for _, app := range saClearnetApps {
+		if app.Label == "Beiträge" || app.Label == "Analysen" {
+			t.Fatalf("drawing in German changed the registry: %q", app.Label)
+		}
+	}
+}
+
+// The account menu's language choice goes back to a console page on this
+// host and nowhere else, without the ?lang= that would win over it.
+func TestTheLanguageChoiceComesBackOnlyToTheConsole(t *testing.T) {
+	for back, want := range map[string]string{
+		"/os/vayumail/inbox?lang=fr&folder=2": "/os/vayumail/inbox?folder=2",
+		"/os":                                 "/os",
+		"":                                    "/os",
+		"//elsewhere.example/os/x":            "/os",
+		"https://elsewhere.example/os/x":      "/os",
+		"/\\elsewhere.example/os/x":           "/os",
+		"javascript:/os/x":                    "/os",
+		"/posts":                              "/os",
+		"/osx":                                "/os",
+	} {
+		if got := consoleBack(back); got != want {
+			t.Errorf("back %q: %q, want %q", back, got, want)
+		}
+	}
+}
+
+// A language chosen in the account menu is kept on the account and in this
+// browser, and a new sign-in puts it in that browser's cookie; a language
+// the console does not have is refused and nothing is kept. Against the
+// shipped schema (migration 135).
+func TestTheLanguageChosenIsKeptWithTheAccount(t *testing.T) {
+	dir := t.TempDir()
+	os.Setenv("DB_PATH", filepath.Join(dir, "l.db"))
+	os.Setenv("API_KEY", "test-key")
+	config.Load()
+	if err := dbpkg.Init(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { dbpkg.ClosePools(); dbpkg.DB.Close() })
+	a := &App{userStore: users.New(dbpkg.DB), sessions: auth.NewSessionStore(dbpkg.DB)}
+	ctx := context.Background()
+	u, err := a.userStore.Create(ctx, "ana@example.com", "Ana", "a long enough passphrase 42", users.RoleAdmin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	choose := func(lang string) *httptest.ResponseRecorder {
+		form := url.Values{"lang": {lang}, "back": {"/os/vayumail/inbox?lang=en"}}
+		r := withUser(httptest.NewRequest(http.MethodPost, "/os/profile/language", strings.NewReader(form.Encode())), u)
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		a.handleOSProfileLanguage(rec, r)
+		return rec
+	}
+	langCookieOf := func(rec *httptest.ResponseRecorder) string {
+		for _, c := range rec.Result().Cookies() {
+			if c.Name == langCookie {
+				return c.Value
+			}
+		}
+		return ""
+	}
+
+	if rec := choose("xx"); rec.Code != http.StatusBadRequest || langCookieOf(rec) != "" {
+		t.Errorf("an unknown language: %d, cookie %q", rec.Code, langCookieOf(rec))
+	}
+	if got := a.userStore.ConsoleLang(ctx, u.ID); got != "" {
+		t.Errorf("an unknown language was kept: %q", got)
+	}
+
+	rec := choose("ja")
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/os/vayumail/inbox" {
+		t.Errorf("choosing: %d to %q", rec.Code, rec.Header().Get("Location"))
+	}
+	if got := langCookieOf(rec); got != "ja" {
+		t.Errorf("this browser keeps %q", got)
+	}
+	if got := a.userStore.ConsoleLang(ctx, u.ID); got != "ja" {
+		t.Errorf("the account keeps %q", got)
+	}
+
+	signIn := httptest.NewRecorder()
+	if _, err := a.startSession(signIn, httptest.NewRequest(http.MethodPost, "/os/login", nil), u.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := langCookieOf(signIn); got != "ja" {
+		t.Errorf("a new sign-in's browser is in %q", got)
+	}
+	other, err := a.userStore.Create(ctx, "bo@example.com", "Bo", "a long enough passphrase 43", users.RoleAdmin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signIn = httptest.NewRecorder()
+	if _, err := a.startSession(signIn, httptest.NewRequest(http.MethodPost, "/os/login", nil), other.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := langCookieOf(signIn); got != "" {
+		t.Errorf("an account with no choice set this browser to %q", got)
 	}
 }
