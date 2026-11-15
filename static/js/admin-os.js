@@ -377,7 +377,13 @@ document.addEventListener('click', function (e) {
   var KINDS = ['All', 'Go to', 'Actions', 'Settings'];
   // What the chip says for each kind, in the page's language; KINDS stays the
   // kind's name in the code.
-  var KIND_NAMES = [vpT('All'), vpT('Go to'), vpT('Actions'), vpT('Settings')];
+  // Asked for when the palette opens, never as the script loads: vpT reads
+  // the page's words once, and a page can carry them after this runs.
+  var KIND_NAMES = null;
+  function kindName(k) {
+    if (!KIND_NAMES) KIND_NAMES = [vpT('All'), vpT('Go to'), vpT('Actions'), vpT('Settings')];
+    return KIND_NAMES[k];
+  }
   var kind = 0;
   var index = null;
   var items = [];      // [{el, data}]
@@ -389,7 +395,7 @@ document.addEventListener('click', function (e) {
     backdrop.removeAttribute('hidden');
     input.value = '';
     kind = 0;
-    if (kindChip) kindChip.textContent = KIND_NAMES[kind];
+    if (kindChip) kindChip.textContent = kindName(kind);
     input.focus();
     loadIndex();
     render();
@@ -416,7 +422,7 @@ document.addEventListener('click', function (e) {
   if (kindChip) kindChip.addEventListener('click', function () { cycleKind(1); input.focus(); });
   function cycleKind(step) {
     kind = (kind + step + KINDS.length) % KINDS.length;
-    if (kindChip) kindChip.textContent = KIND_NAMES[kind];
+    if (kindChip) kindChip.textContent = kindName(kind);
     render();
   }
   backdrop.addEventListener('click', function (e) { if (e.target === backdrop) close(); });
