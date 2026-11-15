@@ -136,18 +136,40 @@ Events emitted to the outbox follow this envelope:
 
 ## Trace Span Contract
 
+Finished spans are kept in memory, in a ring of the last 2000
+(`internal/trace/recorder.go`). They are never written to the database, so
+they do not survive a restart, and they are served by two administrator
+endpoints: `GET /api/v1/admin/traces?limit=N` (the newest N, default 100,
+at most 2000) and `GET /api/v1/admin/traces/{trace_id}` (every span of one
+trace). Each span is:
+
 ```json
 {
-  "trace_id":    "uuid",
-  "span_id":     "uuid",
-  "parent_id":   "uuid-or-null",
-  "name":        "handler.articles.create",
-  "start_time":  "2026-06-13T09:00:00.000Z",
-  "end_time":    "2026-06-13T09:00:00.042Z",
-  "duration_ms": 42,
-  "attrs":       {"http.status": 200}
+  "trace_id":       "9b2f4c1e-5d7a-4c33-9f0e-2a6b8d1c7e44",
+  "span_id":        "3f6c2a9d81e04b7c5a1d9e2f60b8c4d7",
+  "parent_span_id": "a1c94e7b0d2f36580e9b7a4c1d6f2e38",
+  "operation":      "http.GET /api/v1/articles",
+  "start_time":     "2026-06-13T09:00:00.000Z",
+  "end_time":       "2026-06-13T09:00:00.042Z",
+  "duration_ms":    42,
+  "status":         "ok",
+  "error":          "database is locked",
+  "attributes":     {"http.method": "GET", "http.path": "/api/v1/articles", "http.status": "200"}
 }
 ```
 
-Span names follow `<layer>.<domain>.<operation>` convention.  
-`attrs` keys follow OpenTelemetry semantic conventions where applicable.
+- `trace_id` is the request's correlation id, so every span of one request
+  shares it; a span started outside a request gets a random one.
+- `span_id` is 16 random bytes in hex.
+- `parent_span_id`, `error` and `attributes` are left out when empty.
+- `status` is `ok`, `error` or `unset`; a request span is `error` when the
+  response status is 500 or above.
+- `operation` is `http.<METHOD> <path>` for a request,
+  `outbox.dispatch.<event type>` for a dispatched event, and
+  `ArticleService.<Create|Update|Delete|Get|List>` for the article service.
+- Attribute values are strings. A request span never carries the client's
+  address unless `VAYU_DEBUG_REQUESTS=1` is set.
+
+`TestTheSpanContractIsTheShapeServed` (`internal/trace`) marshals a span
+the way the endpoints do and fails if a field here is missing from it, or a
+field it sends is missing here.
