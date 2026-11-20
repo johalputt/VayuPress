@@ -15,14 +15,6 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   CSS also reads a `url(` left open, an escaped `url`, and `image-set()`; a
   style that can still fetch anything is now dropped. Found by the nightly
   fuzzer.
-
-### Changed
-
-- **Markdown is rendered by goldmark v2.** Every renderer produces the same
-  HTML as before, held by the renderers' corpus test.
-- Dependencies updated: go-ical (its decoder now returns an error where it
-  used to panic), golang.org/x/net, maxminddb-golang, parquet-go and iploc.
-
 - **Sign-in links can no longer be aimed at strangers from a blocked
   address.** Each request for a member's sign-in link is now listed on
   Shield › Sign-in attempts ("a member's sign-in link"), and an address,
@@ -34,6 +26,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - **Blocking on Sign-in attempts no longer reloads the page.** A block,
   lift or country refusal redraws the page's content in place, in the window
   it was showing.
+- **Markdown is rendered by goldmark v2.** Every renderer produces the same
+  HTML as before, held by the renderers' corpus test.
+- Dependencies updated: go-ical (its decoder now returns an error where it
+  used to panic), golang.org/x/net, maxminddb-golang, parquet-go and iploc.
 
 ### Fixed
 
