@@ -542,8 +542,8 @@ func resetTrailHTML(ctx context.Context) string {
 	for _, e := range events {
 		b.WriteString(`<tr><td class="text-xs muted">` + html.EscapeString(i18n.Date(lang, config.InSite(e.At), i18n.WeekdayDayMonthAt)) + `</td>` +
 			`<td class="mono">` + html.EscapeString(e.Target) + `</td>` +
-			`<td class="text-xs">` + html.EscapeString(e.Actor) + `</td>` +
-			`<td class="text-xs muted">` + html.EscapeString(e.Detail) + `</td></tr>`)
+			`<td class="text-xs">` + html.EscapeString(ipsMasked(e.Actor)) + `</td>` +
+			`<td class="text-xs muted">` + html.EscapeString(ipsMasked(e.Detail)) + `</td></tr>`)
 	}
 	b.WriteString(`</tbody></table></div>`)
 	return b.String()

@@ -35,6 +35,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   lift or country refusal redraws the page's content in place, in the window
   it was showing.
 
+### Fixed
+
+- **Mail › Accounts, "Recent password resets" no longer shows a requester's
+  whole IP address.** It is shown masked (223.184.x.x), as Sign-in attempts
+  shows one; the audit record keeps the whole address.
+
 ## [3.18.44] — 2026-11-15
 
 Calendar apps: a malformed event is refused with a reason, and one unreadable
