@@ -14,7 +14,8 @@ import (
 // The name is written out here rather than read from osDesign, so emptying or
 // renaming the constant fails this test instead of passing with it.
 func TestVayuOSIsNamedStillAirWhereTheOperatorLooks(t *testing.T) {
-	const lockup = `VayuOS <span class="sa-edition__name">Still Air</span>`
+	// A name, so no page translator touches it: translate="no".
+	const lockup = `VayuOS <span class="sa-edition__name" translate="no">Still Air</span>`
 
 	shell := stillAirShellHead("n", "Home", "dashboard", saSession(accessAdmin))
 	i := strings.Index(shell, `class="sa-rail__foot"`)
