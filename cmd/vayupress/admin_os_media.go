@@ -490,7 +490,7 @@ func (a *App) handleOSMediaAlt(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// handleOSMedia renders the media library (render 07): a table or grid of
+// handleOSMedia renders the media library: a table or grid of
 // every file, an inspector for the selected one, a context menu on the
 // selection, and uploads with their progress and time left. The list itself
 // is drawn by admin-os.js from /os/api/media.

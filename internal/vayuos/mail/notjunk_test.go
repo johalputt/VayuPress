@@ -8,7 +8,7 @@ import (
 )
 
 // A contact's mail stays out of Junk only when this server's own verdict
-// shows it came from the contact's domain (pipeline 3ab, hardened in the
+// shows it came from the contact's domain (hardened in the
 // 3.17.96 release audit). Each seed breaks one rule; the message is junk by
 // its words, so only the contact rule can keep it out.
 func TestAContactIsTrustedOnlyWhenAuthenticated(t *testing.T) {

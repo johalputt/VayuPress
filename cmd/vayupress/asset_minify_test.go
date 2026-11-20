@@ -93,17 +93,17 @@ func TestConsoleStylesheetIsServedMinified(t *testing.T) {
 // with 43 dead rules removed on the way. Raised to 320,000 on 2026-09-25 for
 // that work. Raised to 330,000 on 2026-09-26 for the Outside services page,
 // with room for what the release still adds. Raised to 350,000 on 2026-10-02
-// for the Mail redesign (Mail plan, fidelity step 8): three columns, the list's
+// for the Mail redesign: three columns, the list's
 // rows and groups, the sidebar and the selection colours, 332,200 bytes after
 // 61 dead .vm-* rules went, with room for the reader, the switcher, compose and
 // Mail's motion still to come. Raised to 375,000 on 2026-10-02 for the rest of
-// it: the compose sheet over the reader (render 03), the mailbox switcher
-// (render 02) and selection mode with its panel (render 04), which took the
+// it: the compose sheet over the reader, the mailbox switcher
+// and selection mode with its panel, which took the
 // sheet to about 360,000. Above 335,629 the budget no longer notices the
 // classic sheet's decoration coming back, as it used to; nothing else does
 // either, so that one is now a matter of review. Raised to 385,000 on
-// 2026-10-03 for Talk to render 05 (fidelity step 8.10, its old rules gone)
-// and Mail's administration as tabs (8.11), which took the sheet to 375,475.
+// 2026-10-03 for Talk's redesign, its old rules gone,
+// and Mail's administration as tabs, which took the sheet to 375,475.
 // Raised to 395,000 on 2026-10-30 for Analytics' every row a way into its
 // readers: the filter bar, a list's measure switch and card, the world map,
 // a page's report and its link map, which took the sheet to 385,244.

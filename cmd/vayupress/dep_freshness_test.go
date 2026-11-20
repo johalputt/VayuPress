@@ -183,7 +183,7 @@ esac`
 	}
 	// And it says which module, rather than that nothing at all was checked:
 	// the report used to list a major it had found beside "could not enumerate
-	// direct modules ... nothing is claimed about them" (3co).
+	// direct modules ... nothing is claimed about them".
 	if !strings.Contains(out, "could not be checked for a newer major") || !strings.Contains(out, "  github.com/go-chi/chi/v5\n") {
 		t.Errorf("the module the probe could not answer for is not named:\n%s", out)
 	}

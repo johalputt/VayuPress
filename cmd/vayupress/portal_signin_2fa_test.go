@@ -48,7 +48,7 @@ func nowCode(t *testing.T, secret string) string {
 // The site's "Sign in with VayuMail" knew only mail-only mailboxes. The owner,
 // staff and authors, whose mailbox is their console account, were told their
 // password did not match, so with two-factor on they never reached the code
-// field and had to sign in at /os (3ck). Each case is its own address, so each
+// field and had to sign in at /os. Each case is its own address, so each
 // asserts one rule.
 func TestSiteMailSignInTakesTheConsoleAccountAndItsSecondFactor(t *testing.T) {
 	a := credentialFloodApp(t)

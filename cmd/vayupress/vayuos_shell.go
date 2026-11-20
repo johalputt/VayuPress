@@ -50,10 +50,10 @@ type saApp struct {
 	Sections               []saSection
 	// Tabbed shows the sections as tabs under each page's title (saTabsFor)
 	// instead of a sidebar: a sidebar of three items is a second navigation
-	// for nothing (the fidelity plan's rule 8).
+	// for nothing.
 	Tabbed bool
 	// TabGroup names the sections marked Tab, shown in the sidebar as one item
-	// with TabIcon (Mail's administration, fidelity plan decision 3): the app
+	// with TabIcon (Mail's administration): the app
 	// keeps its sidebar, and the group's pages are tabs.
 	TabGroup, TabIcon string
 }
@@ -398,14 +398,13 @@ func saRailItem(href, label, icon, count string, current bool) string {
 		`<span class="sa-rail__label">` + html.EscapeString(label) + `</span>` + c + `</a>`
 }
 
-// saMailSide is the Mail sidebar while a mailbox is open (Mail plan §3.1):
+// saMailSide is the Mail sidebar while a mailbox is open:
 // the account, its folders and views; then, folded away, the rest of Mail
 // (more); then the foot, pinned to the bottom, with contacts, the mailbox's
 // rules and its storage.
 func saMailSide(lang string, m *osMailSide, admin, more string) string {
 	var b strings.Builder
-	// For an administrator the account block opens the mailbox switcher (Mail
-	// plan §4), whose list is read when it opens (handleVayuOSMailSwitcher);
+	// For an administrator the account block opens the mailbox switcher, whose list is read when it opens (handleVayuOSMailSwitcher);
 	// for anyone else it is not a control, because there is nowhere else to go.
 	// The phone's Folders screen is this sidebar, under its own title. It was
 	// called Mailboxes, as Apple's Mail has it, and read as a list of
@@ -460,7 +459,7 @@ func saMailSide(lang string, m *osMailSide, admin, more string) string {
 		b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/accounts/settings?user=` + qparam(m.Address) + `">` + saIcon("filter") + `<span class="sa-appside__label">` + esc(i18n.T(lang, "Rules and replies")) + `</span></a>`)
 	}
 	if m.Reading {
-		// Reading (pipeline 3y): beside the list, or over it at full width.
+		// Reading: beside the list, or over it at full width.
 		// The person's own choice, kept on their account (POST
 		// /os/vayumail/layout) and applied at once by admin-os-mail.js.
 		b.WriteString(`<details class="sa-pop mx-reading"><summary class="sa-appside__item">` + saIcon("columns") + `<span class="sa-appside__label">` + esc(i18n.T(lang, "Reading")) + `</span></summary>` +
@@ -592,7 +591,7 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 
 	// ── App sidebar ──
 	var side strings.Builder
-	// The editor is a document (render 02): its bar leads back to the posts,
+	// The editor is a document: its bar leads back to the posts,
 	// and the width the sections would take is the writing's and the
 	// inspector's.
 	//

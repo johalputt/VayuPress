@@ -456,7 +456,7 @@ func TestStillAirHonoursReducedMotion(t *testing.T) {
 	if end := strings.Index(block, "\n}\n"); end > 0 {
 		block = block[:end]
 	}
-	// Nothing moves under it (Mail plan §8): no keyframe animation, and a
+	// Nothing moves under it: no keyframe animation, and a
 	// transition no longer than the shortest token, a 90 ms fade.
 	for _, need := range []string{"animation: none !important", "transition-duration: var(--duration-micro)"} {
 		if !strings.Contains(block, need) {

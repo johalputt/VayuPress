@@ -11,7 +11,7 @@ import (
 	"github.com/emersion/go-msgauth/dmarc"
 )
 
-// NotJunk is "this is not junk" (pipeline 3ab): the message goes back to the
+// NotJunk is "this is not junk": the message goes back to the
 // Inbox, and its sender joins the mailbox's contacts, whose mail the junk
 // filter no longer files as junk (senderIsContact). The move is the
 // authorised one every other change makes, and the sender is saved only once

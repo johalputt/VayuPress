@@ -78,7 +78,7 @@ func TestMessageBodyReadsAsProse(t *testing.T) {
 	}
 }
 
-// TestTheReaderOffersFullWidthAndPrint holds pipeline 3y. The reader beside
+// TestTheReaderOffersFullWidthAndPrint holds the reader's Full width and Print. The reader beside
 // the list carries Full width (its key, w, for the command bar too) and Print
 // under More; its own page, which has the width already, has no Full width. The old full view's CSS outlived its button by a release, and the
 // test that pinned that CSS kept passing with nothing on the page to press:

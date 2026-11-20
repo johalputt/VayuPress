@@ -148,7 +148,7 @@ func (a *App) handleMemberMailboxStatus(w http.ResponseWriter, r *http.Request) 
 	// A mailbox the operator granted counts as much as one a member claimed:
 	// memberOwnMailbox knows both, as the account page does. This endpoint knew
 	// only the claimed kind, so a granted holder was told their plan had no
-	// mailbox (3cl).
+	// mailbox.
 	if addr, ok := a.memberOwnMailbox(r); ok {
 		resp["has_mailbox"] = true
 		resp["address"] = addr

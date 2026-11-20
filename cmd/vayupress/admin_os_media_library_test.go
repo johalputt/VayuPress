@@ -17,7 +17,7 @@ import (
 	"github.com/johalputt/vayupress/internal/settings"
 )
 
-// The Media library (render 07) names each file the way a person knows it and
+// The Media library names each file the way a person knows it and
 // says where it is used, so a file can be found, and removed without breaking
 // a page nobody remembered it was on.
 

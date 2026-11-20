@@ -154,7 +154,7 @@ func TestMailOnlyPathAllowed(t *testing.T) {
 		"/os/logout", "/os/static/css/vayuos.css",
 		// The ADR-0144 recovery endpoints a confined mailbox genuinely needs.
 		"/os/api/vayuos/mail/recovery/status", "/os/api/vayuos/mail/recovery/codes",
-		// VayuTalk, the chat that comes with a mailbox (3cx).
+		// VayuTalk, the chat that comes with a mailbox.
 		"/os/talk", "/os/talk/stream", "/os/talk/send",
 	}
 	for _, p := range allowed {

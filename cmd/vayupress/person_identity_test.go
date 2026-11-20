@@ -38,7 +38,7 @@ func personApp(t *testing.T) (*App, *http.Cookie, *users.User) {
 }
 
 // A name changed on the site account went out on mail under the name the
-// mailbox was created with (3cs). Changed in either place, it is one name.
+// mailbox was created with. Changed in either place, it is one name.
 func TestANameIsOneNameOnTheSiteAndOnMail(t *testing.T) {
 	a, cookie, holder := personApp(t)
 	ctx := context.Background()
@@ -71,7 +71,7 @@ func TestANameIsOneNameOnTheSiteAndOnMail(t *testing.T) {
 }
 
 // A cartoon chosen in the mail settings was the initials on the site, and one
-// chosen on the site the initials in the mailbox (3cv). Chosen in either
+// chosen on the site the initials in the mailbox. Chosen in either
 // place, it is the picture in both.
 func TestAPictureIsOnePictureOnTheSiteAndOnMail(t *testing.T) {
 	a, cookie, holder := personApp(t)
@@ -102,7 +102,7 @@ func TestAPictureIsOnePictureOnTheSiteAndOnMail(t *testing.T) {
 
 // The console's account menu named a mail-only holder Author, the role the
 // session stands in for, and showed their initials over the picture they had
-// chosen (3cu, 3cv).
+// chosen.
 func TestTheAccountMenuNamesAMailboxAndShowsItsPicture(t *testing.T) {
 	a, _, holder := personApp(t)
 	ctx := context.WithValue(context.WithValue(context.Background(), ctxUserKey, holder), ctxMailOnlyKey, true)

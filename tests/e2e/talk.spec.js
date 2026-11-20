@@ -1,5 +1,5 @@
 // @ts-check
-// Talk (render 05) on the install with Mail on: two of its mailboxes in a real
+// Talk on the install with Mail on: two of its mailboxes in a real
 // conversation. An administrator may chat as any mailbox on the install, so
 // one browser page is Ankush and another is Priya, on one relay.
 const { test, expect } = require("@playwright/test");

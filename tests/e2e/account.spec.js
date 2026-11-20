@@ -1,5 +1,5 @@
 // @ts-check
-// The member's account page (3cx) on the install with Mail on, as a reader
+// The member's account page on the install with Mail on, as a reader
 // who holds a mailbox: signed in to the site with that mailbox, as the account
 // panel's "Sign in with VayuMail" does. Membership is off on that install, so
 // the rows that open the account panel (Activity's Advertising) are not drawn.

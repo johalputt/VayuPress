@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// The editor is the document kind (render 02): a bar with the way back to the
+// The editor is the document kind: a bar with the way back to the
 // posts, the post, and the inspector laid open beside it, not a drawer behind
 // a button. The bar carries what every visit uses; the rest is one menu away.
 func TestTheEditorIsADocument(t *testing.T) {

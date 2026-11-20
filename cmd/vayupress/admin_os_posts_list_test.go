@@ -34,7 +34,7 @@ func postsPage(t *testing.T, a *App, target string) string {
 	return rec.Body.String()
 }
 
-// TestThePostsPageIsAList holds Posts to render 01: a list page whose rows
+// TestThePostsPageIsAList holds Posts to the List kind: a list page whose rows
 // each open the post in the inspector, with each action on a post drawn once,
 // in the inspector, and states as a dot and a word rather than badges.
 func TestThePostsPageIsAList(t *testing.T) {

@@ -360,7 +360,7 @@ document.addEventListener('click', function (e) {
   if (d && d.matches('dialog.sa-sheet') && typeof d.showModal === 'function' && !d.open) d.showModal();
 })();
 
-/* ── Command bar (Cmd+K / Ctrl+K, render 03) ─────────────────────
+/* ── Command bar (Cmd+K / Ctrl+K) ─────────────────────
    Three kinds of result: Go to (the rail's own gated index of pages, then
    posts), Actions (a page to open or one request to run) and Settings (every
    row, the list Search settings reads). The highlighted result is previewed
@@ -542,7 +542,7 @@ document.addEventListener('click', function (e) {
       }), q);
     }
     // What is typed can be a new post's title (Home's quick-compose field
-    // moved here, fidelity plan §3), offered when nothing else matches. It
+    // moved here), offered when nothing else matches. It
     // creates something, so it never joins a search's results: offered
     // beside them, ↓ Enter on "backups" started a post called "backups".
     // Offered only where the index offers New post, which it does only to a
@@ -821,7 +821,7 @@ window.vpRelTime = relativeTime;
 })();
 
 (function initMedia() {
-  /* Media library (render 07): a table or grid of every file, an inspector
+  /* Media library: a table or grid of every file, an inspector
      for the selected one, a context menu on the selection (right-click, the
      menu key or Shift+F10), and uploads with progress and time left. Every
      name, alt text and use is set with textContent; nothing from the server

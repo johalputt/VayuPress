@@ -12,7 +12,7 @@ import (
 )
 
 // Theme is a document: the live preview fills the page, and the Studio is the
-// inspector beside it, its groups four tabs (plan §3: "tabs replace the
+// inspector beside it, its groups four tabs ("tabs replace the
 // chips"). One tab shows at a time, each wired to its panel for assistive
 // technology, and none of the accordion, its chips or its jump bar is left.
 func TestTheThemeIsADocument(t *testing.T) {

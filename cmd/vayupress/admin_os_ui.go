@@ -1159,7 +1159,7 @@ func osRecentItem(e osRecentEvent, unread bool) string {
 </a>`
 }
 
-// osNotifBell renders the system bar's notification centre (render 09): what
+// osNotifBell renders the system bar's notification centre: what
 // needs the viewer, then what happened in the last day. The badge counts the
 // first in full and the second until marked read. Each row is a direct link;
 // the toggle, the times and Mark all read are wired in admin-os.js.
@@ -1627,7 +1627,7 @@ type osSettings struct {
 	UserRole   string
 	UserAvatar string
 	// RoleLabel is the role the account menu names: the console role, or for a
-	// mail-only session the mailbox's own role (3cu).
+	// mail-only session the mailbox's own role.
 	RoleLabel string
 	// MailOnly / AccessLevel drive role-scoped sidebar visibility and match the
 	// route guard in requireSessionOrAPIKey (hidden == unreachable).
@@ -1653,7 +1653,7 @@ type osSettings struct {
 	// viewer's access level, so an item never points at a page they cannot open.
 	Notifications []osNotification
 	// Recent is the bell's second half: what happened in the last day, with
-	// when (render 09). RecentSeen is when this viewer last marked them read.
+	// when. RecentSeen is when this viewer last marked them read.
 	Recent     []osRecentEvent
 	RecentSeen time.Time
 	// RecentCleared is when this viewer last used Clear all: earlier events
@@ -1666,7 +1666,7 @@ type osSettings struct {
 	// on the install's own console.
 	Sites []osSite
 	Scope *osSite
-	// MailSide is set while a mailbox is open (Mail plan §3.1): the Mail
+	// MailSide is set while a mailbox is open: the Mail
 	// app's sidebar becomes that mailbox, its folders and views, with the
 	// rest of Mail folded away under them.
 	MailSide *osMailSide
@@ -1782,7 +1782,7 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 			}
 			// A mailbox's holder chose its picture in the mail settings; an
 			// account with no photo of its own shows that one, not initials
-			// (3cv).
+			//.
 			if s.UserAvatar == "" && u.MailAddress != "" && a.mailboxAvatarSet()[strings.ToLower(strings.TrimSpace(u.MailAddress))] {
 				s.UserAvatar = "/os/vayumail/accounts/avatar?email=" + qparam(strings.ToLower(strings.TrimSpace(u.MailAddress)))
 			}
@@ -2181,10 +2181,10 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		// so those email accounts can sign in from the same website login button.
 		if addr, mok, totpMissing := a.authMailAccount(signinCtx, email, pass, r.FormValue("totp")); mok {
 			// The second factor belongs to the address, as on the site's
-			// sign-in (3ck): a mailbox with no two-factor of its own does not
+			// sign-in: a mailbox with no two-factor of its own does not
 			// let its password past the VayuOS account's at the same address.
 			// A handed-over mailbox is its client's, and that account no
-			// longer has a say (3cn).
+			// longer has a say.
 			if _, mailOn := a.vayuMail.Accounts().TOTPStatus(r.Context(), addr); !mailOn && !a.vayuMail.IsHandedOver(addr) {
 				if ok, required := a.verifyTOTPForLogin(r.Context(), addr, r.FormValue("totp")); required && !ok {
 					auth.RecordAuthFailure(ip)
@@ -2637,7 +2637,7 @@ const osPostsPageSize = 100
 // is_page=0 is written +is_page=0 here, and only here: as an equality on an
 // indexed column it led SQLite to idx_articles_is_page, which holds nearly
 // every post, and every one of them was then sorted to find the newest 100.
-// On 235k posts that was 0.6 s of the page's 0.8 s (3cm). Without it the list
+// On 235k posts that was 0.6 s of the page's 0.8 s. Without it the list
 // walks idx_articles_created, or idx_articles_status on a status tab, and stops
 // at the page. The status counts keep the plain form: their covering index
 // leads with is_page.
@@ -3048,7 +3048,7 @@ type osPostRow struct {
 	Featured            bool
 }
 
-// osPostsList renders the Posts page as the List kind (render 01): the posts
+// osPostsList renders the Posts page as the List kind: the posts
 // as a table, and beside them the selected one's inspector, where everything
 // that can be done to a post is done.
 func (a *App) osPostsList(ctx context.Context, v osPostsView, nonce string) string {
@@ -3980,7 +3980,7 @@ func (a *App) handleOSActivity(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleOSCmdIndex returns what the command bar searches beyond the rail's own
-// index of pages (render 03): posts to open, actions to run, and settings rows
+// index of pages: posts to open, actions to run, and settings rows
 // to jump to. Every entry is gated by the page it belongs to, the predicate the
 // rail uses, so the bar never offers what this session could not open. The
 // pages themselves are not listed here: the rail's index already names each
@@ -4134,7 +4134,7 @@ func (a *App) reloadRenderSettings(ctx context.Context) {
 // applyRenderSettings is reloadRenderSettings without the purge, for boot,
 // where nothing is cached yet. Boot once kept its own copy of this mapping,
 // without the time zone, so every restart showed the console in UTC until
-// Settings was saved again (pipeline 3ad).
+// Settings was saved again.
 func (a *App) applyRenderSettings(ctx context.Context) {
 	if a.siteSettings == nil {
 		return

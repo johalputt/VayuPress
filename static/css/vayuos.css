@@ -40,7 +40,7 @@
   --accent-hover:   #93b4ff;
   --accent-soft:    rgba(122, 162, 255, 0.13);
   --on-accent:      #0c1428;
-  /* Mail's selected row (Mail plan §3.2): filled, with its own text colours.
+  /* Mail's selected row: filled, with its own text colours.
      White, and white at 85% for the preview, hold 4.5:1 on every fill. */
   --ok:             #5cbf8e;
   --warn:           #e2a64d;
@@ -1368,7 +1368,7 @@
 
 .vp-os .editor-preview-body { padding: var(--sp-6); overflow-y: auto; }
 
-/* ── Media library ── the Still Air layer below draws it (render 07). */
+/* ── Media library ── the Still Air layer below draws it. */
 .vp-os .skeleton--media { aspect-ratio: 4 / 3; height: auto; border-radius: var(--r-md); }
 
 /* ── Security / TOTP enrolment (Phase 5, ADR-0068) ─────────────────────────── */
@@ -2097,7 +2097,7 @@
 .vp-os .vm-pre--quoted { color: var(--text-2); border-left: 2px solid var(--border-strong); padding-left: .75rem; }
 
 @media print {
-  /* Print exactly the open message, all of it (pipeline 3y). The reader sits
+  /* Print exactly the open message, all of it. The reader sits
      in a column that scrolls inside a page that does not, so every box around
      it gives up its height and clipping, and everything that is not the
      reader or round it is dropped. The old rules hid the console by
@@ -4455,7 +4455,7 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
-/* Sentence case everywhere (plan §10): the classic console set 47 labels in
+/* Sentence case everywhere: the classic console set 47 labels in
    spaced capitals. The case reset matches the classic rules' specificity and
    loads later, so it wins; the tracking reset is :where, so any Still Air rule
    below that sets letter-spacing still wins over it. Initials and inputs keep
@@ -4883,7 +4883,7 @@
 .vp-os[data-ui="still-air"] .mx-folderform__delete { width: 100%; color: var(--danger); }
 .vp-os[data-ui="still-air"] .sa-appside__label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vp-os[data-ui="still-air"] .sa-attn { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); flex: none; }
-/* Mail's folders (render 04) are items of the sidebar itself, whichever way
+/* Mail's folders are items of the sidebar itself, whichever way
    it lays out; the wrapper exists only to be swapped when the list refreshes. */
 .vp-os[data-ui="still-air"] .sa-appside__folders { display: contents; }
 .vp-os[data-ui="still-air"] .sa-appside__title[title] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -4905,7 +4905,7 @@
 }
 .vp-os[data-ui="still-air"] .sa-content > * { max-width: 1180px; }
 
-/* Setup: an app that is not set up yet (page grammar, render 07). What it is,
+/* Setup: an app that is not set up yet (page grammar). What it is,
    what it needs with the steps done ticked, and the one thing to do next, in a
    single reading column, never one grey line in an empty page. */
 .vp-os[data-ui="still-air"] .sa-setup { max-width: 560px; margin: var(--space-10) auto 0; }
@@ -5015,7 +5015,7 @@
 .vp-os[data-ui="still-air"] .settings-row-label:has(> .settings-row-tag) { display: flex; align-items: baseline; gap: var(--space-4); }
 .vp-os[data-ui="still-air"] .settings-row-tag { flex: none; min-width: 2.2em; font: var(--type-mono); color: var(--text-3); }
 /* A Shield layer's count: what it did, right-aligned before its state, with
-   the detail under it (render 06). */
+   the detail under it. */
 .vp-os[data-ui="still-air"] .sa-layer__count { display: inline-flex; flex-direction: column; align-items: flex-end; font: var(--type-strong); color: var(--text-1); font-variant-numeric: tabular-nums; text-align: right; }
 .vp-os[data-ui="still-air"] .sa-layer__sub { font: var(--type-small); color: var(--text-3); }
 .vp-os[data-ui="still-air"] .section-head {
@@ -5097,7 +5097,7 @@
 
 /* Figures: the few numbers that answer "what is the state of this", set as
    type — a large number over its label, in a row — not a panel of boxed cells
-   (render 02). A box made a number look important; size does that here. */
+  . A box made a number look important; size does that here. */
 .vp-os[data-ui="still-air"] .stat-grid {
   /* Columns, so a row that wraps lines up under the one above it. */
   display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: var(--space-5) var(--space-7);
@@ -5266,7 +5266,7 @@
 .vp-os[data-ui="still-air"] .textarea:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px var(--accent-soft); }
 .vp-os[data-ui="still-air"] .input[aria-invalid="true"] { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
 .vp-os[data-ui="still-air"] input[type="radio"] { accent-color: var(--accent); }
-/* The checkbox is drawn (render 01), not the browser's box tinted: a tinted
+/* The checkbox is drawn, not the browser's box tinted: a tinted
    native box changes nothing the console controls when it is checked, so its
    states could not follow the rest. The check is a mask, so it takes the
    on-accent colour in every scheme and in the Tor world. */
@@ -5429,7 +5429,7 @@
   .vp-os[data-ui="still-air"] .cmd-footer { display: none; }
 }
 
-/* The List kind (ui.List; Posts is render 01, Media render 07): the items,
+/* The List kind (ui.List; Posts and Media are lists): the items,
    and beside them the one selected. The inspector sits to the right where
    there is room for both and below the list where there is not; it is never
    an overlay, so reading an item's details never hides the item. */
@@ -5468,7 +5468,7 @@
 .vp-os[data-ui="still-air"] .sa-list .page-actions .seg-filter { margin-left: 0; }
 .vp-os[data-ui="still-air"] .media-kinds { margin: 0 0 var(--space-4); }
 .vp-os[data-ui="still-air"] .sa-list__sheet-actions { display: flex; gap: var(--space-2); }
-/* The lists (render 01): fixed columns, so a long title is cut rather than
+/* The lists: fixed columns, so a long title is cut rather than
    pushing the state and the figures out of view. A column's width follows
    what it holds, named on its header cell, and the unnamed ones share the
    rest. Widths once went by position, written for Posts, and every other
@@ -5624,7 +5624,7 @@
 /* The Tor accent never bleeds into a side rule the way the classic one did. */
 .vp-os[data-ui="still-air"][data-space="tor"] .sidebar { border-right-color: var(--border-1); box-shadow: none; }
 
-/* The toggle (render 01). One markup, <input type="checkbox" class="toggle"
+/* The toggle. One markup, <input type="checkbox" class="toggle"
    role="switch">: the classic console grew four (.toggle, .switch,
    .vs-switch, the customizer's checkbox), each its own size and colour, and
    they are gone. A 30 x 18 track, round because a
@@ -5644,7 +5644,7 @@
 .vp-os[data-ui="still-air"] .toggle:checked::before { transform: translateX(12px); background: var(--paper); }
 .vp-os[data-ui="still-air"] .cz-check .toggle { order: 2; }
 
-/* ── Control states (plan §7, render 01) ───────────────────────────────────
+/* ── Control states ───────────────────────────────────
    Every core control has the same nine: rest, hover, focus, pressed, active,
    disabled, loading, success and error, so a state reads the same wherever
    it appears and no control invents its own. The markup that asks for one:
@@ -5830,7 +5830,7 @@
 .vp-os[data-ui="still-air"] .vm-msg-subject { font: var(--type-title); letter-spacing: -0.01em; }
 .vp-os[data-ui="still-air"] .vm-actions .btn .sa-ico,
 .vp-os[data-ui="still-air"] .vm-toolbar .btn .sa-ico { width: 14px; height: 14px; }
-/* ── Mail (Mail plan §3, render 01) ─────────────────────────────────────────
+/* ── Mail ─────────────────────────────────────────
    The mailbox is three columns: the sidebar (the app's own), the list and the
    reader. Each column scrolls on its own and the page never does. */
 .vp-os[data-ui="still-air"] .sa-content:has(> .vm-split) { padding: 0; overflow: hidden; }
@@ -5844,7 +5844,7 @@
 .vp-os[data-ui="still-air"] .vm-split > .vm-readpane { position: relative; top: auto; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .vp-os[data-ui="still-air"] .sa-content:has(> .vm-split) > .vm-spin { position: absolute; top: var(--space-4); right: var(--space-5); z-index: 3; }
 /* Narrower than three columns: the list, and an open message over it until
-   its Close. (The phone's own push navigation is plan §7.) */
+   its Close. */
 @media (max-width: 1099px) {
   .vp-os[data-ui="still-air"] .sa-content > .vm-split { grid-template-columns: minmax(0, 1fr); position: relative; }
   .vp-os[data-ui="still-air"] .vm-split > .vm-inbox-list { border-right: 0; }
@@ -5852,7 +5852,7 @@
   .vp-os[data-ui="still-air"] .vm-split > .vm-readpane:has(.vm-reader) { position: absolute; inset: 0; z-index: 2; background: var(--surface-1); }
 }
 
-/* Full width (pipeline 3y) is the narrow layout's screens at any width: the
+/* Full width is the narrow layout's screens at any width: the
    message pushed over the list, Mail's sidebar kept, back to the list by the
    bar's back button. admin-os-mail.js sets <body data-mx-screens> when the
    window is narrower than three columns, when the person reads full width
@@ -5869,7 +5869,7 @@
   color: var(--text-1); text-decoration: none; border-radius: var(--radius-control);
 }
 .vp-os[data-ui="still-air"] a.mx-account:hover { background: var(--surface-hover); text-decoration: none; }
-/* The switcher (Mail plan §4): the account block is its control, and stays
+/* The switcher: the account block is its control, and stays
    pressed while the switcher is open. */
 .vp-os[data-ui="still-air"] .mx-switch > summary.mx-account { cursor: pointer; transition: background-color var(--duration-micro) var(--ease-move); }
 .vp-os[data-ui="still-air"] .mx-switch > summary.mx-account:hover { background: var(--surface-hover); }
@@ -5902,7 +5902,7 @@
 .vp-os[data-ui="still-air"] .mx-switch__row:hover,
 .vp-os[data-ui="still-air"] .mx-switch__row:focus-visible { background: var(--surface-hover); text-decoration: none; outline: none; }
 .vp-os[data-ui="still-air"] .mx-switch__row > .vm-av { width: 24px; height: 24px; font-size: 10px; }
-/* Nothing clips an address (plan §2.6). */
+/* Nothing clips an address. */
 .vp-os[data-ui="still-air"] .mx-switch__addr { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .vp-os[data-ui="still-air"] .mx-switch__count { flex: none; font: var(--type-meta); color: var(--accent); font-variant-numeric: tabular-nums; }
 .vp-os[data-ui="still-air"] .mx-switch__check { flex: none; display: inline-grid; color: var(--accent); }
@@ -5923,7 +5923,7 @@
 .vp-os[data-ui="still-air"] .mx-account > .vm-av { width: 36px; height: 36px; font-size: 13px; }
 .vp-os[data-ui="still-air"] .mx-account__who { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .vp-os[data-ui="still-air"] .mx-account__name { font: var(--type-heading); color: var(--text-1); }
-/* Nothing clips an address (plan §2.6): it wraps at any character instead. */
+/* Nothing clips an address: it wraps at any character instead. */
 .vp-os[data-ui="still-air"] .mx-account__addr { font: var(--type-small); color: var(--text-2); overflow-wrap: anywhere; }
 .vp-os[data-ui="still-air"] .mx-account__name + .mx-account__addr { color: var(--text-3); }
 .vp-os[data-ui="still-air"] .mx-account__chev { flex: none; color: var(--text-3); }
@@ -5933,7 +5933,7 @@
 .vp-os[data-ui="still-air"] .mx-more[open] > summary { color: var(--text-1); }
 .vp-os[data-ui="still-air"] .mx-foot { display: flex; flex-direction: column; gap: 1px; margin-top: auto; padding-top: var(--space-4); border-top: 1px solid var(--border-1); }
 .vp-os[data-ui="still-air"] .mx-foot > button.sa-appside__item { width: 100%; border: 0; background: none; cursor: pointer; text-align: left; }
-/* Reading (pipeline 3y) sits at the sidebar's foot, so its menu opens above
+/* Reading sits at the sidebar's foot, so its menu opens above
    it, from its left edge; the checked choice is ticked like the editor's. */
 .vp-os[data-ui="still-air"] .mx-reading > summary { list-style: none; cursor: pointer; }
 .vp-os[data-ui="still-air"] .mx-reading > summary::-webkit-details-marker { display: none; }
@@ -5950,7 +5950,7 @@
 }
 /* Two layers in one place, the folder and the selection. Selecting lifts the
    folder 4 px as it fades and brings the count up into its place; leaving
-   plays it back (Mail plan §8, item 2). The layer not in use is inert. */
+   plays it back. The layer not in use is inert. */
 .vp-os[data-ui="still-air"] .mx-head__main,
 .vp-os[data-ui="still-air"] .mx-head__sel {
   grid-area: 1 / 1; display: flex; align-items: baseline; gap: var(--space-3); min-width: 0;
@@ -6047,7 +6047,7 @@
    what is unread. */
 .vp-os[data-ui="still-air"] .mx-row {
   position: relative; display: grid; grid-template-columns: 18px minmax(0, 1fr); border-radius: 10px;
-  /* Selection fades in, in place (Mail plan §8, items 3 and 5). */
+  /* Selection fades in, in place. */
   transition: background-color var(--duration-micro) var(--ease-enter);
 }
 .vp-os[data-ui="still-air"] .mx-row + .mx-row::before {
@@ -6060,7 +6060,7 @@
 .vp-os[data-ui="still-air"] .mx-row__pin .sa-ico { width: 13px; height: 13px; }
 /* The round check shares the gutter with the unread dot: shown on hover or
    focus, and on every row while selecting, so selecting never shifts a column
-   (Mail plan §8, item 2). */
+  . */
 /* The console's own check (its masked tick), made round; a picked one is
    the accent with a white tick. */
 .vp-os[data-ui="still-air"] input.mx-check[type="checkbox"] {
@@ -6128,7 +6128,7 @@
 .vp-os[data-ui="still-air"] .mx-row.vm-active::before, .vp-os[data-ui="still-air"] .mx-row.vm-active + .mx-row::before { border-color: transparent; }
 .vp-os[data-ui="still-air"] .mx-row.vm-focus { box-shadow: inset 0 0 0 2px var(--focus); }
 /* Picked rows wear the same soft fill. Where two meet, their corners square
-   off, so neighbours read as one block (Mail plan §8, item 3). While
+   off, so neighbours read as one block. While
    selecting, the open message is not marked as open. */
 .vp-os[data-ui="still-air"] .mx-row.is-picked { background: var(--accent-soft); }
 .vp-os[data-ui="still-air"] .mx-row.is-picked::before, .vp-os[data-ui="still-air"] .mx-row.is-picked + .mx-row::before { border-color: transparent; }
@@ -6172,7 +6172,7 @@
 .vp-os[data-ui="still-air"] .mx-empty__actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-4); }
 .vp-os[data-ui="still-air"] .mx-older { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-5) var(--space-3); font: var(--type-small); color: var(--text-3); }
 
-/* The reader (Mail plan §3.3): its tools stay put while the message scrolls
+/* The reader: its tools stay put while the message scrolls
    under them, and the docked reply stays at its foot. */
 /* Contacts open in the reading pane, which pads nothing of its own (the
    reader lays out its own edges), so it keeps off them itself. */
@@ -6220,7 +6220,7 @@
 .vp-os[data-ui="still-air"] .mx-rtools .sa-pop__panel { min-width: 220px; }
 .vp-os[data-ui="still-air"] .mx-rtools .mx-rtools__group:first-child .sa-pop__panel { left: 0; right: auto; }
 .vp-os[data-ui="still-air"] .mx-rbody { flex: 1; width: 100%; max-width: 740px; margin: 0 auto; padding: var(--space-8) var(--space-6) var(--space-10); }
-/* The words arrive from the way the reader travelled (plan §8, item 5). */
+/* The words arrive from the way the reader travelled. */
 @keyframes mx-from-below { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes mx-from-above { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
 @keyframes mx-fade-in { from { opacity: 0; } to { opacity: 1; } }
@@ -6386,7 +6386,7 @@
   display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius-control);
   font: 600 11px/1 var(--font-ui); letter-spacing: 0.02em; color: var(--danger); background: var(--danger-soft);
 }
-/* The download's ring and tick (Mail plan §8, item 7): the ring fills from
+/* The download's ring and tick: the ring fills from
    the top as the file arrives, then gives way to the tick. */
 .vp-os[data-ui="still-air"] .mx-file__type { position: relative; }
 .vp-os[data-ui="still-air"] .mx-file__ring { position: absolute; inset: -3px; width: calc(100% + 6px); height: calc(100% + 6px); transform: rotate(-90deg); opacity: 0; pointer-events: none; }
@@ -6416,7 +6416,7 @@
 .vp-os[data-ui="still-air"] .mx-dock__field { flex: 1; }
 .vp-os[data-ui="still-air"] .mx-dock__enc { display: inline-flex; align-items: center; gap: var(--space-2); font: var(--type-small); color: var(--ok); }
 
-/* Three panes (render 04): the folders are the sidebar, then the list and
+/* Three panes: the folders are the sidebar, then the list and
    the reader. Where there is room for both, the reader holds its place while
    nothing is open, so opening a message never reflows the list. */
 @media (min-width: 1100px) {
@@ -6557,7 +6557,7 @@
 .vp-os[data-ui="still-air"] .maint-status { margin: var(--space-5) 0 0; text-align: center; font: var(--type-small); color: var(--text-2); }
 .vp-os[data-ui="still-air"] .maint-status .sa-dot { display: inline-block; margin-right: var(--space-3); vertical-align: middle; }
 .vp-os[data-ui="still-air"] .maint-foot { margin: var(--space-6) 0 0; text-align: center; font: var(--type-meta); color: var(--text-3); }
-/* A settings row's control keeps its size and sits on the right (plan §4). */
+/* A settings row's control keeps its size and sits on the right. */
 .vp-os[data-ui="still-air"] .settings-row-control { flex: none; display: flex; align-items: center; gap: var(--space-3); }
 .vp-os[data-ui="still-air"] .mem-bar { fill: var(--chart-1); }
 .vp-os[data-ui="still-air"] .topo-bar--govern { fill: var(--chart-4); }
@@ -6641,7 +6641,7 @@
   .vp-os[data-ui="still-air"] *::before,
   .vp-os[data-ui="still-air"] *::after {
     /* Every movement becomes an instant change; only a fade remains, and at
-       most for 90 ms (Mail plan §8). */
+       most for 90 ms. */
     animation: none !important;
     transition-duration: var(--duration-micro) !important;
     transition-property: opacity, color, background-color, border-color !important;
@@ -6671,7 +6671,7 @@
   .vp-os[data-ui="still-air"] .sa-status__detail .upd-status::before { forced-color-adjust: none; }
 }
 
-/* ── Status (fidelity plan step 4, render 05) ──────────────────────────
+/* ── Status ──────────────────────────
    ui.Status. The state is one sentence beside its mark, then the bands:
    running now, then history. A band is its heading over a hairline, as on a
    Settings page; the page is wider because its lists have columns. */
@@ -6729,7 +6729,7 @@
 }
 .vp-os[data-ui="still-air"] .vk-point-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-top: var(--space-5); }
 
-/* ── Settings (plan §4, render 06) ──────────────────────────────────────
+/* ── Settings ──────────────────────────────────────
    settings_app.go. A band's rows sit in one panel, the control in a
    300px column on the right; a changed row carries a dot after its name,
    and one bar floats over the page while anything is unsaved. */
@@ -6768,7 +6768,7 @@
   background: var(--surface-1); cursor: pointer;
 }
 /* The editors that are more than a row: the menu, the footer. Between
-   hairlines like the rows around them (render 04), not in a panel: a footer
+   hairlines like the rows around them, not in a panel: a footer
    column is a box of its own, and a box inside a box is what the page grammar
    rules out. */
 .vp-os[data-ui="still-air"] .settings-panel {
@@ -6885,7 +6885,7 @@
 }
 .vp-os[data-ui="still-air"] .sa-tip:is(:hover, :focus) .sa-tip__pop { display: block; }
 
-/* ── The document kind (page grammar, render 02) ──────────────────────────
+/* ── The document kind (page grammar) ──────────────────────────
    One thing being made: a quiet 56px bar (the way back, the save state, the
    length, the actions), the document at reading measure, and an inspector
    beside it, each scrolling on its own so the bar and the inspector stay put
@@ -7081,7 +7081,7 @@
   .vp-os[data-ui="still-air"] .sa-doc__inspector { transition: none; }
 }
 
-/* The compose sheet (Mail plan §5, render 03). In Mail it lies over the
+/* The compose sheet. In Mail it lies over the
    reader column (admin-os-mail.js sheetOpen), dimming only the reader: the
    sidebar and the list stay live. It minimises to a bar at the reader's foot,
    expands over list and reader, and is the whole page at /os/vayumail/compose. */
@@ -7127,7 +7127,7 @@
 .vp-os[data-ui="still-air"] .mx-compose__chips { flex: 1; min-width: 0; min-height: 0; padding: var(--space-1) 0; border: 0; background: none; }
 .vp-os[data-ui="still-air"] .mx-compose__chips .vm-chip-input { flex: 1 1 6rem; min-width: 6rem; font: var(--type-body); color: var(--text-1); }
 .vp-os[data-ui="still-air"] .mx-compose .vm-chip { gap: 6px; padding: 2px 2px 2px 3px; border-radius: 999px; background: var(--surface-2); font: var(--type-small); color: var(--text-1); }
-/* Nothing clips an address (plan §2.6), a recipient included. */
+/* Nothing clips an address, a recipient included. */
 .vp-os[data-ui="still-air"] .mx-compose .vm-chip > span { overflow: visible; white-space: normal; overflow-wrap: anywhere; text-overflow: clip; }
 .vp-os[data-ui="still-air"] .mx-compose .vm-chip > .vm-av { width: 20px; height: 20px; font-size: 9px; }
 .vp-os[data-ui="still-air"] .mx-compose .vm-chip--bad { background: var(--danger-soft); color: var(--danger); }
@@ -7220,7 +7220,7 @@
 }
 @keyframes mx-sheet-up { from { transform: translateY(100%); } to { transform: none; } }
 
-/* Narrower than three columns, Mail is screens (Mail plan §7, render 05):
+/* Narrower than three columns, Mail is screens:
    the list first, a message pushed over it, and on a phone the mailboxes
    above the list. admin-os-mail.js sets <body data-mx-screen>, and for the
    length of a move data-mx-move (push or pop) and data-mx-from. A push slides
@@ -7328,7 +7328,7 @@
   .vp-os[data-ui="still-air"]:not([data-mx-screen="message"]):not([data-mx-screen="boxes"]) .mx-fab { display: grid; }
 }
 
-/* ── Talk (render 05) ────────────────────────────────────────────────────────
+/* ── Talk ────────────────────────────────────────────────────────
    One bar over two columns, the conversations and the open one, each
    scrolling alone while the page never does. The bar holds where you are,
    who you are chatting as, what someone needs to reach you, and New chat. */
@@ -7547,7 +7547,7 @@
   .vp-os[data-ui="still-air"] .vtalk-composer { margin: 0 var(--space-3) var(--space-3); }
 }
 
-/* ── Mail administration (fidelity plan §6a) ───────────────────────────────
+/* ── Mail administration ───────────────────────────────
    Overview, Accounts, DNS, PGP keys and Security as tabs. Sections are
    hairlines, not cards; a state is a dot and a word; New mailbox rises in a
    sheet. */

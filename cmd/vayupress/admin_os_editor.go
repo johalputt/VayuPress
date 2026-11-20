@@ -885,7 +885,7 @@ func (a *App) handleOSEditorVersionRestore(w http.ResponseWriter, r *http.Reques
 //     the document round-trips losslessly.
 //   - .Slug and .Title are attribute-escaped (double quotes become &#34;).
 //
-// The shell is the page grammar's document kind (render 02): a quiet bar with
+// The shell is the page grammar's document kind: a quiet bar with
 // the way back, the save state, the length, Preview and Publish; the post at
 // reading measure; and the inspector beside it. Everything the old bar's eleven
 // buttons did is still one keystroke or one menu away: formatting is the
@@ -1144,7 +1144,7 @@ func osEditorBody(slug, title, blocksJSON, authorOptions string, isPage bool) st
 </div>`
 }
 
-// osEditorInspector is the post's inspector (render 02): how it is published,
+// osEditorInspector is the post's inspector: how it is published,
 // its tags, how it reads in search results and its cover, then the rest of its
 // settings. It is the old settings drawer laid open beside the writing, with
 // the same fields and hooks, so the editor script drives it unchanged; it folds

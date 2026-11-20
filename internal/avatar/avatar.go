@@ -26,7 +26,7 @@ type pair = [2]string
 // Palettes. The backgrounds are quiet, desaturated tints, so the face is the
 // subject and a row of avatars reads as one set beside the console's neutral
 // surfaces. The earlier set was saturated gradients (indigo to violet, rose,
-// amber), which made every picture shout and the faces look like clip-art (3cp).
+// amber), which made every picture shout and the faces look like clip-art.
 var (
 	// Background {fill, the soft disc behind the head}.
 	bgPairs = []pair{
@@ -127,7 +127,7 @@ type look struct {
 //
 // Each carries its own skin tone, so the set offers the whole range whoever is
 // choosing: the tone came from the address, and an address that drew a dark
-// tone could not pick a fair face, nor the reverse (3cp). Tones index skinTones.
+// tone could not pick a fair face, nor the reverse. Tones index skinTones.
 var cartoons = [...]look{
 	{hair: hairCrop, mouth: 0, skin: 0},
 	{hair: hairSidePart, mouth: 1, skin: 3, glasses: true},

@@ -283,8 +283,7 @@ func TestMailOpensAClientsInboxAndKeepsAHoldersPages(t *testing.T) {
 			t.Errorf("a mailbox holder lost %q: %s", want, got)
 		}
 	}
-	// Mail's overview is the first of its administration tabs (fidelity plan
-	// decision 3). For a holder it only repeated the pages above, and opening
+	// Mail's overview is the first of its administration tabs. For a holder it only repeated the pages above, and opening
 	// it takes them to their mailbox. The Outbox is the server's delivery
 	// queue: for a holder it was one sentence pointing at their Sent folder,
 	// which is where opening it now takes them.

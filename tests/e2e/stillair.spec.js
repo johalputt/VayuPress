@@ -205,7 +205,7 @@ function lintPage() {
 // the stylesheet says: a rule can be on the scale and still lose to another, a
 // class can be emitted that no rule on the scale reaches, and the browser's
 // own defaults (a <strong> is 700) never appear in the sheet at all. Every
-// element with a box is held to plan §6: a colour that is a token's value, a
+// element with a box is held to the scale: a colour that is a token's value, a
 // type size on the scale, weights 400/500/600, Inter or JetBrains Mono, radii
 // 4/6/10 (pills only on things that are physically round), elevation shadows
 // or state rings, and none of the decoration the classic console wore.
@@ -678,7 +678,7 @@ test("writing straight on through Enter and a shortcut loses no keystroke", asyn
   await expect(page.locator(".eblock__heading").first()).toHaveValue("Heading");
 });
 
-// The editor is a document (render 02): the inspector stands beside the
+// The editor is a document: the inspector stands beside the
 // writing, folds away from the bar or in focus mode, and is a drawer where
 // there is no room beside the text. Each state is checked by where the
 // inspector is, not by a class, since a class can be right while the
@@ -758,7 +758,7 @@ test("the website previews a chosen design, and the theme's settings are tabs", 
   await expect(page.locator('[data-theme-tab="layout"]')).toBeFocused();
 });
 
-// Every menu opens from the control that opened it (Mail plan §8, item 9): its
+// Every menu opens from the control that opened it: its
 // transform-origin, once the entrance has played, lies on the trigger. One
 // shared function does it (vpOpenFrom), so a menu added later is tested by
 // being added here, not by being built again.
@@ -818,7 +818,7 @@ test("a menu clicked while it closes opens again", async ({ page }) => {
 });
 
 // Under reduced motion nothing moves: no keyframe animation runs anywhere in
-// the shell, and no transition is longer than a 90 ms fade (Mail plan §8).
+// the shell, and no transition is longer than a 90 ms fade.
 test("reduced motion moves nothing", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await openConsole(page);
@@ -831,7 +831,7 @@ test("reduced motion moves nothing", async ({ page }) => {
   expect(moving).toEqual([]);
 });
 
-// Every core control has the same nine states (plan §7, render 01). Each is
+// Every core control has the same nine states. Each is
 // put on each control on a real console page, with the real stylesheet, and
 // judged by what that state must show, not only by looking different from
 // rest: a rule that made every state a colour change would pass a
@@ -981,7 +981,7 @@ test("a write shows loading, then its outcome, on the control that started it", 
   expect(await page.evaluate(() => window.__marks)).toEqual([]);
 });
 
-// The bell (render 09): what happened carries its time in the viewer's clock
+// The bell: what happened carries its time in the viewer's clock
 // under Today, and Mark all read clears it for good while what needs the
 // operator stays counted.
 // The console is a fixed-height shell with one vertical scroller, its content
@@ -1071,7 +1071,7 @@ test("an open page's bell shows a new post without a reload", async ({ page }) =
   await expect(page.locator("[data-notif-panel]")).toBeVisible();
 });
 
-// The command bar (render 03): results grouped Go to, Actions, Settings, the
+// The command bar: results grouped Go to, Actions, Settings, the
 // query marked in each, the highlighted one previewed beside the list, Tab to
 // narrow to one kind, and an action that runs and says what the server said.
 test("the command bar groups, marks, previews and runs", async ({ page }) => {
@@ -1131,7 +1131,7 @@ function noisePNG(w, h) {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(rows)), chunk("IEND", Buffer.alloc(0))]);
 }
 
-// Media (render 07): an upload says how far along it is and how long is left;
+// Media: an upload says how far along it is and how long is left;
 // the file then arrives under the name it had, and is inspected, renamed and
 // trashed from the keyboard, through the same menu a right-click opens.
 // On johal.in the library's list timed out (the scan for where files are used
@@ -1281,7 +1281,7 @@ test("outside services reach the public pages, never the console", async ({ page
   await page.evaluate(() => new Promise((done) => window.vpPost("/os/api/website/csp", { mode: "strict" }, done, done)));
 });
 
-// Starting a post (fidelity plan §3): Home's field moved to the head's New
+// Starting a post: Home's field moved to the head's New
 // post and to the command bar, where a title that matches nothing is offered
 // as a new post's. A search that matches is left as it was: "backups" is
 // still the Backups page, first and alone. Home holds no form of its own.
@@ -1799,7 +1799,7 @@ test("a setup page's command is copied whole", async ({ page, context }) => {
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(shown);
 });
 
-// Monetization is a Settings page (render 04): rows edit in place and one bar
+// Monetization is a Settings page: rows edit in place and one bar
 // saves them, and each gateway's form rises in a sheet from its row.
 test("monetization saves its rows from one bar, and its forms rise in sheets", async ({ page }) => {
   await openConsole(page);

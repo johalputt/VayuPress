@@ -341,7 +341,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 		heroChecked = " checked"
 	}
 
-	// The page is a document (page grammar; plan §3: "the live preview is the
+	// The page is a document (page grammar: "the live preview is the
 	// document, with the Studio as the inspector, tabs replacing the chips"):
 	// the preview fills the page and the Studio's four groups are tabs of the
 	// inspector beside it, each a run of sections, so every control is two

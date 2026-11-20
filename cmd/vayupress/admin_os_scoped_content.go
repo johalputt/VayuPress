@@ -92,7 +92,7 @@ func scopedContentPage(d domain.Domain, items []dbpkg.Article) string {
 	b.WriteString(osStatTile("Total", strconv.Itoa(len(items)), ""))
 	b.WriteString(`</div>`)
 
-	// ── The bands, as collapsible details (house style §11) ──────────────────
+	// ── The bands, as collapsible details ──────────────────
 	b.WriteString(`<div class="section-head"><span class="section-head__title">This site's content</span>` +
 		`<span class="section-head__hint">Ownership decides which site serves a post</span></div>`)
 	b.WriteString(`<div class="mon-stack">`)

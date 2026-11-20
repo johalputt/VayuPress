@@ -284,7 +284,7 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	// still has one h1, for the reader that navigates by headings.
 	body.WriteString(`<h1 class="vp-sr-only">Talk</h1>`)
 
-	// The bar (render 05): where you are, who you are chatting as, and the two
+	// The bar: where you are, who you are chatting as, and the two
 	// things you start from here: a new chat, and what someone needs to reach
 	// you (your safety number and your link, or in the Tor world your code).
 	body.WriteString(`<header class="vtalk-top"><p class="vtalk-crumb"><span class="vtalk-crumb__app">Talk</span><span class="vtalk-crumb__peer" id="vtalk-crumb" hidden></span></p><div class="vtalk-top__tools">`)

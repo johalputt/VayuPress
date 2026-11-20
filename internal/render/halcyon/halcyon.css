@@ -155,7 +155,7 @@
 .h .h-name-h { margin: 0; display: flex; }
 .h .h-name { display: inline-flex; align-items: center; gap: 10px; }
 .h .h-logo { width: 28px; height: 28px; flex: none; border-radius: 6px; transform-origin: 50% 60%; transition: transform 520ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 320ms var(--h-ease); }
-/* The mark comes alive under the pointer (3cy): it lifts, tips and settles
+/* The mark comes alive under the pointer: it lifts, tips and settles
    with a small overshoot, and casts the accent as a soft light; the name
    takes the accent with it. Keyboard focus gets the same. */
 .h .h-name { transition: color 240ms var(--h-ease); }

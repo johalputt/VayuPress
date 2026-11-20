@@ -108,7 +108,7 @@ func TestPanelSubtreeUsesBorderBox(t *testing.T) {
 	}
 }
 
-// The account panel is one view on every theme and every page (3cw: on the
+// The account panel is one view on every theme and every page (on the
 // account page it opened in an older look, because the view chosen hung on a
 // page attribute one template forgot). It is a summary, not a dashboard: no
 // folded boxes, no chips, one line per fact, each a link to its control.

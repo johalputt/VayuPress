@@ -32,7 +32,7 @@ func folderIDs(t *testing.T, a *App, rd vmail.Reader, folder string) []string {
 	return ids
 }
 
-// "Not junk" (pipeline 3ab): the message goes back to the Inbox and the
+// "Not junk": the message goes back to the Inbox and the
 // sender joins the mailbox's contacts.
 func TestNotJunkRescuesTheMessageAndItsSender(t *testing.T) {
 	if !vmail.ScoreSpam(junkFrom("deals@shop.example", "")).IsSpam {

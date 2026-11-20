@@ -243,7 +243,7 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
 		esc(certLabel) + `</div></div>
 </div>`)
 
-	// ── The bands, as accordions (house style §11) ───────────────────────────
+	// ── The bands, as accordions ───────────────────────────
 	//
 	// A mon-stack of pure-CSS <details>, each with a chip so its state reads
 	// while collapsed. This page was ten flat sections to scroll past.

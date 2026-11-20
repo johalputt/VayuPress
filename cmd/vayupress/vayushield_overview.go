@@ -2,7 +2,7 @@
 
 package main
 
-// vayushield_overview.go — Shield as the Overview kind (render 06): its state
+// vayushield_overview.go — Shield as the Overview kind: its state
 // in one sentence beside the title, its three pages as tabs, what it turned
 // away beside the crawlers it let through, its layers as rows, then its
 // reports laid open. The settings form rises in a sheet.

@@ -12,7 +12,7 @@ import (
 )
 
 // Home is the console's first page, and it counted the last fortnight's
-// visitors on the request: on johal.in it took more than 15 s to open (3cm).
+// visitors on the request: on johal.in it took more than 15 s to open.
 // It now reads the figures from the dashboard cache. The first request after a
 // start finds nothing counted, says so, and does not wait; the count lands in
 // the background and the next request shows it.

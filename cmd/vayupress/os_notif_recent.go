@@ -14,7 +14,7 @@ import (
 )
 
 // osRecentEvent is something that happened, and when: the bell's second half
-// (render 09). Needs-action items are conditions that last until fixed, so
+// . Needs-action items are conditions that last until fixed, so
 // they carry no time; these are events, so they always do, and each is read
 // from a row that recorded it rather than inferred.
 type osRecentEvent struct {

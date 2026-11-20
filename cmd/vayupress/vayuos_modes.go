@@ -98,7 +98,7 @@ func (a *App) stillAirModesPage(w http.ResponseWriter, r *http.Request, cfg *osS
 	history := mode.Global.History()
 	admin := cfg.AccessLevel >= accessAdmin
 
-	// A status page (render 08): the mode is the state sentence, with its
+	// A status page: the mode is the state sentence, with its
 	// mark, where it was a filled tag beside the title.
 	lede := "VayuOS has not changed mode since it started " + saUptime(time.Since(bootTime)) + " ago."
 	if n := len(history); n > 0 {

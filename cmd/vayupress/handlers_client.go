@@ -83,7 +83,7 @@ var clientSurface = []clientSurfaceEntry{
 	{Prefix: "/os/vayumail/compose", Audience: audienceClient},
 	{Prefix: "/os/vayumail/sent", Audience: audienceClient},
 	{Prefix: "/os/vayumail/connect", Audience: audienceClient},
-	// Their own mailbox's personal settings (3cl). The page and every control
+	// Their own mailbox's personal settings. The page and every control
 	// on it act only on the caller's own mailbox (isMailboxHolder); aliases,
 	// handover and the address itself stay an administrator's.
 	{Prefix: "/os/vayumail/settings", Audience: audienceClient},

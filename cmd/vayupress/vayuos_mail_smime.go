@@ -39,7 +39,7 @@ func (a *App) vayuCardSMIME(ctx context.Context, ac vmail.Account) string {
 }
 
 // smimeAccount is the mailbox a certificate request names, if this session
-// may change it: its holder (3cl), or an administrator, except on a mailbox
+// may change it: its holder, or an administrator, except on a mailbox
 // handed to its holder, which signs only with what its holder gives it.
 func (a *App) smimeAccount(w http.ResponseWriter, r *http.Request) string {
 	if !a.mailRunning() || a.vayuMail.Accounts() == nil {

@@ -58,7 +58,7 @@ func (a *App) verifyTOTPForLogin(ctx context.Context, email, code string) (ok, r
 
 // ── Members page ───────────────────────────────────────────────────────────
 
-// handleOSMembers renders Audience › Members as the Overview kind (render 03):
+// handleOSMembers renders Audience › Members as the Overview kind:
 // how many there are and how many pay, the month's growth beside what happened
 // lately, then the tiers. The people themselves are a list one click away.
 func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {

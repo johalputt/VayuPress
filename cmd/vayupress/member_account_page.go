@@ -6,7 +6,7 @@ package main
 //
 // Every setting is one row in one grammar: what it is, what it is now, and at
 // most one thing to do about it. Nothing is folded away. The page it replaces
-// (3cx) stacked a plan card, a billing card and six accordions, each opening on
+// stacked a plan card, a billing card and six accordions, each opening on
 // a card with its own emoji heading, so the facts a member came for were behind
 // closed rows and the page used three designs at once. Controls that need more
 // room (the picture chooser, the name field, two-factor set-up, the receipts and

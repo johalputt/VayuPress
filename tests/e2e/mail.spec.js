@@ -1,5 +1,5 @@
 // @ts-check
-// Mail with mail running (Mail plan §10). Runs against the second install the
+// Mail with mail running. Runs against the second install the
 // boot starts with Mail on and scripts/mail-fixture's mailboxes: the first
 // install is "localhost", for which Mail is off.
 const { test, expect } = require("@playwright/test");
@@ -81,7 +81,7 @@ test("a view filters the folder, and lets go of it", async ({ page }) => {
   await expect(page.locator(".mx-head__main .mx-head__title")).toHaveText("Inbox");
 });
 
-// Each column scrolls on its own and the page never does (plan §2.5).
+// Each column scrolls on its own and the page never does.
 test("the columns scroll alone and the page never does", async ({ page }) => {
   await openInbox(page);
   const list = page.locator("#vm-inbox-list");
@@ -92,7 +92,7 @@ test("the columns scroll alone and the page never does", async ({ page }) => {
   expect(await page.locator("#vm-readpane").evaluate((e) => e.scrollTop)).toBe(0);
 });
 
-// Opening a message keeps the list where it was (plan §8, item 5): j opens the
+// Opening a message keeps the list where it was: j opens the
 // row on screen, it turns selected in place, and the list did not move.
 test("opening a message keeps the list where it was", async ({ page }) => {
   await openInbox(page);
@@ -116,7 +116,7 @@ test("opening a message keeps the list where it was", async ({ page }) => {
   expect(await page.evaluate(() => document.contains(window.__mxList)), "opening a message redrew the list").toBe(true);
 });
 
-// Nothing clips an address (plan §2.6): it wraps instead, in the account block
+// Nothing clips an address: it wraps instead, in the account block
 // and in a row, for the longest the fixture holds.
 test("no address is clipped", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -130,7 +130,7 @@ test("no address is clipped", async ({ page }) => {
 });
 
 // The newest message is open when Mail opens, and is marked read only after
-// two seconds on screen (Mail plan, decision 3).
+// two seconds on screen.
 test("the newest message is open, and read after two seconds", async ({ page }) => {
   await newestUnread(page);
   await openInbox(page);
@@ -178,7 +178,7 @@ test("the seal of a signature that cannot be checked is neutral", async ({ page 
   await expect(seal).toHaveClass(/mx-seal--plain/);
 });
 
-// The next message comes up from below (plan §8, item 5).
+// The next message comes up from below.
 test("an older message arrives from below", async ({ page }) => {
   await openInbox(page);
   await page.locator("body").click({ position: { x: 5, y: 5 } });
@@ -186,7 +186,7 @@ test("an older message arrives from below", async ({ page }) => {
   await expect(page.locator("#vm-readpane [data-mx-reader]")).toHaveAttribute("data-mx-from", "older");
 });
 
-// The mailbox switcher (Mail plan §4, §8 item 1) grows out of the account
+// The mailbox switcher grows out of the account
 // block, which stays pressed while it is open; its search has the keys at
 // once; Enter opens the first match; Escape closes it back into the block.
 test("the mailbox switcher opens from the account and switches", async ({ page }) => {
@@ -247,7 +247,7 @@ test("the mailbox switcher opens from the account and switches", async ({ page }
   await expect(page.locator(".mx-account__addr")).toHaveText("priya@mail.test");
 });
 
-// Compose is a sheet over the reader (Mail plan §5, §8 item 4): Reply raises
+// Compose is a sheet over the reader: Reply raises
 // it from the toolbar with the quote folded away, the list beside it stays
 // live, and the mailbox answering is the sender.
 test("reply opens the compose sheet over the reader", async ({ page }) => {
@@ -302,7 +302,7 @@ test("the compose line says whether the message goes encrypted", async ({ page }
   await expect(sheet.locator(".vm-chip").nth(1).locator(".vm-chip__lock")).toHaveCount(0);
   await line.click();
   await expect(line).toHaveText("Sent as readable text: encryption is off");
-  // Nothing clips an address (plan §2.6), a recipient's included.
+  // Nothing clips an address, a recipient's included.
   await to.fill("a-very-long-mailbox-name-for-the-wrapping-test@mail.test");
   await to.press("Enter");
   await expect(sheet.locator(".vm-chip")).toHaveCount(3);
@@ -589,7 +589,7 @@ test("discard on the compose page goes back to its mailbox", async ({ page }) =>
   await expect(page).toHaveURL(/\/os\/vayumail\/inbox\?user=ankush$/);
 });
 
-// Selection mode (Mail plan §7, render 04; motion §8 items 2 and 3). A row's
+// Selection mode. A row's
 // round check starts it: the header becomes the count, a click on a row picks
 // it instead of opening it, neighbours picked together square off into one
 // block, and the reader column shows what is picked. Done ends it.
@@ -721,9 +721,9 @@ test("the picked messages are labelled together", async ({ page }) => {
   expect(off.ok()).toBeTruthy();
 });
 
-// The command bar offers what the page offers, by name (plan §6): the open
+// The command bar offers what the page offers, by name: the open
 // message's actions, run as the toolbar runs them.
-// The keys keep out of what is being written (Mail plan §10): one seed per
+// The keys keep out of what is being written: one seed per
 // guard. A letter typed in a field is the field's, and a key pressed with
 // focus anywhere in the composer, a button included, is the composer's. Either
 // way the open message behind is not archived.
@@ -1021,7 +1021,7 @@ test("a label is put on a message and found from the sidebar", async ({ page }) 
 
 // An attachment's download fills a ring on its tile and settles to a tick,
 // and arrives under its own name; a file added to compose slides into the
-// attachment row (Mail plan §8, item 7).
+// attachment row.
 test("an attachment downloads with its ring, and a new one slides in", async ({ page }) => {
   await openInbox(page);
   const card = page.locator("#vm-readpane a[data-mx-file]").first();
@@ -1042,7 +1042,7 @@ test("an attachment downloads with its ring, and a new one slides in", async ({ 
 });
 
 // A reader narrower than its tools (three columns on a laptop) keeps every
-// tool inside it: they wrap, and nothing scrolls sideways (pipeline 3y: More,
+// tool inside it: they wrap, and nothing scrolls sideways (More,
 // and Print in it, sat past the reader's edge on a 14-inch screen).
 test("a narrow reader keeps its tools in reach", async ({ page }) => {
   await openInbox(page);
@@ -1059,7 +1059,7 @@ test("a narrow reader keeps its tools in reach", async ({ page }) => {
   expect(await pane.locator(".mx-rtools__pos").evaluate((e) => e.getClientRects().length), "the position breaks across lines").toBe(1);
 });
 
-// Full width (pipeline 3y), as compose's Expand: the open message is pushed
+// Full width, as compose's Expand: the open message is pushed
 // over the list and takes its place, Mail's sidebar kept, and the bar's back
 // button, Escape, w or the browser's Back return to the columns.
 test("a message opens full width and comes back to the columns", async ({ page }) => {
@@ -1116,7 +1116,7 @@ test("a message read full width is answered in place", async ({ page }) => {
   await expect.poll(inView, { message: "the reply field opened the sheet outside the window" }).toBe(true);
 });
 
-// Reading set to full width (pipeline 3y) is the person's own choice, kept on
+// Reading set to full width is the person's own choice, kept on
 // their account; this run signs in with the API key, which has none, so the
 // page is served as the server draws it for that person (the server's side is
 // TestTheMailboxOpensFullWidthForWhoChoseIt). The list comes first at full
@@ -1145,7 +1145,7 @@ test("reading full width: the list first, a message over it", async ({ page }) =
   await expect(list).toBeVisible();
 });
 
-// Not junk (pipeline 3ab): in Junk, ! (the key that files a message there
+// Not junk: in Junk, ! (the key that files a message there
 // everywhere else) sends it back to the Inbox and remembers the sender; the
 // message's own page has the same as a button.
 test("a message in Junk is not junk, by its key or its page", async ({ page }) => {
@@ -1171,7 +1171,7 @@ test("a message in Junk is not junk, by its key or its page", async ({ page }) =
   await expect(page.locator("#vm-inbox-list")).toContainText(other);
 });
 
-// The reply field under a message (Mail plan §3.3, pipeline 3z): what is
+// The reply field under a message: what is
 // typed there becomes the reply. The first keystroke opens the reply sheet,
 // and every word typed, those typed while it loads among them, is carried
 // into its body, with the caret after them.
@@ -1191,7 +1191,7 @@ test("typing in the reply field writes the reply", async ({ page }) => {
 });
 
 // Print prints the open message, all of it, and nothing of the console
-// (pipeline 3y): the old print rules left the reader in its clipped column,
+// The old print rules left the reader in its clipped column,
 // and the page came out with its address and no mail.
 test("print gives the message and nothing else", async ({ page }) => {
   await openInbox(page);
@@ -1214,8 +1214,7 @@ test("print gives the message and nothing else", async ({ page }) => {
   expect(printed.text).toContain(words);
 });
 
-// On a phone Mail is three screens (Mail plan §7, render 05; motion §8 item
-// 6): the list first, the mailboxes above it, a message pushed over it with
+// On a phone Mail is three screens: the list first, the mailboxes above it, a message pushed over it with
 // its own bar where the tab bar was. The newest message, not on screen, is
 // not read; back is the phone's own back, and lands where the list was.
 test("on a phone, Mail is screens pushed and popped", async ({ page }) => {
@@ -1297,7 +1296,7 @@ test("on a phone, Mail is screens pushed and popped", async ({ page }) => {
   expect(await page.evaluate(() => window.__moves), "the screens did not push and pop").toEqual(["push", "pop"]);
 });
 
-// Text holds its contrast where Mail paints its own colours (Mail plan §10):
+// Text holds its contrast where Mail paints its own colours:
 // the selected row and its avatar, the previews and times, and the seal, in
 // both schemes. A colour is composited over every background beneath it on a
 // canvas, so a translucent token or an oklch() value is measured as it is
@@ -1361,7 +1360,7 @@ for (const scheme of ["light", "dark"]) {
   });
 }
 
-// A new mailbox is made in its sheet (fidelity plan §6a): a link to the sheet
+// A new mailbox is made in its sheet: a link to the sheet
 // opens it with the page, Create closes it, and the mailbox's row is in the
 // list without a reload; the page's button is what opens it again.
 test("a new mailbox is made in its sheet, and its row appears", async ({ page }) => {

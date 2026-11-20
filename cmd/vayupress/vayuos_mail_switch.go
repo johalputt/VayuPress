@@ -10,7 +10,7 @@ import (
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
-// handleVayuOSMailSwitcher is the mailbox switcher's list (Mail plan §4):
+// handleVayuOSMailSwitcher is the mailbox switcher's list:
 // every mailbox an administrator may open, grouped by domain with the primary
 // first, each with its unread count and a check on the one open (?user=).
 // It is fetched when the switcher opens, never with the page, so a closed

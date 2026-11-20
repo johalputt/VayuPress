@@ -127,7 +127,7 @@ func swrRefresh(key string, fn func()) {
 // rather than served: for an administrator signed in to the console, and for
 // nobody else. A theme or settings save marks every page stale; served stale
 // once more, the save read to the person who made it as "nothing changed"
-// (3bl, the shape of 3bf's "the blog does not change"), while readers lose
+// (the shape of "the blog does not change"), while readers lose
 // nothing by seeing the old page for one more request. The lookup runs only
 // for a stale page and a request carrying a session cookie, and one
 // operator's renders are not a herd. The page rendered is the reader's, and is

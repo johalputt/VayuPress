@@ -17,7 +17,7 @@ import (
 )
 
 // A person the operator gave a mailbox could change none of its settings: every
-// per-mailbox control answered "administrators only" (3cl). The operator's
+// per-mailbox control answered "administrators only". The operator's
 // decision: the holder manages its personal settings, and only an
 // administrator manages the address. Each case is one rule, on its own control.
 func TestAHolderChangesOnlyTheirOwnMailbox(t *testing.T) {
@@ -104,7 +104,7 @@ func TestAHolderChangesOnlyTheirOwnMailbox(t *testing.T) {
 
 // The site's account panel asked /api/v1/members/mailbox, which knew only a
 // mailbox a paying member claimed, and told the holder of a granted mailbox
-// that their plan did not include one (3cl).
+// that their plan did not include one.
 func TestTheSitesMailboxViewKnowsAGrantedMailbox(t *testing.T) {
 	a := enrolApp(t)
 	ctx := context.Background()
@@ -131,7 +131,7 @@ func TestTheSitesMailboxViewKnowsAGrantedMailbox(t *testing.T) {
 }
 
 // The holder changes their own password with the current one, through the
-// pipeline every reset takes (3cl). A wrong current password changes nothing.
+// pipeline every reset takes. A wrong current password changes nothing.
 func TestAHolderChangesTheirOwnPassword(t *testing.T) {
 	a := appWithMailAccounts(t)
 	db, err := sql.Open("sqlite3", ":memory:")
@@ -182,7 +182,7 @@ func TestAMailboxSessionsProfileIsItsMailboxSettings(t *testing.T) {
 // Mailbox settings sent anyone whose own mailbox it could not find to the
 // inbox, and for an administrator the inbox is the mailbox directory: the
 // operator clicked Mailbox settings and got a list of mailboxes with no
-// settings on it (3cr). One case per kind of session.
+// settings on it. One case per kind of session.
 func TestMailboxSettingsAlwaysOpensSettings(t *testing.T) {
 	a := appWithMailAccounts(t)
 	db, err := sql.Open("sqlite3", ":memory:")

@@ -538,7 +538,7 @@ func (a *App) resolveMailSessionUser(ctx context.Context, email string) (u *user
 	su := &users.User{
 		ID:          "vmail:" + email,
 		Email:       email,
-		Name:        name, // the mailbox's own name, the one its mail is sent under (3cs)
+		Name:        name, // the mailbox's own name, the one its mail is sent under
 		MailAddress: email,
 		Role:        cmsRole,
 	}
@@ -592,7 +592,7 @@ func (a *App) resolveMailMember(r *http.Request) (u *users.User, mailOnly bool, 
 	su := &users.User{
 		ID:          "vmail:" + m.Email,
 		Email:       m.Email,
-		Name:        name, // the mailbox's own name, the one its mail is sent under (3cs)
+		Name:        name, // the mailbox's own name, the one its mail is sent under
 		MailAddress: m.Email,
 		Role:        cmsRole,
 	}

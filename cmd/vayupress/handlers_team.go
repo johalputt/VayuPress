@@ -439,7 +439,7 @@ func (a *App) handleOSProfile(w http.ResponseWriter, r *http.Request) {
 	// A mailbox signed in with its own credential has no account behind it: no
 	// byline, no /author page, nothing this form could save. Its profile is its
 	// mailbox's settings. It was shown this page with /author/vmail:<address>
-	// as its public profile, a link to nothing (3cl).
+	// as its public profile, a link to nothing.
 	if strings.HasPrefix(u.ID, "vmail:") {
 		http.Redirect(w, r, "/os/vayumail/settings", http.StatusSeeOther)
 		return

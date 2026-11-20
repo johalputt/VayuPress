@@ -12,7 +12,7 @@ import (
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 )
 
-// The compose sheet (Mail plan §5, render 03). One form, served two ways: in
+// The compose sheet. One form, served two ways: in
 // Mail it is fetched into the reader column (handleVayuOSComposeSheet), so the
 // message being answered stays one click away; /os/vayumail/compose renders the
 // same sheet as the page, for a deep link or a browser without JavaScript.

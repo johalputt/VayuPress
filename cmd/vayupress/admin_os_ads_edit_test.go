@@ -23,7 +23,7 @@ func putAd(a *App, id, body string) *httptest.ResponseRecorder {
 	return rec
 }
 
-// An ad once placed could only be turned off or deleted (3cj). Saving an edit
+// An ad once placed could only be turned off or deleted. Saving an edit
 // changes what the slot shows; a member's paid ad keeps its review status, so
 // an edit cannot publish what the operator has not approved; and an edit the
 // store refuses leaves the slot as it was.

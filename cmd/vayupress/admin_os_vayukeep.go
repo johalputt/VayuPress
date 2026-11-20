@@ -429,7 +429,7 @@ func (p keepPrefs) withDefaults() keepPrefs {
 	return p
 }
 
-// osVayuKeepBody builds the Backups page: a Status page (render 05) once
+// osVayuKeepBody builds the Backups page: a Status page once
 // automatic backup is on or has been asked for, the Setup page until then.
 // proven is the newest restore point that passed a test restore.
 func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vayukeep.Generation, proven string, now time.Time, currentTarget string, envManaged bool, prefs keepPrefs, run string, places []backupPlace) string {

@@ -136,7 +136,7 @@ func (a *App) memberSnapshot(r *http.Request, m *members.Member) map[string]inte
 		}
 	}
 	// Otherwise the picture the member chose (a photo or a cartoon), which is
-	// also their mailbox's (3cv); the automatic one stays the initial.
+	// also their mailbox's; the automatic one stays the initial.
 	if _, has := mem["avatar"]; !has && m.AvatarChoice != "" {
 		mem["avatar"] = "/api/v1/members/avatar/" + m.ID + "?v=" + avatarVer(m.AvatarChoice, m.Gender)
 	}
@@ -268,7 +268,7 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 	// mailbox's, tried in the order the mail bridge (vayuMailBridge) and
 	// /os/login try them. This path knew only the second, so the owner, staff
 	// and authors, whose mailbox is their console account, were told their
-	// password did not match and had to sign in at /os (3ck). A handed-over
+	// password did not match and had to sign in at /os. A handed-over
 	// mailbox belongs to its client: the console account no longer opens it,
 	// here as over IMAP.
 	ctx := signinCtx

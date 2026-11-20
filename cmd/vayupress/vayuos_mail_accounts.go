@@ -153,7 +153,7 @@ func vayuCardForwarding(lang string, ac vmail.Account) string {
 }
 
 // vayuCardName is the name the mailbox's mail goes out under. It is the
-// holder's name on the site too: setPersonName writes both (3cs).
+// holder's name on the site too: setPersonName writes both.
 func vayuCardName(lang string, ac vmail.Account) string {
 	he := html.EscapeString(ac.Email)
 	return `<form class="vm-row vm-card-fwd" hx-post="/os/vayumail/aliases/action" hx-target="#vm-accounts-list" hx-swap="innerHTML">` +

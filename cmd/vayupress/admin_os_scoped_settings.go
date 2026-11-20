@@ -274,7 +274,7 @@ func scopedSettingsBody(domainID, host string, values map[string]string, pres pr
 		osStatTile("Presentation", presentationValue, "") +
 		`</div>`)
 
-	// ── The bands (house style §11) ───────────────────────────────────────────
+	// ── The bands ───────────────────────────────────────────
 	b.WriteString(`<div class="section-head"><span class="section-head__title">What this site says it is</span>` +
 		`<span class="section-head__hint">` + esc(host) + ` only</span></div>`)
 	b.WriteString(`<div class="mon-stack">`)

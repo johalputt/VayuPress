@@ -196,7 +196,7 @@ func (a *App) saHomeVisitors(cfg *osSettings) string {
 	}
 	// The figures are the same for everyone who may see them, so they come
 	// from the dashboard cache the Analytics page uses: Home is the console's
-	// first page and never waits on a count (3cm), and the warmer keeps them
+	// first page and never waits on a count, and the warmer keeps them
 	// fresh.
 	if frag, ready := adminDash.get(homeVisitorsKey, analyticsFragmentTTL, a.renderHomeVisitors); ready {
 		return frag

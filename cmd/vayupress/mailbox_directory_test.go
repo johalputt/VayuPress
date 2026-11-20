@@ -36,7 +36,7 @@ func TestTheMailboxTabWithNoMailboxNamedIsTheDirectoryForAnAdministrator(t *test
 		want      bool
 	}{
 		{"an administrator with no mailbox of their own wants every mailbox", true, "", "", false, true},
-		{"an administrator with a mailbox opens it (render 04)", true, "ankush", "", false, false},
+		{"an administrator with a mailbox opens it", true, "ankush", "", false, false},
 		{"an administrator asking for all mailboxes gets them", true, "ankush", "", true, true},
 		{"an administrator who named a mailbox wants that one", true, "ankush", "someone", true, false},
 		{"a non-admin never gets the directory, named or not", false, "", "", true, false},

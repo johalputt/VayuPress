@@ -62,7 +62,7 @@ func legacyPages(t *testing.T) map[string]string {
 // purpose since Halcyon: the three widgets whose pictographs moved into
 // aria-hidden spans, and the member portal, whose signed-in chip shows an
 // initial where it showed an emoji and which also turns the entries a theme
-// marks (3bk). Their ?v= names the new bytes, and that is the only
+// marks. Their ?v= names the new bytes, and that is the only
 // difference the shared pages may show.
 var scriptVersions = regexp.MustCompile(`/static/js/(trending|comments|search|portal)\.js\?v=[0-9a-f]+`)
 

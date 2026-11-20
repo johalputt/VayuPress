@@ -13,11 +13,11 @@ import (
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
-// The message list of the Mail redesign (plan §3.2, render 01): rows under
+// The message list of the Mail redesign: rows under
 // date groups, each with the sender, the time, the subject with its marks and
 // two lines of the message, in place of the table of From, Subject and Date.
 
-// Mail views are filters over the folder being read (plan §3.1). They store
+// Mail views are filters over the folder being read. They store
 // nothing: the folder's own listing is filtered after the header cache has
 // answered it. A Tab view is one of the Inbox's categories, drawn as a tab
 // over the list rather than in the sidebar; a Smart view is shown in the

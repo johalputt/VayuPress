@@ -52,7 +52,7 @@ func (a *App) handleOSThemeStore(w http.ResponseWriter, r *http.Request) {
 		activeLabel = active
 	}
 
-	// A gallery (fidelity plan §3, "kept as a gallery"): the title with its
+	// A gallery: the title with its
 	// count, one line of state, then the themes. The four figure tiles it
 	// opened on are gone: the counts read as the title's, and "0 external
 	// assets" was a zero drawn as a figure for what is a property of every

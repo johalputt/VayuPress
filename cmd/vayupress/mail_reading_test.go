@@ -12,7 +12,7 @@ import (
 	"github.com/johalputt/vayupress/internal/users"
 )
 
-// Mail's Reading choice (pipeline 3y): a person reads messages beside the
+// Mail's Reading choice: a person reads messages beside the
 // list or over it at full width, and the choice is theirs, kept on their
 // account (migration 104) so it follows them to every browser.
 func TestReadingIsKeptOnThePersonsOwnAccount(t *testing.T) {

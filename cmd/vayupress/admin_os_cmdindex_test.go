@@ -14,7 +14,7 @@ import (
 	"github.com/johalputt/vayupress/internal/users"
 )
 
-// The command bar's index is read by admin-os.js by these keys (render 03).
+// The command bar's index is read by admin-os.js by these keys.
 // It once shipped marshalling "Label", "Slug" and so on (untagged fields), so
 // every row rendered blank and a query threw. This holds the server's keys
 // against the script's reads.

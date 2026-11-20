@@ -368,7 +368,7 @@ test.describe("Halcyon", () => {
   test.describe("with the membership buttons on", () => {
     test.describe.configure({ mode: "default" });
 
-    // Sign out from the site signs out (3ci). It was a background fetch and a
+    // Sign out from the site signs out. It was a background fetch and a
     // reload that swallowed whatever answered, and for the owner, whose name in
     // the bar linked straight to the console, there was no Sign out at all. Two
     // stages: the owner with a real session against the real logout, then a
@@ -511,7 +511,7 @@ test.describe("Halcyon", () => {
 
     // The sign-in panel's messages are read in the site's colours. They were
     // pale mint and rose, written for the dark default, so on Halcyon the
-    // two-factor prompt could not be read (3ck). Both states, both schemes;
+    // two-factor prompt could not be read. Both states, both schemes;
     // the sign-in link's answer is stubbed to bring each one up. One test, not
     // one per scheme, because it turns the site's membership buttons on and off.
     test("the sign-in panel's messages reach their contrast", async ({ page }) => {

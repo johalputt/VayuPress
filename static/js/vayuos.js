@@ -31,7 +31,7 @@
     return !!d.successful || (status >= 200 && status < 300);
   }
 
-  /* ── Menus open from their trigger (Mail plan §8, item 9) ────────────
+  /* ── Menus open from their trigger ────────────
      One function for every popover in the console. When a panel opens it
      measures the control that opened it (or the pointer, for a context menu)
      and sets the panel's transform-origin at the nearest point of its own
@@ -89,7 +89,7 @@
      A details element opens and closes itself; what it lacks is closing when
      the pointer or focus goes elsewhere, Escape, and one-at-a-time. */
   var pops = Array.prototype.slice.call(document.querySelectorAll('details.sa-pop'));
-  // A panel closes back into its control (Mail plan §8, items 1 and 9): the
+  // A panel closes back into its control: the
   // exit plays from the origin openFrom set, then the details element shuts.
   // The panel takes no pointer meanwhile, so the next click lands where it is
   // aimed; with reduced motion there is no exit animation and it shuts at once.
@@ -316,7 +316,7 @@
 
   /* ── Control states: loading, then success or error ─────────────────────
      A write shows, on the control that started it, that it is working and
-     then how it went (plan §7). The toast says it once, elsewhere, and goes;
+     then how it went. The toast says it once, elsewhere, and goes;
      the control is where the operator is looking. One mechanism for every
      write, HTMX or fetch, so no page wires its own and none can forget.
      A fetch is credited to the button whose click handler started it: the

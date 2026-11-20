@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// Motion is on the tokens (Mail plan §8, "Tokens only"). In the Still Air
+// Motion is on the tokens. In the Still Air
 // console a transition or a one-off animation takes its duration from
 // --duration-micro, -standard or -major, never a literal, and moves only
 // what the compositor draws without laying the page out again: transform,

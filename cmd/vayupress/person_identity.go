@@ -15,8 +15,8 @@ import (
 // of the same address on the site are the same person, with one name and one
 // picture. Each was kept in its own store and changed only there, so a name
 // changed on the site account went out on mail under the name the mailbox was
-// created with (3cs), and a cartoon chosen in one place was the initials in
-// the other (3cv). Every change of either now writes both; the stores stay
+// created with, and a cartoon chosen in one place was the initials in
+// the other. Every change of either now writes both; the stores stay
 // two because each serves its own surface (a From header, a comment byline).
 
 // setPersonName gives the person at email the name in both stores. The mail
@@ -89,7 +89,7 @@ func cartoonChoice(n int) string { return "cartoon:" + itoaSafe(n) }
 
 // mailRoleLabel is how the console names a mailbox's role, in the words the
 // role picker uses. A mail-only session stands in for an author in the
-// console's permission checks, and was labelled Author for it (3cu).
+// console's permission checks, and was labelled Author for it.
 func mailRoleLabel(role string) string {
 	switch role {
 	case vmail.RoleMailbox:

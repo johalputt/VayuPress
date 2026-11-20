@@ -82,7 +82,7 @@ func getAccount(t *testing.T, a *App, c *http.Cookie, target string) string {
 	return rec.Body.String()
 }
 
-// The page is one grammar (3cx): sections laid open, one row per setting, no
+// The page is one grammar: sections laid open, one row per setting, no
 // folded boxes, no emoji headings, at most one filled button.
 func TestTheAccountPageIsOneGrammar(t *testing.T) {
 	for _, paid := range []bool{false, true} {

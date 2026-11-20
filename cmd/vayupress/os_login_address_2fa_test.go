@@ -26,7 +26,7 @@ func consoleLoginCode(a *App, pass, code, ip string) *httptest.ResponseRecorder 
 
 // /os/login let a mailbox password in on the mailbox's own second factor
 // alone, though the VayuOS account at the same address had two-factor on
-// (3cn, the console's half of what 3ck closed on the site). The code is now
+// (the console's half of what was closed on the site). The code is now
 // asked for; the account's code lets the mailbox in; and once the mailbox is
 // handed over, the account's two-factor no longer applies to it.
 func TestConsoleLoginAsksForTheAddresssSecondFactor(t *testing.T) {

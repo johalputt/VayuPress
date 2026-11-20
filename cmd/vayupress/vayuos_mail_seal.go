@@ -18,7 +18,7 @@ import (
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 )
 
-// The reader's security seal (Mail plan §3.3): one pill that states what was
+// The reader's security seal: one pill that states what was
 // verified about a message, in words. Its colour is the verdict's, never the
 // message's own say-so: a Content-Type of multipart/signed or a body that
 // carries an armoured block says only that a signature is present.

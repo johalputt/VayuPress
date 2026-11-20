@@ -14,7 +14,7 @@ import (
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
-// The reader (Mail plan §3.3, render 01): one row of tools, the subject, the
+// The reader: one row of tools, the subject, the
 // rest of the conversation folded above the message, the message's own head
 // with its seal, the words, the attachments, and a reply field docked at the
 // foot. The same card is the pane beside the list (pure HTMX) and the message
@@ -168,7 +168,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		c.WriteString(`<span class="mx-rtools__sep" aria-hidden="true"></span>`)
 	}
 	if !readOnly {
-		// In Junk the first thing offered is to say it is not (pipeline 3ab),
+		// In Junk the first thing offered is to say it is not,
 		// on the key that files a message there everywhere else.
 		if strings.EqualFold(folder, "Junk") {
 			tool("inbox", i18n.T(lang, "Not junk"), "!", paneVals("notjunk", "1"), `data-mail-notjunk`, false, i18n.T(lang, "Not junk"))
@@ -236,7 +236,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 	nav(olderID, "chev-d", i18n.T(lang, "Older message"), "j", "older")
 
 	if pane {
-		// Full width (pipeline 3y): the message is pushed over the list and
+		// Full width: the message is pushed over the list and
 		// takes its place, as compose's Expand does, and the bar's back button
 		// (shown whenever a message covers the list) returns to the columns.
 		// Hidden whenever the message already covers the list (admin-os-mail.js).
@@ -408,7 +408,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		for _, att := range pm.Attachments {
 			dl := "/os/vayumail/attachment?" + q + "&idx=" + itoaSafe(att.Index)
 			// The tile carries a ring the download fills and the tick it settles
-			// to (admin-os-mail.js, Mail plan §8 item 7).
+			// to (admin-os-mail.js).
 			c.WriteString(`<li><a class="mx-file" href="` + esc(dl) + `" download data-mx-file><span class="mx-file__type" aria-hidden="true">` + esc(mailFileType(att.Filename, att.ContentType)) +
 				`<svg class="mx-file__ring" viewBox="0 0 36 36"><circle cx="18" cy="18" r="16" pathLength="100"/></svg><span class="mx-file__tick">` + saIcon("check") + `</span></span>` +
 				`<span class="mx-file__meta"><span class="mx-file__name">` + esc(vmail.PlainName(att.Filename)) + `</span><span class="mx-file__size">` + esc(humanBytes(att.Size)) + `</span></span>` +
@@ -432,7 +432,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 	c.WriteString(`</article></div>`)
 
 	// A phone's message screen has its own bar in place of the tab bar
-	// (render 05): what a message most needs, at the thumb.
+	//: what a message most needs, at the thumb.
 	if pane && !readOnly {
 		c.WriteString(`<nav class="mx-phonebar" aria-label="` + esc(i18n.T(lang, "Message")) + `">`)
 		if strings.EqualFold(folder, "Junk") {
@@ -458,7 +458,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		if len(first) > 0 {
 			name = first[0]
 		}
-		// A field, not a link (Mail plan §3.3, pipeline 3z): what is typed in
+		// A field, not a link: what is typed in
 		// it becomes the reply, carried into the compose sheet it opens.
 		c.WriteString(`<div class="mx-dock"><input class="mx-dock__field" type="text" autocomplete="off" data-mx-quick-reply data-href="/os/vayumail/compose?reply=1&amp;` + esc(q) + `" placeholder="` + esc(i18n.T(lang, "Reply to {name}…", "name", name)) + `" aria-label="` + esc(i18n.T(lang, "Reply to {name}", "name", name)) + `">`)
 		if a.vayuPGP != nil {
@@ -625,7 +625,7 @@ func (a *App) handleVayuOSMessageBody(w http.ResponseWriter, r *http.Request) {
 }
 
 // mailCmd marks a control for the command bar, which offers what the page
-// offers by name (Mail plan §6): its label, where it acts, and its key.
+// offers by name: its label, where it acts, and its key.
 func mailCmd(label, where, key string) string {
 	out := ` data-cmd="` + esc(label) + `" data-cmd-where="` + esc(where) + `"`
 	if key != "" {

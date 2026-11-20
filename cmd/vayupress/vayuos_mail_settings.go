@@ -42,7 +42,7 @@ import (
 // mailboxSettingsSections builds every per-mailbox setting as one fragment. The
 // bool reports whether the mailbox exists.
 //
-// forHolder builds the holder's own page (3cl): the personal settings only.
+// forHolder builds the holder's own page: the personal settings only.
 // The address's aliases and its handover are the operator's, and recovery is
 // on the holder's Connect page already.
 func (a *App) mailboxSettingsSections(ctx context.Context, email string, forHolder bool) (string, bool) {
@@ -154,7 +154,7 @@ func (a *App) mailAccountByEmail(ctx context.Context, email string) (vmail.Accou
 //
 // A holder only ever gets their own page's sections back. The accounts list
 // names every mailbox on the server, and a control a holder may now use must
-// not answer with it (3cl).
+// not answer with it.
 func (a *App) acctRefresh(r *http.Request, email string) string {
 	if !a.isAdminRequest(r) {
 		sec, _ := a.mailboxSettingsSections(r.Context(), email, true)
@@ -171,7 +171,7 @@ func (a *App) acctRefresh(r *http.Request, email string) string {
 // isMailboxHolder reports whether email is this session's own mailbox: the
 // boundary app passwords and signatures already use (canManageAppPassword).
 // The holder of a mailbox manages its personal settings (the operator's
-// decision of 2026-10-17, 3cl); only an administrator manages the address
+// decision of 2026-10-17); only an administrator manages the address
 // itself.
 func (a *App) isMailboxHolder(r *http.Request, email string) bool {
 	_, own := a.ownMailbox(r)
@@ -329,7 +329,7 @@ func holderPasswordForm(lang string) string {
 // handleVayuOSMyPassword changes the holder's own password, proven by the
 // current one, through applyMailPasswordReset: the one path every mailbox
 // password change takes, so app passwords, sessions and reset links are
-// revoked and the holder is told, as for any reset (3cl).
+// revoked and the holder is told, as for any reset.
 func (a *App) handleVayuOSMyPassword(w http.ResponseWriter, r *http.Request) {
 	_, own := a.ownMailbox(r)
 	if own == "" || !a.mailRunning() || a.vayuMail.Accounts() == nil {

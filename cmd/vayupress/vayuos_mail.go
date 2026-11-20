@@ -141,7 +141,7 @@ next:
 // Reply/forward load the stored message (PGP-decrypted for the owner) so the
 // quoted text is readable, and a reopened draft restores the Cc/Bcc it was saved
 // with rather than quietly dropping recipients. A reply's quote comes back on
-// its own, for the sheet to fold away (Mail plan §5); the composer puts it
+// its own, for the sheet to fold away; the composer puts it
 // back under the reply when it sends, where insertSignature expects it.
 func (a *App) composePrefill(r *http.Request) (to, cc, bcc, subject, bodyText, quote string) {
 	q := r.URL.Query()
@@ -1083,7 +1083,7 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 
 // handleVayuOSAutoreplyAction saves a mailbox's autoresponder settings and
 // returns the refreshed card (HTMX swap). An administrator, or the mailbox's
-// holder (3cl).
+// holder.
 func (a *App) handleVayuOSAutoreplyAction(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", i18n.T(i18n.Lang(r.Context()), "VayuMail is not active"), "")
@@ -1147,7 +1147,7 @@ func (a *App) handleVayuOSAliasAction(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	// A holder may set where their own mail is forwarded and the name it goes
 	// out under; aliases are addresses on the operator's domain, and only an
-	// administrator gives them out (3cl, 3cs).
+	// administrator gives them out.
 	if op := r.FormValue("op"); !a.isAdminRequest(r) && (op != "forward-set" && op != "name-set" || !a.isMailboxHolder(r, r.FormValue("email"))) {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "administrators only"), "")
 		return

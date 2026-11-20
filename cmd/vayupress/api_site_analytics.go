@@ -2,7 +2,7 @@
 
 package main
 
-// api_site_analytics.go — one site's analytics over the API (row 5, §17):
+// api_site_analytics.go — one site's analytics over the API:
 // /api/v1/sites/{site}/analytics/…, where {site} is a site's id or its host.
 //
 // The install-wide /api/v1/analytics family adds up every site, so a key

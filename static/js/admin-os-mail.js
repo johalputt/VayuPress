@@ -11,7 +11,7 @@
 
   // Split reading pane: highlight the row whose message is open in the pane.
   // Delegated on document so it keeps working after the list is swapped by HTMX.
-  // Opening a message leaves the list where it is (Mail plan §8, item 5): the
+  // Opening a message leaves the list where it is: the
   // row turns selected in place and its unread mark goes, and nothing else in
   // the list moves. A refresh of the list (a reader action, the poll) marks the
   // open message's row again.
@@ -26,7 +26,7 @@
     openHref = link.getAttribute('href') || '';
     markOpen(link.closest('[data-vm-row]'));
   });
-  // The newest message is open when Mail opens (Mail plan, decision 3), but
+  // The newest message is open when Mail opens, but
   // it is marked read only once it has been on screen for two seconds, the way
   // Apple Mail's delay works: glancing past is not reading. Its row is the
   // selected one meanwhile, and keeps its unread mark until then.
@@ -60,8 +60,7 @@
         });
     }, 2000);
   }
-  // The reader's words arrive from the direction of travel (Mail plan §8,
-  // item 5): the older message comes up from below, the newer down from above.
+  // The reader's words arrive from the direction of travel: the older message comes up from below, the newer down from above.
   var travel = '';
   document.addEventListener('click', function (e) {
     var t = e.target && e.target.closest ? e.target.closest('[data-mx-travel]') : null;
@@ -76,7 +75,7 @@
   });
   settle();
 
-  // The mailbox switcher (Mail plan §4). Its search is focused as it opens,
+  // The mailbox switcher. Its search is focused as it opens,
   // so typing filters at once; the shell's popover code gives it the arrow
   // keys, Escape and the motion. Enter in the search opens the first match.
   var sw = document.querySelector('[data-mx-switch]');
@@ -305,7 +304,7 @@
   });
 
   // An attachment's download fills a ring on its tile, then settles to a tick
-  // (Mail plan §8, item 7). It is fetched to know how far it has come, then
+  //. It is fetched to know how far it has come, then
   // saved under its own name; anything that goes wrong falls back to the plain
   // download the link already is.
   document.addEventListener('click', function (e) {
@@ -349,7 +348,7 @@
     }).catch(fallBack);
   });
 
-  // ── Screens (Mail plan §7, render 05; pipeline 3y) ────────────────────────
+  // ── Screens ────────────────────────
   // The list comes first and a message is pushed over it; on a phone the
   // mailboxes are a screen above the list. <body data-mx-screen> says which
   // is showing; data-mx-move and data-mx-from let the stylesheet play the
@@ -555,7 +554,7 @@
 
   // ── Compose ────────────────────────────────────────────────────────────────
   // One composer, two homes: the compose page, and the sheet Mail opens over
-  // the reader (Mail plan §5). initCompose wires either and returns what the
+  // the reader. initCompose wires either and returns what the
   // sheet needs to close it: save what is written, or let it go.
   function initCompose(compose) {
     var cStatus = compose.querySelector('[data-c-status]');
@@ -909,7 +908,7 @@
         tray.appendChild(chip);
       });
     }
-    // Each added file slides into the row (Mail plan §8, item 7); the ones
+    // Each added file slides into the row; the ones
     // already there stay still.
     var shownFiles = 0;
     function addFiles(fileList) {
@@ -1496,7 +1495,7 @@
   var pageCompose = document.querySelector('form[data-mail-compose]');
   if (pageCompose) initCompose(pageCompose);
 
-  // ── The compose sheet in Mail (plan §5; motion §8 item 4) ─────────────────
+  // ── The compose sheet in Mail ─────────────────
   // Beside the list, every way into compose (the list's pencil, c, Reply,
   // Reply all, Forward, the reply field under a message) opens the sheet over
   // the reader instead of leaving the mailbox. It rises out of the control
@@ -1576,7 +1575,7 @@
       if (host.classList.contains('is-min') && e.target.closest('.mx-compose__head') && !e.target.closest('button')) host.classList.remove('is-min');
     });
     host.addEventListener('mx-compose-done', function () { sheet = null; sheetClose(); });
-    // The reply field under a message (Mail plan §3.3): the first thing typed
+    // The reply field under a message: the first thing typed
     // opens the reply, and everything typed is carried into it.
     document.addEventListener('input', function (e) {
       var f = e.target && e.target.closest ? e.target.closest('[data-mx-quick-reply]') : null;
@@ -1951,7 +1950,7 @@
     var printBtn = actions.querySelector('[data-mail-print]');
     if (printBtn) { printBtn.addEventListener('click', function () { window.print(); }); }
   }
-  // ── Mailbox list: selection mode (Mail plan §7, render 04) ───────────────────
+  // ── Mailbox list: selection mode ───────────────────
   // x, or a row's round check, starts selecting. The header becomes "N
   // selected · Select all · Done", a click on a row picks it instead of opening
   // it, and the reader column shows the picked messages with what can be done

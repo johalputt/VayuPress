@@ -86,7 +86,7 @@ func halcyonMemberPage(site *SiteSettings, page string, kind MemberPage, cfg the
 		// The site's bar is drawn signed out, for every reader alike, and the
 		// portal script turns it once /api/v1/members/me answers. Without it
 		// a signed-in reader's own account page offered Sign in and Subscribe
-		// under "Hello, <their name>" (3ct). The account page loads it under
+		// under "Hello, <their name>". The account page loads it under
 		// every theme (its Advertising and Choose your address open the
 		// panel), and is not given it twice.
 		if !strings.Contains(page, "/static/js/portal.js") {

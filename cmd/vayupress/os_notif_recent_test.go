@@ -15,7 +15,7 @@ import (
 	"github.com/johalputt/vayupress/internal/mode"
 )
 
-// The bell (render 09): what needs the operator, then what happened. The
+// The bell: what needs the operator, then what happened. The
 // badge counts the first in full and the second until it is marked read.
 
 func bellFixture(seen time.Time) *osSettings {

@@ -23,7 +23,7 @@ import (
 // index, it read that index end to end, visiting every row ever recorded to
 // test its date. On johal.in (532k pageviews, 280k visits) the live panel's
 // poll took 8 s at p95, and Home, which asks for the week's bounce rate and
-// visit length, took more than 15 s (3cm). Read by the time index, the same
+// visit length, took more than 15 s. Read by the time index, the same
 // queries cost what the window holds.
 //
 // The queries are not listed here: every one the Store issues is recorded on

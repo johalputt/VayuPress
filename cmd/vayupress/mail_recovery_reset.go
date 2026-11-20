@@ -45,7 +45,7 @@ const (
 	mailResetByBreakGlass mailResetReason = "break-glass"
 	mailResetByDevice     mailResetReason = "trusted-device"
 	// mailResetByHolder is the holder changing their own password from their
-	// mailbox settings, with the current one (3cl).
+	// mailbox settings, with the current one.
 	mailResetByHolder mailResetReason = "holder"
 )
 

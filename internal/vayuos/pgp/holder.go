@@ -61,7 +61,7 @@ type heldRing struct {
 	until time.Time
 }
 
-// lockConfig locks a key the way the VayuMail app unlocks it (3eo): Argon2,
+// lockConfig locks a key the way the VayuMail app unlocks it: Argon2,
 // which OpenPGP allows only with AEAD key protection.
 func lockConfig() *packet.Config {
 	return &packet.Config{S2KConfig: &s2k.Config{S2KMode: s2k.Argon2S2K}, AEADConfig: &packet.AEADConfig{}}

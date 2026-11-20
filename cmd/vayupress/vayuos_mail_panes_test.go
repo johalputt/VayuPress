@@ -13,7 +13,7 @@ import (
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
-// Mail in three panes (Mail plan §3.1): while a mailbox is open the Mail
+// Mail in three panes: while a mailbox is open the Mail
 // sidebar is that mailbox: who it is, its folders and views, the rest of Mail
 // folded away, and a foot with contacts, its rules and its storage.
 

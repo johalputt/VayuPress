@@ -97,7 +97,7 @@ func TestTheSitemapReadsOnlyItsCoveringIndex(t *testing.T) {
 }
 
 // The Posts page's list reads an index in date order and stops at the page,
-// on every tab (3cm). With is_page=0 as a plain equality SQLite took
+// on every tab. With is_page=0 as a plain equality SQLite took
 // idx_articles_is_page and sorted every post to find the newest 100: 0.6 s on
 // 235k posts, on the console page an editor opens most.
 func TestThePostsListStopsAtThePage(t *testing.T) {

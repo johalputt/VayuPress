@@ -15,7 +15,7 @@ import (
 	"github.com/johalputt/vayupress/internal/ui"
 )
 
-// The Settings app (plan §4, render 06): categories in the app sidebar, rows
+// The Settings app: categories in the app sidebar, rows
 // with the control on the right, a mark on every changed row, and one bar that
 // saves or discards them together.
 //

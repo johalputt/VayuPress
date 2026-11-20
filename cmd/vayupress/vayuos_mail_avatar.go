@@ -53,7 +53,7 @@ func (a *App) avatarAccountEmail(w http.ResponseWriter, r *http.Request, raw str
 }
 
 // handleVayuOSAvatarUpload stores a mailbox's profile picture and returns the
-// refreshed accounts list. An administrator or the mailbox's holder (3cl), CSRF-protected, multipart.
+// refreshed accounts list. An administrator or the mailbox's holder, CSRF-protected, multipart.
 func (a *App) handleVayuOSAvatarUpload(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", i18n.T(i18n.Lang(r.Context()), "VayuMail is not active"), "")
@@ -103,7 +103,7 @@ func (a *App) handleVayuOSAvatarUpload(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleVayuOSAvatarRemove clears a mailbox's profile picture (back to initials)
-// and returns the refreshed accounts list. An administrator or the mailbox's holder (3cl), CSRF-protected.
+// and returns the refreshed accounts list. An administrator or the mailbox's holder, CSRF-protected.
 func (a *App) handleVayuOSAvatarRemove(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", i18n.T(i18n.Lang(r.Context()), "VayuMail is not active"), "")
@@ -201,7 +201,7 @@ func cartoonIndexParam(raw string) int {
 // picture without uploading a file. The cartoon is a self-contained SVG generated
 // server-side (never client-supplied), stored like an uploaded picture and served
 // with X-Content-Type-Options: nosniff — an SVG referenced from <img> cannot run
-// scripts, so this is safe. An administrator or the mailbox's holder (3cl), CSRF-protected. Returns the refreshed list.
+// scripts, so this is safe. An administrator or the mailbox's holder, CSRF-protected. Returns the refreshed list.
 func (a *App) handleVayuOSAvatarCartoon(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", i18n.T(i18n.Lang(r.Context()), "VayuMail is not active"), "")

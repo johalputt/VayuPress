@@ -639,7 +639,7 @@ func TestALibraryImageCarriesItsSize(t *testing.T) {
 // html/template; whatever a config value holds stays inside its attribute.
 // The bar a site page carries is drawn signed out and turned by the portal
 // script, so a member page with the bar must load it: without it a signed-in
-// reader's own account page offered Sign in and Subscribe (3ct). A task page
+// reader's own account page offered Sign in and Subscribe. A task page
 // has no bar and gets none; with membership off no page does.
 func TestAMemberPageWithTheBarLoadsThePortal(t *testing.T) {
 	withHalcyon(t, nil)

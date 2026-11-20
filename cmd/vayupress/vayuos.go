@@ -1141,8 +1141,7 @@ func redirectLegacyVayuOS(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, next, http.StatusPermanentRedirect)
 }
 
-// handleVayuOSDashboard is Mail administration's Overview tab (fidelity plan
-// §6a): how much mail there is and whether it is moving, then the DNS
+// handleVayuOSDashboard is Mail administration's Overview tab: how much mail there is and whether it is moving, then the DNS
 // verdict, the mail domains and the services, as rows. For anyone but an
 // administrator it held only links their sidebar already has, so they are
 // taken to their mailbox instead.
@@ -1875,7 +1874,7 @@ var mailFolderIcons = map[string]string{
 }
 
 // mailFolderNav is the open mailbox's folders and views, as the Mail sidebar
-// shows them (plan §3.1). A list refresh sends it again out of band (oob), so
+// shows them. A list refresh sends it again out of band (oob), so
 // the current folder, the current view and the counts beside the list never
 // go stale while the list changes: a folder switch, a row action and the
 // new-mail poll all refresh it. viewCounts are the open folder's.
@@ -2079,7 +2078,7 @@ func mailSearchForm(lang, user, folder, search string, oob bool) string {
 	return b.String()
 }
 
-// mailSide is the open mailbox's sidebar (Mail plan §3.1), with folder and
+// mailSide is the open mailbox's sidebar, with folder and
 // view current; a page of the mailbox that is not a folder (Bring mail in)
 // passes "".
 func (a *App) mailSide(r *http.Request, rd vmail.Reader, folder, view string, viewCounts map[string]int) *osMailSide {
@@ -2106,7 +2105,7 @@ func (a *App) mailSide(r *http.Request, rd vmail.Reader, folder, view string, vi
 // It exists because "no mailbox named" means two different things depending on
 // who is asking, and a single condition that means two things is how the
 // directory came to be fenced off. For an administrator it means their own
-// mailbox when they have one (Mail opens on it, render 04) and every mailbox
+// mailbox when they have one (Mail opens on it) and every mailbox
 // when they do not, or when they ask for all of them (?all=1, the sidebar's
 // "All mailboxes"). For anyone else it means their account has no mailbox,
 // which is a refusal. Reading the directory is not a mail read and mints no
@@ -2205,8 +2204,8 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 		body.WriteString(a.sealedNotice(i18n.Lang(r.Context()), own, ""))
 	}
 	body.WriteString(`<span id="vm-inbox-spin" class="htmx-indicator vm-spin" aria-hidden="true">` + esc(i18n.T(lang, "loading…")) + `</span>`)
-	// The Mail plan's panes are their own kind, "app": the fidelity plan
-	// leaves Mail's anatomy to that plan's renders (§3).
+	// Mail's panes are a page kind of their own, "app", with an anatomy of
+	// their own.
 	split := `<div class="vm-split" data-page-kind="app"`
 	if side.FullOpen {
 		// Messages open over the list at full width (admin-os-mail.js).
@@ -2220,7 +2219,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`<div id="vm-inbox-list" class="` + listClass + `">`)
 	body.WriteString(list)
 	body.WriteString(`</div>`)
-	// The newest message is open from the start (Mail plan, decision 3), as
+	// The newest message is open from the start, as
 	// a peek: it is marked read only after two seconds on screen. Drafts open
 	// in compose, so their folder starts with nothing open.
 	pane := vayuReadpaneEmpty(lang, "")
@@ -2426,9 +2425,8 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 			title = esc(mailViewLabel(lang, v.Key)) + ` <span class="mx-head__in">` + esc(i18n.T(lang, "in {folder}", "folder", mailFolderLabel(lang, folder))) + `</span>`
 		}
 	}
-	// The header has two layers: the folder, and the selection (Mail plan §7,
-	// render 04). Selecting crossfades one into the other in place (§8 item 2).
-	// On a phone the list is one screen of three (Mail plan §7, render 05):
+	// The header has two layers: the folder, and the selection. Selecting crossfades one into the other in place.
+	// On a phone the list is one screen of three:
 	// its back goes up to the mailboxes. Shown at phone width alone.
 	b.WriteString(`<header class="mx-head"><div class="mx-head__main"><button type="button" class="mx-back mx-back--boxes" data-mx-go="boxes">` + saIcon("chev-l") + esc(i18n.T(lang, "Folders")) + `</button><h2 class="mx-head__title">` + title + `</h2>`)
 	switch {
@@ -2487,7 +2485,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int, sea
 	if len(msgs) > 0 {
 		inc := ` hx-include="[data-vm-scope],[data-vm-check]:checked" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin"`
 		// What can be done to the selection, shown in the reader column while
-		// messages are selected (render 04). A template, so it is part of each
+		// messages are selected. A template, so it is part of each
 		// render of the folder and admin-os-mail.js places a copy of it.
 		sel := func(icon, label, vals, extra string) string {
 			return `<button type="button" class="btn mx-selpanel__act" hx-post="/os/vayumail/inbox/action" hx-vals='` + vals + `'` + inc + extra + mailCmd(label, i18n.T(lang, "Selected messages"), "") + `>` + saIcon(icon) + esc(label) + `</button>`
@@ -2936,7 +2934,7 @@ type searchFilters struct {
 	unreadOnly, attach, fromScope  bool
 	// scope is the list's scope bar as sent (folder, all, from, attach).
 	scope string
-	// inList is the search in Mail's list (Mail plan §8, item 8): its
+	// inList is the search in Mail's list: its
 	// results are the list's own rows, not the search page's table.
 	inList bool
 }

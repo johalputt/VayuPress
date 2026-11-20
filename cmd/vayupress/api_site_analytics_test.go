@@ -74,7 +74,7 @@ type testKeyCtx struct{}
 
 // A key bound to one site reads that site through this family, and nothing
 // else: another site is not found, so a key cannot learn which sites an
-// install hosts, and the figures are that site's alone (row 5, §17).
+// install hosts, and the figures are that site's alone.
 func TestASiteKeyReadsItsOwnSiteAlone(t *testing.T) {
 	get := siteAPI(t)
 	bound := &apikeys.KeyInfo{ID: "k1", DomainID: "c1"}

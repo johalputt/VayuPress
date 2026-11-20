@@ -129,7 +129,7 @@ func TestSWRRefreshNonBlocking(t *testing.T) {
 // A stale page is rendered for the administrator who made it stale, and served
 // as it was to everyone else. A theme or settings save marks every page
 // stale; the operator reloading to see it was answered with the page from
-// before (3bl). Each page that serves stale copies (a post, Home), each kind
+// before. Each page that serves stale copies (a post, Home), each kind
 // of caller (a reader, a writer who is not an administrator, an
 // administrator), against the same stale copy.
 func TestAStalePageIsRenderedForTheOperatorAlone(t *testing.T) {

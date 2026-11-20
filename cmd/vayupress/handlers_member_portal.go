@@ -164,7 +164,7 @@ func (a *App) handleMemberAccountUpdate(w http.ResponseWriter, r *http.Request) 
 		name = name[:120]
 	}
 	// One name for the person: their mailbox at this address, when they hold
-	// one, sends under it too (3cs). setPersonName keeps the operator's note,
+	// one, sends under it too. setPersonName keeps the operator's note,
 	// which members cannot edit.
 	if err := a.setPersonName(r.Context(), m.Email, name); err != nil {
 		http.Error(w, "could not save", http.StatusInternalServerError)

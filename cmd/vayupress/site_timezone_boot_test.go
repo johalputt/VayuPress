@@ -15,7 +15,7 @@ import (
 )
 
 // The console reads in the time zone set in Settings from the moment it
-// starts, not from the next Settings save (pipeline 3ad: Home showed UTC on
+// starts, not from the next Settings save (Home showed UTC on
 // johal.in after an update restarted it).
 func TestTheStoredTimeZoneIsAppliedAtBoot(t *testing.T) {
 	newTestUserStore(t) // migrations, on a fresh database

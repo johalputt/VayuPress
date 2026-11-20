@@ -14,7 +14,7 @@ import (
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 )
 
-// The compose sheet (Mail plan §5): a reply's quote is folded away under it,
+// The compose sheet: a reply's quote is folded away under it,
 // not typed into the message; a forward's history is what is sent, so it
 // stays in the body. The sheet minimises, expands and closes; the page has
 // only its way back to the mailbox.

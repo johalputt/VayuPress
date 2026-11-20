@@ -103,7 +103,7 @@ func scopedSEOBody(domainID, origin string, declared map[string]string) string {
 		osStatTile("Scheme", schemeOf(origin), "") +
 		`</div>`)
 
-	// ── The bands, as collapsible details (house style §11) ──────────────────
+	// ── The bands, as collapsible details ──────────────────
 	b.WriteString(`<div class="section-head"><span class="section-head__title">What crawlers are told</span>` +
 		`<span class="section-head__hint">This domain only</span></div>`)
 	b.WriteString(`<div class="mon-stack">`)

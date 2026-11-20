@@ -6,7 +6,7 @@
 // of zero figures, forms loose in the page. This walk counts those on every
 // page the rail offers.
 //
-// It enforces (fidelity plan step 9). Every page says which kind it is
+// Every page says which kind it is
 // (data-page-kind) and is held to the rules outright. The one exception is
 // NOT_YET_CONVERTED: pages queued for a later release, which may get better
 // and never worse than their counts in anatomy-baseline.json. Any other page
@@ -20,8 +20,8 @@ const { test, expect } = require("@playwright/test");
 
 const BASELINE = path.join(__dirname, "anatomy-baseline.json");
 // The six kinds, and the three the plans keep by name: the theme store's
-// gallery and topology's diagram (fidelity plan §3), and "app", Mail and
-// Talk, whose anatomy is the Mail plan's renders (§3, "Mail | All").
+// gallery and topology's diagram, and "app", Mail and
+// Talk, whose anatomy is their own.
 const KINDS = ["overview", "list", "document", "settings", "status", "setup", "gallery", "diagram", "app"];
 // Kinds whose pages edit in place: everywhere else a form rises in a sheet.
 // An app's composer and search are its work, not a form loose in a page.
@@ -59,7 +59,7 @@ function anatomy() {
       getComputedStyle(e.parentElement).backgroundColor !== s.backgroundColor &&
       e.children.length <= 2 && t.length > 1 && t.length < 24 &&
       // Mail's avatars (.vm-av) are avatars, and a conversation's size
-      // (.mx-thread) is the Mail plan's count beside it, not a state.
+      // (.mx-thread) is a count beside it, not a state.
       !e.matches("button, a, input, kbd, select, code, .sa-dot, [class*=avatar], .vm-av, .mx-thread, [data-label]");
   }).length;
   // A live reading (data-live, ui.Figure.Live) is left out: whether Monitoring's
@@ -73,7 +73,7 @@ function anatomy() {
   // list's search (type=search, which Media filters with in place) and any
   // field of a GET form (a list's search, the pager's "go to page"), since a
   // GET changes nothing. A list's inspector edits the selected item where its
-  // values are shown (render 07: a file's alt text), which rule 5 allows; the
+  // values are shown (a file's alt text), which rule 5 allows; the
   // rule is that making something new rises in a sheet.
   // A field hidden from assistive technology (aria-hidden, as PGP's armour is
   // for its Copy button) is a page's machinery, not a form a person fills in.
@@ -196,7 +196,7 @@ test("Every Analytics view keeps to the page grammar", async ({ page }) => {
 // Mail's administration keeps to the page grammar where it is real: on the
 // install with Mail on. The walk above sees these pages as their setup state,
 // since Mail is off on its install, so they are held to the rules here,
-// outright (fidelity plan §6a), each as the tab it is.
+// outright, each as the tab it is.
 const MAIL_ADMIN = ["/os/vayumail", "/os/vayumail/accounts", "/os/vayumail/dns", "/os/vayumail/pgp", "/os/vayumail/security"];
 test("Mail's administration keeps to the page grammar, as tabs", async ({ page }) => {
   const base = process.env.MAIL_BASE_URL;
@@ -224,8 +224,8 @@ test("Mail's administration keeps to the page grammar, as tabs", async ({ page }
 
 // Mail's own pages with Mail on, held to the rules outright once the checks
 // they run are in: Outbox and Connect a device (8.12), the mailbox directory
-// an administrator opens Mail on, and the Mail plan's surfaces, a mailbox,
-// compose and Talk, as the "app" kind (step 9).
+// an administrator opens Mail on, and Mail's own surfaces, a mailbox,
+// compose and Talk, as the "app" kind.
 const MAIL_OWN = ["/os/vayumail/sent", "/os/vayumail/connect", "/os/vayumail/inbox", "/os/vayumail/inbox?user=ankush", "/os/vayumail/compose", "/os/vayumail/calendar", "/os/vayumail/calendar/booking", "/os/vayumail/drive", "/os/talk"];
 test("Mail's own pages keep to the page grammar", async ({ page }) => {
   const base = process.env.MAIL_BASE_URL;
