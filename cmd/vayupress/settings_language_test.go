@@ -9,8 +9,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/i18n"
+	"github.com/johalputt/vayupress/internal/mode"
 )
 
 // A Settings page is drawn in the page's language: its category, bands, rows
@@ -90,5 +92,42 @@ func TestTheSettingsScriptsWordsAreInThePagesLanguage(t *testing.T) {
 	}
 	if !strings.Contains(settingsPageScript, "sw('many'") {
 		t.Error("the page script does not read its words from the page")
+	}
+}
+
+// Settings speaks the person's language, its page title included.
+func TestSettingsIsInThePersonsLanguage(t *testing.T) {
+	if lang, _ := consoleLangOf("/os/settings/appearance"); lang != "de" {
+		t.Errorf("Settings is drawn in %q for a German browser", lang)
+	}
+	r := httptest.NewRequest(http.MethodGet, "/os/settings", nil)
+	rec := httptest.NewRecorder()
+	(&App{}).handleOSSettings(rec, r.WithContext(i18n.WithLang(r.Context(), "de")))
+	if !strings.Contains(rec.Body.String(), "<title>Identität der Website") {
+		t.Errorf("the German Settings page's title:\n%.400s", rec.Body.String())
+	}
+}
+
+// The shell around a page that speaks the person's language speaks it too:
+// the mode in the status area, its description, the strip a read-only mode
+// shows, and the world switch.
+func TestTheShellAroundAMovedPageIsInItsLanguage(t *testing.T) {
+	strip := saModeStrip("de", mode.ModeReadOnly, time.Time{}, false)
+	for _, want := range []string{"Nur lesen.", "Bis zum Ende verweigert: Beiträge und Seiten schreiben, veröffentlichen und löschen, ", " und "} {
+		if !strings.Contains(strip, want) {
+			t.Errorf("the German read-only strip lacks %q:\n%s", want, strip)
+		}
+	}
+	if got := modeDescriptionIn("de", mode.ModeNormal); !strings.HasPrefix(got, "Alle Subsysteme in Betrieb") {
+		t.Errorf("the German normal mode reads %q", got)
+	}
+	sw := spaceSwitch(accessAdmin, &osSettings{Lang: "de"})
+	for _, want := range []string{`aria-label="Welt wechseln"`, "Welten verwalten"} {
+		if !strings.Contains(sw, want) {
+			t.Errorf("the German world switch lacks %q:\n%s", want, sw)
+		}
+	}
+	if !strings.Contains(spaceSwitch(accessAdmin, &osSettings{}), `aria-label="Switch world"`) {
+		t.Error("a page with no language set has no English world switch")
 	}
 }

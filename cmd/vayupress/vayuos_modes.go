@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/ui"
@@ -190,20 +191,53 @@ document.addEventListener('click',function(e){var btn=e.target.closest('[data-mo
 
 // saModeStripText summarises what a mode refuses for the state strip, from the
 // same table as the System state page.
-func saModeStripText(m mode.Mode) string {
+func saModeStripText(lang string, m mode.Mode) string {
 	refused := saModeRefusals(m)
 	if len(refused) == 0 {
 		return ""
 	}
 	shown := refused
-	more := ""
 	if len(refused) > 3 {
 		shown = refused[:3]
-		more = fmt.Sprintf(" and %d more", len(refused)-3)
 	}
-	lower := make([]string, len(shown))
+	names := make([]string, len(shown))
 	for i, s := range shown {
-		lower[i] = strings.ToLower(s[:1]) + s[1:]
+		names[i] = saRefusalWord(lang, s)
 	}
-	return "Refused until it ends: " + strings.Join(lower, ", ") + more + "."
+	list := strings.Join(names, ", ")
+	if len(refused) > 3 {
+		return i18n.T(lang, "Refused until it ends: {list} and {n} more.", "list", list, "n", len(refused)-3)
+	}
+	return i18n.T(lang, "Refused until it ends: {list}.", "list", list)
+}
+
+// saRefusalWord names a refusal in lang as it reads inside the strip's
+// sentence. Each is its own lower-case sentence in the catalogue, not the
+// modes page's capitalised title lower-cased, because only English can make
+// one from the other: German keeps its nouns' capitals, and a translation's
+// first word is not the English one.
+func saRefusalWord(lang, what string) string {
+	switch what {
+	case "Writing, publishing and deleting posts and pages":
+		return i18n.T(lang, "writing, publishing and deleting posts and pages")
+	case "Saving a post's Markdown source":
+		return i18n.T(lang, "saving a post's Markdown source")
+	case "Uploading and importing media":
+		return i18n.T(lang, "uploading and importing media")
+	case "Changing the theme and the site icon":
+		return i18n.T(lang, "changing the theme and the site icon")
+	case "Link and diagram previews":
+		return i18n.T(lang, "link and diagram previews")
+	case "Regenerating the sitemap, RSS feed and robots.txt":
+		return i18n.T(lang, "regenerating the sitemap, RSS feed and robots.txt")
+	case "Announcing new posts to search engines (IndexNow)":
+		return i18n.T(lang, "announcing new posts to search engines (IndexNow)")
+	case "Installing updates":
+		return i18n.T(lang, "installing updates")
+	case "Keeping the site search index in step":
+		return i18n.T(lang, "keeping the site search index in step")
+	case "Running plugins":
+		return i18n.T(lang, "running plugins")
+	}
+	return strings.ToLower(what[:1]) + what[1:]
 }

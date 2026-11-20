@@ -328,7 +328,7 @@ func settingsNavEditor(ctx context.Context, a *App) ui.HTML {
 // navEditorHTML is the menu editor over navJSON, in lang; keyAttr names the
 // save its hidden input belongs to (data-setting-key or data-scoped-key).
 func navEditorHTML(lang, navJSON, keyAttr string) ui.HTML {
-	return ui.HTML(`<div class="settings-panel"><p class="settings-panel__lead">` + escFill(i18n.T(lang, "Point a link at a page of yours ({example}), a feed, or another site.", "example", htmlMark(0)), "<code>/about</code>") + `</p>
+	return ui.HTML(`<div class="settings-panel"><p class="settings-panel__lead">` + escFill(i18n.T(lang, "Point a link at a page of yours ({example}), a feed, or another site.", "example", htmlMark(0)), linkExampleHTML) + `</p>
   <div id="nav-editor" data-nav-json="` + html.EscapeString(navJSON) + `"></div>
   <button type="button" class="btn btn--sm" id="nav-add-btn">` + esc(i18n.T(lang, "Add link")) + `</button>
   <input type="hidden" id="nav-json-input" ` + keyAttr + `="` + settings.KeyNavItems + `" value="` + html.EscapeString(navJSON) + `"></div>`)
@@ -431,7 +431,7 @@ func settingsEmailFacts(ctx context.Context, a *App) ui.HTML {
 		facts = []ui.Fact{{Key: i18n.T(lang, "Sent through"), Value: ui.Text(i18n.T(lang, "Nothing: sign-in links and receipts cannot be sent"))}}
 	}
 	return ui.Join(ui.Facts(facts...),
-		ui.HTML(`<p class="settings-panel__lead">`+escFill(i18n.T(lang, "To send through another server, set {vars}, then restart. Without them, setting {domain} sends through VayuMail.", "vars", htmlMark(0), "domain", htmlMark(1)), smtpVarsHTML, "<code>DOMAIN</code>")+`</p>`),
+		ui.HTML(`<p class="settings-panel__lead">`+escFill(i18n.T(lang, "To send through another server, set {vars}, then restart. Without them, setting {domain} sends through VayuMail.", "vars", htmlMark(0), "domain", htmlMark(1)), smtpVarsHTML, domainVarHTML)+`</p>`),
 	)
 }
 
@@ -439,12 +439,21 @@ func settingsEmailFacts(ctx context.Context, a *App) ui.HTML {
 // which is not translated.
 const smtpVarsHTML = `<code>SMTP_HOST</code>, <code>SMTP_PORT</code>, <code>SMTP_USERNAME</code>, <code>SMTP_PASSWORD</code>, <code>SMTP_FROM</code>, <code>SMTP_TLS</code>`
 
+// The pieces of code the Settings sentences show, kept out of the sentences
+// because code is the same in every language: the variable that names the
+// mail domain, the start of a mailbox address, and an example path.
+const (
+	domainVarHTML   = `<code>DOMAIN</code>`
+	mailboxPattern  = "name@"
+	linkExampleHTML = `<code>/about</code>`
+)
+
 func settingsAdvancedFacts(ctx context.Context, _ *App) ui.HTML {
 	lang := i18n.Lang(ctx)
 	return ui.Join(
 		ui.Facts(ui.Fact{Key: i18n.T(lang, "Cache"), Value: `<span class="mono">` + ui.Text(config.Cfg.CacheDir) + `</span>`}),
 		ui.HTML(`<p class="settings-panel__lead">`+escFill(i18n.T(lang, "Exports, imports and restores are in {backups}; clearing the caches is in {storage}.", "backups", htmlMark(0), "storage", htmlMark(1)),
-			`<a href="/os/vayukeep">Backups</a>`, `<a href="/os/storage">Storage</a>`)+`</p>`),
+			`<a href="/os/vayukeep">`+esc(i18n.T(lang, "Backups"))+`</a>`, `<a href="/os/storage">`+esc(i18n.T(lang, "Storage"))+`</a>`)+`</p>`),
 	)
 }
 

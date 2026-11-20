@@ -583,15 +583,15 @@ func (a *App) teamRoster(ctx context.Context) string {
 		mailbox := `<span class="row-meta">` + esc(i18n.T(lang, "mail off")) + `</span>`
 		if mailEnabled {
 			if u.MailAddress != "" {
-				mailbox = esc(u.MailAddress) + ` ` +
+				mailbox = `<span translate="no">` + esc(u.MailAddress) + `</span> ` +
 					`<button class="btn btn--xs btn--ghost" type="button" data-assign-mailbox data-email="` + esc(u.Email) + `" data-domain="` + esc(mailDomain) + `" data-current="` + esc(u.MailAddress) + `">` + esc(i18n.T(lang, "Change")) + `</button>`
 			} else {
 				mailbox = `<button class="btn btn--xs" type="button" data-assign-mailbox data-email="` + esc(u.Email) + `" data-domain="` + esc(mailDomain) + `">` + esc(i18n.T(lang, "Assign email")) + `</button>`
 			}
 		}
 		rows += `<tr>
-  <td class="row-title"><a href="/author/` + esc(authorSlug(&u)) + `" target="_blank" rel="noopener">` + esc(u.Email) + `</a></td>
-  <td>` + name + `</td>
+  <td class="row-title" translate="no"><a href="/author/` + esc(authorSlug(&u)) + `" target="_blank" rel="noopener">` + esc(u.Email) + `</a></td>
+  <td translate="no">` + name + `</td>
   <td><select class="select input--sm" data-user-role data-email="` + esc(u.Email) + `">` + roleOptions(u.Role) + `</select></td>
   <td>` + mailbox + `</td>
   <td class="row-actions"><button class="btn btn--sm btn--danger" type="button" data-delete-user data-email="` + esc(u.Email) + `">` + esc(i18n.T(lang, "Remove")) + `</button></td>
@@ -604,10 +604,10 @@ func (a *App) teamRoster(ctx context.Context) string {
   <tbody>` + rows + `</tbody></table></div>`
 	}
 
-	mailNote := escFill(i18n.T(lang, "Set {domain} to give each new account a VayuMail mailbox of its own.", "domain", htmlMark(0)), "<code>DOMAIN</code>")
+	mailNote := escFill(i18n.T(lang, "Set {domain} to give each new account a VayuMail mailbox of its own.", "domain", htmlMark(0)), domainVarHTML)
 	if a.vayuMail != nil && a.vayuMail.Config().Enabled {
 		mailNote = escFill(i18n.T(lang, "Each new account is given a VayuMail mailbox ({address}) and a PGP key pair. Mailboxes and their passwords are under {accounts}.", "address", htmlMark(0), "accounts", htmlMark(1)),
-			`<code>name@`+esc(a.vayuMail.Config().Domain)+`</code>`, `<a href="/os/vayumail/accounts">`+esc(i18n.T(lang, "Mail accounts"))+`</a>`)
+			`<code>`+esc(mailboxPattern+a.vayuMail.Config().Domain)+`</code>`, `<a href="/os/vayumail/accounts">`+esc(i18n.T(lang, "Mail accounts"))+`</a>`)
 	}
 
 	return `<p class="field-hint">` + escFill(i18n.T(lang, "{admin} manages the team and settings · {editor} writes and manages all content · {author} writes their own. Each person edits their public profile under {profile}.", "admin", htmlMark(0), "editor", htmlMark(1), "author", htmlMark(2), "profile", htmlMark(3)),

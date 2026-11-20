@@ -22,7 +22,7 @@ import (
 // sentence written beside T fails TestAMovedPageHasNoEnglishOutsideT.
 var i18nMoved = map[string][]string{
 	"handlers_mail_recovery_pages.go": nil,
-	"admin_os_ui.go":                  {"osLoginPage"},
+	"admin_os_ui.go":                  {"osLoginPage", "spaceSwitch"},
 	"vayuos.go":                       nil,
 	"vayuos_shell.go":                 nil,
 	"vayuos_mail_blocked.go":          nil,
@@ -58,6 +58,11 @@ var i18nMoved = map[string][]string{
 	"vayuos_mail_contactgroups.go": nil,
 	"vayuos_mail_seal.go":          nil,
 	"vayuos_mail_avatar.go":        nil,
+	"settings_app.go":              nil,
+	"city_table.go":                {"settingsCityTable"},
+	"handlers_team.go":             {"teamRoleName", "teamRoster"},
+	"handlers_console.go":          {"modeDescriptionIn"},
+	"vayuos_modes.go":              {"saModeStripText"},
 	"vayuos_mail_drive_upload.go":  nil,
 	"vayuos_mail_export_api.go":    nil,
 	"vayuos_mail_privatekey.go":    nil,

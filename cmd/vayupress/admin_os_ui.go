@@ -1043,10 +1043,16 @@ func assetVer(rel string) string {
 // static indicator (you cannot turn a dedicated Tor install back to clearnet from
 // here — that is a separate install). CSP-safe: no inline styles or handlers, all
 // behaviour is wired by data attributes in the nonce-gated foot script.
-func spaceSwitch(lvl int, _ *osSettings) string {
+func spaceSwitch(lvl int, s *osSettings) string {
 	if lvl < accessAdmin {
 		return ""
 	}
+	lang := "en"
+	if s != nil && s.Lang != "" {
+		lang = s.Lang
+	}
+	clearnet, tor := esc(i18n.T(lang, "Clearnet")), esc(i18n.T(lang, "Tor"))
+	manage := `<a class="space-switch__manage" href="/os/spaces">` + esc(i18n.T(lang, "Manage worlds")) + `<span aria-hidden="true"> →</span></a>`
 	if config.Cfg.OnionMode {
 		// This install IS the Tor world. The Clearnet segment is ALWAYS a real link
 		// back to /os/world?target=clearnet — when managed from the parent console
@@ -1057,12 +1063,12 @@ func spaceSwitch(lvl int, _ *osSettings) string {
 		// The live .onion address itself is surfaced on the DASHBOARD now (world
 		// card), not crammed under the switch — the toggle stays a clean control.
 		return `<div class="space-switch-wrap">
-  <div class="space-switch" data-active="tor" role="group" aria-label="Active world">
+  <div class="space-switch" data-active="tor" role="group" aria-label="` + esc(i18n.T(lang, "Active world")) + `">
     <span class="space-switch__thumb" aria-hidden="true"></span>
-    <a class="space-switch__seg" data-world="clearnet" href="/os/world?target=clearnet">` + iconWorldClearnet + `<span>Clearnet</span></a>
-    <span class="space-switch__seg is-active" data-world="tor" aria-current="true">` + iconWorldTor + `<span>Tor</span></span>
+    <a class="space-switch__seg" data-world="clearnet" href="/os/world?target=clearnet">` + iconWorldClearnet + `<span>` + clearnet + `</span></a>
+    <span class="space-switch__seg is-active" data-world="tor" aria-current="true">` + iconWorldTor + `<span>` + tor + `</span></span>
   </div>
-  <a class="space-switch__manage" href="/os/spaces">Manage worlds<span aria-hidden="true"> →</span></a>
+  ` + manage + `
 </div>`
 	}
 	// This is the CLEARNET console (not OnionMode): rendering it at all means the
@@ -1077,12 +1083,12 @@ func spaceSwitch(lvl int, _ *osSettings) string {
 	// data-space-switch on a segment = "clicking me switches to this world":
 	// "on" enters the Tor world (this console proxies into it), "off" stays here.
 	return `<div class="space-switch-wrap">
-  <div class="space-switch" data-active="clearnet" role="group" aria-label="Switch world">
+  <div class="space-switch" data-active="clearnet" role="group" aria-label="` + esc(i18n.T(lang, "Switch world")) + `">
     <span class="space-switch__thumb" aria-hidden="true"></span>
-    <button type="button" class="space-switch__seg is-active" data-space-switch="off" data-world="clearnet" aria-pressed="true">` + iconWorldClearnet + `<span>Clearnet</span></button>
-    <button type="button" class="space-switch__seg" data-space-switch="on" data-world="tor" aria-pressed="false">` + iconWorldTor + `<span>Tor</span></button>
+    <button type="button" class="space-switch__seg is-active" data-space-switch="off" data-world="clearnet" aria-pressed="true">` + iconWorldClearnet + `<span>` + clearnet + `</span></button>
+    <button type="button" class="space-switch__seg" data-space-switch="on" data-world="tor" aria-pressed="false">` + iconWorldTor + `<span>` + tor + `</span></button>
   </div>
-  <a class="space-switch__manage" href="/os/spaces">Manage worlds<span aria-hidden="true"> →</span></a>
+  ` + manage + `
 </div>`
 }
 
@@ -3874,7 +3880,7 @@ func (a *App) handleOSSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	saveScript := settingsPageScript
-	fullHTML := adminOSShellHead(nonce, cat.Label, "settings", cfg) +
+	fullHTML := adminOSShellHead(nonce, settingsWord(i18n.Lang(r.Context()), cat.Label), "settings", cfg) +
 		renderTrustedHTML(htmpl.HTML(body)) +
 		adminOSShellFoot(nonce, saveScript, pageUsesAlpine(body))
 	writeOSHTML(w, r, fullHTML)

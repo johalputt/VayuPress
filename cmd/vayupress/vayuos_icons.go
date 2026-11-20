@@ -24,7 +24,7 @@ const osDesign = "Still Air"
 // set in the lighter weight so it reads as the release name and never
 // competes with the product's.
 func saEdition() string {
-	return `<span class="sa-edition">VayuOS <span class="sa-edition__name">` + osDesign + `</span></span>`
+	return `<span class="sa-edition">VayuOS <span class="sa-edition__name" translate="no">` + osDesign + `</span></span>`
 }
 
 // saMark draws the VayuPress mark as the brand's own image, not a redrawing:

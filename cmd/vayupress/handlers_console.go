@@ -14,6 +14,7 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/fault"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/ui"
@@ -26,21 +27,25 @@ import (
 // becomes observable from operator action.
 // =============================================================================
 
-// modeDescription says in one line what a runtime mode means for the install.
-func modeDescription(m mode.Mode) string {
+// modeDescription says in one line what a runtime mode means for the install,
+// in English; the shell's status area uses modeDescriptionIn.
+func modeDescription(m mode.Mode) string { return modeDescriptionIn("en", m) }
+
+// modeDescriptionIn is modeDescription in lang.
+func modeDescriptionIn(lang string, m mode.Mode) string {
 	switch m {
 	case mode.ModeNormal:
-		return "All subsystems operational · write queue active · policy engine enforcing · fault escalation armed"
+		return i18n.T(lang, "All subsystems operational · write queue active · policy engine enforcing · fault escalation armed")
 	case mode.ModeDegraded:
-		return "Partial functionality · non-critical paths disabled · escalation monitoring active"
+		return i18n.T(lang, "Partial functionality · non-critical paths disabled · escalation monitoring active")
 	case mode.ModeReadOnly:
-		return "Write queue paused · read path fully operational · WAL writes blocked"
+		return i18n.T(lang, "Write queue paused · read path fully operational · WAL writes blocked")
 	case mode.ModeRecovery:
-		return "Automated recovery in progress · reduced capacity · monitoring elevated"
+		return i18n.T(lang, "Automated recovery in progress · reduced capacity · monitoring elevated")
 	case mode.ModeMaintenance:
-		return "Scheduled maintenance window · writes paused · external traffic may be restricted"
+		return i18n.T(lang, "Scheduled maintenance window · writes paused · external traffic may be restricted")
 	case mode.ModeQuarantined:
-		return "Plugin invocations denied · sandbox execution blocked · immediate attention required"
+		return i18n.T(lang, "Plugin invocations denied · sandbox execution blocked · immediate attention required")
 	}
 	return ""
 }

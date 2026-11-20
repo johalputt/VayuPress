@@ -170,7 +170,7 @@ func settingsCityTable(ctx context.Context, a *App) ui.HTML {
 			state = esc(i18n.T(lang, "Waiting to download the table; it starts within a minute."))
 		}
 	}
-	f := settingField{ID: "s-cities", Key: settings.KeyAnalyticsCities, Label: "Name visitors' cities", Kind: "toggle", Default: "false", Instant: true}
+	f := settingField{ID: "s-cities", Key: settings.KeyAnalyticsCities, Label: i18n.T(lang, "Name visitors' cities"), Kind: "toggle", Default: "false", Instant: true}
 	hint := i18n.T(lang, "On, this install downloads DB-IP's free city table (CC BY 4.0, about 130 MB, into its data directory, again each month) and Analytics names the city and region of visitors no proxy header places. Addresses are looked up on this server and never sent anywhere; only the city and region names are kept. Off, the table is deleted. Saved as you switch it.")
 	return ui.Join(
 		ui.Rows(ui.Row{Label: i18n.T(lang, "Name visitors' cities"), Hint: hint, Control: settingControlIn(lang, f, a.savedSetting(ctx, f.Key)), ID: f.ID}),

@@ -316,21 +316,26 @@ func saLocate(apps []saApp, active, route string) (app *saApp, sec *saSection) {
 }
 
 // saModeLabel is the status-area wording for each mode: sentence case, and the
-// words an operator would say, not the engine's constant names.
-func saModeLabel(m mode.Mode) string {
+// words an operator would say, not the engine's constant names. The pages that
+// compose it into English sentences call this; the shell, which is drawn in
+// the page's language, calls saModeLabelIn.
+func saModeLabel(m mode.Mode) string { return saModeLabelIn("en", m) }
+
+// saModeLabelIn is saModeLabel in lang.
+func saModeLabelIn(lang string, m mode.Mode) string {
 	switch m {
 	case mode.ModeNormal:
-		return "Normal"
+		return i18n.T(lang, "Normal")
 	case mode.ModeDegraded:
-		return "Degraded"
+		return i18n.T(lang, "Degraded")
 	case mode.ModeReadOnly:
-		return "Read-only"
+		return i18n.T(lang, "Read-only")
 	case mode.ModeRecovery:
-		return "Recovering"
+		return i18n.T(lang, "Recovering")
 	case mode.ModeMaintenance:
-		return "Maintenance"
+		return i18n.T(lang, "Maintenance")
 	case mode.ModeQuarantined:
-		return "Quarantined"
+		return i18n.T(lang, "Quarantined")
 	}
 	return string(m)
 }
@@ -354,7 +359,7 @@ func saModeStrip(lang string, m mode.Mode, since time.Time, admin bool) string {
 	if m != mode.ModeReadOnly && m != mode.ModeQuarantined {
 		return ""
 	}
-	what := saModeStripText(m)
+	what := saModeStripText(lang, m)
 	when := ""
 	if !since.IsZero() {
 		when = " " + i18n.T(lang, "since {time}", "time", config.InSite(since).Format("15:04"))
@@ -364,7 +369,7 @@ func saModeStrip(lang string, m mode.Mode, since time.Time, admin bool) string {
 		details = `<a class="sa-strip__link" href="/os/modes">` + esc(i18n.T(lang, "Details")) + `</a>`
 	}
 	return `<div class="sa-strip sa-strip--` + saModeTone(m) + `" role="status">` + saIcon("warn") +
-		`<span class="sa-strip__text"><b>` + html.EscapeString(saModeLabel(m)+when) + `.</b> ` + html.EscapeString(what) + `</span>` + details + `</div>`
+		`<span class="sa-strip__text"><b>` + html.EscapeString(saModeLabelIn(lang, m)+when) + `.</b> ` + html.EscapeString(what) + `</span>` + details + `</div>`
 }
 
 // saInitials is the avatar fallback: up to two initials of the display name.
@@ -667,8 +672,8 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 	if m == "" {
 		m = mode.ModeNormal
 	}
-	modeDesc := modeDescription(m)
-	modeHTML := `<span class="sa-dot sa-dot--` + saModeTone(m) + `"></span>` + html.EscapeString(saModeLabel(m))
+	modeDesc := modeDescriptionIn(lang, m)
+	modeHTML := `<span class="sa-dot sa-dot--` + saModeTone(m) + `"></span>` + html.EscapeString(saModeLabelIn(lang, m))
 	if admin {
 		modeHTML = `<a class="sa-state sa-state--` + saModeTone(m) + `" href="/os/modes" title="` + html.EscapeString(modeDesc) + `">` + modeHTML + `</a>`
 	} else {

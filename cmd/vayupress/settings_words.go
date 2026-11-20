@@ -126,6 +126,8 @@ func settingsWord(lang, s string) string {
 		return i18n.T(lang, "Shown in the public site’s menu.")
 	case "Team":
 		return i18n.T(lang, "Team")
+	case "The people who run this site with you, and what each may do.":
+		return i18n.T(lang, "The people who run this site with you, and what each may do.")
 	case "Email delivery":
 		return i18n.T(lang, "Email delivery")
 	case "The server your site’s own email goes out through: sign-in links, receipts, newsletters.":
