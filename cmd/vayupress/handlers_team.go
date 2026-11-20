@@ -533,13 +533,27 @@ func (a *App) handleProfileSave(w http.ResponseWriter, r *http.Request) {
 // Team card (rendered inside the Members console for admins)
 // =============================================================================
 
+// teamRoleName names a staff role in lang.
+func teamRoleName(lang, role string) string {
+	switch role {
+	case users.RoleAdmin:
+		return i18n.T(lang, "Admin")
+	case users.RoleEditor:
+		return i18n.T(lang, "Editor")
+	case users.RoleAuthor:
+		return i18n.T(lang, "Author")
+	}
+	return role
+}
+
 // teamRoster renders Settings › Team: the staff with their roles and
 // mailboxes, and the form that adds one. It checks no role itself because
 // every /os/settings page already requires an admin (osPathMinLevel); it used
 // to be a card on Members, which carried that check.
 func (a *App) teamRoster(ctx context.Context) string {
+	lang := i18n.Lang(ctx)
 	if a == nil || a.userStore == nil {
-		return `<p class="table-empty">Accounts are not available on this install.</p>`
+		return `<p class="table-empty">` + esc(i18n.T(lang, "Accounts are not available on this install.")) + `</p>`
 	}
 	list, _ := a.userStore.List(ctx)
 	mailEnabled := a.vayuMail != nil && a.vayuMail.Config().Enabled
@@ -555,8 +569,7 @@ func (a *App) teamRoster(ctx context.Context) string {
 			if role == current {
 				sel = " selected"
 			}
-			label := strings.ToUpper(role[:1]) + role[1:]
-			opts += `<option value="` + role + `"` + sel + `>` + label + `</option>`
+			opts += `<option value="` + role + `"` + sel + `>` + esc(teamRoleName(lang, role)) + `</option>`
 		}
 		return opts
 	}
@@ -567,13 +580,13 @@ func (a *App) teamRoster(ctx context.Context) string {
 		if name == "" {
 			name = `<span class="row-meta">—</span>`
 		}
-		mailbox := `<span class="row-meta">mail off</span>`
+		mailbox := `<span class="row-meta">` + esc(i18n.T(lang, "mail off")) + `</span>`
 		if mailEnabled {
 			if u.MailAddress != "" {
 				mailbox = esc(u.MailAddress) + ` ` +
-					`<button class="btn btn--xs btn--ghost" type="button" data-assign-mailbox data-email="` + esc(u.Email) + `" data-domain="` + esc(mailDomain) + `" data-current="` + esc(u.MailAddress) + `">Change</button>`
+					`<button class="btn btn--xs btn--ghost" type="button" data-assign-mailbox data-email="` + esc(u.Email) + `" data-domain="` + esc(mailDomain) + `" data-current="` + esc(u.MailAddress) + `">` + esc(i18n.T(lang, "Change")) + `</button>`
 			} else {
-				mailbox = `<button class="btn btn--xs" type="button" data-assign-mailbox data-email="` + esc(u.Email) + `" data-domain="` + esc(mailDomain) + `">Assign email</button>`
+				mailbox = `<button class="btn btn--xs" type="button" data-assign-mailbox data-email="` + esc(u.Email) + `" data-domain="` + esc(mailDomain) + `">` + esc(i18n.T(lang, "Assign email")) + `</button>`
 			}
 		}
 		rows += `<tr>
@@ -581,41 +594,44 @@ func (a *App) teamRoster(ctx context.Context) string {
   <td>` + name + `</td>
   <td><select class="select input--sm" data-user-role data-email="` + esc(u.Email) + `">` + roleOptions(u.Role) + `</select></td>
   <td>` + mailbox + `</td>
-  <td class="row-actions"><button class="btn btn--sm btn--danger" type="button" data-delete-user data-email="` + esc(u.Email) + `">Remove</button></td>
+  <td class="row-actions"><button class="btn btn--sm btn--danger" type="button" data-delete-user data-email="` + esc(u.Email) + `">` + esc(i18n.T(lang, "Remove")) + `</button></td>
 </tr>`
 	}
-	table := `<p class="table-empty">No one yet.</p>`
+	table := `<p class="table-empty">` + esc(i18n.T(lang, "No one yet.")) + `</p>`
 	if rows != "" {
 		table = `<div class="table-wrap"><table class="table">
-  <thead><tr><th>Email</th><th>Name</th><th>Role</th><th>VayuMail</th><th></th></tr></thead>
+  <thead><tr><th>` + esc(i18n.T(lang, "Email")) + `</th><th>` + esc(i18n.T(lang, "Name")) + `</th><th>` + esc(i18n.T(lang, "Role")) + `</th><th>VayuMail</th><th></th></tr></thead>
   <tbody>` + rows + `</tbody></table></div>`
 	}
 
-	mailNote := `Set <code>DOMAIN</code> to auto-provision a sovereign VayuMail mailbox for each new account.`
+	mailNote := escFill(i18n.T(lang, "Set {domain} to give each new account a VayuMail mailbox of its own.", "domain", htmlMark(0)), "<code>DOMAIN</code>")
 	if a.vayuMail != nil && a.vayuMail.Config().Enabled {
-		mailNote = `New accounts are auto-provisioned a sovereign VayuMail mailbox (<code>name@` + esc(a.vayuMail.Config().Domain) + `</code>) and a PGP keypair. Manage mailboxes &amp; passwords under <a href="/os/vayumail/accounts">VayuMail → Mail accounts</a>.`
+		mailNote = escFill(i18n.T(lang, "Each new account is given a VayuMail mailbox ({address}) and a PGP key pair. Mailboxes and their passwords are under {accounts}.", "address", htmlMark(0), "accounts", htmlMark(1)),
+			`<code>name@`+esc(a.vayuMail.Config().Domain)+`</code>`, `<a href="/os/vayumail/accounts">`+esc(i18n.T(lang, "Mail accounts"))+`</a>`)
 	}
 
-	return `<p class="field-hint">Roles: <strong>Admin</strong> manages the team &amp; settings · <strong>Editor</strong> writes &amp; manages all content · <strong>Author</strong> writes their own content. Each member edits their public profile under <a href="/os/profile">My profile</a>.</p>
+	return `<p class="field-hint">` + escFill(i18n.T(lang, "{admin} manages the team and settings · {editor} writes and manages all content · {author} writes their own. Each person edits their public profile under {profile}.", "admin", htmlMark(0), "editor", htmlMark(1), "author", htmlMark(2), "profile", htmlMark(3)),
+		"<strong>"+esc(teamRoleName(lang, users.RoleAdmin))+"</strong>", "<strong>"+esc(teamRoleName(lang, users.RoleEditor))+"</strong>", "<strong>"+esc(teamRoleName(lang, users.RoleAuthor))+"</strong>",
+		`<a href="/os/profile">`+esc(i18n.T(lang, "My profile"))+`</a>`) + `</p>
   ` + table + `
-  <h3 class="settings-panel__title">Add someone</h3>
+  <h3 class="settings-panel__title">` + esc(i18n.T(lang, "Add someone")) + `</h3>
   <form data-new-user>
     <div class="grid grid-2 gap-3">
-      <label class="field"><span class="field-label">Email</span>
+      <label class="field"><span class="field-label">` + esc(i18n.T(lang, "Email")) + `</span>
         <input class="input" type="email" data-u-email required placeholder="name@example.com"></label>
-      <label class="field"><span class="field-label">Name</span>
-        <input class="input" type="text" data-u-name placeholder="Full name"></label>
-      <label class="field"><span class="field-label">Password (min 8)</span>
+      <label class="field"><span class="field-label">` + esc(i18n.T(lang, "Name")) + `</span>
+        <input class="input" type="text" data-u-name placeholder="` + esc(i18n.T(lang, "Full name")) + `"></label>
+      <label class="field"><span class="field-label">` + esc(i18n.T(lang, "Password (at least 8 characters)")) + `</span>
         <input class="input" type="password" data-u-pass required minlength="8" placeholder="••••••••"></label>
-      <label class="field"><span class="field-label">Role</span>
+      <label class="field"><span class="field-label">` + esc(i18n.T(lang, "Role")) + `</span>
         <select class="select" data-u-role>
-          <option value="author" selected>Author</option>
-          <option value="editor">Editor</option>
-          <option value="admin">Admin</option>
+          <option value="author" selected>` + esc(teamRoleName(lang, users.RoleAuthor)) + `</option>
+          <option value="editor">` + esc(teamRoleName(lang, users.RoleEditor)) + `</option>
+          <option value="admin">` + esc(teamRoleName(lang, users.RoleAdmin)) + `</option>
         </select></label>
     </div>
     <div class="vm-row mt-3">
-      <button class="btn btn--primary btn--sm" type="submit">Create account</button>
+      <button class="btn btn--primary btn--sm" type="submit">` + esc(i18n.T(lang, "Create account")) + `</button>
       <span class="muted text-sm" data-team-status></span>
     </div>
   </form>

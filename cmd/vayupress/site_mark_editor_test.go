@@ -57,7 +57,7 @@ func TestAHostedSitesMarkIsEditedOnItsSettingsPage(t *testing.T) {
 	if own := scopedSettingsBody("d1", "notes.example.com", map[string]string{}, presDefault, scopedExtras{OwnMark: true}); !strings.Contains(own, `src="/os/d/d1/branding/mark?t=`) {
 		t.Error("the site's own mark is not shown")
 	}
-	if !strings.Contains(string(siteMarkHTML("/favicon.ico", "/favicon.ico", "/os/api/branding/favicon", false)), `src="/favicon.ico?t=`) {
+	if !strings.Contains(string(siteMarkHTML("en", "/favicon.ico", "/favicon.ico", "/os/api/branding/favicon", false)), `src="/favicon.ico?t=`) {
 		t.Error("the install's mark editor shows no preview of the default")
 	}
 	if !strings.Contains(scopedSettingsScript("n"), siteMarkScript) || !strings.Contains(settingsPageScript, siteMarkScript) {

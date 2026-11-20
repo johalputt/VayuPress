@@ -253,7 +253,8 @@ func settingsPageBody(ctx context.Context, a *App, c settingsCategory) ui.HTML {
 		}
 		sections = append(sections, ui.Section(settingsWord(lang, g.Title), settingsWord(lang, g.Hint), body))
 	}
-	return ui.SettingsPage(settingsWord(lang, c.Label), "", settingsWord(lang, c.Sub), append(sections, ui.SaveBar())...)
+	bar := ui.SaveBarSaying(i18n.T(lang, "Discard"), i18n.T(lang, "Save changes"))
+	return ui.SettingsPage(settingsWord(lang, c.Label), "", settingsWord(lang, c.Sub), append(sections, bar, settingsScriptWords(lang))...)
 }
 
 // settingsEntry is one findable setting: a row, or a band drawn by its own
@@ -321,15 +322,15 @@ func settingsNavEditor(ctx context.Context, a *App) ui.HTML {
 		// The editor starts from the menu readers see now, not a blank list.
 		navJSON = `[{"label":"Home","href":"/"},{"label":"Feed","href":"/feed.xml"},{"label":"Console","href":"/admin"}]`
 	}
-	return navEditorHTML(navJSON, "data-setting-key")
+	return navEditorHTML(i18n.Lang(ctx), navJSON, "data-setting-key")
 }
 
-// navEditorHTML is the menu editor over navJSON; keyAttr names the save its
-// hidden input belongs to (data-setting-key or data-scoped-key).
-func navEditorHTML(navJSON, keyAttr string) ui.HTML {
-	return ui.HTML(`<div class="settings-panel"><p class="settings-panel__lead">Point a link at a page of yours (<code>/about</code>), a feed, or another site.</p>
+// navEditorHTML is the menu editor over navJSON, in lang; keyAttr names the
+// save its hidden input belongs to (data-setting-key or data-scoped-key).
+func navEditorHTML(lang, navJSON, keyAttr string) ui.HTML {
+	return ui.HTML(`<div class="settings-panel"><p class="settings-panel__lead">` + escFill(i18n.T(lang, "Point a link at a page of yours ({example}), a feed, or another site.", "example", htmlMark(0)), "<code>/about</code>") + `</p>
   <div id="nav-editor" data-nav-json="` + html.EscapeString(navJSON) + `"></div>
-  <button type="button" class="btn btn--sm" id="nav-add-btn">Add link</button>
+  <button type="button" class="btn btn--sm" id="nav-add-btn">` + esc(i18n.T(lang, "Add link")) + `</button>
   <input type="hidden" id="nav-json-input" ` + keyAttr + `="` + settings.KeyNavItems + `" value="` + html.EscapeString(navJSON) + `"></div>`)
 }
 
@@ -342,44 +343,44 @@ func settingsFooterEditor(ctx context.Context, a *App) ui.HTML {
 	if strings.TrimSpace(footerJSON) == "" {
 		footerJSON = defaultFooterSeed
 	}
-	return footerEditorHTML(footerJSON, "data-setting-key")
+	return footerEditorHTML(i18n.Lang(ctx), footerJSON, "data-setting-key")
 }
 
-// footerEditorHTML is the footer editor over footerJSON; keyAttr as for
-// navEditorHTML.
-func footerEditorHTML(footerJSON, keyAttr string) ui.HTML {
-	esc := html.EscapeString(footerJSON)
+// footerEditorHTML is the footer editor over footerJSON, in lang; keyAttr
+// as for navEditorHTML.
+func footerEditorHTML(lang, footerJSON, keyAttr string) ui.HTML {
+	seed := html.EscapeString(footerJSON)
 	return ui.Join(
 		ui.Rows(
-			ui.Row{Label: "Tagline", Hint: "A line under your brand.", ID: "footer-tagline",
-				Control: `<input id="footer-tagline" class="input" type="text" placeholder="A short line">`},
-			ui.Row{Label: "Copyright", Hint: "{year} is this year, {site} your site’s name.", ID: "footer-copyright",
-				Control: `<input id="footer-copyright" class="input" type="text" placeholder="© {year} {site}. All rights reserved.">`},
+			ui.Row{Label: i18n.T(lang, "Tagline"), Hint: i18n.T(lang, "A line under your brand."), ID: "footer-tagline",
+				Control: ui.HTML(`<input id="footer-tagline" class="input" type="text" placeholder="` + esc(i18n.T(lang, "A short line")) + `">`)},
+			ui.Row{Label: i18n.T(lang, "Copyright"), Hint: i18n.T(lang, "{year} is this year, {site} your site’s name.", "year", "{year}", "site", "{site}"), ID: "footer-copyright",
+				Control: ui.HTML(`<input id="footer-copyright" class="input" type="text" placeholder="` + esc(i18n.T(lang, "© {year} {site}. All rights reserved.", "year", "{year}", "site", "{site}")) + `">`)},
 		),
 		ui.HTML(`<div class="settings-panel">
-  <h3 class="settings-panel__title">Link columns</h3><div id="footer-cols"></div>
-  <button type="button" class="btn btn--sm" id="footer-add-col">Add column</button>
-  <h3 class="settings-panel__title">Social links</h3><div id="footer-social"></div>
-  <button type="button" class="btn btn--sm" id="footer-add-social">Add social link</button>
-  <h3 class="settings-panel__title">Legal links</h3><p class="settings-panel__lead">Beside the copyright: Privacy, Terms, Cookies.</p><div id="footer-legal"></div>
-  <button type="button" class="btn btn--sm" id="footer-add-legal">Add legal link</button>
-  <input type="hidden" id="footer-json-input" `+keyAttr+`="`+settings.KeyFooterConfig+`" data-footer-seed="`+esc+`" value="`+esc+`"></div>`),
+  <h3 class="settings-panel__title">`+esc(i18n.T(lang, "Link columns"))+`</h3><div id="footer-cols"></div>
+  <button type="button" class="btn btn--sm" id="footer-add-col">`+esc(i18n.T(lang, "Add column"))+`</button>
+  <h3 class="settings-panel__title">`+esc(i18n.T(lang, "Social links"))+`</h3><div id="footer-social"></div>
+  <button type="button" class="btn btn--sm" id="footer-add-social">`+esc(i18n.T(lang, "Add social link"))+`</button>
+  <h3 class="settings-panel__title">`+esc(i18n.T(lang, "Legal links"))+`</h3><p class="settings-panel__lead">`+esc(i18n.T(lang, "Beside the copyright: Privacy, Terms, Cookies."))+`</p><div id="footer-legal"></div>
+  <button type="button" class="btn btn--sm" id="footer-add-legal">`+esc(i18n.T(lang, "Add legal link"))+`</button>
+  <input type="hidden" id="footer-json-input" `+keyAttr+`="`+settings.KeyFooterConfig+`" data-footer-seed="`+seed+`" value="`+seed+`"></div>`),
 	)
 }
 
 func settingsSiteMark(ctx context.Context, a *App) ui.HTML {
 	// The install's /favicon.ico answers the product's mark when none is
 	// uploaded, so its preview always has something to show.
-	return siteMarkHTML("/favicon.ico", "/favicon.ico", "/os/api/branding/favicon", a.savedSetting(ctx, settings.KeyBrandFavicon) != "")
+	return siteMarkHTML(i18n.Lang(ctx), "/favicon.ico", "/favicon.ico", "/os/api/branding/favicon", a.savedSetting(ctx, settings.KeyBrandFavicon) != "")
 }
 
 // siteMarkHTML is the mark editor: the mark served at src, uploaded to post.
 // defaultSrc shows when there is no own mark; blank, the preview is hidden
 // then, for a route that answers 404 rather than another site's mark.
-func siteMarkHTML(src, defaultSrc, post string, own bool) ui.HTML {
-	state, show := "Using the default mark.", defaultSrc
+func siteMarkHTML(lang, src, defaultSrc, post string, own bool) ui.HTML {
+	state, show := i18n.T(lang, "Using the default mark."), defaultSrc
 	if own {
-		state, show = "Your own mark, stored in the database.", src
+		state, show = i18n.T(lang, "Your own mark, stored in the database."), src
 	}
 	// No src at all when there is nothing to show: a hidden image still loads.
 	shown := ` hidden`
@@ -388,20 +389,21 @@ func siteMarkHTML(src, defaultSrc, post string, own bool) ui.HTML {
 	}
 	img := `<img id="brand-favicon-img" class="settings-mark__img"` + shown +
 		` data-mark-src="` + html.EscapeString(src) + `" data-mark-default="` + html.EscapeString(defaultSrc) + `" data-mark-post="` + html.EscapeString(post) +
-		`" alt="Current site mark" width="40" height="40">`
-	return ui.Rows(ui.Row{Label: "Site mark", Hint: "The browser tab icon and the logo in the public menu. PNG or ICO, square, up to 256 KB. Applies at once.",
+		`" alt="` + esc(i18n.T(lang, "Current site mark")) + `" width="40" height="40">`
+	return ui.Rows(ui.Row{Label: i18n.T(lang, "Site mark"), Hint: i18n.T(lang, "The browser tab icon and the logo in the public menu. PNG or ICO, square, up to 256 KB. Applies at once."),
 		Control: ui.HTML(`<div class="settings-mark">` + img +
 			`<span class="settings-mark__state" id="brand-favicon-state">` + html.EscapeString(state) + `</span>` +
-			`<input type="file" id="brand-favicon-file" class="settings-mark__file" accept="image/png,image/x-icon,.png,.ico" aria-label="Choose a mark">` +
-			`<button type="button" class="btn btn--sm" id="brand-favicon-upload">Upload</button>` +
-			`<button type="button" class="btn btn--ghost btn--sm" id="brand-favicon-remove">Use the default</button>` +
+			`<input type="file" id="brand-favicon-file" class="settings-mark__file" accept="image/png,image/x-icon,.png,.ico" aria-label="` + esc(i18n.T(lang, "Choose a mark")) + `">` +
+			`<button type="button" class="btn btn--sm" id="brand-favicon-upload">` + esc(i18n.T(lang, "Upload")) + `</button>` +
+			`<button type="button" class="btn btn--ghost btn--sm" id="brand-favicon-remove">` + esc(i18n.T(lang, "Use the default")) + `</button>` +
 			`<span id="brand-favicon-status" class="settings-mark__status" role="status" aria-live="polite"></span></div>`)})
 }
 
 // settingsEmailFacts says how this install's own mail actually leaves it:
 // through SMTP_HOST when one is set, otherwise through the built-in VayuMail
 // engine (main.go wires it as the mailer's fallback), otherwise not at all.
-func settingsEmailFacts(_ context.Context, a *App) ui.HTML {
+func settingsEmailFacts(ctx context.Context, a *App) ui.HTML {
+	lang := i18n.Lang(ctx)
 	mono := func(v string) ui.HTML { return `<span class="mono">` + ui.Text(v) + `</span>` }
 	var facts []ui.Fact
 	switch {
@@ -410,33 +412,39 @@ func settingsEmailFacts(_ context.Context, a *App) ui.HTML {
 		if security == "" {
 			security = "starttls"
 		}
-		signin := ui.Text("Nobody: the server takes mail without a sign-in")
+		signin := ui.Text(i18n.T(lang, "Nobody: the server takes mail without a sign-in"))
 		if config.Cfg.SMTPUsername != "" {
 			signin = mono(config.Cfg.SMTPUsername)
 		}
 		facts = []ui.Fact{
-			{Key: "Sent through", Value: mono(config.Cfg.SMTPHost + ":" + strconv.Itoa(config.Cfg.SMTPPort))},
-			{Key: "From", Value: mono(config.Cfg.SMTPFrom)},
-			{Key: "Signs in as", Value: signin},
-			{Key: "Security", Value: mono(security)},
+			{Key: i18n.T(lang, "Sent through"), Value: mono(config.Cfg.SMTPHost + ":" + strconv.Itoa(config.Cfg.SMTPPort))},
+			{Key: i18n.T(lang, "From"), Value: mono(config.Cfg.SMTPFrom)},
+			{Key: i18n.T(lang, "Signs in as"), Value: signin},
+			{Key: i18n.T(lang, "Security"), Value: mono(security)},
 		}
 	case a != nil && a.vayuMail != nil && a.vayuMail.Config().Enabled:
 		facts = []ui.Fact{
-			{Key: "Sent through", Value: ui.Text("This server’s own mail engine, VayuMail")},
-			{Key: "From", Value: mono(a.transactionalFrom())},
+			{Key: i18n.T(lang, "Sent through"), Value: ui.Text(i18n.T(lang, "This server’s own mail engine, VayuMail"))},
+			{Key: i18n.T(lang, "From"), Value: mono(a.transactionalFrom())},
 		}
 	default:
-		facts = []ui.Fact{{Key: "Sent through", Value: ui.Text("Nothing: sign-in links and receipts cannot be sent")}}
+		facts = []ui.Fact{{Key: i18n.T(lang, "Sent through"), Value: ui.Text(i18n.T(lang, "Nothing: sign-in links and receipts cannot be sent"))}}
 	}
 	return ui.Join(ui.Facts(facts...),
-		ui.HTML(`<p class="settings-panel__lead">To send through another server, set <code>SMTP_HOST</code>, <code>SMTP_PORT</code>, <code>SMTP_USERNAME</code>, <code>SMTP_PASSWORD</code>, <code>SMTP_FROM</code> and <code>SMTP_TLS</code>, then restart. Without them, setting <code>DOMAIN</code> sends through VayuMail.</p>`),
+		ui.HTML(`<p class="settings-panel__lead">`+escFill(i18n.T(lang, "To send through another server, set {vars}, then restart. Without them, setting {domain} sends through VayuMail.", "vars", htmlMark(0), "domain", htmlMark(1)), smtpVarsHTML, "<code>DOMAIN</code>")+`</p>`),
 	)
 }
 
-func settingsAdvancedFacts(_ context.Context, _ *App) ui.HTML {
+// smtpVarsHTML names the variables that send through another server: code,
+// which is not translated.
+const smtpVarsHTML = `<code>SMTP_HOST</code>, <code>SMTP_PORT</code>, <code>SMTP_USERNAME</code>, <code>SMTP_PASSWORD</code>, <code>SMTP_FROM</code>, <code>SMTP_TLS</code>`
+
+func settingsAdvancedFacts(ctx context.Context, _ *App) ui.HTML {
+	lang := i18n.Lang(ctx)
 	return ui.Join(
-		ui.Facts(ui.Fact{Key: "Cache", Value: `<span class="mono">` + ui.Text(config.Cfg.CacheDir) + `</span>`}),
-		ui.HTML(`<p class="settings-panel__lead">Exports, imports and restores are in <a href="/os/vayukeep">Backups</a>; clearing the caches is in <a href="/os/storage">Storage</a>.</p>`),
+		ui.Facts(ui.Fact{Key: i18n.T(lang, "Cache"), Value: `<span class="mono">` + ui.Text(config.Cfg.CacheDir) + `</span>`}),
+		ui.HTML(`<p class="settings-panel__lead">`+escFill(i18n.T(lang, "Exports, imports and restores are in {backups}; clearing the caches is in {storage}.", "backups", htmlMark(0), "storage", htmlMark(1)),
+			`<a href="/os/vayukeep">Backups</a>`, `<a href="/os/storage">Storage</a>`)+`</p>`),
 	)
 }
 
@@ -453,7 +461,7 @@ func settingsLayout(nonce, title, active string, cfg *osSettings, body htmpl.HTM
 // letter and deleting it is no change) and Save sends only those, one at a
 // time (one SQLite writer). The menu and footer editors keep a hidden input in
 // step, and take part like any other row.
-const settingsPageScript = `function csrf(){return window.vpCsrf();} // admin-os.js loads after this script
+const settingsPageScript = settingsWordsJS + `function csrf(){return window.vpCsrf();} // admin-os.js loads after this script
 var bar=document.querySelector('[data-settings-bar]');
 var countEl=document.querySelector('[data-settings-count]');
 function fields(){return Array.prototype.slice.call(document.querySelectorAll('[data-setting-key]'));}
@@ -465,7 +473,7 @@ function refresh(){
   var c=changed();
   fields().forEach(function(el){var row=rowOf(el);if(row)row.classList.toggle('is-changed',c.indexOf(el)>=0);});
   if(!bar)return;
-  if(c.length){countEl.textContent=c.length===1?'1 unsaved change':c.length+' unsaved changes';bar.hidden=false;requestAnimationFrame(function(){bar.classList.add('is-up');});}
+  if(c.length){countEl.textContent=c.length===1?sw('one','1 unsaved change'):sw('many','{n} unsaved changes').replace('{n}',c.length);bar.hidden=false;requestAnimationFrame(function(){bar.classList.add('is-up');});}
   else{bar.classList.remove('is-up');bar.hidden=true;}
 }
 window.vpSettingsRefresh=refresh;
@@ -494,7 +502,7 @@ function saveOne(el){
 document.querySelectorAll('[data-setting-instant]').forEach(function(el){
   el.addEventListener('change',function(){
     el.disabled=true;
-    saveOne(el).then(function(){el.dataset.initial=valueOf(el);vpToast('Saved','ok');})
+    saveOne(el).then(function(){el.dataset.initial=valueOf(el);vpToast(sw('saved','Saved'),'ok');})
     .catch(function(e){el.checked=el.dataset.initial==='true';vpToast(e.message,'error');})
     .then(function(){el.disabled=false;});
   });
@@ -507,7 +515,7 @@ if(saveBtn)saveBtn.addEventListener('click',function(){
   c.reduce(function(chain,el){return chain.then(function(){return saveOne(el).then(function(){el.dataset.initial=valueOf(el);});});},Promise.resolve())
   .then(function(){
     saveBtn.disabled=false;refresh();
-    vpToast(c.length===1?'Saved':'Saved '+c.length+' changes','ok');
+    vpToast(c.length===1?sw('saved','Saved'):sw('saved-many','Saved {n} changes').replace('{n}',c.length),'ok');
     var scheme=c.filter(function(el){return el.dataset.settingKey==='admin.theme';})[0];
     if(scheme){document.body.dataset.theme=scheme.value;try{localStorage.setItem('vp-os-theme',scheme.value);}catch(e){}}
   }).catch(function(e){saveBtn.disabled=false;refresh();vpToast(e.message,'error');});
@@ -526,11 +534,37 @@ window.addEventListener('beforeunload',function(e){if(changed().length){e.preven
 if(location.hash){var t=document.querySelector(location.hash);var tr=t&&rowOf(t);if(tr){tr.classList.add('is-found');t.focus({preventScroll:false});}}
 ` + linkEditorsScript + siteMarkScript + `refresh();`
 
+// settingsWordsJS defines sw(key, english): a word the Settings scripts
+// show, read from the [data-settings-words] element the page carries in its
+// language (settingsScriptWords), or the English given where there is none
+// (a hosted site's settings page, which runs the same editors in English).
+// The scripts are constants here, outside static/js where vpT's words are
+// gathered, so the page hands the words over itself.
+const settingsWordsJS = `function sw(k,f){var e=document.querySelector('[data-settings-words]');var v=e&&e.getAttribute('data-'+k);return v||f;}
+`
+
+// settingsScriptWords is the element settingsWordsJS reads, in lang.
+func settingsScriptWords(lang string) ui.HTML {
+	attr := func(k, v string) string { return ` data-` + k + `="` + esc(v) + `"` }
+	return ui.HTML(`<i hidden data-settings-words` +
+		attr("one", i18n.T(lang, "1 unsaved change")) + attr("many", i18n.T(lang, "{n} unsaved changes", "n", "{n}")) +
+		attr("saved", i18n.T(lang, "Saved")) + attr("saved-many", i18n.T(lang, "Saved {n} changes", "n", "{n}")) +
+		attr("move-up", i18n.T(lang, "Move up")) + attr("move-down", i18n.T(lang, "Move down")) +
+		attr("label", i18n.T(lang, "Label")) + attr("link-label", i18n.T(lang, "Link label")) + attr("link-address", i18n.T(lang, "Link address")) +
+		attr("remove-link", i18n.T(lang, "Remove link")) + attr("nav-hint", i18n.T(lang, "/path or https://…")) +
+		attr("footer-hint", i18n.T(lang, "/path, mailto: or https://…")) + attr("column-title", i18n.T(lang, "Column title")) +
+		attr("remove-column", i18n.T(lang, "Remove column")) + attr("add-link", i18n.T(lang, "Add link")) +
+		attr("mark-failed", i18n.T(lang, "The mark could not be changed")) + attr("choose-first", i18n.T(lang, "Choose a PNG or ICO first")) +
+		attr("mark-own", i18n.T(lang, "Your own mark, stored in the database.")) + attr("mark-updated", i18n.T(lang, "Mark updated")) +
+		attr("mark-default", i18n.T(lang, "Using the default mark.")) + attr("mark-restored", i18n.T(lang, "Default mark restored")) +
+		`></i>`)
+}
+
 // linkEditorsScript draws the public menu and footer editors from their
 // hidden inputs and keeps those inputs in step, calling refresh() after each
 // change. The install's Settings page and a hosted site's settings page both
 // run it, each with its own refresh, so the two editors cannot drift apart.
-const linkEditorsScript = `function moveRow(row,dir,sync){
+const linkEditorsScript = settingsWordsJS + `function moveRow(row,dir,sync){
   if(dir<0){var p=row.previousElementSibling;if(p)row.parentNode.insertBefore(row,p);}
   else{var n=row.nextElementSibling;if(n)row.parentNode.insertBefore(n,row);}
   if(sync)sync();
@@ -540,17 +574,17 @@ function iconButton(icon,label,onClick){
   b.appendChild(vpIcon(icon));b.addEventListener('click',onClick);return b;
 }
 function reorderBtns(row,sync){
-  var up=iconButton('chev-d','Move up',function(){moveRow(row,-1,sync);});up.classList.add('is-up');
-  return[up,iconButton('chev-d','Move down',function(){moveRow(row,1,sync);})];
+  var up=iconButton('chev-d',sw('move-up','Move up'),function(){moveRow(row,-1,sync);});up.classList.add('is-up');
+  return[up,iconButton('chev-d',sw('move-down','Move down'),function(){moveRow(row,1,sync);})];
 }
 function linkRow(label,href,hrefHint,sync,attrs){
   var row=document.createElement('div');row.className='settings-link';row.setAttribute(attrs.row,'');
-  var li=document.createElement('input');li.className='input settings-link__label';li.type='text';li.placeholder='Label';li.value=label||'';li.setAttribute(attrs.label,'');li.setAttribute('aria-label','Link label');
-  var hi=document.createElement('input');hi.className='input settings-link__href';hi.type='text';hi.placeholder=hrefHint;hi.value=href||'';hi.setAttribute(attrs.href,'');hi.setAttribute('aria-label','Link address');
+  var li=document.createElement('input');li.className='input settings-link__label';li.type='text';li.placeholder=sw('label','Label');li.value=label||'';li.setAttribute(attrs.label,'');li.setAttribute('aria-label',sw('link-label','Link label'));
+  var hi=document.createElement('input');hi.className='input settings-link__href';hi.type='text';hi.placeholder=hrefHint;hi.value=href||'';hi.setAttribute(attrs.href,'');hi.setAttribute('aria-label',sw('link-address','Link address'));
   li.addEventListener('input',sync);hi.addEventListener('input',sync);
   row.appendChild(li);row.appendChild(hi);
   var rb=reorderBtns(row,sync);row.appendChild(rb[0]);row.appendChild(rb[1]);
-  row.appendChild(iconButton('x','Remove link',function(){row.remove();sync();}));
+  row.appendChild(iconButton('x',sw('remove-link','Remove link'),function(){row.remove();sync();}));
   return row;
 }
 // Public menu.
@@ -567,10 +601,10 @@ if(navEditor&&navHidden){
     navHidden.value=JSON.stringify(out);refresh();
   };
   var seed=[];try{seed=JSON.parse(navEditor.getAttribute('data-nav-json')||'[]');}catch(e){seed=[];}
-  seed.forEach(function(it){navEditor.appendChild(linkRow(it.label,it.href,'/path or https://…',navSync,navAttrs));});
+  seed.forEach(function(it){navEditor.appendChild(linkRow(it.label,it.href,sw('nav-hint','/path or https://…'),navSync,navAttrs));});
   navSync();navHidden.dataset.initial=navHidden.value;
   var navAdd=document.getElementById('nav-add-btn');
-  if(navAdd)navAdd.addEventListener('click',function(){navEditor.appendChild(linkRow('','','/path or https://…',navSync,navAttrs));});
+  if(navAdd)navAdd.addEventListener('click',function(){navEditor.appendChild(linkRow('','',sw('nav-hint','/path or https://…'),navSync,navAttrs));});
 }
 // Footer.
 var footerInput=document.getElementById('footer-json-input');
@@ -581,19 +615,19 @@ if(footerInput){
   var fSocial=document.getElementById('footer-social');
   var fLegal=document.getElementById('footer-legal');
   var fAttrs={row:'data-f-link',label:'data-f-label',href:'data-f-href'};
-  var fHint='/path, mailto: or https://…';
+  var fHint=sw('footer-hint','/path, mailto: or https://…');
   var footerSync;
   var fColCard=function(title,links){
     var card=document.createElement('div');card.className='settings-col';card.setAttribute('data-f-col','');
     var head=document.createElement('div');head.className='settings-link';
-    var ti=document.createElement('input');ti.className='input settings-link__label';ti.type='text';ti.placeholder='Column title';ti.value=title||'';ti.setAttribute('data-f-col-title','');ti.setAttribute('aria-label','Column title');
+    var ti=document.createElement('input');ti.className='input settings-link__label';ti.type='text';ti.placeholder=sw('column-title','Column title');ti.value=title||'';ti.setAttribute('data-f-col-title','');ti.setAttribute('aria-label',sw('column-title','Column title'));
     ti.addEventListener('input',function(){footerSync();});
     head.appendChild(ti);
     var cb=reorderBtns(card,function(){footerSync();});head.appendChild(cb[0]);head.appendChild(cb[1]);
-    head.appendChild(iconButton('x','Remove column',function(){card.remove();footerSync();}));
+    head.appendChild(iconButton('x',sw('remove-column','Remove column'),function(){card.remove();footerSync();}));
     var linksWrap=document.createElement('div');linksWrap.setAttribute('data-f-col-links','');
     (links||[]).forEach(function(l){linksWrap.appendChild(linkRow(l.label,l.href,fHint,function(){footerSync();},fAttrs));});
-    var addL=document.createElement('button');addL.type='button';addL.className='btn btn--sm';addL.textContent='Add link';
+    var addL=document.createElement('button');addL.type='button';addL.className='btn btn--sm';addL.textContent=sw('add-link','Add link');
     addL.addEventListener('click',function(){linksWrap.appendChild(linkRow('','',fHint,function(){footerSync();},fAttrs));footerSync();});
     card.appendChild(head);card.appendChild(linksWrap);card.appendChild(addL);
     return card;
@@ -635,7 +669,7 @@ if(footerInput){
 // address the page gives it: a hard-coded /os/api/branding/favicon made a
 // hosted site's upload change the install's mark. The install's Settings and
 // a hosted site's settings page both run it.
-const siteMarkScript = `var favFile=document.getElementById('brand-favicon-file');
+const siteMarkScript = settingsWordsJS + `var favFile=document.getElementById('brand-favicon-file');
 var favUp=document.getElementById('brand-favicon-upload');
 var favRm=document.getElementById('brand-favicon-remove');
 var favImg=document.getElementById('brand-favicon-img');
@@ -647,17 +681,17 @@ function favSend(fd,btn,done){
   btn.disabled=true;
   fetch(favPost,{method:'POST',headers:{'X-CSRF-Token':csrf()},body:fd})
     .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
-    .then(function(res){btn.disabled=false;if(res.ok){done();}else{var e=res.d&&res.d.error;vpToast((e&&e.message)||e||res.d.detail||'The mark could not be changed','error');}})
-    .catch(function(e){btn.disabled=false;vpToast('The mark could not be changed: '+e,'error');});
+    .then(function(res){btn.disabled=false;if(res.ok){done();}else{var e=res.d&&res.d.error;vpToast((e&&e.message)||e||res.d.detail||sw('mark-failed','The mark could not be changed'),'error');}})
+    .catch(function(e){btn.disabled=false;vpToast(sw('mark-failed','The mark could not be changed')+': '+e,'error');});
 }
 if(favUp)favUp.addEventListener('click',function(){
   var f=favFile&&favFile.files&&favFile.files[0];
-  if(!f){vpToast('Choose a PNG or ICO first','warn');return;}
+  if(!f){vpToast(sw('choose-first','Choose a PNG or ICO first'),'warn');return;}
   var fd=new FormData();fd.append('favicon',f);
-  favSend(fd,favUp,function(){if(favImg){favImg.hidden=false;favImg.src=favBase+'?t='+Date.now();}if(favState)favState.textContent='Your own mark, stored in the database.';vpToast('Mark updated','ok');});
+  favSend(fd,favUp,function(){if(favImg){favImg.hidden=false;favImg.src=favBase+'?t='+Date.now();}if(favState)favState.textContent=sw('mark-own','Your own mark, stored in the database.');vpToast(sw('mark-updated','Mark updated'),'ok');});
 });
 if(favRm)favRm.addEventListener('click',function(){
   var fd=new FormData();fd.append('remove','1');
-  favSend(fd,favRm,function(){if(favImg){if(favDefault)favImg.src=favDefault+'?t='+Date.now();else favImg.hidden=true;}if(favState)favState.textContent='Using the default mark.';vpToast('Default mark restored','ok');});
+  favSend(fd,favRm,function(){if(favImg){if(favDefault)favImg.src=favDefault+'?t='+Date.now();else favImg.hidden=true;}if(favState)favState.textContent=sw('mark-default','Using the default mark.');vpToast(sw('mark-restored','Default mark restored'),'ok');});
 });
 `

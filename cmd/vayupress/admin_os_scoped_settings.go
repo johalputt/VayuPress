@@ -407,7 +407,7 @@ func scopedSettingsBody(domainID, host string, values map[string]string, pres pr
 	}
 	base := "/os/d/" + domainID
 	b.WriteString(monAcc(saIcon("image"), "Site mark", "This site's tab icon and the logo in its menu", markChip, false,
-		`<div class="card">`+string(siteMarkHTML(base+"/branding/mark", "", base+"/api/branding/favicon", own))+`</div>`))
+		`<div class="card">`+string(siteMarkHTML("en", base+"/branding/mark", "", base+"/api/branding/favicon", own))+`</div>`))
 
 	// The picture shown when a link to this site is shared. With none, links to
 	// it carry no picture: never the install's, which every host was given.
@@ -437,8 +437,8 @@ func scopedSettingsBody(domainID, host string, values map[string]string, pres pr
 		foot = hostedFooterSeed
 	}
 	b.WriteString(monAcc(saIcon("list"), "Menu and footer", "The links across the top and the foot of this site", linkChip, false,
-		`<div class="card"><div class="settings-block-title">Menu</div>`+string(navEditorHTML(nav, "data-scoped-key"))+
-			`<div class="settings-block-title">Footer</div>`+string(footerEditorHTML(foot, "data-scoped-key"))+
+		`<div class="card"><div class="settings-block-title">Menu</div>`+string(navEditorHTML("en", nav, "data-scoped-key"))+
+			`<div class="settings-block-title">Footer</div>`+string(footerEditorHTML("en", foot, "data-scoped-key"))+
 			`<div class="vm-row"><button type="button" class="btn btn--primary btn--sm" data-scoped-save>Save</button></div></div>`))
 
 	styleChip := `<span class="mon-chip mon-chip--off">Not known</span>`

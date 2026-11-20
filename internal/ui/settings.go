@@ -38,8 +38,12 @@ func SettingsPage(title string, state HTML, sub string, sections ...HTML) HTML {
 // when the first row changes (settingsPageScript in cmd/vayupress, which a
 // page gets from settingsLayout); any control with data-setting-key takes
 // part.
-func SaveBar() HTML {
+func SaveBar() HTML { return SaveBarSaying("Discard", "Save changes") }
+
+// SaveBarSaying is SaveBar with its two buttons' words given by the caller,
+// in the page's language.
+func SaveBarSaying(discard, save string) HTML {
 	return `<div class="settings-bar" data-settings-bar hidden><span class="settings-bar__count" data-settings-count aria-live="polite"></span>` +
-		`<button type="button" class="btn btn--ghost btn--sm" data-settings-discard>Discard</button>` +
-		`<button type="button" class="btn btn--primary btn--sm" data-settings-save>Save changes</button></div>`
+		`<button type="button" class="btn btn--ghost btn--sm" data-settings-discard>` + Text(discard) + `</button>` +
+		`<button type="button" class="btn btn--primary btn--sm" data-settings-save>` + Text(save) + `</button></div>`
 }

@@ -125,13 +125,13 @@
       password: teamForm.querySelector('[data-u-pass]').value,
       role: teamForm.querySelector('[data-u-role]').value,
     };
-    if (status) { status.textContent = 'Creating…'; }
+    if (status) { status.textContent = vpT('Creating…'); }
     api('POST', '/os/api/users', payload).then(function (r) {
       return r.json().then(function (d) { return { ok: r.ok, d: d }; });
     }).then(function (res) {
-      if (res.ok) { done('Account created for ' + payload.email + '.'); }
-      else if (status) { status.textContent = errText(res.d) || 'Could not create the account.'; }
-    }).catch(function () { if (status) { status.textContent = 'Network error.'; } });
+      if (res.ok) { done(vpT('Account created for {email}.', { email: payload.email })); }
+      else if (status) { status.textContent = errText(res.d) || vpT('Could not create the account.'); }
+    }).catch(function () { if (status) { status.textContent = vpT('Network error.'); } });
   }
 
   // Assign / change a member's VayuMail mailbox (custom email).
@@ -142,32 +142,32 @@
     // Two steps, both in the console's own dialog (window.prompt was the shortest
     // way to ask twice; vpPrompt keeps the same contract — null when cancelled).
     vpPrompt({
-      title: 'Mailbox for this member',
-      message: 'The part before @' + domain + '.',
-      label: 'Mailbox name',
+      title: vpT('Mailbox for this member'),
+      message: vpT('The part before @{domain}.', { domain: domain }),
+      label: vpT('Mailbox name'),
       value: suggestion,
       placeholder: 'name',
-      confirm: 'Continue',
+      confirm: vpT('Continue'),
     }, function (local) {
       if (local === null) { return; }
       local = (local || '').trim();
-      if (!local) { alert('Enter a mailbox name.'); return; }
+      if (!local) { alert(vpT('Enter a mailbox name.')); return; }
       vpPrompt({
-        title: 'Set the mailbox password',
-        message: 'For ' + local + '@' + domain + ' — at least 8 characters.',
-        label: 'Password',
+        title: vpT('Set the mailbox password'),
+        message: vpT('For {address}, at least 8 characters.', { address: local + '@' + domain }),
+        label: vpT('Password'),
         type: 'password',
         autocomplete: 'new-password',
-        confirm: 'Create mailbox',
+        confirm: vpT('Create mailbox'),
       }, function (pass) {
         if (pass === null) { return; }
-        if ((pass || '').length < 8) { alert('Password must be at least 8 characters.'); return; }
+        if ((pass || '').length < 8) { alert(vpT('Password must be at least 8 characters.')); return; }
         api('POST', '/os/api/users/' + encodeURIComponent(btn.dataset.email) + '/mailbox', { local: local, pass: pass }).then(function (r) {
           return r.json().then(function (d) { return { ok: r.ok, d: d }; });
         }).then(function (res) {
-          if (res.ok) { done('Mailbox ' + local + '@' + domain + ' assigned.'); }
-          else { alert(errText(res.d) || 'Could not assign the mailbox.'); }
-        }).catch(function () { alert('Network error.'); });
+          if (res.ok) { done(vpT('Mailbox {address} assigned.', { address: local + '@' + domain })); }
+          else { alert(errText(res.d) || vpT('Could not assign the mailbox.')); }
+        }).catch(function () { alert(vpT('Network error.')); });
       });
     });
   }
@@ -270,12 +270,12 @@
     if ((btn = t.closest('[data-delete-user]'))) {
       var userEmail = btn.dataset.email;
       vpConfirm({
-        title: 'Remove this account',
-        message: 'Remove ' + userEmail + '? Their account and access are revoked.',
-        confirm: 'Remove',
+        title: vpT('Remove this account'),
+        message: vpT('Remove {email}? Their account and access are revoked.', { email: userEmail }),
+        confirm: vpT('Remove'),
       }, function () {
         api('DELETE', '/os/api/users/' + encodeURIComponent(userEmail)).then(function (r) {
-          if (r.ok) { done('Account removed.'); } else { alert('Could not remove the account.'); }
+          if (r.ok) { done(vpT('Account removed.')); } else { alert(vpT('Could not remove the account.')); }
         });
       });
       return;
@@ -298,8 +298,8 @@
       api('PUT', '/os/api/users/' + encodeURIComponent(sel.dataset.email) + '/role', { role: sel.value }).then(function (r) {
         return r.json().then(function (d) { return { ok: r.ok, d: d }; });
       }).then(function (res) {
-        if (res.ok) { done('Role changed.'); }
-        else { sel.value = renderedValue(sel); alert(errText(res.d) || 'Could not change the role.'); }
+        if (res.ok) { done(vpT('Role changed.')); }
+        else { sel.value = renderedValue(sel); alert(errText(res.d) || vpT('Could not change the role.')); }
       }).catch(function () { sel.value = renderedValue(sel); });
     }
   });

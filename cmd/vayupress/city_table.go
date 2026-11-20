@@ -9,7 +9,6 @@ package main
 import (
 	"context"
 	"errors"
-	"html"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/geoip"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/ui"
@@ -150,7 +150,8 @@ func tableCity(ip, country string) geoip.Place {
 
 // settingsCityTable is the switch, with what the table is doing now.
 func settingsCityTable(ctx context.Context, a *App) ui.HTML {
-	state := "Off. Cities are named only when a proxy in front of the install sends them."
+	lang := i18n.Lang(ctx)
+	state := esc(i18n.T(lang, "Off. Cities are named only when a proxy in front of the install sends them."))
 	if a.citiesOn(ctx) {
 		cityTable.Lock()
 		fetching, lastErr := cityTable.fetching, cityTable.lastErr
@@ -158,22 +159,21 @@ func settingsCityTable(ctx context.Context, a *App) ui.HTML {
 		loaded, built := geoip.CityLoaded()
 		switch {
 		case cityTable.isSpaceChld():
-			state = "Not used in a Tor Space."
+			state = esc(i18n.T(lang, "Not used in a Tor Space."))
 		case fetching:
-			state = "Downloading the table now."
+			state = esc(i18n.T(lang, "Downloading the table now."))
 		case loaded:
-			state = "In use: DB-IP's table of " + built.UTC().Format("January 2006") + ". " + geoip.CityAttribution + "."
+			state = esc(i18n.T(lang, "In use: DB-IP's table of {month}.", "month", built.UTC().Format("2006-01"))) + " " + geoip.CityAttribution + "."
 		case lastErr != "":
-			state = "Not downloaded: " + html.EscapeString(lastErr) + ". It is tried again every 6 hours."
+			state = esc(i18n.T(lang, "Not downloaded: {reason}. It is tried again every 6 hours.", "reason", lastErr))
 		default:
-			state = "Waiting to download the table; it starts within a minute."
+			state = esc(i18n.T(lang, "Waiting to download the table; it starts within a minute."))
 		}
 	}
 	f := settingField{ID: "s-cities", Key: settings.KeyAnalyticsCities, Label: "Name visitors' cities", Kind: "toggle", Default: "false", Instant: true}
-	hint := "On, this install downloads DB-IP's free city table (CC BY 4.0, about 130 MB, into its data directory, again each month) and Analytics names the city and region of visitors no proxy header places. " +
-		"Addresses are looked up on this server and never sent anywhere; only the city and region names are kept. Off, the table is deleted. Saved as you switch it."
+	hint := i18n.T(lang, "On, this install downloads DB-IP's free city table (CC BY 4.0, about 130 MB, into its data directory, again each month) and Analytics names the city and region of visitors no proxy header places. Addresses are looked up on this server and never sent anywhere; only the city and region names are kept. Off, the table is deleted. Saved as you switch it.")
 	return ui.Join(
-		ui.Rows(ui.Row{Label: f.Label, Hint: hint, Control: settingControl(f, a.savedSetting(ctx, f.Key)), ID: f.ID}),
+		ui.Rows(ui.Row{Label: i18n.T(lang, "Name visitors' cities"), Hint: hint, Control: settingControlIn(lang, f, a.savedSetting(ctx, f.Key)), ID: f.ID}),
 		ui.HTML(`<p class="settings-panel__lead" data-city-state>`+state+`</p>`),
 	)
 }

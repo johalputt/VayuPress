@@ -63,3 +63,32 @@ func TestThePalettesIndexIsInThePagesLanguage(t *testing.T) {
 		t.Errorf("a language the console lacks was not English: %v", xx["settings"])
 	}
 }
+
+// Settings › Team is drawn in the page's language: the roles, the mail note
+// and the form that adds someone. The role values posted stay the store's.
+func TestTheTeamIsDrawnInThePagesLanguage(t *testing.T) {
+	a, db := ownMailboxApp(t)
+	if _, err := db.Exec(`INSERT INTO users(id,email,name,password_hash,role) VALUES('u1','dana@example.com','Dana','x','editor')`); err != nil {
+		t.Fatal(err)
+	}
+	body := a.teamRoster(i18n.WithLang(context.Background(), "de"))
+	for _, want := range []string{`<option value="editor" selected>Redakteur</option>`, "Jemanden hinzufügen", "Konto anlegen", "verwaltet Team und Einstellungen"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the German team lacks %q:\n%s", want, body)
+		}
+	}
+}
+
+// The words a Settings script writes come from the page, in its language,
+// with the count left for the script to fill.
+func TestTheSettingsScriptsWordsAreInThePagesLanguage(t *testing.T) {
+	words := string(settingsScriptWords("de"))
+	for _, want := range []string{`data-one="1 ungespeicherte Änderung"`, `data-many="{n} ungespeicherte Änderungen"`, `data-remove-link="Link entfernen"`} {
+		if !strings.Contains(words, want) {
+			t.Errorf("the German script words lack %q:\n%s", want, words)
+		}
+	}
+	if !strings.Contains(settingsPageScript, "sw('many'") {
+		t.Error("the page script does not read its words from the page")
+	}
+}
