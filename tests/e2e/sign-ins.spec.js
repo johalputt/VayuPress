@@ -68,24 +68,27 @@ test("the Block menu offers only what it would set, each note under its label", 
   await expect(hours).toHaveAttribute("open", "");
 });
 
-// A write that worked and asks the page to reload (200 with HX-Refresh, as
-// every Block and Lift answers) raises no error. htmx leaves such a request
-// unmarked as successful, and the page used to say "That did not go through
-// (200)" until it came back. The toasts are recorded in sessionStorage, which
-// outlives the reload.
-test("a block that worked says nothing went wrong", async ({ page }) => {
+// A block or lift that worked redraws the page's content in place: the page is
+// not reloaded (a value set on the window outlives it) and nothing says the
+// write went wrong. It used to reload the whole page, and before that to say
+// "That did not go through (200)" while it did.
+test("a block that worked redraws the page in place and says nothing went wrong", async ({ page }) => {
   await page.goto("/os/shield/sign-ins?days=1");
   await page.evaluate(() => {
-    sessionStorage.removeItem("vp-toasts");
+    window.vpKept = true;
+    window.vpToasts = [];
     const say = window.vpToast;
     window.vpToast = (msg, kind) => {
-      sessionStorage.setItem("vp-toasts", (sessionStorage.getItem("vp-toasts") || "") + kind + ": " + msg + "\n");
+      window.vpToasts.push(kind + ": " + msg);
       return say(msg, kind);
     };
+    const mark = document.createElement("i");
+    mark.id = "vp-before-redraw";
+    document.getElementById("main-content").appendChild(mark);
   });
-  await Promise.all([
-    page.waitForEvent("load"),
-    page.evaluate(() => window.htmx.ajax("POST", "/os/api/shield/sign-ins/lift?id=999999999", { target: "body", swap: "none" })),
-  ]);
-  expect(await page.evaluate(() => sessionStorage.getItem("vp-toasts") || "")).toBe("");
+  await page.evaluate(() => window.htmx.ajax("POST", "/os/api/shield/sign-ins/lift?id=999999999", { target: "body", swap: "none" }));
+  await expect(page.locator("#vp-before-redraw")).toHaveCount(0);
+  await expect(page.locator("#main-content h1")).toHaveText("Sign-in attempts");
+  expect(await page.evaluate(() => window.vpKept === true)).toBe(true);
+  expect(await page.evaluate(() => window.vpToasts)).toEqual([]);
 });

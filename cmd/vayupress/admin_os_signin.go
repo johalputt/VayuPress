@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"github.com/johalputt/vayupress/internal/i18n"
 	"html"
+	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -59,16 +60,39 @@ func signinStageWord(lang, stage string) string {
 func (a *App) handleOSSignins(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
-	days := 7
-	if d, err := strconv.Atoi(r.URL.Query().Get("days")); err == nil {
+	body := a.signinsBody(r.Context(), signinDays(r.URL.Query()), r.URL.Query().Get("source"), auth.ClientIP(r), saTabsFor(cfg, "shield", signinPage))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Sign-in attempts", "shield", cfg, htmpl.HTML(body)))
+}
+
+// signinDays is the window the page's query asks for, one of signinWindows,
+// or 7 days.
+func signinDays(q url.Values) int {
+	if d, err := strconv.Atoi(q.Get("days")); err == nil {
 		for _, o := range signinWindows {
 			if o.days == d {
-				days = d
+				return d
 			}
 		}
 	}
-	body := a.signinsBody(r.Context(), days, r.URL.Query().Get("source"), auth.ClientIP(r), saTabsFor(cfg, "shield", signinPage))
-	writeOSHTML(w, r, adminOSLayout(nonce, "Sign-in attempts", "shield", cfg, htmpl.HTML(body)))
+	return 7
+}
+
+// signinRedraw answers an action taken on the page with the page's content,
+// in the window and for the source the page is showing, swapped into
+// #main-content in place: blocking a source used to reload the whole page.
+// An action taken anywhere else reloads, as signinDone does.
+func (a *App) signinRedraw(w http.ResponseWriter, r *http.Request) {
+	from, err := url.Parse(r.Header.Get("HX-Current-URL"))
+	if err != nil || from.Path != signinPage {
+		signinDone(w, r)
+		return
+	}
+	cfg := a.getOSSettings(r.Context())
+	body := a.signinsBody(r.Context(), signinDays(from.Query()), from.Query().Get("source"), auth.ClientIP(r), saTabsFor(cfg, "shield", signinPage))
+	w.Header().Set("HX-Retarget", "#main-content")
+	w.Header().Set("HX-Reswap", "innerHTML")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = io.WriteString(w, body)
 }
 
 // signinBlocksOpen is the most blocks the page shows without being asked: a
@@ -458,7 +482,7 @@ func (a *App) handleOSSigninBlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dbpkg.AuditLog("signin.block", dbpkg.AuditActor(r), b.Label, b.Kind+" "+signinBlockState(*b))
-	signinDone(w, r)
+	a.signinRedraw(w, r)
 }
 
 // handleOSSigninCountry refuses sign-ins from a source's country, for every
@@ -474,7 +498,7 @@ func (a *App) handleOSSigninCountry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dbpkg.AuditLog("signin.block", dbpkg.AuditActor(r), b.Key, "country")
-	signinDone(w, r)
+	a.signinRedraw(w, r)
 }
 
 // handleOSSigninLift ends a block now.
@@ -489,7 +513,7 @@ func (a *App) handleOSSigninLift(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dbpkg.AuditLog("signin.lift", dbpkg.AuditActor(r), strconv.FormatInt(id, 10), "")
-	signinDone(w, r)
+	a.signinRedraw(w, r)
 }
 
 // handleOSSigninMine says a source was the install's own people: it is
@@ -522,7 +546,7 @@ func (a *App) handleOSSigninMine(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	dbpkg.AuditLog("signin.mine", dbpkg.AuditActor(r), fp, strconv.Itoa(len(seen))+" accounts")
-	signinDone(w, r)
+	a.signinRedraw(w, r)
 }
 
 // passkeyOnlySection lists the accounts and mailboxes whose password is off,
@@ -560,5 +584,5 @@ func (a *App) handleOSSigninPasswordOn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dbpkg.AuditLog("passkey.only", dbpkg.AuditActor(r), principal, "off by the administrator")
-	signinDone(w, r)
+	a.signinRedraw(w, r)
 }

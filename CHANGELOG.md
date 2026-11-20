@@ -29,6 +29,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   network or country blocked there, for a time or for good, gets no link,
   answered exactly as before so the form still tells no one who is a member.
 
+### Changed
+
+- **Blocking on Sign-in attempts no longer reloads the page.** A block,
+  lift or country refusal redraws the page's content in place, in the window
+  it was showing.
+
 ## [3.18.44] — 2026-11-15
 
 Calendar apps: a malformed event is refused with a reason, and one unreadable

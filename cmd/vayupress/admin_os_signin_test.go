@@ -253,3 +253,27 @@ func TestTheSigninPageIsTheAdministrators(t *testing.T) {
 		}
 	}
 }
+
+// A block taken on the page is answered with the page's content, in the
+// window it was showing, swapped into #main-content in place: the whole page
+// is not reloaded. An action from anywhere else still reloads.
+func TestABlockRedrawsThePageInPlace(t *testing.T) {
+	a, st := signinApp(t)
+	fp := sourceFP(t, st, "203.0.x.x")
+	req := httptest.NewRequest(http.MethodPost, "/os/api/shield/sign-ins/block", strings.NewReader(url.Values{"fp": {fp}, "for": {"0"}}.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Current-URL", "https://example.com"+signinPage+"?days=30")
+	req.RemoteAddr = "192.0.2.1:5000"
+	rec := httptest.NewRecorder()
+	a.handleOSSigninBlock(rec, req)
+	h := rec.Header()
+	if rec.Code != http.StatusOK || h.Get("HX-Refresh") != "" || h.Get("HX-Retarget") != "#main-content" || h.Get("HX-Reswap") != "innerHTML" {
+		t.Fatalf("the block answered %d with %v", rec.Code, h)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "203.0.x.x") || !strings.Contains(body, `days=30`) || strings.Contains(body, "<html") {
+		t.Errorf("the redraw is not the page's content in its window:\n%s", body)
+	}
+	if rec := postSigninAction(a, (*App).handleOSSigninBlock, "192.0.2.1", url.Values{"fp": {fp}, "for": {"1"}}); rec.Header().Get("HX-Refresh") != "true" {
+		t.Errorf("an action from elsewhere answered %v", rec.Header())
+	}
+}
