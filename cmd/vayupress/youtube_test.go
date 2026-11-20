@@ -36,7 +36,13 @@ type nowQueue struct {
 	}
 }
 
-func (q nowQueue) Enqueue(ctx context.Context, art dbpkg.Article, _ string) error {
+func (q nowQueue) Enqueue(ctx context.Context, art dbpkg.Article, op string) error {
+	// A delete removes the row, as the writer does; treating it as a create
+	// would hide whether a caller cleans up after itself.
+	if op == "delete" {
+		_, err := dbpkg.DB.ExecContext(ctx, `DELETE FROM articles WHERE slug=?`, art.Slug)
+		return err
+	}
 	return q.repo.Create(ctx, art)
 }
 
@@ -395,5 +401,24 @@ func TestTheSitesOfferedAreTheBlogsAsTheyServeNow(t *testing.T) {
 	}
 	if strings.Contains(got, "built.example.com") {
 		t.Errorf("a hand-built site is offered: %s", got)
+	}
+}
+
+// A post that fails after its draft was made leaves nothing behind: the draft
+// is made on the main site and moved to its own after, and each failed try,
+// retried in the next round, used to stay on the main site.
+func TestAFailedPostLeavesNoDraftBehind(t *testing.T) {
+	a := youtubeTestApp(t)
+	p := youtubePoster{a: a, get: func(context.Context, string) (int, []byte, error) { return 404, nil, nil }}
+	if _, err := dbpkg.DB.Exec(`CREATE TRIGGER refuse_video_update BEFORE UPDATE OF blocks_json ON articles BEGIN SELECT RAISE(ABORT,'refused'); END`); err != nil {
+		t.Fatal(err)
+	}
+	v := youtube.Video{ID: "dQw4w9WgXcQ", ChannelID: ytChannel, Title: "A video that fails", Kind: youtube.KindVideo, Published: time.Now()}
+	if _, err := p.Post(context.Background(), "site-b", v, false); err == nil {
+		t.Fatal("the post did not fail")
+	}
+	var n int
+	if err := dbpkg.DB.QueryRow(`SELECT COUNT(*) FROM articles WHERE title=?`, v.Title).Scan(&n); err != nil || n != 0 {
+		t.Errorf("a failed post left %d article(s) (%v)", n, err)
 	}
 }

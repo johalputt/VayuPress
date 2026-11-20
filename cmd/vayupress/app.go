@@ -595,11 +595,22 @@ func (a *App) pingIndexNow(slug string) (state, detail string) {
 	// post) returns 404/noindex, so pinging it wastes the submission and can train
 	// search engines on a dead URL. This single guard makes every caller correct —
 	// create, update, and the publish toggle — without each having to re-check.
+	// The post is announced under its own site's host. It was always the
+	// primary's, so every post on another site (each video a YouTube site
+	// posts, say) was announced at a main-site address with no such post.
+	host := config.Cfg.Domain
 	if dbpkg.DB != nil {
-		var status string
+		var status, domainID string
 		if err := dbpkg.Reader().QueryRow(
-			`SELECT COALESCE(status,'published') FROM articles WHERE slug=?`, slug).Scan(&status); err != nil {
+			`SELECT COALESCE(status,'published'), COALESCE(domain_id,'') FROM articles WHERE slug=?`, slug).Scan(&status, &domainID); err != nil {
 			return "skipped", "unknown slug" // nothing public to announce
+		}
+		if domainID != "" {
+			d, err := a.postSite(domainID)
+			if err != nil {
+				return "skipped", "the post's site could not be read"
+			}
+			host = d
 		}
 		if status != "published" {
 			logging.LogJSON(logging.LogFields{
@@ -621,7 +632,7 @@ func (a *App) pingIndexNow(slug string) (state, detail string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	status, err := a.indexNowSubmit(ctx, indexNowKey, []string{"https://" + config.Cfg.Domain + "/" + slug})
+	status, err := a.indexNowSubmit(ctx, indexNowKey, host, []string{"https://" + host + "/" + slug})
 	if err != nil {
 		logging.LogError("indexnow", "submission failed: "+slug, err.Error())
 		dbpkg.RecordIndexNow(slug, dbpkg.IndexNowFailed, 0, err.Error())
@@ -643,7 +654,7 @@ func (a *App) pingIndexNow(slug string) (state, detail string) {
 	// are actually received, so keep the distinction all the way to the badge.
 	if status == http.StatusAccepted {
 		detail := "received — the engine is still validating your key file at https://" +
-			config.Cfg.Domain + "/" + indexNowKey + ".txt"
+			host + "/" + indexNowKey + ".txt"
 		logging.LogInfo("indexnow", "received, key validation pending: "+slug)
 		dbpkg.RecordIndexNow(slug, dbpkg.IndexNowPending, status, detail)
 		return "pending", detail
@@ -714,15 +725,15 @@ func indexNowKeyFileVerdict(u, key string, status int, body []byte, err error) s
 // A status < 300 means accepted. It applies no gating — callers own the
 // mode/onion/published/crawler-block checks — so it can be reused by the manual
 // self-test as well as the on-publish ping. The key must already be trimmed.
-func (a *App) indexNowSubmit(ctx context.Context, indexNowKey string, urls []string) (int, error) {
+func (a *App) indexNowSubmit(ctx context.Context, indexNowKey, host string, urls []string) (int, error) {
 	body, err := json.Marshal(map[string]interface{}{
-		"host": config.Cfg.Domain,
+		"host": host,
 		"key":  indexNowKey,
 		// Root key location: IndexNow only lets a key authorize URLs at or below
 		// the key file's directory, so the key must live at the site root to cover
 		// root-level post URLs (a /.well-known/ location caused HTTP 422). Served by
 		// handleArticlePage's root-key shortcut.
-		"keyLocation": "https://" + config.Cfg.Domain + "/" + indexNowKey + ".txt",
+		"keyLocation": "https://" + host + "/" + indexNowKey + ".txt",
 		"urlList":     urls,
 	})
 	if err != nil {
@@ -741,6 +752,20 @@ func (a *App) indexNowSubmit(ctx context.Context, indexNowKey string, urls []str
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 8<<10)) // drain so the connection can be reused
 	return resp.StatusCode, nil
+}
+
+// postSite is the host of the site a post belongs to, by its domain id.
+func (a *App) postSite(domainID string) (string, error) {
+	if a.domains == nil {
+		return "", errors.New("no sites")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	d, err := a.domains.ByID(ctx, domainID)
+	if err != nil {
+		return "", err
+	}
+	return d.Host, nil
 }
 
 // validIndexNowKey reports whether key meets IndexNow's format rule: 8–128
@@ -822,7 +847,7 @@ func (a *App) handleOSIndexNowTest(w http.ResponseWriter, r *http.Request) {
 		fail(problem)
 		return
 	}
-	status, err := a.indexNowSubmit(ctx, key, []string{"https://" + d + "/"})
+	status, err := a.indexNowSubmit(ctx, key, d, []string{"https://" + d + "/"})
 	if err != nil {
 		fail("Could not reach the IndexNow endpoint: " + err.Error() + ". Check outbound network / DNS from the server.")
 		return

@@ -106,7 +106,7 @@ func (p youtubePoster) cover(ctx context.Context, videoID string) string {
 	return ""
 }
 
-func (p youtubePoster) Post(ctx context.Context, domainID string, v youtube.Video, draft bool) (string, error) {
+func (p youtubePoster) Post(ctx context.Context, domainID string, v youtube.Video, draft bool) (_ string, err error) {
 	a := p.a
 	cover := p.cover(ctx, v.ID)
 	content, excerpt, blocks, err := youtubeRender(v, cover)
@@ -122,6 +122,14 @@ func (p youtubePoster) Post(ctx context.Context, domainID string, v youtube.Vide
 	if _, err := a.articles.CreateDraft(ctx, title, slug, content, tags); err != nil {
 		return "", err
 	}
+	// The draft is made on the main site and moved to its own after. A post
+	// that fails past this point is retried from the start, so the draft it
+	// leaves is removed: each failed try used to stay on the main site.
+	defer func() {
+		if err != nil {
+			_, _ = a.articles.Delete(context.WithoutCancel(ctx), slug)
+		}
+	}()
 	if err := awaitArticle(ctx, slug); err != nil {
 		return "", err
 	}
@@ -203,7 +211,9 @@ func nullableTime(t time.Time) any {
 // awaitArticle waits for the post queue to write a post's row, which it does
 // within a tick of a tenth of a second; the follow-up writes need the row.
 func awaitArticle(ctx context.Context, slug string) error {
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	// A minute: on a busy install the write queue can hold a post longer than
+	// the 15 seconds this was, and a post that misses it is tried again.
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	for {
 		var one int

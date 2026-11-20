@@ -33,6 +33,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **A post on another site is announced to search engines at its own
+  address.** Every post was announced through IndexNow under the main site,
+  so each video a YouTube site posted (and each post on any other site) sent
+  search engines to a main-site address with no such post.
+- **A YouTube video whose post fails no longer leaves a draft on the main
+  site.** A post is made on the main site and moved to its own; a try that
+  failed after that left its draft behind, and each retry added another.
+  The write queue is also given a minute rather than 15 seconds.
 - **The language choice's return address is built from the console's own
   path only.** It is cleaned of `..` and repeated slashes and joined to a
   fixed `/os/`, so nothing in it can name another site.
