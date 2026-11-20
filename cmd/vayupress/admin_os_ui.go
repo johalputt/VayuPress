@@ -3987,6 +3987,12 @@ func (a *App) handleOSActivity(w http.ResponseWriter, r *http.Request) {
 // one, and a second hand-kept list of them had drifted to hubs that no longer
 // exist.
 func (a *App) handleOSCmdIndex(w http.ResponseWriter, r *http.Request) {
+	// The page's language, sent by admin-os.js: this path is English to
+	// consoleLanguage. One the console lacks is English.
+	lang := r.URL.Query().Get("lang")
+	if i18n.Choose(lang, "") != lang {
+		lang = "en"
+	}
 	type cmdPost struct {
 		Label   string `json:"label"`
 		Slug    string `json:"slug"`
@@ -4043,11 +4049,11 @@ func (a *App) handleOSCmdIndex(w http.ResponseWriter, r *http.Request) {
 
 	actions := []cmdAction{}
 	for _, act := range []cmdAction{
-		{Label: "New post", Icon: "pencil", Hint: "Open the block editor on a blank post", Href: "/os/editor", gate: "/os/editor"},
-		{Label: "Take a backup now", Icon: "archive", Hint: "Saves a restore point and test-restores it before saying it worked", Post: "/os/api/vayukeep/backup", Done: "Backing up. Its progress is on the Backups page.", gate: "/os/vayukeep"},
-		{Label: "Refresh every page", Icon: "refresh", Hint: "Rebuilt in the background at the pace the server can spare; the sitemap, feed and robots.txt now", Post: "/os/api/storage/refresh-pages", Done: "Every page is being refreshed.", gate: "/os/storage"},
-		{Label: "Regenerate sitemap, RSS and robots.txt", Icon: "refresh", Hint: "Rebuilds the three files search engines read", Post: "/os/api/seo/regenerate", Done: "Sitemap, RSS and robots.txt rebuilt.", gate: "/os/seo"},
-		{Label: "Check for security updates", Icon: "shield", Hint: "Fetches public release metadata only; nothing about your site is sent", Post: "/os/api/vayuos/security/check", Done: "Security updates checked.", gate: "/os/security"},
+		{Label: i18n.T(lang, "New post"), Icon: "pencil", Hint: i18n.T(lang, "Open the block editor on a blank post"), Href: "/os/editor", gate: "/os/editor"},
+		{Label: i18n.T(lang, "Take a backup now"), Icon: "archive", Hint: i18n.T(lang, "Saves a restore point and test-restores it before saying it worked"), Post: "/os/api/vayukeep/backup", Done: i18n.T(lang, "Backing up. Its progress is on the Backups page."), gate: "/os/vayukeep"},
+		{Label: i18n.T(lang, "Refresh every page"), Icon: "refresh", Hint: i18n.T(lang, "Rebuilt in the background at the pace the server can spare; the sitemap, feed and robots.txt now"), Post: "/os/api/storage/refresh-pages", Done: i18n.T(lang, "Every page is being refreshed."), gate: "/os/storage"},
+		{Label: i18n.T(lang, "Regenerate sitemap, RSS and robots.txt"), Icon: "refresh", Hint: i18n.T(lang, "Rebuilds the three files search engines read"), Post: "/os/api/seo/regenerate", Done: i18n.T(lang, "Sitemap, RSS and robots.txt rebuilt."), gate: "/os/seo"},
+		{Label: i18n.T(lang, "Check for security updates"), Icon: "shield", Hint: i18n.T(lang, "Fetches public release metadata only; nothing about your site is sent"), Post: "/os/api/vayuos/security/check", Done: i18n.T(lang, "Security updates checked."), gate: "/os/security"},
 	} {
 		if can(act.gate) {
 			actions = append(actions, act)
@@ -4055,7 +4061,7 @@ func (a *App) handleOSCmdIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	settingsList := []cmdSetting{}
-	for _, e := range settingsEntries() {
+	for _, e := range settingsEntriesIn(lang) {
 		if can(e.Href) {
 			settingsList = append(settingsList, cmdSetting{Label: e.Label, Where: e.Where, Hint: e.Hint, Href: e.Href})
 		}

@@ -135,5 +135,6 @@ func saWord(lang, label string) string {
 	case "Worlds":
 		return i18n.T(lang, "Worlds")
 	}
-	return label
+	// Settings' sections are its categories, named in settings_words.go.
+	return settingsWord(lang, label)
 }

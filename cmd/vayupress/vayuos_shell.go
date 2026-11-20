@@ -613,7 +613,7 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 		case app.Key == "settings":
 			// The render puts the search where the title would be; the rail
 			// and the crumb already say this is Settings.
-			side.WriteString(settingsSearchIndex(app))
+			side.WriteString(settingsSearchIndex(lang, app))
 		case mailOpen:
 			out = &more
 		default:

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/ui"
 )
@@ -173,8 +174,13 @@ func settingsCategoryFor(slug string) (settingsCategory, bool) {
 	return settingsCategory{}, false
 }
 
-// settingControl draws a field's control, holding the saved value.
-func settingControl(f settingField, value string) ui.HTML {
+// settingControl draws a field's control, holding the saved value, in
+// English: the pages beside Settings that use it are not in other languages
+// yet.
+func settingControl(f settingField, value string) ui.HTML { return settingControlIn("en", f, value) }
+
+// settingControlIn draws a field's control in lang.
+func settingControlIn(lang string, f settingField, value string) ui.HTML {
 	if value == "" {
 		value = f.Default
 	}
@@ -187,7 +193,7 @@ func settingControl(f settingField, value string) ui.HTML {
 	case "textarea":
 		return ui.HTML(`<textarea class="textarea" rows="3" ` + attrs + `>` + v + `</textarea>`)
 	case "code":
-		return ui.HTML(`<textarea class="textarea font-mono" rows="6" spellcheck="false" placeholder="/* Your CSS */" ` + attrs + `>` + v + `</textarea>`)
+		return ui.HTML(`<textarea class="textarea font-mono" rows="6" spellcheck="false" placeholder="` + esc("/* "+i18n.T(lang, "Your CSS")+" */") + `" ` + attrs + `>` + v + `</textarea>`)
 	case "toggle":
 		on := ""
 		if value == "true" {
@@ -203,13 +209,13 @@ func settingControl(f settingField, value string) ui.HTML {
 		// discards like every other row. Not data-sa-theme: that is the
 		// account menu's control, which applies at once.
 		var b strings.Builder
-		b.WriteString(`<div class="sa-seg" role="radiogroup" aria-label="` + html.EscapeString(f.Label) + `" data-seg-for="` + id + `">`)
-		for _, o := range [][2]string{{"light", "Light"}, {"dark", "Dark"}, {"auto", "Match system"}} {
+		b.WriteString(`<div class="sa-seg" role="radiogroup" aria-label="` + html.EscapeString(settingsWord(lang, f.Label)) + `" data-seg-for="` + id + `">`)
+		for _, o := range [][2]string{{"light", i18n.T(lang, "Light")}, {"dark", i18n.T(lang, "Dark")}, {"auto", i18n.T(lang, "Match system")}} {
 			on := "false"
 			if o[0] == value {
 				on = "true"
 			}
-			b.WriteString(`<button type="button" class="sa-seg__opt" role="radio" aria-checked="` + on + `" data-seg-value="` + o[0] + `">` + o[1] + `</button>`)
+			b.WriteString(`<button type="button" class="sa-seg__opt" role="radio" aria-checked="` + on + `" data-seg-value="` + o[0] + `">` + esc(o[1]) + `</button>`)
 		}
 		b.WriteString(`</div><input type="hidden" ` + attrs + ` value="` + v + `">`)
 		return ui.HTML(b.String())
@@ -220,13 +226,14 @@ func settingControl(f settingField, value string) ui.HTML {
 	}
 	ph := ""
 	if f.Placeholder != "" {
-		ph = ` placeholder="` + html.EscapeString(f.Placeholder) + `"`
+		ph = ` placeholder="` + html.EscapeString(settingsWord(lang, f.Placeholder)) + `"`
 	}
 	return ui.HTML(`<input class="input" type="` + t + `" ` + attrs + ` value="` + v + `"` + ph + `>`)
 }
 
 // settingsPageBody renders one category.
 func settingsPageBody(ctx context.Context, a *App, c settingsCategory) ui.HTML {
+	lang := i18n.Lang(ctx)
 	var sections []ui.HTML
 	for _, g := range c.Groups {
 		var body ui.HTML
@@ -236,17 +243,17 @@ func settingsPageBody(ctx context.Context, a *App, c settingsCategory) ui.HTML {
 			rows := make([]ui.Row, 0, len(g.Fields))
 			for _, f := range g.Fields {
 				value := a.savedSetting(ctx, f.Key)
-				hint := f.Hint
+				hint := settingsWord(lang, f.Hint)
 				if f.Kind == "timezone" {
-					hint += " Now: " + currentSiteTimeLine() + "."
+					hint += " " + i18n.T(lang, "Now: {time}.", "time", currentSiteTimeLine())
 				}
-				rows = append(rows, ui.Row{Label: f.Label, Hint: hint, Control: settingControl(f, value), ID: f.ID})
+				rows = append(rows, ui.Row{Label: settingsWord(lang, f.Label), Hint: hint, Control: settingControlIn(lang, f, value), ID: f.ID})
 			}
 			body = ui.Rows(rows...)
 		}
-		sections = append(sections, ui.Section(g.Title, g.Hint, body))
+		sections = append(sections, ui.Section(settingsWord(lang, g.Title), settingsWord(lang, g.Hint), body))
 	}
-	return ui.SettingsPage(c.Label, "", c.Sub, append(sections, ui.SaveBar())...)
+	return ui.SettingsPage(settingsWord(lang, c.Label), "", settingsWord(lang, c.Sub), append(sections, ui.SaveBar())...)
 }
 
 // settingsEntry is one findable setting: a row, or a band drawn by its own
@@ -258,19 +265,24 @@ type settingsEntry struct {
 // settingsEntries lists every row and band of every category. "Search
 // settings" and the command bar both look through it, so the two can never
 // disagree about what a setting is called or where it lives.
-func settingsEntries() []settingsEntry {
+func settingsEntries() []settingsEntry { return settingsEntriesIn("en") }
+
+// settingsEntriesIn is settingsEntries with each name, place and hint in
+// lang. Terms stay English and carry the English name too, so a setting is
+// found by either; they are searched, never shown.
+func settingsEntriesIn(lang string) []settingsEntry {
 	var out []settingsEntry
 	for _, c := range settingsCategories {
 		for _, g := range c.Groups {
 			if g.Custom != nil {
-				where := c.Label
+				where := settingsWord(lang, c.Label)
 				if g.Title == c.Label {
-					where = "Settings" // "Footer, in Footer" says nothing
+					where = i18n.T(lang, "Settings") // "Footer, in Footer" says nothing
 				}
-				out = append(out, settingsEntry{Href: settingsHref(c.Slug), Label: g.Title, Where: where, Hint: g.Hint, Terms: g.Terms})
+				out = append(out, settingsEntry{Href: settingsHref(c.Slug), Label: settingsWord(lang, g.Title), Where: where, Hint: settingsWord(lang, g.Hint), Terms: g.Terms + " " + g.Title})
 			}
 			for _, f := range g.Fields {
-				out = append(out, settingsEntry{Href: settingsHref(c.Slug) + "#" + f.ID, Label: f.Label, Where: c.Label, Hint: f.Hint})
+				out = append(out, settingsEntry{Href: settingsHref(c.Slug) + "#" + f.ID, Label: settingsWord(lang, f.Label), Where: settingsWord(lang, c.Label), Hint: settingsWord(lang, f.Hint), Terms: f.Label})
 			}
 		}
 	}
@@ -280,24 +292,25 @@ func settingsEntries() []settingsEntry {
 // settingsSearchIndex is what "Search settings" looks through: every row and
 // band of every category, and the Settings app's other pages by name. It is a
 // list of links, so it reads without script too.
-func settingsSearchIndex(app *saApp) string {
+func settingsSearchIndex(lang string, app *saApp) string {
 	var b strings.Builder
 	item := func(href, label, where, terms string) {
 		b.WriteString(`<li><a class="sa-find__item" href="` + html.EscapeString(href) + `" data-terms="` +
 			html.EscapeString(strings.ToLower(label+" "+where+" "+terms)) + `"><span class="sa-find__label">` + html.EscapeString(label) +
 			`</span><span class="sa-find__where">` + html.EscapeString(where) + `</span></a></li>`)
 	}
-	for _, e := range settingsEntries() {
+	for _, e := range settingsEntriesIn(lang) {
 		item(e.Href, e.Label, e.Where, e.Hint+" "+e.Terms)
 	}
 	for _, s := range app.Sections {
 		if !strings.HasPrefix(s.Href, "/os/settings") {
-			item(s.Href, s.Label, "Settings", s.Group)
+			item(s.Href, s.Label, i18n.T(lang, "Settings"), s.Group)
 		}
 	}
-	return `<div class="sa-find">` + saIcon("search") + `<input type="search" class="input sa-find__input" placeholder="Search settings" aria-label="Search settings" data-settings-search>` +
+	find := esc(i18n.T(lang, "Search settings"))
+	return `<div class="sa-find">` + saIcon("search") + `<input type="search" class="input sa-find__input" placeholder="` + find + `" aria-label="` + find + `" data-settings-search>` +
 		`<ul class="sa-find__results" data-settings-index hidden>` + b.String() + `</ul>` +
-		`<p class="sa-find__none" data-settings-none hidden>No setting matches that.</p></div>`
+		`<p class="sa-find__none" data-settings-none hidden>` + esc(i18n.T(lang, "No setting matches that.")) + `</p></div>`
 }
 
 func settingsTeam(ctx context.Context, a *App) ui.HTML { return ui.HTML(a.teamRoster(ctx)) }

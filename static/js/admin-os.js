@@ -431,7 +431,8 @@ document.addEventListener('click', function (e) {
 
   function loadIndex() {
     if (index !== null) return;
-    fetch('/os/api/cmd-index')
+    // The index is in the page's language, which its own path would not give it.
+    fetch('/os/api/cmd-index?lang=' + encodeURIComponent(document.documentElement.lang || 'en'))
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (data) { index = data; render(); })
       .catch(function () { index = { posts: [], actions: [], settings: [] }; render(); });
