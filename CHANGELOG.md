@@ -21,6 +21,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   network or country blocked there, for a time or for good, gets no link,
   answered exactly as before so the form still tells no one who is a member.
 
+### Added
+
+- **A how-to for Calendar, booking pages and Drive**
+  (`docs/CALENDAR-AND-DRIVE.md`): making events and putting the calendar on
+  a phone, making a booking page, and uploading, sharing and opening Drive
+  in a file app, step by step.
+
 ### Changed
 
 - **Blocking on Sign-in attempts no longer reloads the page.** A block,

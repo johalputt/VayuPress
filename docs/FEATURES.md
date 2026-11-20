@@ -59,7 +59,7 @@ mail: folders, upload by choosing or dropping files (large ones resumable),
 a Trash kept for thirty days, the last five versions of a file, share links,
 an attachment saved to Drive or attached from it, and **WebDAV**, so a
 computer's or phone's own file app opens it. In a private mailbox a file is
-sealed to the holder's key. *([Mail guide →](VAYUMAIL.md))*
+sealed to the holder's key. *([Mail guide →](VAYUMAIL.md) · [how to →](CALENDAR-AND-DRIVE.md))*
 
 ## 💬 End-to-end-encrypted chat that lives only in memory (VayuTalk)
 

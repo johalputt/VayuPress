@@ -119,6 +119,8 @@ holding it (ADR-0173).
 
 ## Calendar
 
+Step by step, for Calendar, booking pages and Drive: [CALENDAR-AND-DRIVE.md](CALENDAR-AND-DRIVE.md).
+
 **Calendar** beside Mail holds the mailbox's events, the same ones a phone
 or desktop program reads and writes over CalDAV. An event may repeat, in
 its own time zone; guests get an invitation by mail and their answers come
