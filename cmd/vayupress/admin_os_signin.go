@@ -50,6 +50,8 @@ func signinStageWord(lang, stage string) string {
 		return i18n.T(lang, "Tried while paused")
 	case signin.StageOK:
 		return i18n.T(lang, "Signed in")
+	case signin.StageLink:
+		return i18n.T(lang, "Asked for a sign-in link")
 	}
 	return ""
 }

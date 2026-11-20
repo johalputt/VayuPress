@@ -132,6 +132,8 @@ func signinDoorName(lang, door string) string {
 		return "VayuTalk"
 	case signin.DoorRecovery:
 		return i18n.T(lang, "a recovery code")
+	case signin.DoorLink:
+		return i18n.T(lang, "a member's sign-in link")
 	}
 	return ""
 }

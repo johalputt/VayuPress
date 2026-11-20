@@ -23,6 +23,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - Dependencies updated: go-ical (its decoder now returns an error where it
   used to panic), golang.org/x/net, maxminddb-golang, parquet-go and iploc.
 
+- **Sign-in links can no longer be aimed at strangers from a blocked
+  address.** Each request for a member's sign-in link is now listed on
+  Shield › Sign-in attempts ("a member's sign-in link"), and an address,
+  network or country blocked there, for a time or for good, gets no link,
+  answered exactly as before so the form still tells no one who is a member.
+
 ## [3.18.44] — 2026-11-15
 
 Calendar apps: a malformed event is refused with a reason, and one unreadable

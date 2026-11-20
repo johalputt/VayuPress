@@ -33,6 +33,7 @@ import (
 	"github.com/johalputt/vayupress/internal/members"
 	"github.com/johalputt/vayupress/internal/payments"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/signin"
 )
 
 const memberCookie = "vp_member"
@@ -177,7 +178,17 @@ func (a *App) handleMemberLogin(w http.ResponseWriter, r *http.Request) {
 	// The refusal is INVISIBLE: the response below is the same generic 200 (or
 	// the same redirect) either way. Answering 429 would turn this endpoint into
 	// the member-enumeration oracle the comment above says it must not be.
-	overBudget := !memberLoginByIP.allow(auth.ClientIP(r)) || !memberLoginByAddress.allow(email)
+	// A source blocked on Shield › Sign-in attempts is refused here too, as
+	// silently as the budgets refuse: for two weeks in November 2026 one
+	// sender used this form to mail sign-in links to outside addresses until
+	// their servers refused the install's mail as abusive. Each request is
+	// recorded there, so the sources asking can be seen and blocked.
+	ip := auth.ClientIP(r)
+	_, blocked := a.signin.Refuse(auth.AccountKey(email), ip)
+	if email != "" {
+		a.signinRecord(email, signin.DoorLink, signin.StageLink, ip)
+	}
+	overBudget := blocked || !memberLoginByIP.allow(ip) || !memberLoginByAddress.allow(email)
 	if !overBudget {
 		if token, err := a.members.CreateLoginToken(r.Context(), email); err == nil {
 			go a.sendMemberMagicLink(email, token)

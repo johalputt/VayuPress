@@ -41,6 +41,7 @@ const (
 	DoorDAV      = "dav"      // contacts and calendars
 	DoorTalk     = "talk"     // VayuTalk's connect
 	DoorRecovery = "recovery" // the recovery code
+	DoorLink     = "link"     // a member's emailed sign-in link
 )
 
 // The stages an attempt reached.
@@ -57,6 +58,12 @@ const (
 	// sees their own sign-ins among the failures; a mail app signing in every
 	// few minutes is not recorded.
 	StageOK = "ok"
+	// StageLink: a sign-in link was asked for, to be mailed to the account.
+	// Not a failure: it feeds neither the alarm nor the spraying rule, whose
+	// three accounts an hour a busy site's readers behind one proxy would
+	// reach together. It is recorded so the sources asking can be seen and
+	// blocked.
+	StageLink = "link"
 )
 
 // The automatic block of password spraying: a source failing on SprayAccounts
