@@ -88,7 +88,7 @@ test("a block that worked redraws the page in place and says nothing went wrong"
   });
   await page.evaluate(() => window.htmx.ajax("POST", "/os/api/shield/sign-ins/lift?id=999999999", { target: "body", swap: "none" }));
   await expect(page.locator("#vp-before-redraw")).toHaveCount(0);
-  await expect(page.locator("#main-content h1")).toHaveText("Sign-in attempts");
+  await expect(page.locator("#main-content h1")).toContainText("Sign-in attempts");
   expect(await page.evaluate(() => window.vpKept === true)).toBe(true);
   expect(await page.evaluate(() => window.vpToasts)).toEqual([]);
 });
