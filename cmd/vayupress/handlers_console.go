@@ -27,12 +27,9 @@ import (
 // becomes observable from operator action.
 // =============================================================================
 
-// modeDescription says in one line what a runtime mode means for the install,
-// in English; the shell's status area uses modeDescriptionIn.
-func modeDescription(m mode.Mode) string { return modeDescriptionIn("en", m) }
-
-// modeDescriptionIn is modeDescription in lang.
-func modeDescriptionIn(lang string, m mode.Mode) string {
+// modeDescription says in one line, in lang, what a runtime mode means for the
+// install.
+func modeDescription(lang string, m mode.Mode) string {
 	switch m {
 	case mode.ModeNormal:
 		return i18n.T(lang, "All subsystems operational · write queue active · policy engine enforcing · fault escalation armed")

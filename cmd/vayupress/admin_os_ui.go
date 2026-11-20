@@ -4067,7 +4067,7 @@ func (a *App) handleOSCmdIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	settingsList := []cmdSetting{}
-	for _, e := range settingsEntriesIn(lang) {
+	for _, e := range settingsEntries(lang) {
 		if can(e.Href) {
 			settingsList = append(settingsList, cmdSetting{Label: e.Label, Where: e.Where, Hint: e.Hint, Href: e.Href})
 		}

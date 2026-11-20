@@ -61,7 +61,7 @@ var i18nMoved = map[string][]string{
 	"settings_app.go":              nil,
 	"city_table.go":                {"settingsCityTable"},
 	"handlers_team.go":             {"teamRoleName", "teamRoster"},
-	"handlers_console.go":          {"modeDescriptionIn"},
+	"handlers_console.go":          {"modeDescription"},
 	"vayuos_modes.go":              {"saModeStripText"},
 	"vayuos_mail_drive_upload.go":  nil,
 	"vayuos_mail_export_api.go":    nil,

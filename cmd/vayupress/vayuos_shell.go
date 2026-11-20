@@ -672,7 +672,7 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 	if m == "" {
 		m = mode.ModeNormal
 	}
-	modeDesc := modeDescriptionIn(lang, m)
+	modeDesc := modeDescription(lang, m)
 	modeHTML := `<span class="sa-dot sa-dot--` + saModeTone(m) + `"></span>` + html.EscapeString(saModeLabelIn(lang, m))
 	if admin {
 		modeHTML = `<a class="sa-state sa-state--` + saModeTone(m) + `" href="/os/modes" title="` + html.EscapeString(modeDesc) + `">` + modeHTML + `</a>`

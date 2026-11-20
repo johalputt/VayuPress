@@ -263,15 +263,12 @@ type settingsEntry struct {
 	Href, Label, Where, Hint, Terms string
 }
 
-// settingsEntries lists every row and band of every category. "Search
-// settings" and the command bar both look through it, so the two can never
-// disagree about what a setting is called or where it lives.
-func settingsEntries() []settingsEntry { return settingsEntriesIn("en") }
-
-// settingsEntriesIn is settingsEntries with each name, place and hint in
-// lang. Terms stay English and carry the English name too, so a setting is
-// found by either; they are searched, never shown.
-func settingsEntriesIn(lang string) []settingsEntry {
+// settingsEntries lists every row and band of every category, each name,
+// place and hint in lang. "Search settings" and the command bar both look
+// through it, so the two can never disagree about what a setting is called or
+// where it lives. Terms stay English and carry the English name too, so a
+// setting is found by either; they are searched, never shown.
+func settingsEntries(lang string) []settingsEntry {
 	var out []settingsEntry
 	for _, c := range settingsCategories {
 		for _, g := range c.Groups {
@@ -300,7 +297,7 @@ func settingsSearchIndex(lang string, app *saApp) string {
 			html.EscapeString(strings.ToLower(label+" "+where+" "+terms)) + `"><span class="sa-find__label">` + html.EscapeString(label) +
 			`</span><span class="sa-find__where">` + html.EscapeString(where) + `</span></a></li>`)
 	}
-	for _, e := range settingsEntriesIn(lang) {
+	for _, e := range settingsEntries(lang) {
 		item(e.Href, e.Label, e.Where, e.Hint+" "+e.Terms)
 	}
 	for _, s := range app.Sections {

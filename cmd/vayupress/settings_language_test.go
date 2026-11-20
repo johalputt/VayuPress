@@ -22,7 +22,7 @@ func TestASettingsPageIsDrawnInThePagesLanguage(t *testing.T) {
 	ctx := i18n.WithLang(context.Background(), "de")
 	general, _ := settingsCategoryFor("general")
 	body := string(settingsPageBody(ctx, nil, general))
-	for _, want := range []string{"Identität der Website", "Name der Website", "Wird im Kopfbereich, im Tab und in jeder E-Mail angezeigt.", `placeholder="Meine Publikation"`} {
+	for _, want := range []string{"Identität der Website", "Name der Website", "Wird im Kopfbereich, im Tab und in jeder E-Mail angezeigt.", `placeholder="Eine kurze Beschreibung"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the German Site identity page lacks %q", want)
 		}
@@ -118,7 +118,7 @@ func TestTheShellAroundAMovedPageIsInItsLanguage(t *testing.T) {
 			t.Errorf("the German read-only strip lacks %q:\n%s", want, strip)
 		}
 	}
-	if got := modeDescriptionIn("de", mode.ModeNormal); !strings.HasPrefix(got, "Alle Subsysteme in Betrieb") {
+	if got := modeDescription("de", mode.ModeNormal); !strings.HasPrefix(got, "Alle Subsysteme in Betrieb") {
 		t.Errorf("the German normal mode reads %q", got)
 	}
 	sw := spaceSwitch(accessAdmin, &osSettings{Lang: "de"})
