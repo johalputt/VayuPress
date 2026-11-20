@@ -8,6 +8,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.45] — 2026-11-20
+
+Sign-in links that cannot be aimed at strangers, a pasted SVG that cannot
+fetch from elsewhere, posts announced at their own site's address, and
+Markdown on goldmark v2.
+
 ### Security
 
 - **A pasted SVG can no longer make readers' browsers fetch from another
