@@ -55,7 +55,8 @@ func FuzzSanitizeSVG(f *testing.F) {
 				if name == "href" && !strings.HasPrefix(val, "#") {
 					t.Fatalf("an href that leaves the document got through: %q", a.Value)
 				}
-				if strings.Contains(val, "javascript:") || strings.Contains(val, "url(") && !strings.Contains(val, "url(#") {
+				if strings.Contains(val, "javascript:") || strings.Contains(val, "url(") && !strings.Contains(val, "url(#") ||
+					strings.Contains(val, "image-set(") || strings.Contains(val, `\`) {
 					t.Fatalf("%s=%q got through", a.Name.Local, a.Value)
 				}
 			}

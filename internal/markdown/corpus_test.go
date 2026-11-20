@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/yuin/goldmark"
 )
 
 // update rewrites the goldens from the renderers as they are now. Run it only
@@ -24,7 +22,7 @@ var update = flag.Bool("update", false, "rewrite testdata/golden from the curren
 // change to a renderer's options, shows up here as a readable diff, file by
 // file, before it shows up on anyone's site.
 func TestEveryRendererProducesItsGoldenHTML(t *testing.T) {
-	renderers := map[string]goldmark.Markdown{"document": Document, "mail": Mail, "inline": Inline, "block": Block}
+	renderers := map[string]Renderer{"document": Document, "mail": Mail, "inline": Inline, "block": Block}
 	inputs, err := filepath.Glob("testdata/corpus/*.markdown")
 	if err != nil || len(inputs) < 6 {
 		t.Fatalf("corpus: %v %v", inputs, err)

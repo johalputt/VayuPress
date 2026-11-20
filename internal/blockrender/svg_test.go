@@ -108,3 +108,24 @@ func jsonString(s string) string {
 	b.WriteByte('"')
 	return b.String()
 }
+
+// A style that could still fetch once its complete url(...) references are
+// scrubbed is dropped whole, one seed per way: a url( left open, an escaped
+// url, image-set's bare string. A style that only points inside the document
+// (fill:url(#g)) is kept.
+func TestAStyleThatCanStillFetchIsDropped(t *testing.T) {
+	for name, style := range map[string]string{
+		"an open url(":    "fill:url(https://elsewhere.example/x",
+		"an escaped url(": `fill:u\72l(https://elsewhere.example/x)`,
+		"image-set":       `fill:image-set('https://elsewhere.example/x' 1x)`,
+	} {
+		out, ok := SanitizeSVG(`<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1" style="` + style + `"/></svg>`)
+		if !ok || strings.Contains(out, "style=") || strings.Contains(out, "elsewhere") {
+			t.Errorf("%s: %q", name, out)
+		}
+	}
+	out, _ := SanitizeSVG(`<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1" style="fill:url(#g)"/></svg>`)
+	if !strings.Contains(out, `style="fill:url(#g)"`) {
+		t.Errorf("a same-document reference was dropped: %q", out)
+	}
+}

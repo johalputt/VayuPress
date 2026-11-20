@@ -421,7 +421,11 @@ func sanitizeSVGAttr(a xml.Attr) (string, bool) {
 		}
 		return "", false // everything off-site or scheme-bearing goes
 	case local == "style":
-		return filterSVGCSSURLs(a.Value), true
+		v := filterSVGCSSURLs(a.Value)
+		if svgStyleCanFetch(v) {
+			return "", false
+		}
+		return v, true
 	case local == "xmlns":
 		return "http://www.w3.org/2000/svg", true
 	case local == "xlink":
@@ -508,6 +512,35 @@ func filterSVGCSSURLs(style string) string {
 		return "none"
 	})
 	return svgJSProtoRe.ReplaceAllString(style, "")
+}
+
+// svgStyleCanFetch reports whether a style value, after filterSVGCSSURLs, can
+// still make the browser fetch something; such a style is dropped whole rather
+// than repaired. filterSVGCSSURLs rewrites a complete url(...), but CSS also
+// closes a url( left open at the end of the declaration, reads an escaped name
+// (u\72l( is url( once unescaped), and fetches through image-set() and the
+// other image functions, which take a bare string. Found by fuzzing:
+// style="url(" passed through unchanged.
+func svgStyleCanFetch(v string) bool {
+	l := strings.ToLower(v)
+	if strings.Contains(l, `\`) {
+		return true
+	}
+	for _, fn := range []string{"image-set(", "-webkit-image-set(", "image(", "cross-fade(", "element(", "src("} {
+		if strings.Contains(l, fn) {
+			return true
+		}
+	}
+	for rest := l; ; {
+		i := strings.Index(rest, "url(")
+		if i < 0 {
+			return false
+		}
+		rest = rest[i+len("url("):]
+		if !strings.HasPrefix(strings.TrimLeft(strings.TrimSpace(rest), `"'`), "#") {
+			return true
+		}
+	}
 }
 
 // renderRawSVG sanitises a pasted SVG and wraps it in a trusted, constant

@@ -35,7 +35,7 @@ var trackedRepos = map[string]string{
 	"github.com/ProtonMail/go-crypto":    "ProtonMail/go-crypto",
 	"github.com/cloudflare/circl":        "cloudflare/circl",
 	"github.com/mattn/go-sqlite3":        "mattn/go-sqlite3",
-	"github.com/yuin/goldmark":           "yuin/goldmark",
+	"github.com/yuin/goldmark/v2":        "yuin/goldmark",
 	"github.com/microcosm-cc/bluemonday": "microcosm-cc/bluemonday",
 	"github.com/go-chi/chi/v5":           "go-chi/chi",
 }

@@ -15,7 +15,7 @@ require (
 	github.com/ProtonMail/go-crypto v1.5.2
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/digitorus/pkcs7 v0.0.0-20261104125046-a476de3098e4
-	github.com/emersion/go-ical v0.0.0-20250609112844-439c63cef608
+	github.com/emersion/go-ical v0.0.0-20261112170022-46c5b53a1723
 	github.com/emersion/go-msgauth v0.7.0
 	github.com/emersion/go-vcard v0.1.0
 	github.com/emersion/go-webdav v0.7.0
@@ -25,17 +25,17 @@ require (
 	github.com/graphql-go/graphql v0.8.1
 	github.com/mattn/go-sqlite3 v1.14.53
 	github.com/microcosm-cc/bluemonday v1.0.27
-	github.com/oschwald/maxminddb-golang/v2 v2.9.0
-	github.com/parquet-go/parquet-go v0.32.0
-	github.com/phuslu/iploc v1.0.20261101
+	github.com/oschwald/maxminddb-golang/v2 v2.9.1
+	github.com/parquet-go/parquet-go v0.32.1
+	github.com/phuslu/iploc v1.0.20261115
 	github.com/rs/cors v1.11.1
 	github.com/sigstore/sigstore-go v1.4.0
 	github.com/teambition/rrule-go v1.8.2
-	github.com/yuin/goldmark v1.8.7
+	github.com/yuin/goldmark/v2 v2.1.16
 	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/goptlib v1.6.0
 	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/lyrebird v0.0.0-20261104192811-59ac7e400c38
 	golang.org/x/crypto v0.59.0
-	golang.org/x/net v0.62.0
+	golang.org/x/net v0.63.0
 	golang.org/x/sys v0.50.0
 	golang.org/x/text v0.44.0
 	rsc.io/qr v0.2.0
@@ -43,7 +43,7 @@ require (
 )
 
 require (
-	github.com/andybalholm/brotli v1.2.8 // indirect
+	github.com/andybalholm/brotli v1.3.0 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
@@ -87,13 +87,13 @@ require (
 	github.com/in-toto/in-toto-golang v0.11.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jedisct1/go-minisign v0.0.0-20211028175153-1c139d1cc84b // indirect
-	github.com/klauspost/compress v1.20.3 // indirect
+	github.com/klauspost/compress v1.20.4 // indirect
 	github.com/oklog/ulid/v2 v2.1.2 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
-	github.com/parquet-go/bitpack v1.0.0 // indirect
-	github.com/parquet-go/jsonlite v1.0.0 // indirect
+	github.com/parquet-go/bitpack v1.0.3 // indirect
+	github.com/parquet-go/jsonlite v1.5.5 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
-	github.com/pierrec/lz4/v4 v4.1.21 // indirect
+	github.com/pierrec/lz4/v4 v4.1.33 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sassoftware/relic/v8 v8.2.0 // indirect
 	github.com/secure-systems-lab/go-securesystemslib v0.11.1 // indirect

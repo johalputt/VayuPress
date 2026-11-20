@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+
+- **A pasted SVG can no longer make readers' browsers fetch from another
+  site through its style.** The sanitiser rewrote a complete `url(...)`, but
+  CSS also reads a `url(` left open, an escaped `url`, and `image-set()`; a
+  style that can still fetch anything is now dropped. Found by the nightly
+  fuzzer.
+
+### Changed
+
+- **Markdown is rendered by goldmark v2.** Every renderer produces the same
+  HTML as before, held by the renderers' corpus test.
+- Dependencies updated: go-ical (its decoder now returns an error where it
+  used to panic), golang.org/x/net, maxminddb-golang, parquet-go and iploc.
+
 ## [3.18.44] — 2026-11-15
 
 Calendar apps: a malformed event is refused with a reason, and one unreadable
