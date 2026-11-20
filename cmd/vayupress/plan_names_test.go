@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -26,6 +27,22 @@ var planNames = regexp.MustCompile(strings.Join([]string{
 	`\(row ` + `[0-9]+`,
 }, "|"))
 
+// planWords are pieces every planNames shape contains, one of them at
+// least, built from parts like the pattern.
+var planWords = [][]byte{[]byte("pipeline " + "3"), []byte("(" + "3"), []byte("(row" + " "), []byte("plan " + "§"), []byte("fidelity" + " "), []byte("render " + "0")}
+
+// mayNameAPlan is false for a file planNames cannot match in. A look for a
+// few words in the whole file, in place of the pattern on each of its lines,
+// which under -race was 47 s of the race job's 600.
+func mayNameAPlan(b []byte) bool {
+	for _, w := range planWords {
+		if bytes.Contains(b, w) {
+			return true
+		}
+	}
+	return false
+}
+
 // No plan names in the product tree: its Go, scripts, stylesheets, specs and
 // workflows. On 2026-11-20 some 300 of them were taken out, written before
 // the rule or past it.
@@ -48,7 +65,7 @@ func TestNoPlanNamesInTheTree(t *testing.T) {
 				return nil
 			}
 			b, err := os.ReadFile(p)
-			if err != nil {
+			if err != nil || !mayNameAPlan(b) {
 				return nil
 			}
 			for n, line := range strings.Split(string(b), "\n") {

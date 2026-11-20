@@ -44,7 +44,11 @@ func TestAMovedScriptHasNoEnglishOutsideVpT(t *testing.T) {
 		src := jsComment.ReplaceAllString(string(b), "")
 		for _, m := range jsLiteral.FindAllStringSubmatchIndex(src, -1) {
 			before := strings.TrimRight(src[:m[0]], " \t\n")
-			if strings.HasSuffix(before, "vpT(") || jsSelectorCall.MatchString(before) {
+			// Only the end of the prefix can hold the call: matching the whole
+			// prefix rescans the script once per literal, which made this test
+			// quadratic (35 s of the race job's 600 s). 20 bytes holds the
+			// longest name, its bracket and the character before it that \b reads.
+			if strings.HasSuffix(before, "vpT(") || jsSelectorCall.MatchString(before[max(0, len(before)-20):]) {
 				continue
 			}
 			lit := ""

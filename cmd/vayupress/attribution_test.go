@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -62,6 +63,19 @@ var attributionScanExt = map[string]bool{
 	".html": true, ".css": true, ".js": true, ".sh": true, ".sql": true,
 }
 
+// mayBeAttribution is false for a file none of attributionPatterns can match
+// in: each needs one of these words. One look at the file in place of five
+// case-blind patterns over all of it (44 s under -race).
+func mayBeAttribution(b []byte) bool {
+	low := bytes.ToLower(b)
+	for _, w := range []string{"claude", "co-authored-by", "generated with", "🤖"} {
+		if bytes.Contains(low, []byte(w)) {
+			return true
+		}
+	}
+	return false
+}
+
 // TestNoAssistantAttributionInTrackedFiles sweeps every tracked source and
 // documentation file.
 func TestNoAssistantAttributionInTrackedFiles(t *testing.T) {
@@ -98,6 +112,9 @@ func TestNoAssistantAttributionInTrackedFiles(t *testing.T) {
 		}
 		b, readErr := os.ReadFile(path) // #nosec G304 -- walking this repository
 		if readErr != nil {
+			return nil
+		}
+		if !mayBeAttribution(b) {
 			return nil
 		}
 		body := string(b)

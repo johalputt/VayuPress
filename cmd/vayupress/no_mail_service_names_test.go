@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -44,6 +45,23 @@ func textFile(path string) bool {
 	return false
 }
 
+// mailServiceWords are the words mailServiceName needs at least one of.
+var mailServiceWords = [][]byte{[]byte("gmail"), []byte("proton"), []byte("outlook"), []byte("hotmail"), []byte("yahoo"),
+	[]byte("icloud"), []byte("fastmail"), []byte("tutanota"), []byte("tuta.io"), []byte("zoho"), []byte("superhuman"), []byte("hey.com")}
+
+// mayNameAMailService is false for a file mailServiceName cannot match in:
+// one look at the whole file in place of the case-blind pattern on each of
+// its lines, which under -race was the slowest test in the app (65 s).
+func mayNameAMailService(b []byte) bool {
+	low := bytes.ToLower(b)
+	for _, w := range mailServiceWords {
+		if bytes.Contains(low, w) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestNoOtherMailServiceIsNamed(t *testing.T) {
 	root := filepath.Join("..", "..")
 	self, _ := filepath.Abs("no_mail_service_names_test.go")
@@ -62,12 +80,14 @@ func TestNoOtherMailServiceIsNamed(t *testing.T) {
 		if abs, _ := filepath.Abs(path); abs == self || !textFile(path) {
 			return nil
 		}
-		f, err := os.Open(path) // #nosec G304 -- a file of this repository
+		b, err := os.ReadFile(path) // #nosec G304 -- a file of this repository
 		if err != nil {
 			return err
 		}
-		defer f.Close()
-		sc := bufio.NewScanner(f)
+		if !mayNameAMailService(b) {
+			return nil
+		}
+		sc := bufio.NewScanner(bytes.NewReader(b))
 		sc.Buffer(make([]byte, 1<<20), 16<<20)
 		for n := 1; sc.Scan(); n++ {
 			if m := mailServiceName.FindString(notProse.Replace(sc.Text())); m != "" {
