@@ -33,6 +33,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **The language choice's return address is built from the console's own
+  path only.** It is cleaned of `..` and repeated slashes and joined to a
+  fixed `/os/`, so nothing in it can name another site.
 - **Mail › Accounts, "Recent password resets" no longer shows a requester's
   whole IP address.** It is shown masked (223.184.x.x), as Sign-in attempts
   shows one; the audit record keeps the whole address.

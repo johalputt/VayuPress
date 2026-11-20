@@ -113,6 +113,10 @@ func TestTheLanguageChoiceComesBackOnlyToTheConsole(t *testing.T) {
 		"https://elsewhere.example/os/x":      "/os",
 		"/\\elsewhere.example/os/x":           "/os",
 		"javascript:/os/x":                    "/os",
+		"/os/../evil.example":                 "/os",
+		"/os/..//evil.example/x":              "/os",
+		"/os//elsewhere.example/x":            "/os/elsewhere.example/x",
+		"/os/%2F%2Felsewhere.example":         "/os/elsewhere.example",
 		"/posts":                              "/os",
 		"/osx":                                "/os",
 	} {

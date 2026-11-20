@@ -11,6 +11,7 @@ package main
 import (
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"time"
 
@@ -84,19 +85,31 @@ func (a *App) handleOSProfileLanguage(w http.ResponseWriter, r *http.Request) {
 }
 
 // consoleBack is back when it is a console page on this host, without its
-// lang parameter; /os otherwise. "//host/os" parses with a host and
-// "javascript:/os" with a scheme, so either is refused; "/\\host", which a
-// browser reads as another host, is not under /os/.
+// lang parameter; /os otherwise. The answer is built from the constant "/os/"
+// and the path cleaned of ".." and repeated slashes, never from back itself,
+// so it cannot name another host whatever back holds: "//host/os" parses with
+// a host and "javascript:/os" with a scheme, and both are refused; "/\\host",
+// which a browser reads as another host, is not under /os/.
 func consoleBack(back string) string {
 	u, err := url.Parse(back)
-	if err != nil || u.Scheme != "" || u.Host != "" || (u.Path != "/os" && !strings.HasPrefix(u.Path, "/os/")) {
+	if err != nil || u.Scheme != "" || u.Host != "" || u.Opaque != "" {
 		return "/os"
 	}
+	p := path.Clean(u.Path)
+	if p != "/os" && !strings.HasPrefix(p, "/os/") {
+		return "/os"
+	}
+	rest := strings.TrimPrefix(strings.TrimPrefix(p, "/os"), "/")
 	q := u.Query()
 	q.Del("lang")
-	u.RawQuery = q.Encode()
-	u.Fragment = ""
-	return u.String()
+	out := "/os/" + (&url.URL{Path: rest}).EscapedPath()
+	if p == "/os" {
+		out = "/os"
+	}
+	if enc := q.Encode(); enc != "" {
+		out += "?" + enc
+	}
+	return out
 }
 
 // languageMenu is the form that shows the page in another language.
