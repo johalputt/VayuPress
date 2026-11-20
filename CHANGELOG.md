@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Settings in thirteen languages.** Settings follows the language chosen
+  in the account menu, as Mail does: every page of it, its save bar, the
+  menu and footer editors, the site mark, the city table and the Team page,
+  and Search settings, which finds a setting by its name in either
+  language. The command palette lists settings and actions in the page's
+  language too. A setting refused as invalid still says why in English.
+- **The console's shell speaks the page's language** wherever the page
+  does: the mode in the status area and what it means, the strip a
+  read-only or quarantined install shows with the actions it refuses, and
+  the switch between Clearnet and Tor.
+
 ## [3.18.45] — 2026-11-20
 
 Sign-in links that cannot be aimed at strangers, a pasted SVG that cannot
