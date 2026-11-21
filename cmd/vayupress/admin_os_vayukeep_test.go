@@ -229,6 +229,7 @@ func TestConsoleIsReachableAndOperable(t *testing.T) {
 	}, "", []vayukeep.Generation{
 		{Name: "vk-20260727-120000.vpbk", Taken: vkNow, Bytes: 4 << 20},
 	}, "", vkNow, "/mnt/replica", false, keepPrefs{}, "", nil)
+	live += keepPageScript(t, live)
 	for _, want := range []string{
 		"data-vk-backup>", "data-vk-drill>", `data-vk-verify="`, `data-vk-restore="`, "data-vk-disable>",
 		"/os/api/vayukeep/backup", "/os/api/vayukeep/drill", "/os/api/vayukeep/verify",
@@ -262,11 +263,26 @@ func TestConsoleIsReachableAndOperable(t *testing.T) {
 	}
 }
 
+// keepPageScript is the script that wires the page's controls, which the page
+// must load: the calls they make are in it, not in the page.
+func keepPageScript(t *testing.T, page string) string {
+	t.Helper()
+	if !strings.Contains(page, `src="/os/static/js/admin-os-vayukeep.js`) {
+		t.Fatal("the page does not load the script that wires its controls")
+	}
+	b, err := fs.ReadFile(embeddedStaticFS, "js/admin-os-vayukeep.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 // TestSetupIsClickableNotTypable — the whole point of the console. An operator
 // must be able to turn backups on without opening a terminal, because the ones
 // who never open a terminal are exactly the ones running without backups.
 func TestSetupIsClickableNotTypable(t *testing.T) {
 	got := osVayuKeepBody("en", "n", vayukeep.Status{}, "", nil, "", vkNow, "", false, keepPrefs{}, "", nil)
+	got += keepPageScript(t, got)
 	// Match the BUTTON, not the selector string. The page's own script contains
 	// '[data-vk-setup]' unconditionally, so asserting on the bare attribute name
 	// passes even when no form was rendered — which is precisely the bug this

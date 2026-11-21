@@ -1714,6 +1714,7 @@
  "The people who run this site with you, and what each may do.": "함께 이 사이트를 운영하는 사람들과 각자 할 수 있는 일.",
  "The public site is offline behind a maintenance page": "공개 사이트가 점검 페이지 뒤에서 내려가 있습니다",
  "The recipient’s mail server didn’t answer in time — try again in a moment.": "받는 사람의 메일 서버가 제때 응답하지 않았습니다. 잠시 후 다시 시도하세요.",
+ "The request could not be read.": "요청을 읽을 수 없습니다.",
  "The restore moves your current data directory aside and prints where. Nothing is deleted until you delete it.": "복원은 현재 데이터 디렉터리를 옆으로 옮기고 위치를 알려 줍니다. 직접 지우기 전에는 아무것도 지워지지 않습니다.",
  "The same app password a mail app uses": "메일 앱과 같은 앱 비밀번호",
  "The same, in dark mode.": "어두운 모드에서도 동일합니다.",
