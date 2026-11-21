@@ -140,6 +140,10 @@ func languageMenu(lang string, r *http.Request) string {
 	return b.String()
 }
 
+// pageLangHeader carries the language of the console page a script's call
+// comes from.
+const pageLangHeader = "X-VP-Lang"
+
 // consoleSpeaks is the console's paths that are in the person's language;
 // every other page of it is English. A section joins when the last of its
 // sentences has moved into i18n.T, so no release shows a page half in one
@@ -148,7 +152,10 @@ var consoleSpeaks = []string{"/os/vayumail", "/os/settings"}
 
 // consoleLanguage puts the language a console page is written in on its
 // request: the person's (their choice from ?lang=, kept, then their
-// browser's) on a section that speaks it, English on every other.
+// browser's) on a section that speaks it, English on every other. A call to
+// /os/api/ answers in the language of the page that made it, which the
+// console's scripts send as pageLangHeader (vayuos.js): the API serves every
+// section, so its path cannot say, and a Tor world sends no Referer.
 func consoleLanguage(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		lang := "en"
@@ -158,6 +165,12 @@ func consoleLanguage(next http.Handler) http.Handler {
 				w.Header().Add("Vary", "Accept-Language, Cookie")
 				break
 			}
+		}
+		if strings.HasPrefix(r.URL.Path, "/os/api/") {
+			if want := r.Header.Get(pageLangHeader); want != "" && i18n.Choose(want, "") == want {
+				lang = want
+			}
+			w.Header().Add("Vary", pageLangHeader)
 		}
 		w.Header().Set("Content-Language", lang)
 		next.ServeHTTP(w, r.WithContext(i18n.WithLang(r.Context(), lang)))

@@ -198,8 +198,16 @@ func TestDriveIsInThePersonsLanguage(t *testing.T) {
 			t.Errorf("the German sheet has no %q", want)
 		}
 	}
+	// The scripts' words are looked up by their English, so that block is
+	// English by design; what the page shows is the rest.
+	shown := page + sheet
+	if i := strings.Index(shown, `<script type="application/json" id="vp-words">`); i >= 0 {
+		if j := strings.Index(shown[i:], "</script>"); j >= 0 {
+			shown = shown[:i] + shown[i+j:]
+		}
+	}
 	for _, english := range []string{"My files", "Share by link", "Make a link", "changed "} {
-		if strings.Contains(page+sheet, english) {
+		if strings.Contains(shown, english) {
 			t.Errorf("the German Drive says %q", english)
 		}
 	}

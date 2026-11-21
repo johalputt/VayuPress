@@ -199,3 +199,33 @@ func TestTheLanguageChosenIsKeptWithTheAccount(t *testing.T) {
 		t.Errorf("an account with no choice set this browser to %q", got)
 	}
 }
+
+// A call to the console's API answers in the language of the page that made
+// it, which the page's scripts send: a language the console has, on an API
+// path only. A page outside a speaking section stays English whatever it is
+// sent.
+func TestAnAPICallAnswersInItsPagesLanguage(t *testing.T) {
+	langOf := func(path, header string) string {
+		var got string
+		h := consoleLanguage(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got = i18n.Lang(r.Context()) }))
+		r := httptest.NewRequest(http.MethodPost, path, nil)
+		if header != "" {
+			r.Header.Set(pageLangHeader, header)
+		}
+		h.ServeHTTP(httptest.NewRecorder(), r)
+		return got
+	}
+	for _, c := range []struct{ path, header, want string }{
+		{"/os/api/vayukeep/setup", "de", "de"},
+		{"/os/api/settings", "ja", "ja"},
+		{"/os/api/settings", i18n.Pseudo, i18n.Pseudo},
+		{"/os/api/settings", "", "en"},
+		{"/os/api/settings", "xx", "en"},
+		{"/os/api/settings", "de\r\nX: y", "en"},
+		{"/os/posts", "de", "en"},
+	} {
+		if got := langOf(c.path, c.header); got != c.want {
+			t.Errorf("%s with %q answers in %q, want %q", c.path, c.header, got, c.want)
+		}
+	}
+}

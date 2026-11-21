@@ -222,7 +222,7 @@
       seg.forEach(function (o) { o.setAttribute('aria-pressed', o.getAttribute('data-sa-theme') === next ? 'true' : 'false'); });
       try { localStorage.setItem('vp-os-theme', next); } catch (e) { /* private mode: page-only */ }
       saveSetting('admin.theme', next).catch(function () {
-        say('Colour scheme changed for this page only — it could not be saved.', 'warn');
+        say(vpT('Colour scheme changed for this page only — it could not be saved.'), 'warn');
       });
     });
   });
@@ -299,10 +299,10 @@
     if (!verb || verb === 'get') return;
     var live = document.querySelector('.page-actions [role="status"]');
     if (wentThrough(d)) {
-      if (live) live.textContent = 'Done.';
+      if (live) live.textContent = vpT('Done.');
       return;
     }
-    var msg = 'That did not go through' + (d.xhr && d.xhr.status ? ' (' + d.xhr.status + ')' : '') + '.';
+    var msg = d.xhr && d.xhr.status ? vpT('That did not go through ({status}).', { status: d.xhr.status }) : vpT('That did not go through.');
     // A refusal that says why adds its reason: "This would stop your own
     // sign-in" tells the operator what to do; a status code alone does not.
     try {
@@ -344,10 +344,38 @@
   }
   function isWrite(method) { return !/^(GET|HEAD|OPTIONS)$/i.test(method || 'GET'); }
 
+  /* The page's language goes with every call to the console's own API
+     (X-VP-Lang, read by consoleLanguage), so what the reply says is in the
+     language the page is drawn in. The API serves every section, so its
+     path cannot say which, and a Tor world sends no Referer. An English
+     page sends nothing. */
+  function pageLang() {
+    var l = document.documentElement.lang;
+    return l && l !== 'en' ? l : '';
+  }
+  function ownAPI(url) {
+    try {
+      var u = new URL(url, location.href);
+      return u.origin === location.origin && u.pathname.indexOf('/os/api/') === 0;
+    } catch (_) { return false; }
+  }
+  document.addEventListener('htmx:configRequest', function (e) {
+    var lang = pageLang();
+    if (lang && ownAPI(e.detail.path)) e.detail.headers['X-VP-Lang'] = lang;
+  });
+
   var nativeFetch = window.fetch;
   if (nativeFetch) {
     window.fetch = function (input, init) {
-      var p = nativeFetch.apply(this, arguments);
+      var lang = pageLang();
+      var url = typeof input === 'string' ? input : (input && (input.url || input.href)) || '';
+      if (lang && ownAPI(url)) {
+        init = Object.assign({}, init);
+        var h = new Headers(init.headers || (input && input.headers) || undefined);
+        h.set('X-VP-Lang', lang);
+        init.headers = h;
+      }
+      var p = nativeFetch.call(this, input, init);
       var method = (init && init.method) || (input && input.method);
       var el = origin;
       if (!el || !isWrite(method)) return p;
