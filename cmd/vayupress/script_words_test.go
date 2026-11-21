@@ -12,7 +12,7 @@ import (
 // i18nMovedScripts is every console script whose words a person reads have
 // moved into vpT. From then on an English sentence written beside vpT fails
 // TestAMovedScriptHasNoEnglishOutsideVpT, as a moved page's does beside T.
-var i18nMovedScripts = []string{"admin-os-drive.js", "admin-os-mail-recovery.js", "admin-os-mail.js", "admin-os-vayukeep.js", "admin-os-apikeys.js", "admin-os-newsletter.js"}
+var i18nMovedScripts = []string{"admin-os-drive.js", "admin-os-mail-recovery.js", "admin-os-mail.js", "admin-os-vayukeep.js", "admin-os-apikeys.js", "admin-os-newsletter.js", "admin-os-ads.js"}
 
 var (
 	// jsLiteral is a quoted string on one line.
@@ -119,4 +119,16 @@ func TestAConsolePageCarriesItsScriptsWords(t *testing.T) {
 	if frag := "<p>a swapped part</p>"; withScriptWords(frag, "de") != frag {
 		t.Error("a fragment was given a block, so a page could carry two")
 	}
+}
+
+// withoutScriptWords is a page without its scripts' words. They are looked up
+// by their English, so that block is English by design; what the page shows
+// is the rest.
+func withoutScriptWords(page string) string {
+	if i := strings.Index(page, `<script type="application/json" id="vp-words">`); i >= 0 {
+		if j := strings.Index(page[i:], "</script>"); j >= 0 {
+			return page[:i] + page[i+j:]
+		}
+	}
+	return page
 }

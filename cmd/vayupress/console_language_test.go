@@ -223,6 +223,9 @@ func TestAnAPICallAnswersInItsPagesLanguage(t *testing.T) {
 		{"/os/api/settings", "xx", "en"},
 		{"/os/api/settings", "de\r\nX: y", "en"},
 		{"/os/posts", "de", "en"},
+		{"/os/d/abc/api/ads", "de", "de"},
+		{"/os/d/abc/settings", "de", "en"},
+		{"/os/dx/api/ads", "de", "en"},
 	} {
 		if got := langOf(c.path, c.header); got != c.want {
 			t.Errorf("%s with %q answers in %q, want %q", c.path, c.header, got, c.want)

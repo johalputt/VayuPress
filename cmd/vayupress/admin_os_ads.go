@@ -23,6 +23,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/ads"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/ui"
@@ -43,6 +44,8 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 	ctx := r.Context()
+	lang := i18n.Lang(ctx)
+	title := i18n.T(lang, "Advertising")
 	site := adConsoleSite(r)
 	sc := siteSettingsScope(site)
 
@@ -70,75 +73,80 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 	// with slots or paid submissions waiting is a choice the operator made, and
 	// the page keeps showing what is there.
 	if site == "" && !adsOn && a.ads != nil && len(slots) == 0 && len(pendingAds) == 0 {
-		writeOSHTML(w, r, adminOSLayout(nonce, "Advertising", "ads", cfg, htmpl.HTML(adsSetup())))
+		writeOSHTML(w, r, adminOSLayout(nonce, title, "ads", cfg, htmpl.HTML(adsSetup(lang))))
 		return
 	}
 	adPrice := a.adSlotPriceCents(ctx)
 
-	state := ui.State("ok", "Showing ads")
-	lead := `<button type="button" class="btn btn--primary btn--sm" data-sheet="ad-new">Add an ad slot</button>`
+	addSlot := esc(i18n.T(lang, "Add an ad slot"))
+	state := ui.State("ok", i18n.T(lang, "Showing ads"))
+	lead := `<button type="button" class="btn btn--primary btn--sm" data-sheet="ad-new">` + addSlot + `</button>`
 	if site != "" {
 		// A hosted site's own Advertising: its switch is in its settings below,
 		// and the install's ads can be copied onto it once.
 		if !adsOn {
-			state = ui.State("neutral", "Advertising is off on this site")
+			state = ui.State("neutral", i18n.T(lang, "Advertising is off on this site"))
 		}
-		lead += ` <button type="button" class="btn btn--sm" data-ads-copy>Copy my ads to this site</button>`
+		lead += ` <button type="button" class="btn btn--sm" data-ads-copy>` + esc(i18n.T(lang, "Copy my ads to this site")) + `</button>`
 	} else if !adsOn {
-		state = ui.State("neutral", "Advertising is off")
-		lead = `<button type="button" class="btn btn--primary btn--sm" data-action="module-on" data-module="ads">Turn on Advertising</button> ` +
-			`<button type="button" class="btn btn--sm" data-sheet="ad-new">Add an ad slot</button>`
+		state = ui.State("neutral", i18n.T(lang, "Advertising is off"))
+		lead = `<button type="button" class="btn btn--primary btn--sm" data-action="module-on" data-module="ads">` + esc(i18n.T(lang, "Turn on Advertising")) + `</button> ` +
+			`<button type="button" class="btn btn--sm" data-sheet="ad-new">` + addSlot + `</button>`
 	}
 	if len(pendingAds) > 0 {
-		state += ui.HTML(" ") + ui.State("warn", strconv.Itoa(len(pendingAds))+" member ad"+plural(len(pendingAds))+" to review")
+		state += ui.HTML(" ") + ui.State("warn", i18n.T(lang, "{n, plural, one {# member ad to review} other {# member ads to review}}", "n", len(pendingAds)))
 	}
 	field := func(id, key, kind, label, value string) ui.HTML {
-		return settingControl(settingField{ID: id, Key: key, Kind: kind, Label: label}, value)
+		return settingControlIn(lang, settingField{ID: id, Key: key, Kind: kind, Label: label}, value)
 	}
-	adsense := "Off: turn on Google AdSense in Tools and plugins first."
+	adsense := i18n.T(lang, "Off: turn on Google AdSense in Tools and plugins first.")
 	switch {
 	case googleOn && adsenseClient != "":
-		adsense = "Serving AdSense units."
+		adsense = i18n.T(lang, "Serving AdSense units.")
 	case googleOn:
-		adsense = "On, and waiting for a publisher ID."
+		adsense = i18n.T(lang, "On, and waiting for a publisher ID.")
 	}
 
-	newSlot := adSlotForm("ad", ads.Slot{Kind: ads.KindImage}) +
-		`<div class="mt-3"><button type="button" class="btn btn--primary btn--sm" id="ad-create-btn">Add the slot</button></div>`
+	newSlot := adSlotForm(lang, "ad", ads.Slot{Kind: ads.KindImage}) +
+		`<div class="mt-3"><button type="button" class="btn btn--primary btn--sm" id="ad-create-btn">` + esc(i18n.T(lang, "Add the slot")) + `</button></div>`
 	// One sheet per slot, filled with what it holds now, as API keys' Manage
 	// sheets are: an ad once placed could only be turned off or deleted, so a
 	// changed link or a new image meant deleting the slot and making it again.
+	closeLabel := i18n.T(lang, "Close")
 	editSheets := ui.HTML("")
 	for _, sl := range slots {
 		pre := "ad-e-" + sl.ID
-		editSheets += ui.Sheet(pre, "Edit "+sl.Name, ui.HTML(adSlotForm(pre, sl)+
+		editSheets += ui.SheetClosing(pre, i18n.T(lang, "Edit {slot}", "slot", sl.Name), closeLabel, ui.HTML(adSlotForm(lang, pre, sl)+
 			`<div class="mt-3"><button type="button" class="btn btn--primary btn--sm" data-ad-save="`+html.EscapeString(sl.ID)+
-			`" data-prefix="`+html.EscapeString(pre)+`" data-enabled="`+strconv.FormatBool(sl.Enabled)+`" data-sort="`+strconv.Itoa(sl.Sort)+`">Save the slot</button></div>`))
+			`" data-prefix="`+html.EscapeString(pre)+`" data-enabled="`+strconv.FormatBool(sl.Enabled)+`" data-sort="`+strconv.Itoa(sl.Sort)+`">`+esc(i18n.T(lang, "Save the slot"))+`</button></div>`))
 	}
 
-	settingsSection := ui.Section("Pricing, networks and pages", "", ui.Rows(
-		ui.Row{Label: "Price of a member ad", Hint: "Charged once per submission, in minor units: 500 is " + priceLabel(a.payCurrency(ctx), 500) + ".", ID: "ad-price",
-			Control: field("ad-price", settings.KeyAdSlotPriceCents, "text", "Price of a member ad", strconv.Itoa(adPrice))},
-		ui.Row{Label: "AdSense publisher ID", Hint: adsense + " Pages that show a unit let Google's ad origins through their CSP.", ID: "ad-adsense-client",
-			Control: field("ad-adsense-client", settings.KeyAdsenseClient, "text", "AdSense publisher ID", adsenseClient)},
-		ui.Row{Label: "Affiliate disclosure", Hint: "Shown above every post while the Affiliate module is on.", ID: "ad-disclosure",
-			Control: field("ad-disclosure", settings.KeyAffiliateDisclosure, "textarea", "Affiliate disclosure", disclosure)},
-		ui.Row{Label: "Never show ads on", Hint: "These pages and posts show no ad, whatever their slots say. One address a line, \"/\" for the home page.", ID: "ad-never",
-			Control: field("ad-never", settings.KeyAdsNever, "textarea", "Never show ads on", never)},
-		ui.Row{Label: "More ads.txt lines", Hint: "Other sellers this site authorises, one line each; /ads.txt starts with the line your AdSense publisher ID gives.", ID: "ad-ads-txt",
-			Control: field("ad-ads-txt", settings.KeyAdsTxtLines, "textarea", "More ads.txt lines", adsTxt)},
+	priceName, clientName, disclosureName, neverName, adsTxtName := i18n.T(lang, "Price of a member ad"), i18n.T(lang, "AdSense publisher ID"),
+		i18n.T(lang, "Affiliate disclosure"), i18n.T(lang, "Never show ads on"), i18n.T(lang, "More ads.txt lines")
+	settingsSection := ui.Section(i18n.T(lang, "Pricing, networks and pages"), "", ui.Rows(
+		ui.Row{Label: priceName, Hint: i18n.T(lang, "Charged once per submission, in minor units: 500 is {price}.", "price", priceLabel(a.payCurrency(ctx), 500)), ID: "ad-price",
+			Control: field("ad-price", settings.KeyAdSlotPriceCents, "text", priceName, strconv.Itoa(adPrice))},
+		ui.Row{Label: clientName, Hint: adsense + " " + i18n.T(lang, "Pages that show a unit let Google's ad origins through their CSP."), ID: "ad-adsense-client",
+			Control: field("ad-adsense-client", settings.KeyAdsenseClient, "text", clientName, adsenseClient)},
+		ui.Row{Label: disclosureName, Hint: i18n.T(lang, "Shown above every post while the Affiliate module is on."), ID: "ad-disclosure",
+			Control: field("ad-disclosure", settings.KeyAffiliateDisclosure, "textarea", disclosureName, disclosure)},
+		ui.Row{Label: neverName, Hint: i18n.T(lang, "These pages and posts show no ad, whatever their slots say. One address a line, \"/\" for the home page."), ID: "ad-never",
+			Control: field("ad-never", settings.KeyAdsNever, "textarea", neverName, never)},
+		ui.Row{Label: adsTxtName, Hint: i18n.T(lang, "Other sellers this site authorises, one line each; /ads.txt starts with the line your AdSense publisher ID gives."), ID: "ad-ads-txt",
+			Control: field("ad-ads-txt", settings.KeyAdsTxtLines, "textarea", adsTxtName, adsTxt)},
 	))
 	if site != "" {
-		settingsSection = ui.Section("This site's ads", "Its switches, its AdSense publisher ID and its pages", ui.HTML(siteAdSettingsForm(adsOn, googleOn, a.affiliateEnabled(ctx, sc), adsenseClient, disclosure, never, adsTxt)))
+		settingsSection = ui.Section(i18n.T(lang, "This site's ads"), i18n.T(lang, "Its switches, its AdSense publisher ID and its pages"),
+			ui.HTML(siteAdSettingsForm(lang, adsOn, googleOn, a.affiliateEnabled(ctx, sc), adsenseClient, disclosure, never, adsTxt)))
 	}
-	page := ui.SettingsPage("Advertising", state, "Ad slots and members' ads for this site alone, served from it with no ad network.",
+	page := ui.SettingsPage(title, state, i18n.T(lang, "Ad slots and members' ads for this site alone, served from it with no ad network."),
 		ui.HTML(`<div class="page-lead">`+lead+`</div>`),
-		ui.Section("Member ads", "Paid submissions wait for your approval", ui.HTML(memberAdReviewTable(pendingAds))),
-		ui.Section("Ad slots", "Each fills one placement", ui.HTML(adsSlotsTable(slots, counts))),
+		ui.Section(i18n.T(lang, "Member ads"), i18n.T(lang, "Paid submissions wait for your approval"), ui.HTML(memberAdReviewTable(lang, pendingAds))),
+		ui.Section(i18n.T(lang, "Ad slots"), i18n.T(lang, "Each fills one placement"), ui.HTML(adsSlotsTable(lang, slots, counts))),
 		settingsSection,
-		ui.Sheet("ad-new", "Add an ad slot", ui.HTML(newSlot)),
+		ui.SheetClosing("ad-new", i18n.T(lang, "Add an ad slot"), closeLabel, ui.HTML(newSlot)),
 		editSheets,
-		ui.SaveBar(),
+		ui.SaveBarSaying(i18n.T(lang, "Discard"), i18n.T(lang, "Save changes")),
 	)
 	// The page's calls go to its own site's address: an absolute /os/api/ads
 	// on a hosted site's page edited the install's slots.
@@ -149,72 +157,17 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 	body := string(page) + `
 <div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
 <div id="ads-ctx" data-base="` + html.EscapeString(apiBase) + `" hidden></div>
-<script nonce="` + nonce + `">
-(function(){'use strict';
-var BASE=document.getElementById('ads-ctx').getAttribute('data-base');
-function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
-var msg=document.getElementById('action-msg');
-function show(t,e){if(!msg)return;msg.textContent=t;msg.classList.toggle('is-error',!!e);msg.classList.add('visible');}
-function jfetch(method,url,payload){var o={method:method,headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()}};if(payload)o.body=JSON.stringify(payload);return fetch(url,o).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});});}
-var createBtn=document.getElementById('ad-create-btn');
-if(createBtn)createBtn.addEventListener('click',function(){
-  var payload={name:val('ad-name'),placement:val('ad-placement'),kind:val('ad-kind'),image_url:val('ad-image'),link_url:val('ad-link'),alt_text:val('ad-alt'),html:val('ad-html'),show_on:val('ad-show-on'),show_paths:val('ad-show-paths'),enabled:true};
-  if(!payload.name.trim()){show('Give the slot a name',true);return;}
-  createBtn.disabled=true;show('Creating…',false);
-  jfetch('POST',BASE,payload).then(function(res){createBtn.disabled=false;if(res.ok){location.reload();}else{show(res.d.detail||res.d.title||'Error',true);}}).catch(function(e){createBtn.disabled=false;show('Error: '+e,true);});
-});
-function val(id){var el=document.getElementById(id);return el?el.value:'';}
-document.querySelectorAll('[data-ad-save]').forEach(function(b){
-  b.addEventListener('click',function(){
-    var p=b.getAttribute('data-prefix');
-    var payload={name:val(p+'-name'),placement:val(p+'-placement'),kind:val(p+'-kind'),image_url:val(p+'-image'),link_url:val(p+'-link'),alt_text:val(p+'-alt'),html:val(p+'-html'),show_on:val(p+'-show-on'),show_paths:val(p+'-show-paths'),enabled:b.getAttribute('data-enabled')==='true',sort:parseInt(b.getAttribute('data-sort'),10)||0};
-    if(!payload.name.trim()){show('Give the slot a name',true);return;}
-    b.disabled=true;show('Saving…',false);
-    jfetch('PUT',BASE+'/'+encodeURIComponent(b.getAttribute('data-ad-save')),payload).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show(res.d.detail||(res.d.error&&res.d.error.message)||'Error',true);}}).catch(function(e){b.disabled=false;show('Error: '+e,true);});
-  });
-});
-document.querySelectorAll('[data-ad-action]').forEach(function(b){
-  b.addEventListener('click',function(){
-    var act=b.getAttribute('data-ad-action');var id=b.getAttribute('data-id');
-    if(act==='delete'){vpConfirm({title:'Delete this ad slot?',confirm:'Delete'},function(){b.disabled=true;jfetch('DELETE',BASE+'/'+encodeURIComponent(id)).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show(res.d.detail||'Error',true);}});});}
-    else if(act==='toggle'){b.disabled=true;jfetch('POST',BASE+'/'+encodeURIComponent(id)+'/toggle',{enabled:b.getAttribute('data-to')==='1'}).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show(res.d.detail||'Error',true);}});}
-  });
-});
-var copyBtn=document.querySelector('[data-ads-copy]');
-if(copyBtn)copyBtn.addEventListener('click',function(){
-  vpConfirm({title:'Copy your ads to this site?',message:'Your own ad slots, AdSense publisher ID, disclosure and switches are copied onto this site. It is a copy: changing yours later leaves this site as it is.',confirm:'Copy'},function(){
-    copyBtn.disabled=true;
-    jfetch('POST',BASE+'/copy').then(function(res){if(res.ok){location.reload();}else{copyBtn.disabled=false;show((res.d.error&&res.d.error.message)||'Error',true);}});
-  });
-});
-var setBtn=document.querySelector('[data-site-ads-save]');
-if(setBtn)setBtn.addEventListener('click',function(){
-  var p={};
-  document.querySelectorAll('[data-site-ad-key]').forEach(function(el){p[el.getAttribute('data-site-ad-key')]=el.type==='checkbox'?(el.checked?'on':'off'):el.value;});
-  setBtn.disabled=true;show('Saving…',false);
-  jfetch('POST',BASE+'/settings',{settings:p}).then(function(res){setBtn.disabled=false;if(res.ok){location.reload();}else{show((res.d.error&&res.d.error.message)||'Error',true);}}).catch(function(e){setBtn.disabled=false;show('Error: '+e,true);});
-});
-document.querySelectorAll('[data-adreview-action]').forEach(function(b){
-  b.addEventListener('click',function(){
-    var act=b.getAttribute('data-adreview-action');var id=b.getAttribute('data-id');
-    var go=function(){
-      b.disabled=true;
-      jfetch('POST',BASE+'/'+encodeURIComponent(id)+'/'+act).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show(res.d.detail||(res.d.error&&res.d.error.message)||'Error',true);}});
-    };
-    if(act==='reject'){vpConfirm({title:'Reject this member ad?',message:'It will not be published.',confirm:'Reject'},go);}else{go();}
-  });
-});
-})();
-</script>`
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-ads.js?v=` + assetVer("js/admin-os-ads.js") + `"></script>`
 
-	writeOSHTML(w, r, settingsLayout(nonce, "Advertising", "ads", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, settingsLayout(nonce, title, "ads", cfg, htmpl.HTML(body)))
 }
 
 // memberAdReviewTable renders the moderation queue with approve/reject actions.
-func memberAdReviewTable(pending []ads.Slot) string {
+func memberAdReviewTable(lang string, pending []ads.Slot) string {
 	if len(pending) == 0 {
-		return `<div class="table-empty">No submissions awaiting review. Paid member ads appear here for approval.</div>`
+		return `<div class="table-empty">` + esc(i18n.T(lang, "No submissions awaiting review. Paid member ads appear here for approval.")) + `</div>`
 	}
+	approve, reject := esc(i18n.T(lang, "Approve")), esc(i18n.T(lang, "Reject"))
 	rows := ""
 	for i := range pending {
 		s := pending[i]
@@ -223,23 +176,23 @@ func memberAdReviewTable(pending []ads.Slot) string {
 			preview += `<div class="row-meta">→ ` + html.EscapeString(s.LinkURL) + `</div>`
 		}
 		rows += `<tr>` +
-			`<td class="muted text-sm">` + html.EscapeString(s.OwnerEmail) + `</td>` +
-			`<td>` + html.EscapeString(s.Placement) + `</td>` +
+			`<td class="muted text-sm" translate="no">` + html.EscapeString(s.OwnerEmail) + `</td>` +
+			`<td>` + html.EscapeString(adPlacementLabel(lang, s.Placement)) + `</td>` +
 			`<td class="row-title"><code>` + preview + `</code></td>` +
 			`<td class="row-actions">` +
-			`<button type="button" class="btn btn--primary btn--sm" data-adreview-action="approve" data-id="` + html.EscapeString(s.ID) + `">Approve</button> ` +
-			`<button type="button" class="btn btn--ghost btn--sm" data-adreview-action="reject" data-id="` + html.EscapeString(s.ID) + `">Reject</button>` +
+			`<button type="button" class="btn btn--primary btn--sm" data-adreview-action="approve" data-id="` + html.EscapeString(s.ID) + `">` + approve + `</button> ` +
+			`<button type="button" class="btn btn--ghost btn--sm" data-adreview-action="reject" data-id="` + html.EscapeString(s.ID) + `">` + reject + `</button>` +
 			`</td></tr>`
 	}
 	return `<div class="table-wrap"><table class="table">` +
-		`<thead><tr><th>Member</th><th>Placement</th><th>Creative</th><th></th></tr></thead>` +
+		`<thead><tr><th>` + esc(i18n.T(lang, "Member")) + `</th><th>` + esc(i18n.T(lang, "Placement")) + `</th><th>` + esc(i18n.T(lang, "Creative")) + `</th><th></th></tr></thead>` +
 		`<tbody>` + rows + `</tbody></table></div>`
 }
 
 // handleOSAdReviewApprove publishes a paid, reviewed member ad.
 func (a *App) handleOSAdReviewApprove(w http.ResponseWriter, r *http.Request) {
 	if a.ads == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-disabled", "Advertising not initialised", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-disabled", i18n.T(i18n.Lang(r.Context()), "Advertising is off on this install."), "")
 		return
 	}
 	if err := a.ads.ApproveMemberAd(r.Context(), adConsoleSite(r), chi.URLParam(r, "aid")); err != nil {
@@ -253,7 +206,7 @@ func (a *App) handleOSAdReviewApprove(w http.ResponseWriter, r *http.Request) {
 // handleOSAdReviewReject declines a member ad.
 func (a *App) handleOSAdReviewReject(w http.ResponseWriter, r *http.Request) {
 	if a.ads == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-disabled", "Advertising not initialised", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-disabled", i18n.T(i18n.Lang(r.Context()), "Advertising is off on this install."), "")
 		return
 	}
 	if err := a.ads.RejectMemberAd(r.Context(), adConsoleSite(r), chi.URLParam(r, "aid")); err != nil {
@@ -265,83 +218,137 @@ func (a *App) handleOSAdReviewReject(w http.ResponseWriter, r *http.Request) {
 
 // adsSlotsTable lists slots with how often each was seen and clicked in
 // the last 30 days (counts, by slot id).
-func adsSlotsTable(slots []ads.Slot, counts map[string]ads.Counts) string {
+func adsSlotsTable(lang string, slots []ads.Slot, counts map[string]ads.Counts) string {
 	if len(slots) == 0 {
-		return `<div class="table-empty">No ad slots yet.</div>`
+		return `<div class="table-empty">` + esc(i18n.T(lang, "No ad slots yet.")) + `</div>`
 	}
+	edit, del := esc(i18n.T(lang, "Edit")), esc(i18n.T(lang, "Delete"))
 	rows := ""
 	for i := range slots {
 		s := slots[i]
-		statusPill := string(ui.State("ok", "On"))
-		toggleTo, toggleLabel := "0", "Turn off"
+		statusPill := string(ui.State("ok", i18n.T(lang, "On")))
+		toggleTo, toggleLabel := "0", i18n.T(lang, "Turn off")
 		if !s.Enabled {
-			statusPill = string(ui.State("neutral", "Off"))
-			toggleTo, toggleLabel = "1", "Turn on"
+			statusPill = string(ui.State("neutral", i18n.T(lang, "Off")))
+			toggleTo, toggleLabel = "1", i18n.T(lang, "Turn on")
 		}
 		rows += `<tr>
-  <td class="row-title">` + html.EscapeString(s.Name) + `</td>
-  <td>` + html.EscapeString(s.Placement) + `</td>
-  <td>` + html.EscapeString(s.Kind) + `</td>
+  <td class="row-title" translate="no">` + html.EscapeString(s.Name) + `</td>
+  <td>` + html.EscapeString(adPlacementLabel(lang, s.Placement)) + `</td>
+  <td>` + html.EscapeString(adKindLabel(lang, s.Kind)) + `</td>
   <td>` + statusPill + `</td>
   <td class="mono">` + osGroupInt(int(counts[s.ID].Seen)) + `</td>
   <td class="mono">` + osGroupInt(int(counts[s.ID].Clicks)) + `</td>
   <td class="row-actions">
-    <button type="button" class="btn btn--ghost btn--sm" data-sheet="ad-e-` + html.EscapeString(s.ID) + `">Edit</button>
-    <button type="button" class="btn btn--ghost btn--sm" data-ad-action="toggle" data-to="` + toggleTo + `" data-id="` + html.EscapeString(s.ID) + `">` + toggleLabel + `</button>
-    <button type="button" class="btn btn--ghost btn--sm" data-ad-action="delete" data-id="` + html.EscapeString(s.ID) + `">Delete</button>
+    <button type="button" class="btn btn--ghost btn--sm" data-sheet="ad-e-` + html.EscapeString(s.ID) + `">` + edit + `</button>
+    <button type="button" class="btn btn--ghost btn--sm" data-ad-action="toggle" data-to="` + toggleTo + `" data-id="` + html.EscapeString(s.ID) + `">` + esc(toggleLabel) + `</button>
+    <button type="button" class="btn btn--ghost btn--sm" data-ad-action="delete" data-id="` + html.EscapeString(s.ID) + `">` + del + `</button>
   </td>
 </tr>`
 	}
 	return `<div class="table-wrap"><table class="table">
-  <thead><tr><th>Name</th><th>Placement</th><th>Kind</th><th>Status</th><th>Seen, 30 days</th><th>Clicks</th><th></th></tr></thead>
+  <thead><tr><th>` + esc(i18n.T(lang, "Name")) + `</th><th>` + esc(i18n.T(lang, "Placement")) + `</th><th>` + esc(i18n.T(lang, "Kind")) + `</th><th>` + esc(i18n.T(lang, "Status")) +
+		`</th><th>` + esc(i18n.T(lang, "Seen, 30 days")) + `</th><th>` + esc(i18n.T(lang, "Clicks")) + `</th><th></th></tr></thead>
   <tbody>` + rows + `</tbody>
 </table></div>`
 }
 
-func adsPlacementOptions(selected string) string {
+func adsPlacementOptions(lang, selected string) string {
 	out := ""
 	for _, p := range ads.Placements() {
 		sel := ""
 		if p.ID == selected {
 			sel = " selected"
 		}
-		out += `<option value="` + html.EscapeString(p.ID) + `"` + sel + `>` + html.EscapeString(p.Label) + `</option>`
+		out += `<option value="` + html.EscapeString(p.ID) + `"` + sel + `>` + html.EscapeString(adPlacementLabel(lang, p.ID)) + `</option>`
 	}
 	return out
 }
 
+// adPlacementLabel is a placement's name in lang. The ads package keeps the
+// English names for its own uses; a placement it adds later shows by its id
+// here until it is named.
+func adPlacementLabel(lang, id string) string {
+	switch id {
+	case ads.PlacementHeader:
+		return i18n.T(lang, "Header (top of page)")
+	case ads.PlacementAbovePost:
+		return i18n.T(lang, "Above the post")
+	case ads.PlacementBelowPost:
+		return i18n.T(lang, "Below the post")
+	case ads.PlacementSidebar:
+		return i18n.T(lang, "Sidebar")
+	case ads.PlacementFooter:
+		return i18n.T(lang, "Footer")
+	}
+	return id
+}
+
+// adKindLabel is what fills a slot, said in lang.
+func adKindLabel(lang, kind string) string {
+	switch kind {
+	case ads.KindImage:
+		return i18n.T(lang, "An image and a link")
+	case ads.KindHTML:
+		return i18n.T(lang, "An HTML creative, sanitised")
+	case ads.KindAdSense:
+		return i18n.T(lang, "A Google AdSense unit")
+	}
+	return kind
+}
+
+// adShowLabel is where a slot shows, said in lang.
+func adShowLabel(lang, id string) string {
+	switch id {
+	case ads.ShowEverywhere:
+		return i18n.T(lang, "Every page with this placement")
+	case ads.ShowPosts:
+		return i18n.T(lang, "Posts only")
+	case ads.ShowPages:
+		return i18n.T(lang, "Pages only")
+	case ads.ShowChosen:
+		return i18n.T(lang, "Only the pages and posts listed")
+	}
+	return id
+}
+
 // adSlotForm is the slot's fields, ids prefixed with prefix, filled from sl:
 // the same form adds a slot (prefix "ad", an empty slot) and edits one.
-func adSlotForm(prefix string, sl ads.Slot) string {
+func adSlotForm(lang, prefix string, sl ads.Slot) string {
 	id := func(f string) string { return html.EscapeString(prefix + "-" + f) }
 	kinds := ""
-	for _, k := range []struct{ id, label string }{{ads.KindImage, "An image and a link"}, {ads.KindHTML, "An HTML creative, sanitised"}, {ads.KindAdSense, "A Google AdSense unit"}} {
+	for _, k := range []string{ads.KindImage, ads.KindHTML, ads.KindAdSense} {
 		sel := ""
-		if k.id == sl.Kind {
+		if k == sl.Kind {
 			sel = " selected"
 		}
-		kinds += `<option value="` + k.id + `"` + sel + `>` + k.label + `</option>`
+		kinds += `<option value="` + k + `"` + sel + `>` + esc(adKindLabel(lang, k)) + `</option>`
 	}
-	return `<div class="field"><label class="field-label" for="` + id("name") + `">Name</label><input id="` + id("name") + `" class="input" type="text" placeholder="Below-post banner" value="` + html.EscapeString(sl.Name) + `"></div>
-<div class="field"><label class="field-label" for="` + id("placement") + `">Placement</label><select id="` + id("placement") + `" class="select">` + adsPlacementOptions(sl.Placement) + `</select></div>
-<div class="field"><label class="field-label" for="` + id("show-on") + `">Shows on</label><select id="` + id("show-on") + `" class="select">` + adsShowOptions(sl.ShowOn) + `</select></div>
-<div class="field"><label class="field-label" for="` + id("show-paths") + `">The pages and posts it shows on</label><textarea id="` + id("show-paths") + `" class="textarea font-mono" rows="3" placeholder="/about&#10;/a-post">` + html.EscapeString(strings.Join(sl.ShowPaths, "\n")) + `</textarea><span class="field-hint">For "Only the pages and posts listed": one address a line, "/" for the home page.</span></div>
-<div class="field"><label class="field-label" for="` + id("kind") + `">What fills it</label><select id="` + id("kind") + `" class="select">` + kinds + `</select></div>
-<div class="field"><label class="field-label" for="` + id("image") + `">Image URL</label><input id="` + id("image") + `" class="input" type="text" placeholder="/media/banner.png or https://…" value="` + html.EscapeString(sl.ImageURL) + `"><span class="field-hint">For an image and a link.</span></div>
-<div class="field"><label class="field-label" for="` + id("link") + `">Where it links</label><input id="` + id("link") + `" class="input" type="text" placeholder="https://sponsor.example" value="` + html.EscapeString(sl.LinkURL) + `"><span class="field-hint">For an image and a link.</span></div>
-<div class="field"><label class="field-label" for="` + id("alt") + `">Label</label><input id="` + id("alt") + `" class="input" type="text" placeholder="Sponsored by …" value="` + html.EscapeString(sl.AltText) + `"></div>
-<div class="field"><label class="field-label" for="` + id("html") + `">HTML, or the AdSense unit ID</label><textarea id="` + id("html") + `" class="textarea font-mono" rows="3">` + html.EscapeString(sl.HTML) + `</textarea></div>`
+	label := func(f, text string) string {
+		return `<label class="field-label" for="` + id(f) + `">` + esc(text) + `</label>`
+	}
+	forImage := `<span class="field-hint">` + esc(i18n.T(lang, "For an image and a link.")) + `</span>`
+	return `<div class="field">` + label("name", i18n.T(lang, "Name")) + `<input id="` + id("name") + `" class="input" type="text" placeholder="` + esc(i18n.T(lang, "Below-post banner")) + `" value="` + html.EscapeString(sl.Name) + `"></div>
+<div class="field">` + label("placement", i18n.T(lang, "Placement")) + `<select id="` + id("placement") + `" class="select">` + adsPlacementOptions(lang, sl.Placement) + `</select></div>
+<div class="field">` + label("show-on", i18n.T(lang, "Shows on")) + `<select id="` + id("show-on") + `" class="select">` + adsShowOptions(lang, sl.ShowOn) + `</select></div>
+<div class="field">` + label("show-paths", i18n.T(lang, "The pages and posts it shows on")) + `<textarea id="` + id("show-paths") + `" class="textarea font-mono" rows="3" placeholder="/about&#10;/a-post">` + html.EscapeString(strings.Join(sl.ShowPaths, "\n")) + `</textarea><span class="field-hint">` +
+		esc(i18n.T(lang, "For \"{choice}\": one address a line, \"/\" for the home page.", "choice", adShowLabel(lang, ads.ShowChosen))) + `</span></div>
+<div class="field">` + label("kind", i18n.T(lang, "What fills it")) + `<select id="` + id("kind") + `" class="select">` + kinds + `</select></div>
+<div class="field">` + label("image", i18n.T(lang, "Image URL")) + `<input id="` + id("image") + `" class="input" type="text" placeholder="` + esc(i18n.T(lang, "{file} or {address}", "file", "/media/banner.png", "address", "https://…")) + `" value="` + html.EscapeString(sl.ImageURL) + `">` + forImage + `</div>
+<div class="field">` + label("link", i18n.T(lang, "Where it links")) + `<input id="` + id("link") + `" class="input" type="text" placeholder="https://sponsor.example" value="` + html.EscapeString(sl.LinkURL) + `">` + forImage + `</div>
+<div class="field">` + label("alt", i18n.T(lang, "Label")) + `<input id="` + id("alt") + `" class="input" type="text" placeholder="` + esc(i18n.T(lang, "Sponsored by …")) + `" value="` + html.EscapeString(sl.AltText) + `"></div>
+<div class="field">` + label("html", i18n.T(lang, "HTML, or the AdSense unit ID")) + `<textarea id="` + id("html") + `" class="textarea font-mono" rows="3">` + html.EscapeString(sl.HTML) + `</textarea></div>`
 }
 
 // adsShowOptions is the slot form's choice of pages, with selected chosen.
-func adsShowOptions(selected string) string {
+func adsShowOptions(lang, selected string) string {
 	out := ""
 	for _, o := range ads.ShowOptions() {
 		sel := ""
 		if o.ID == selected {
 			sel = " selected"
 		}
-		out += `<option value="` + html.EscapeString(o.ID) + `"` + sel + `>` + html.EscapeString(o.Label) + `</option>`
+		out += `<option value="` + html.EscapeString(o.ID) + `"` + sel + `>` + html.EscapeString(adShowLabel(lang, o.ID)) + `</option>`
 	}
 	return out
 }
@@ -350,7 +357,7 @@ func adsShowOptions(selected string) string {
 // status: Update writes the creative, never the status.
 func (a *App) handleOSAdUpdate(w http.ResponseWriter, r *http.Request) {
 	if a.ads == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-error", "ads not initialised", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-error", i18n.T(i18n.Lang(r.Context()), "Advertising is off on this install."), "")
 		return
 	}
 	var body struct {
@@ -367,7 +374,7 @@ func (a *App) handleOSAdUpdate(w http.ResponseWriter, r *http.Request) {
 		ShowPaths string `json:"show_paths"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", i18n.T(i18n.Lang(r.Context()), "The request could not be read."), "")
 		return
 	}
 	id := chi.URLParam(r, "aid")
@@ -389,7 +396,7 @@ func (a *App) handleOSAdUpdate(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleOSAdsList(w http.ResponseWriter, r *http.Request) {
 	if a.ads == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-error", "ads not initialised", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-error", i18n.T(i18n.Lang(r.Context()), "Advertising is off on this install."), "")
 		return
 	}
 	list, err := a.ads.List(r.Context(), adConsoleSite(r))
@@ -402,7 +409,7 @@ func (a *App) handleOSAdsList(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleOSAdCreate(w http.ResponseWriter, r *http.Request) {
 	if a.ads == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-error", "ads not initialised", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-error", i18n.T(i18n.Lang(r.Context()), "Advertising is off on this install."), "")
 		return
 	}
 	var body struct {
@@ -419,7 +426,7 @@ func (a *App) handleOSAdCreate(w http.ResponseWriter, r *http.Request) {
 		ShowPaths string `json:"show_paths"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", i18n.T(i18n.Lang(r.Context()), "The request could not be read."), "")
 		return
 	}
 	slot, err := a.ads.Create(r.Context(), adConsoleSite(r), ads.SlotInput{
@@ -438,7 +445,7 @@ func (a *App) handleOSAdCreate(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleOSAdToggle(w http.ResponseWriter, r *http.Request) {
 	if a.ads == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-error", "ads not initialised", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-error", i18n.T(i18n.Lang(r.Context()), "Advertising is off on this install."), "")
 		return
 	}
 	var body struct {
@@ -455,7 +462,7 @@ func (a *App) handleOSAdToggle(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleOSAdDelete(w http.ResponseWriter, r *http.Request) {
 	if a.ads == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-error", "ads not initialised", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-error", i18n.T(i18n.Lang(r.Context()), "Advertising is off on this install."), "")
 		return
 	}
 	if err := a.ads.Delete(r.Context(), adConsoleSite(r), chi.URLParam(r, "aid")); err != nil {
@@ -470,15 +477,15 @@ func (a *App) handleOSAdDelete(w http.ResponseWriter, r *http.Request) {
 func (a *App) purgeAdCaches() { render.CachePurgeAll() }
 
 // adsSetup is Advertising until it is on.
-func adsSetup() string {
+func adsSetup(lang string) string {
 	return string(ui.Setup(ui.SetupPage{
 		Icon:  "megaphone",
-		Title: "Advertising is off",
-		What:  "Your own ad slots, served from this site with no ad network, and ads your members can buy for you to approve.",
+		Title: i18n.T(lang, "Advertising is off"),
+		What:  i18n.T(lang, "Your own ad slots, served from this site with no ad network, and ads your members can buy for you to approve."),
 		Steps: []ui.SetupStep{
-			{Title: "Advertising on", Detail: "Nothing shows on the site until a slot has something to fill it."},
-			{Title: "An ad slot", Detail: "A placement (header, in-article, sidebar or footer) and what fills it: your own image and link, an HTML creative, or a Google AdSense unit."},
+			{Title: i18n.T(lang, "Advertising on"), Detail: i18n.T(lang, "Nothing shows on the site until a slot has something to fill it.")},
+			{Title: i18n.T(lang, "An ad slot"), Detail: i18n.T(lang, "A placement (header, in-article, sidebar or footer) and what fills it: your own image and link, an HTML creative, or a Google AdSense unit.")},
 		},
-		Action: `<button type="button" class="btn btn--primary" data-action="module-on" data-module="ads">Turn on Advertising</button>`,
+		Action: ui.HTML(`<button type="button" class="btn btn--primary" data-action="module-on" data-module="ads">` + esc(i18n.T(lang, "Turn on Advertising")) + `</button>`),
 	}))
 }

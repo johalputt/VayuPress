@@ -134,6 +134,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	r.Get("/os/static/js/admin-os-update.js", serveAdminOSAsset("js/admin-os-update.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-vayukeep.js", serveAdminOSAsset("js/admin-os-vayukeep.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-apikeys.js", serveAdminOSAsset("js/admin-os-apikeys.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-ads.js", serveAdminOSAsset("js/admin-os-ads.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-storage.js", serveAdminOSAsset("js/admin-os-storage.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-website.js", serveAdminOSAsset("js/admin-os-website.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-bundle.js", serveAdminOSAsset("js/admin-os-bundle.js", "application/javascript; charset=utf-8"))

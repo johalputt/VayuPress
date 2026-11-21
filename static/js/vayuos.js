@@ -347,8 +347,9 @@
   /* The page's language goes with every call to the console's own API
      (X-VP-Lang, read by consoleLanguage), so what the reply says is in the
      language the page is drawn in. The API serves every section, so its
-     path cannot say which, and a Tor world sends no Referer. An English
-     page sends nothing. */
+     path cannot say which, and a Tor world sends no Referer. A hosted
+     site's console calls its API under its own address (/os/d/{id}/api/).
+     An English page sends nothing. */
   function pageLang() {
     var l = document.documentElement.lang;
     return l && l !== 'en' ? l : '';
@@ -356,7 +357,7 @@
   function ownAPI(url) {
     try {
       var u = new URL(url, location.href);
-      return u.origin === location.origin && u.pathname.indexOf('/os/api/') === 0;
+      return u.origin === location.origin && /^\/os\/(d\/[^\/]+\/)?api\//.test(u.pathname);
     } catch (_) { return false; }
   }
   document.addEventListener('htmx:configRequest', function (e) {

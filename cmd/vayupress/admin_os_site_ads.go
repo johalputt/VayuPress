@@ -19,14 +19,24 @@ import (
 
 	"github.com/johalputt/vayupress/internal/ads"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/settings"
 )
 
 // siteAdSwitches are a site's three ads switches, each "on" or "off".
-var siteAdSwitches = []struct{ Key, Label, Hint string }{
-	{settings.KeyFeatureAds, "Advertising", "This site shows its ad slots."},
-	{settings.KeyFeatureGoogleAds, "Google AdSense", "AdSense slots serve, with this site's publisher ID."},
-	{settings.KeyFeatureAffiliate, "Affiliate disclosure", "The disclosure shows above this site's posts."},
+var siteAdSwitches = []string{settings.KeyFeatureAds, settings.KeyFeatureGoogleAds, settings.KeyFeatureAffiliate}
+
+// siteAdSwitchWords are a switch's name and what it does, in lang.
+func siteAdSwitchWords(lang, key string) (label, hint string) {
+	switch key {
+	case settings.KeyFeatureAds:
+		return i18n.T(lang, "Advertising"), i18n.T(lang, "This site shows its ad slots.")
+	case settings.KeyFeatureGoogleAds:
+		return i18n.T(lang, "Google AdSense"), i18n.T(lang, "AdSense slots serve, with this site's publisher ID.")
+	case settings.KeyFeatureAffiliate:
+		return i18n.T(lang, "Affiliate disclosure"), i18n.T(lang, "The disclosure shows above this site's posts.")
+	}
+	return key, ""
 }
 
 // siteAdTexts are a site's ads texts.
@@ -34,17 +44,18 @@ var siteAdTexts = []string{settings.KeyAdsenseClient, settings.KeyAffiliateDiscl
 
 // siteAdSettingsForm is a hosted site's ads switches and texts, saved by
 // handleOSSiteAdSettingsSave.
-func siteAdSettingsForm(adsOn, googleOn, affOn bool, client, disclosure, never, adsTxt string) string {
+func siteAdSettingsForm(lang string, adsOn, googleOn, affOn bool, client, disclosure, never, adsTxt string) string {
 	on := map[string]bool{settings.KeyFeatureAds: adsOn, settings.KeyFeatureGoogleAds: googleOn, settings.KeyFeatureAffiliate: affOn}
 	var b strings.Builder
 	b.WriteString(`<div class="form-grid">`)
-	for _, sw := range siteAdSwitches {
+	for _, key := range siteAdSwitches {
 		checked := ""
-		if on[sw.Key] {
+		if on[key] {
 			checked = " checked"
 		}
-		b.WriteString(`<label class="field--check"><input type="checkbox" data-site-ad-key="` + sw.Key + `"` + checked + `><span class="field-label">` +
-			html.EscapeString(sw.Label) + `</span><span class="field-hint">` + html.EscapeString(sw.Hint) + `</span></label>`)
+		label, hint := siteAdSwitchWords(lang, key)
+		b.WriteString(`<label class="field--check"><input type="checkbox" data-site-ad-key="` + key + `"` + checked + `><span class="field-label">` +
+			html.EscapeString(label) + `</span><span class="field-hint">` + html.EscapeString(hint) + `</span></label>`)
 	}
 	field := func(key, label, hint, value string, rows int) {
 		ctl := `<input type="text" class="input" data-site-ad-key="` + key + `" value="` + html.EscapeString(value) + `" autocomplete="off">`
@@ -54,18 +65,18 @@ func siteAdSettingsForm(adsOn, googleOn, affOn bool, client, disclosure, never, 
 		b.WriteString(`<label class="field"><span class="field-label">` + html.EscapeString(label) + `</span>` + ctl +
 			`<span class="field-hint">` + html.EscapeString(hint) + `</span></label>`)
 	}
-	field(settings.KeyAdsenseClient, "AdSense publisher ID", "This site's own, like ca-pub-1234567890123456; blank serves no AdSense unit.", client, 0)
-	field(settings.KeyAffiliateDisclosure, "Affiliate disclosure", "Shown above this site's posts while its disclosure is on.", disclosure, 3)
-	field(settings.KeyAdsNever, "Never show ads on", "This site's pages and posts that show no ad. One address a line, \"/\" for its home page.", never, 3)
-	field(settings.KeyAdsTxtLines, "More ads.txt lines", "Other sellers this site authorises, one line each, after the line its AdSense publisher ID gives.", adsTxt, 3)
-	b.WriteString(`</div><div class="vm-row"><button type="button" class="btn btn--primary btn--sm" data-site-ads-save>Save</button></div>`)
+	field(settings.KeyAdsenseClient, i18n.T(lang, "AdSense publisher ID"), i18n.T(lang, "This site's own, like {example}; blank serves no AdSense unit.", "example", "ca-pub-1234567890123456"), client, 0)
+	field(settings.KeyAffiliateDisclosure, i18n.T(lang, "Affiliate disclosure"), i18n.T(lang, "Shown above this site's posts while its disclosure is on."), disclosure, 3)
+	field(settings.KeyAdsNever, i18n.T(lang, "Never show ads on"), i18n.T(lang, "This site's pages and posts that show no ad. One address a line, \"/\" for its home page."), never, 3)
+	field(settings.KeyAdsTxtLines, i18n.T(lang, "More ads.txt lines"), i18n.T(lang, "Other sellers this site authorises, one line each, after the line its AdSense publisher ID gives."), adsTxt, 3)
+	b.WriteString(`</div><div class="vm-row"><button type="button" class="btn btn--primary btn--sm" data-site-ads-save>` + esc(i18n.T(lang, "Save")) + `</button></div>`)
 	return b.String()
 }
 
 // siteAdValue reports whether v is a value key takes on a site's ads page.
 func siteAdValue(key, v string) bool {
 	for _, sw := range siteAdSwitches {
-		if sw.Key == key {
+		if sw == key {
 			return v == "on" || v == "off"
 		}
 	}
@@ -84,21 +95,21 @@ func siteAdValue(key, v string) bool {
 func (a *App) handleOSSiteAdSettingsSave(w http.ResponseWriter, r *http.Request) {
 	site := adConsoleSite(r)
 	if site == "" || a.siteSettings == nil {
-		writeAPIError(w, r, http.StatusNotFound, "unknown-domain", "no such site", "")
+		writeAPIError(w, r, http.StatusNotFound, "unknown-domain", i18n.T(i18n.Lang(r.Context()), "No such site."), "")
 		return
 	}
 	var body struct {
 		Settings map[string]string `json:"settings"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024)).Decode(&body); err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "invalid JSON", "")
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", i18n.T(i18n.Lang(r.Context()), "The request could not be read."), "")
 		return
 	}
 	kv := map[string]string{}
 	for k, v := range body.Settings {
 		v = strings.TrimSpace(v)
 		if !siteAdValue(k, v) {
-			writeAPIError(w, r, http.StatusBadRequest, "bad-value", "That is not a value "+k+" takes; nothing was saved.", "")
+			writeAPIError(w, r, http.StatusBadRequest, "bad-value", i18n.T(i18n.Lang(r.Context()), "That is not a value {setting} takes; nothing was saved.", "setting", k), "")
 			return
 		}
 		kv[k] = v
@@ -118,13 +129,13 @@ func (a *App) handleOSSiteAdSettingsSave(w http.ResponseWriter, r *http.Request)
 func (a *App) handleOSSiteAdsCopy(w http.ResponseWriter, r *http.Request) {
 	site := adConsoleSite(r)
 	if site == "" || a.ads == nil || a.siteSettings == nil {
-		writeAPIError(w, r, http.StatusNotFound, "unknown-domain", "no such site", "")
+		writeAPIError(w, r, http.StatusNotFound, "unknown-domain", i18n.T(i18n.Lang(r.Context()), "No such site."), "")
 		return
 	}
 	// Once: a site that already has slots of its own keeps them as they are,
 	// rather than gaining a second set beside them.
 	if have, err := a.ads.List(r.Context(), site); err == nil && len(have) > 0 {
-		writeAPIError(w, r, http.StatusConflict, "has-own-ads", "This site already has ad slots of its own; nothing was copied.", "")
+		writeAPIError(w, r, http.StatusConflict, "has-own-ads", i18n.T(i18n.Lang(r.Context()), "This site already has ad slots of its own; nothing was copied."), "")
 		return
 	}
 	n, err := a.ads.CopyOwnSlots(r.Context(), "", site)
@@ -134,7 +145,7 @@ func (a *App) handleOSSiteAdsCopy(w http.ResponseWriter, r *http.Request) {
 	}
 	kv := map[string]string{}
 	for _, sw := range siteAdSwitches {
-		kv[sw.Key] = map[bool]string{true: "on", false: "off"}[a.siteSettings.FeatureEnabled(r.Context(), settings.ForPrimary(), sw.Key)]
+		kv[sw] = map[bool]string{true: "on", false: "off"}[a.siteSettings.FeatureEnabled(r.Context(), settings.ForPrimary(), sw)]
 	}
 	for _, k := range siteAdTexts {
 		kv[k] = a.siteSettings.Get(r.Context(), settings.ForPrimary(), k)

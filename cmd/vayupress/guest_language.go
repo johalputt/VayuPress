@@ -148,7 +148,36 @@ const pageLangHeader = "X-VP-Lang"
 // every other page of it is English. A section joins when the last of its
 // sentences has moved into i18n.T, so no release shows a page half in one
 // language and half in another while a section is being moved.
-var consoleSpeaks = []string{"/os/vayumail", "/os/settings", "/os/vayukeep", "/os/apikeys", "/os/newsletter", "/os/youtube"}
+var consoleSpeaks = []string{"/os/vayumail", "/os/settings", "/os/vayukeep", "/os/apikeys", "/os/newsletter", "/os/youtube", "/os/ads"}
+
+// consoleSpeaksPerSite is the same for a hosted site's own console
+// (/os/d/{id}/…), by the path after the site. It is a list of its own because
+// a hosted site's pages are not the install's: its Settings is another page
+// from /os/settings, and stays English until it is moved.
+var consoleSpeaksPerSite = []string{"/ads"}
+
+// perSitePath is what follows /os/d/{id} in a hosted site's console path, or
+// "" for any other path.
+func perSitePath(path string) string {
+	rest, ok := strings.CutPrefix(path, "/os/d/")
+	if !ok {
+		return ""
+	}
+	if i := strings.IndexByte(rest, '/'); i > 0 {
+		return rest[i:]
+	}
+	return ""
+}
+
+// speaksIn is whether path is one of sections or under one.
+func speaksIn(sections []string, path string) bool {
+	for _, p := range sections {
+		if path == p || strings.HasPrefix(path, p+"/") {
+			return true
+		}
+	}
+	return false
+}
 
 // consoleLanguage puts the language a console page is written in on its
 // request: the person's (their choice from ?lang=, kept, then their
@@ -159,14 +188,13 @@ var consoleSpeaks = []string{"/os/vayumail", "/os/settings", "/os/vayukeep", "/o
 func consoleLanguage(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		lang := "en"
-		for _, p := range consoleSpeaks {
-			if r.URL.Path == p || strings.HasPrefix(r.URL.Path, p+"/") {
-				lang = requestLang(w, r)
-				w.Header().Add("Vary", "Accept-Language, Cookie")
-				break
-			}
+		site := perSitePath(r.URL.Path)
+		if speaksIn(consoleSpeaks, r.URL.Path) || speaksIn(consoleSpeaksPerSite, site) {
+			lang = requestLang(w, r)
+			w.Header().Add("Vary", "Accept-Language, Cookie")
 		}
-		if strings.HasPrefix(r.URL.Path, "/os/api/") {
+		// A hosted site's console calls its own API, under its own address.
+		if strings.HasPrefix(r.URL.Path, "/os/api/") || strings.HasPrefix(site, "/api/") {
 			if want := r.Header.Get(pageLangHeader); want != "" && i18n.Choose(want, "") == want {
 				lang = want
 			}

@@ -250,10 +250,19 @@ async function pseudoPageAndSheets(page, path, withSheets) {
 
 // The spec install has no mail relay, so the Newsletter is its setup page,
 // with no composer to open; the composer's words are checked in Go.
-for (const [name, path, withSheets] of [["Backups", "/os/vayukeep", true], ["API keys", "/os/apikeys", true], ["Newsletter", "/os/newsletter", false], ["YouTube", "/os/youtube", true]]) {
+// Advertising is its setup page until it is turned on, which another spec
+// does at a moment of its own, so this one turns it on first.
+async function adsOn(page) {
+  await page.goto("/os/ads?lang=en-XA");
+  const on = page.locator('[data-action="module-on"][data-module="ads"]').first();
+  if (await on.isVisible()) await Promise.all([page.waitForEvent("load"), on.click()]);
+}
+for (const [name, path, withSheets, before] of [["Backups", "/os/vayukeep", true], ["API keys", "/os/apikeys", true], ["Newsletter", "/os/newsletter", false],
+  ["YouTube", "/os/youtube", true], ["Advertising", "/os/ads", true, adsOn]]) {
   test(name + " in another language has no English left on it", async ({ page }) => {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
+    if (before) await before(page);
     expect(await pseudoPageAndSheets(page, path, withSheets)).toEqual({});
     expect(errors).toEqual([]);
   });

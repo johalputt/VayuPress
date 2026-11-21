@@ -68,10 +68,10 @@ func TestAPlacedAdCanBeEdited(t *testing.T) {
 // what the slot holds now, escaped.
 func TestTheAdvertisingPageOffersAFilledEditSheet(t *testing.T) {
 	sl := ads.Slot{ID: "ad_1", Name: `Q4 "launch"`, Placement: ads.PlacementFooter, Kind: ads.KindHTML, HTML: `<b>Hi</b>`, LinkURL: "https://x.example"}
-	if row := adsSlotsTable([]ads.Slot{sl}, nil); !strings.Contains(row, `data-sheet="ad-e-ad_1">Edit</button>`) {
+	if row := adsSlotsTable("en", []ads.Slot{sl}, nil); !strings.Contains(row, `data-sheet="ad-e-ad_1">Edit</button>`) {
 		t.Errorf("the slot's row has no Edit button: %s", row)
 	}
-	form := adSlotForm("ad-e-ad_1", sl)
+	form := adSlotForm("en", "ad-e-ad_1", sl)
 	for _, want := range []string{
 		`id="ad-e-ad_1-name" class="input" type="text" placeholder="Below-post banner" value="Q4 &#34;launch&#34;"`,
 		`<option value="` + ads.PlacementFooter + `" selected>`,

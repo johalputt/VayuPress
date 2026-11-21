@@ -34,6 +34,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   The restore commands and environment variables it shows stay as they are
   typed, and what the engine records (a pause's reason, a test restore's
   error and the counts it read back) as written.
+- **Advertising in thirteen languages.** The Advertising page, its slot
+  sheets and a hosted site's own Advertising follow the language chosen in
+  the account menu, and so do the answers of a hosted site's own calls,
+  which go to its address rather than the install's. A slot's name and a
+  member's address are shown as they are.
 - **YouTube in thirteen languages.** Content › YouTube, its follow sheet
   and what its actions answer follow the language chosen in the account
   menu. A video's title and a channel's name are shown as YouTube gives
@@ -56,7 +61,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 - On Backups, a control the server refused with an error showed "Done" in
   the error colour, on API keys only "Error", and in the Newsletter's
-  composer "[object Object]"; each now says the server's reason.
+  composer "[object Object]", and on Advertising "Error"; each now says the
+  server's reason.
 
 - The bell said "1 1 waiting for you" for someone locked out of their
   mailbox, and "1 a live site has…" and "1 example.com shows…": a count
