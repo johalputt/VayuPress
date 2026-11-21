@@ -226,14 +226,16 @@ test("Settings in another language has no English left on it", async ({ page }) 
 
 // pseudoPageAndSheets is what a console page in the pseudo-language still
 // says in English: the page itself, then each sheet it opens, read while open.
-async function pseudoPageAndSheets(page, path) {
+// withSheets says the page opens at least one: a page whose sheets went
+// missing would otherwise pass with nothing read.
+async function pseudoPageAndSheets(page, path, withSheets) {
   await page.goto(path + "?lang=en-XA");
   await expect(page.locator("html")).toHaveAttribute("lang", "en-XA");
   const found = {};
   const own = await englishLeft(page);
   if (own.length) found.page = own;
   const sheets = await page.locator("button[data-sheet]").evaluateAll((bs) => [...new Set(bs.map((b) => b.getAttribute("data-sheet")))]);
-  expect(sheets.length).toBeGreaterThan(0);
+  expect(sheets.length > 0).toBe(withSheets);
   for (const id of sheets) {
     await page.locator('button[data-sheet="' + id + '"]').first().click();
     const sheet = page.locator("#" + id);
@@ -246,11 +248,13 @@ async function pseudoPageAndSheets(page, path) {
   return found;
 }
 
-for (const [name, path] of [["Backups", "/os/vayukeep"], ["API keys", "/os/apikeys"], ["Newsletter", "/os/newsletter"]]) {
+// The spec install has no mail relay, so the Newsletter is its setup page,
+// with no composer to open; the composer's words are checked in Go.
+for (const [name, path, withSheets] of [["Backups", "/os/vayukeep", true], ["API keys", "/os/apikeys", true], ["Newsletter", "/os/newsletter", false]]) {
   test(name + " in another language has no English left on it", async ({ page }) => {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
-    expect(await pseudoPageAndSheets(page, path)).toEqual({});
+    expect(await pseudoPageAndSheets(page, path, withSheets)).toEqual({});
     expect(errors).toEqual([]);
   });
 }
