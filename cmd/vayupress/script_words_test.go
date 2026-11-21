@@ -12,7 +12,7 @@ import (
 // i18nMovedScripts is every console script whose words a person reads have
 // moved into vpT. From then on an English sentence written beside vpT fails
 // TestAMovedScriptHasNoEnglishOutsideVpT, as a moved page's does beside T.
-var i18nMovedScripts = []string{"admin-os-drive.js", "admin-os-mail-recovery.js", "admin-os-mail.js", "admin-os-vayukeep.js", "admin-os-apikeys.js", "admin-os-newsletter.js", "admin-os-ads.js", "admin-os-tor.js"}
+var i18nMovedScripts = []string{"admin-os-drive.js", "admin-os-mail-recovery.js", "admin-os-mail.js", "admin-os-vayukeep.js", "admin-os-apikeys.js", "admin-os-newsletter.js", "admin-os-ads.js", "admin-os-tor.js", "admin-os-update.js"}
 
 var (
 	// jsLiteral is a quoted string on one line.

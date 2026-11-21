@@ -56,14 +56,14 @@ func TestTheCostSaysErrorsWhenNothingQueuesAndWaitingWhenSomethingDoes(t *testin
 
 	refusing := base
 	refusing.Queued = false
-	rd := refusing.Describe()
+	rd := refusing.Describe("en")
 	if !strings.Contains(rd, "502") {
 		t.Errorf("with nothing queueing, the cost does not say visitors get errors: %q", rd)
 	}
 
 	queueing := base
 	queueing.Queued = true
-	qd := queueing.Describe()
+	qd := queueing.Describe("en")
 	if strings.Contains(qd, "502") {
 		t.Errorf("with the socket queueing, the cost still claims visitors get 502s: %q", qd)
 	}
@@ -80,7 +80,7 @@ func TestTheCostSaysErrorsWhenNothingQueuesAndWaitingWhenSomethingDoes(t *testin
 // different claims, and the flattering reading is the one an operator acts on.
 func TestASingleSampleIsNotPresentedAsARange(t *testing.T) {
 	one := startupCost{Samples: 1, FastMS: 1000, SlowMS: 1000, LatestMS: 1000}
-	d := one.Describe()
+	d := one.Describe("en")
 	if strings.Contains(d, "–") {
 		t.Errorf("a single sample rendered as a range: %q", d)
 	}
@@ -89,14 +89,14 @@ func TestASingleSampleIsNotPresentedAsARange(t *testing.T) {
 	}
 
 	many := startupCost{Samples: 6, FastMS: 900, SlowMS: 5000, LatestMS: 1200}
-	if dm := many.Describe(); !strings.Contains(dm, "–") {
+	if dm := many.Describe("en"); !strings.Contains(dm, "–") {
 		t.Errorf("a real spread was flattened to one figure: %q", dm)
 	}
 }
 
 // No samples means no claim.
 func TestNoSamplesClaimsNothing(t *testing.T) {
-	d := startupCost{}.Describe()
+	d := startupCost{}.Describe("en")
 	if !strings.Contains(d, "not known") {
 		t.Errorf("an install with no measurement still made a claim: %q", d)
 	}

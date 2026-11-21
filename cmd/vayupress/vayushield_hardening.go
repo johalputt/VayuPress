@@ -34,6 +34,7 @@ import (
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/safefetch"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/ui"
@@ -175,7 +176,7 @@ func shieldAgentUpgradeDetail() string {
 // afterwards, here, on the page the operator opens to find out what went wrong.
 // An install that quietly reverted to an older binary and said nothing would
 // leave them reading a version number they did not choose.
-func binaryRepairNotice() string {
+func binaryRepairNotice(lang string) string {
 	state, err := os.ReadFile(filepath.Join(shieldControlDir(), "binhealth.state"))
 	if err != nil {
 		return ""
@@ -186,24 +187,21 @@ func binaryRepairNotice() string {
 	}
 	switch strings.TrimSpace(string(state)) {
 	case "restored":
-		msg := "An update left a file at the install path that this server could not run, so the " +
-			"previous binary was restored automatically and the service was restarted. " +
-			"The version shown above is the restored one — no data was affected."
+		msg := esc(i18n.T(lang, "An update left a file at the install path that this server could not run, so the previous binary was restored automatically and the service was restarted. The version shown above is the restored one; no data was affected."))
 		if detail != "" {
-			msg += " Reported: " + html.EscapeString(detail) + "."
+			msg += " " + escFill(i18n.T(lang, "Reported: {reason}.", "reason", htmlMark(0)), `<span translate="no">`+html.EscapeString(detail)+`</span>`)
 		}
 		return `<div class="settings-callout">
-    <strong>This install repaired itself after a failed update.</strong>
+    <strong>` + esc(i18n.T(lang, "This install repaired itself after a failed update.")) + `</strong>
     <span class="text-sm muted">` + msg + `</span>
   </div>`
 	case "unrecoverable", "error":
-		msg := "The file at the install path is not a program this server can run, and it could not " +
-			"be repaired automatically."
+		msg := esc(i18n.T(lang, "The file at the install path is not a program this server can run, and it could not be repaired automatically."))
 		if detail != "" {
-			msg += " Reported: " + html.EscapeString(detail) + "."
+			msg += " " + escFill(i18n.T(lang, "Reported: {reason}.", "reason", htmlMark(0)), `<span translate="no">`+html.EscapeString(detail)+`</span>`)
 		}
 		return `<div class="settings-callout">
-    <strong>The installed binary is not usable.</strong>
+    <strong>` + esc(i18n.T(lang, "The installed binary is not usable.")) + `</strong>
     <span class="text-sm muted">` + msg + `</span>
   </div>`
 	}

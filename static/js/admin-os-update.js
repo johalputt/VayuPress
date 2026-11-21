@@ -51,7 +51,7 @@
     if (d.message) return d.message;
     if (d.detail) return d.detail;
     if (d.title) return d.title;
-    if (res && res.status) return fallback + ' (HTTP ' + res.status + ')';
+    if (res && res.status) return vpT('{reason} (HTTP {status})', { reason: fallback, status: res.status });
     return fallback;
   }
 
@@ -254,7 +254,7 @@
           for (var i = 0; i < rows.length; i++) {
             if (rows[i].id === watchId && rows[i].status === 'failed') {
               clearInterval(timer);
-              setMsg(el, rows[i].detail || 'The update could not be activated.', true);
+              setMsg(el, rows[i].detail || vpT('The update could not be activated.'), true);
               if (applyBtn) applyBtn.disabled = false;
               if (checkBtn) checkBtn.disabled = false;
             }
@@ -278,7 +278,7 @@
 
   function doCheck() {
     if (checkBtn) checkBtn.disabled = true;
-    setMsg(msgEl, 'Checking GitHub for the latest release…', false);
+    setMsg(msgEl, vpT('Checking GitHub for the latest release…'), false);
     var checkURL = '/os/api/update/check' + (prereleaseOn() ? '?prerelease=1' : '');
     fetch(checkURL, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store' })
       .then(readResponse)
@@ -286,17 +286,17 @@
         if (!res.isJSON) {
           // HTML/empty body → the update service is unreachable (often a brief
           // window while it restarts behind the proxy). Don't surface raw HTML.
-          setMsg(msgEl, 'The update service is unavailable right now — it may be restarting. Try Check again in a moment.', true);
+          setMsg(msgEl, vpT('The update service is not answering just now; it may be restarting. Check again in a moment.'), true);
           return;
         }
         if (!res.ok) {
-          setMsg(msgEl, errText(res, 'Check failed'), true);
+          setMsg(msgEl, errText(res, vpT('The check failed')), true);
           return;
         }
         var d = res.d;
         if (latestEl) latestEl.textContent = d.latest || '—';
         if (statusEl) {
-          statusEl.textContent = d.available ? 'Update available' : 'Up to date';
+          statusEl.textContent = d.available ? vpT('Update available') : vpT('Up to date');
           // Keep the premium chip class; drive its colour via data-state.
           statusEl.className = 'upd-status';
           statusEl.setAttribute('data-state', d.available ? 'available' : 'uptodate');
@@ -307,9 +307,9 @@
         }
         var viaNote = '';
         if (d.source === 'mirror') {
-          viaNote = ' Checked via the official mirror — this server could not reach GitHub directly this time.';
+          viaNote = ' ' + vpT('Checked through the official mirror: this server could not reach GitHub directly this time.');
         } else if (d.source === 'cdn') {
-          viaNote = ' Checked via the release CDN — this server could not reach GitHub or the mirror. The version is confirmed, but installing it needs a reachable download path.';
+          viaNote = ' ' + vpT('Checked through the release CDN: this server could not reach GitHub or the mirror. The version is confirmed, but installing it needs a download path the server can reach.');
         }
         if (notesEl) {
           if (d.notes) {
@@ -322,16 +322,16 @@
           applyBtn.disabled = !(d.canApply && d.available);
         }
         if (!d.available) {
-          setMsg(msgEl, 'You are running the latest release.' + viaNote, false);
+          setMsg(msgEl, vpT('You are running the latest release.') + viaNote, false);
         } else if (!d.canApply) {
-          setMsg(msgEl, 'Version ' + d.latest + ' is available, but updates are paused while the system mode is ' + (d.mode || 'restricted') + '.' + viaNote, false);
+          setMsg(msgEl, vpT('Version {version} is available, but updates are paused while the install is in {mode} mode.', { version: d.latest, mode: d.modeLabel || d.mode }) + viaNote, false);
         } else {
-          var chan = d.prerelease ? ' pre-release build' : '';
-          var verify = d.signed ? 'checksum + signature verified' : 'checksum verified';
-          setMsg(msgEl, 'Version ' + d.latest + chan + ' is ready to install (' + verify + ').' + viaNote, false);
+          setMsg(msgEl, (d.prerelease
+            ? vpT('Version {version}, a pre-release build, is ready to install (signature and checksum checked).', { version: d.latest })
+            : vpT('Version {version} is ready to install (signature and checksum checked).', { version: d.latest })) + viaNote, false);
         }
       })
-      .catch(function () { setMsg(msgEl, 'Could not reach the update service — check your connection and try again.', true); })
+      .catch(function () { setMsg(msgEl, vpT('Could not reach the update service. Check the connection and try again.'), true); })
       .finally(function () { if (checkBtn) checkBtn.disabled = false; });
   }
 
@@ -342,18 +342,18 @@
     // The house dialog: window.confirm cannot say which of the two very different
     // things is about to happen (with or without a database backup).
     vpConfirm({
-      title: 'Install the latest release',
+      title: vpT('Install the latest release'),
       message: doBackup
-        ? 'Install the latest release now? Your database will be backed up first, then the service restarts to finish. This usually takes under a minute (longer for very large databases).'
-        : 'Install the latest release now WITHOUT a database backup? A binary update does not change your database, and the previous binary is kept for rollback. The service will restart to finish.',
-      confirm: doBackup ? 'Back up and install' : 'Install without backup'
+        ? vpT('Install the latest release now? Your database is backed up first, then the service restarts to finish. This usually takes under a minute (longer for a very large database).')
+        : vpT('Install the latest release now WITHOUT a database backup? A binary update does not change your database, and the previous binary is kept for rollback. The service restarts to finish.'),
+      confirm: doBackup ? vpT('Back up and install') : vpT('Install without backup')
     }, function () { applyNow(doBackup); });
   }
 
   function applyNow(doBackup) {
     if (applyBtn) applyBtn.disabled = true;
     if (checkBtn) checkBtn.disabled = true;
-    setMsg(msgEl, doBackup ? 'Backing up, downloading and verifying the release… do not close this tab.' : 'Downloading and verifying the release… do not close this tab.', false);
+    setMsg(msgEl, doBackup ? vpT('Backing up, downloading and checking the release… keep this tab open.') : vpT('Downloading and checking the release… keep this tab open.'), false);
     fetch('/os/api/update/apply', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
@@ -364,7 +364,7 @@
         // A genuine, pre-restart failure (e.g. checksum/signature, paused mode)
         // comes back as a JSON error — show it and re-enable the buttons.
         if (res.isJSON && !res.ok) {
-          setMsg(msgEl, errText(res, 'Update failed'), true);
+          setMsg(msgEl, errText(res, vpT('The update failed')), true);
           if (applyBtn) applyBtn.disabled = false;
           if (checkBtn) checkBtn.disabled = false;
           return;
@@ -374,17 +374,16 @@
         // gateway timeout while it installs+restarts), the right thing is to wait
         // for the service to come back — NOT to report an error.
         if (res.isJSON && res.ok && res.d.version) {
-          setMsg(msgEl, 'Installed v' + String(res.d.version).replace(/^v/, '') +
-            '. Preparing the database while this version keeps serving, then restarting to activate it…', false);
+          setMsg(msgEl, vpT('Installed v{version}. Preparing the database while this version keeps serving, then restarting to switch to it…', { version: String(res.d.version).replace(/^v/, '') }), false);
         } else {
-          setMsg(msgEl, 'Update applied — the service is restarting to activate it…', false);
+          setMsg(msgEl, vpT('Update installed; the service is restarting to switch to it…'), false);
         }
         waitForRestartThenReload(msgEl, res.isJSON && res.ok ? res.d.history : 0);
       })
       .catch(function () {
         // A dropped connection right after POSTing is the expected restart, not a
         // failure — wait for the service to return rather than alarming the user.
-        setMsg(msgEl, 'The service is restarting to finish the update…', false);
+        setMsg(msgEl, vpT('The service is restarting to finish the update…'), false);
         waitForRestartThenReload(msgEl);
       });
   }
@@ -392,15 +391,15 @@
   // ── Roll back to the previous binary ────────────────────────────────────────
   function doRollback() {
     vpConfirm({
-      title: 'Roll back',
-      message: 'Roll back to the previous binary and restart? This undoes the most recent update.',
-      confirm: 'Roll back'
+      title: vpT('Roll back'),
+      message: vpT('Roll back to the previous binary and restart? This undoes the most recent update.'),
+      confirm: vpT('Roll back')
     }, rollbackNow);
   }
 
   function rollbackNow() {
     if (rollbackBtn) rollbackBtn.disabled = true;
-    setMsg(msgEl, 'Rolling back and restarting…', false);
+    setMsg(msgEl, vpT('Rolling back and restarting…'), false);
     fetch('/os/api/update/rollback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() }
@@ -408,17 +407,17 @@
       .then(readResponse)
       .then(function (res) {
         if (res.isJSON && !res.ok) {
-          setMsg(msgEl, errText(res, 'Rollback failed'), true);
+          setMsg(msgEl, errText(res, vpT('The rollback failed')), true);
           if (rollbackBtn) rollbackBtn.disabled = false;
           return;
         }
         // Accepted (JSON success or a non-JSON body from the cycling service) →
         // wait for the restart rather than reporting a false error.
-        setMsg(msgEl, 'Rolled back — the service is restarting…', false);
+        setMsg(msgEl, vpT('Rolled back; the service is restarting…'), false);
         waitForRestartThenReload(msgEl);
       })
       .catch(function () {
-        setMsg(msgEl, 'The service is restarting to finish the rollback…', false);
+        setMsg(msgEl, vpT('The service is restarting to finish the rollback…'), false);
         waitForRestartThenReload(msgEl);
       });
   }
@@ -513,27 +512,27 @@
       // Bounded: a request nothing consumes must not spin forever. If the
       // helper is missing the server says so and we stop with that message,
       // rather than showing "running..." indefinitely.
-      if (polls++ > 60) { out.textContent = 'Still running — reload to see the result.'; return; }
+      if (polls++ > 60) { out.textContent = vpT('Still running; reload to see the result.'); return; }
       fetch('/os/api/provision/status', { credentials: 'same-origin' })
         .then(function (r) { return r.json(); })
         .then(function (j) {
-          if (j && j.pending) { out.textContent = 'Running…'; setTimeout(poll, 3000); return; }
+          if (j && j.pending) { out.textContent = vpT('Running…'); setTimeout(poll, 3000); return; }
           if (j && j.result && j.result.finished_at) {
             var f = j.result.failed || 0;
             out.textContent = f > 0
-              ? 'Finished — ' + f + ' helper' + (f === 1 ? '' : 's') + ' reported a problem. Reload for detail.'
-              : 'Finished cleanly. Reload to see the summary.';
+              ? vpT('{n, plural, one {Finished: # helper reported a problem. Reload for the detail.} other {Finished: # helpers reported a problem. Reload for the detail.}}', { n: f })
+              : vpT('Finished cleanly. Reload to see the summary.');
           } else {
-            out.textContent = 'Finished. Reload to see the summary.';
+            out.textContent = vpT('Finished. Reload to see the summary.');
           }
           btn.disabled = false;
         })
-        .catch(function () { out.textContent = 'Could not read status.'; btn.disabled = false; });
+        .catch(function () { out.textContent = vpT('Could not read how it went.'); btn.disabled = false; });
     }
 
     btn.addEventListener('click', function () {
       btn.disabled = true;
-      out.textContent = 'Requesting…';
+      out.textContent = vpT('Asking…');
       polls = 0;
       fetch('/os/api/provision/run', {
         method: 'POST',
@@ -543,14 +542,14 @@
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
         .then(function (res) {
           if (!res.ok) {
-            out.textContent = (res.j && (res.j.detail || res.j.message)) || 'Request failed.';
+            out.textContent = (res.j && ((res.j.error && res.j.error.message) || res.j.detail || res.j.message)) || vpT('That did not go through.');
             btn.disabled = false;
             return;
           }
-          out.textContent = 'Running…';
+          out.textContent = vpT('Running…');
           setTimeout(poll, 3000);
         })
-        .catch(function () { out.textContent = 'Request failed.'; btn.disabled = false; });
+        .catch(function () { out.textContent = vpT('That did not go through.'); btn.disabled = false; });
     });
   })();
 
@@ -569,13 +568,13 @@
       var was = b.textContent;
       var done = function (msg) { b.textContent = msg; setTimeout(function () { b.textContent = was; }, 2000); };
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(function () { done('Copied'); }).catch(function () {
+        navigator.clipboard.writeText(text).then(function () { done(vpT('Copied')); }).catch(function () {
           // Clipboard needs a secure context and a permission some browsers
           // refuse; select the text so Ctrl-C still works rather than leaving a
           // button that silently did nothing.
-          selectText(code); done('Press Ctrl-C');
+          selectText(code); done(vpT('Press Ctrl-C'));
         });
-      } else { selectText(code); done('Press Ctrl-C'); }
+      } else { selectText(code); done(vpT('Press Ctrl-C')); }
     });
     function selectText(el) {
       try {

@@ -288,7 +288,7 @@ func firstBytes(s string) string {
 
 func TestTheRepairNoticeSaysNothingOnAnInstallThatWasNeverRepaired(t *testing.T) {
 	t.Setenv("VAYUSHIELD_CONTROL_DIR", t.TempDir())
-	if got := binaryRepairNotice(); got != "" {
+	if got := binaryRepairNotice("en"); got != "" {
 		t.Fatalf("a healthy install is being told its binary was replaced: %q", got)
 	}
 }
@@ -323,7 +323,7 @@ func TestTheRepairNoticeReportsWhatTheAgentActuallyDid(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "binhealth.reason"), []byte(c.reason), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		got := binaryRepairNotice()
+		got := binaryRepairNotice("en")
 		for _, want := range c.mustSay {
 			if !strings.Contains(got, want) {
 				t.Errorf("state %q: the notice never says %q, so the operator cannot tell what happened.\ngot: %s",
@@ -344,7 +344,7 @@ func TestTheRepairNoticeEscapesTheReasonItWasGiven(t *testing.T) {
 	t.Setenv("VAYUSHIELD_CONTROL_DIR", dir)
 	_ = os.WriteFile(filepath.Join(dir, "binhealth.state"), []byte("restored"), 0o644)
 	_ = os.WriteFile(filepath.Join(dir, "binhealth.reason"), []byte(`<img src=x onerror=alert(1)>`), 0o644)
-	got := binaryRepairNotice()
+	got := binaryRepairNotice("en")
 	if strings.Contains(got, "<img") {
 		t.Fatalf("the reason was interpolated into the page unescaped: %s", got)
 	}

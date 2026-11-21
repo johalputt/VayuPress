@@ -19,6 +19,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/domain"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/ui"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
@@ -620,7 +621,7 @@ func (a *App) handleOSDNS(w http.ResponseWriter, r *http.Request) {
 	// this is the page an operator lands on when a record is wrong, and sending
 	// them somewhere else to act on it is how a fix gets postponed.
 	body := dnsList(views, primary, r.URL.Query().Get("view"), r.URL.Query().Get("q")) +
-		string(ui.Sheet("dns-provision", "Provision subdomains", ui.HTML(provisionCardHTML()))) +
+		string(ui.Sheet("dns-provision", "Provision subdomains", ui.HTML(provisionCardHTML(i18n.Lang(r.Context()))))) +
 		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-update.js?v=` + assetVer("js/admin-os-update.js") + `"></script>`
 	writeOSHTML(w, r, adminOSLayout(nonce, "Domains & DNS", "vayuos", cfg, htmpl.HTML(body)))
 }

@@ -91,18 +91,18 @@ func selfUpdateConfigured() (enabled bool, hasKey bool) {
 // a short human reason when it cannot. It probes by actually creating and
 // removing a temp file — the only reliable test across permission bits, a
 // read-only mount, and a systemd ProtectSystem sandbox.
-func binaryDirWritable(binPath string) string {
+func binaryDirWritable(lang, binPath string) string {
 	dir := filepath.Dir(binPath)
 	f, err := os.CreateTemp(dir, ".vayupress-write-probe-*")
 	if err != nil {
 		if os.IsPermission(err) {
-			return "permission denied writing to " + dir + "."
+			return i18n.T(lang, "Writing to {dir} is not permitted.", "dir", dir)
 		}
 		msg := err.Error()
 		if strings.Contains(msg, "read-only") {
-			return dir + " is mounted read-only."
+			return i18n.T(lang, "{dir} is mounted read-only.", "dir", dir)
 		}
-		return "could not write to " + dir + " (" + msg + ")."
+		return i18n.T(lang, "Could not write to {dir} ({error}).", "dir", dir, "error", msg)
 	}
 	name := f.Name()
 	_ = f.Close()
@@ -116,21 +116,16 @@ func binaryDirWritable(binPath string) string {
 // (run from a service-owned directory) rather than the incomplete
 // "add ReadWritePaths" advice — ReadWritePaths only relaxes systemd's sandbox and
 // still leaves a root-owned /usr/local/bin unwritable by the non-root service.
-func updateReadonlyHelp(realPath, why string) string {
+func updateReadonlyHelp(lang, realPath, why string) string {
 	dir := filepath.Dir(realPath)
 	user := serviceUserGuess()
 	// The atomic swap creates a temp file in the binary's directory and renames it
 	// over the binary, so it needs write permission on the DIRECTORY, not the file.
 	// The usual cause now is that the directory is owned by root while the service
 	// runs as a non-root user — fixable with a single chown, no re-deploy needed.
-	return "Cannot install the update because the binary's directory is not writable by the service: " + why +
-		" VayuPress runs from " + realPath + " as user “" + user + "”, but the directory " + dir +
-		" is not owned by that user, so the service cannot create the temporary file the atomic swap needs." +
-		" Fix it once with:  sudo chown -R " + user + ":" + user + " " + dir +
-		"  (a ReadWritePaths grant is not enough — that relaxes systemd's sandbox, not the Unix ownership)." +
-		" Then click Update now again. Alternatively, run scripts/update-vayupress.sh, which now sets this" +
-		" ownership for you. If the path above is under /usr (e.g. /usr/local/bin), move the binary into" +
-		" /var/lib/vayupress/bin instead — /usr is root-owned and read-only under systemd ProtectSystem."
+	return i18n.T(lang, "The update cannot be installed because the service cannot write to the binary's directory: {why} VayuPress runs from {path} as the user “{user}”, but the directory {dir} is not owned by that user, so the service cannot create the temporary file the atomic swap needs. Fix it once with {command} (a ReadWritePaths grant is not enough: it relaxes systemd's sandbox, not the Unix ownership), then press Update now again. Or run {script}, which sets this ownership for you. If the path above is under /usr (/usr/local/bin, say), move the binary into {bin} instead: /usr is root-owned and read-only under systemd ProtectSystem.",
+		"why", why, "path", realPath, "user", user, "dir", dir, "command", "sudo chown -R "+user+":"+user+" "+dir,
+		"script", "scripts/update-vayupress.sh", "bin", "/var/lib/vayupress/bin")
 }
 
 // serviceUserGuess returns the OS user the process runs as, for the chown hint.
@@ -178,6 +173,7 @@ func dbSizeBytes() int64 {
 func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
+	lang := i18n.Lang(r.Context())
 
 	_, hasKey := selfUpdateConfigured()
 	curMode := string(mode.Global.Current())
@@ -189,11 +185,11 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
 	// update "checksum verified" while the page around it said "signed", and
 	// the key arm promised Ed25519 verification against an asset the release
 	// pipeline never produced, so pinning a key broke updates outright.
-	signed := "Only releases signed by this project install."
-	signedTip := "Every release is checked against the signature its build published and installed only if that signature was made by this project's own release workflow, so a binary from anywhere else is refused even if it downloads cleanly. Nothing to configure: this applies to every install."
+	signed := i18n.T(lang, "Only releases signed by this project install.")
+	signedTip := i18n.T(lang, "Every release is checked against the signature its build published and installed only if that signature was made by this project's own release workflow, so a binary from anywhere else is refused even if it downloads cleanly. Nothing to configure: this applies to every install.")
 	if hasKey {
-		signed = "Only releases signed by this project install, twice over."
-		signedTip = "Every release is checked against the signature its build published and installed only if that signature was made by this project's own release workflow. The release key built into this binary must have signed it too."
+		signed = i18n.T(lang, "Only releases signed by this project install, twice over.")
+		signedTip = i18n.T(lang, "Every release is checked against the signature its build published and installed only if that signature was made by this project's own release workflow. The release key built into this binary must have signed it too.")
 	}
 
 	// WHAT A RESTART COSTS, on the page where restarts are decided (ADR-0155
@@ -209,77 +205,80 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
 	// large DB the box starts unticked and the row says why.
 	dbSize := dbSizeBytes()
 	backupChecked := " checked"
-	backupNote := "Recommended for most sites. A binary update never changes your database and the previous binary is kept for rollback, so this can be left off."
+	backupNote := i18n.T(lang, "Recommended for most sites. A binary update never changes your database and the previous binary is kept for rollback, so this can be left off.")
 	if dbSize > inlineBackupMaxBytes {
 		backupChecked = ""
-		backupNote = "Off, because your database is large (" + humanBytes(dbSize) + ") and compressing it inside the update can overload the server. A binary update never changes your database, and the previous binary is kept for rollback."
+		backupNote = i18n.T(lang, "Off, because your database is large ({size}) and compressing it inside the update can overload the server. A binary update never changes your database, and the previous binary is kept for rollback.", "size", humanBytes(dbSize))
 	}
 
-	tone, state := "ok", "v"+Version+" is installed"
+	tone, state := "ok", i18n.T(lang, "v{version} is installed", "version", Version)
 	if !modeOK {
-		tone, state = saModeTone(mode.Mode(curMode)), "Updates are paused while the install is in "+strings.ToLower(saModeLabel(mode.Mode(curMode)))+" mode"
+		tone, state = saModeTone(mode.Mode(curMode)), i18n.T(lang, "Updates are paused while the install is in {mode} mode", "mode", strings.ToLower(saModeLabelIn(lang, mode.Mode(curMode))))
 	}
 
 	// The update script needs [data-update-card] present and reads the rows'
 	// controls by their data attributes; it fills the check's outcome into the
 	// detail line. The Update now button starts disabled: the on-load check
 	// enables it only when an update is available and the mode allows it.
-	install := ui.Section("Install an update", "signature checked · atomic swap", ui.Join(
+	install := ui.Section(i18n.T(lang, "Install an update"), i18n.T(lang, "signature checked · atomic swap"), ui.Join(
 		`<div data-update-card>`,
 		ui.Rows(
-			ui.Row{Label: "Latest release", Control: `<span data-latest-version>—</span>`},
-			ui.Row{Label: "Signature", Hint: signed, Control: ui.State("ok", "Checked") + ui.Tip(signedTip)},
-			ui.Row{Label: "Back up the database first", Hint: backupNote, ID: "upd-backup",
+			ui.Row{Label: i18n.T(lang, "Latest release"), Control: `<span data-latest-version>—</span>`},
+			ui.Row{Label: i18n.T(lang, "Signature"), Hint: signed, Control: ui.State("ok", i18n.T(lang, "Checked")) + ui.Tip(signedTip)},
+			ui.Row{Label: i18n.T(lang, "Back up the database first"), Hint: backupNote, ID: "upd-backup",
 				Control: ui.HTML(`<input type="checkbox" id="upd-backup" data-update-backup` + backupChecked + `>`)},
-			ui.Row{Label: "Include pre-release builds", ID: "upd-pre",
-				Hint:    "Also offer the newest unreleased build when one is published. It is signed by the same workflow and checked the same way.",
+			ui.Row{Label: i18n.T(lang, "Include pre-release builds"), ID: "upd-pre",
+				Hint:    i18n.T(lang, "Also offer the newest unreleased build when one is published. It is signed by the same workflow and checked the same way."),
 				Control: `<input type="checkbox" id="upd-pre" data-update-prerelease>`},
-			ui.Row{Label: "What a restart costs", Hint: cost.Describe(), Control: ""},
+			ui.Row{Label: i18n.T(lang, "What a restart costs"), Hint: cost.Describe(lang), Control: ""},
 		),
 		`<div class="update-notes" data-update-notes hidden></div>`,
-		`<div class="upd-actions"><button type="button" class="btn btn--ghost btn--sm" data-update-rollback>Roll back</button>`+
-			`<span class="text-xs muted" data-update-msg role="status" aria-live="polite"></span></div>`,
+		ui.HTML(`<div class="upd-actions"><button type="button" class="btn btn--ghost btn--sm" data-update-rollback>`+esc(i18n.T(lang, "Roll back"))+`</button>`+
+			`<span class="text-xs muted" data-update-msg role="status" aria-live="polite"></span></div>`),
 		`</div>`,
 	))
 
-	history := ui.Section("History", "every check, install and rollback, newest first",
+	th := func(s string) string { return `<th>` + esc(s) + `</th>` }
+	history := ui.Section(i18n.T(lang, "History"), i18n.T(lang, "every check, install and rollback, newest first"),
 		ui.HTML(`<div class="table-wrap"><table class="table">
-    <thead><tr><th>#</th><th>From</th><th>To</th><th>Status</th><th>Detail</th><th>When</th></tr></thead>
+    <thead><tr><th>#</th>`+th(i18n.T(lang, "From"))+th(i18n.T(lang, "To"))+th(i18n.T(lang, "Status"))+th(i18n.T(lang, "Detail"))+th(i18n.T(lang, "When"))+`</tr></thead>
     <tbody data-history-body>`+a.updateHistoryRowsHTML(r)+`</tbody>
   </table></div>`))
 
+	title := i18n.T(lang, "Updates")
 	body := string(ui.Status(ui.StatusPage{
-		Title: "Updates",
-		Actions: `<button type="button" class="btn btn--ghost btn--sm" data-update-check>Check for updates</button>` +
-			`<button type="button" class="btn btn--primary btn--sm" data-update-apply disabled>Update now</button>`,
+		Title: title,
+		Actions: ui.HTML(`<button type="button" class="btn btn--ghost btn--sm" data-update-check>` + esc(i18n.T(lang, "Check for updates")) + `</button>` +
+			`<button type="button" class="btn btn--primary btn--sm" data-update-apply disabled>` + esc(i18n.T(lang, "Update now")) + `</button>`),
 		Tone:   tone,
 		State:  state,
-		Detail: `<span class="upd-status" data-update-status>Not checked yet</span>`,
-	}, ui.HTML(binaryRepairNotice()), install, ui.HTML(provisionCardHTML()), history)) +
+		Detail: ui.HTML(`<span class="upd-status" data-update-status>` + esc(i18n.T(lang, "Not checked yet")) + `</span>`),
+	}, ui.HTML(binaryRepairNotice(lang)), install, ui.HTML(provisionCardHTML(lang)), history)) +
 		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-update.js?v=` + assetVer("js/admin-os-update.js") + `"></script>`
 
-	writeOSHTML(w, r, adminOSLayout(nonce, "Updates", "update", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, title, "update", cfg, htmpl.HTML(body)))
 }
 
 // updateHistoryRowsHTML renders the most recent update_history rows as table
 // rows (escaped). Returns an empty-state row when there is no history.
 func (a *App) updateHistoryRowsHTML(r *http.Request) string {
+	lang := i18n.Lang(r.Context())
 	if a.updateStore == nil {
-		return `<tr><td colspan="6" class="muted">Update history unavailable.</td></tr>`
+		return `<tr><td colspan="6" class="muted">` + esc(i18n.T(lang, "The update history cannot be read here.")) + `</td></tr>`
 	}
 	recs, err := a.updateStore.List(r.Context(), 25)
 	if err != nil || len(recs) == 0 {
-		return `<tr><td colspan="6" class="muted">No update activity recorded yet.</td></tr>`
+		return `<tr><td colspan="6" class="muted">` + esc(i18n.T(lang, "No update activity recorded yet.")) + `</td></tr>`
 	}
 	var b strings.Builder
 	for _, rec := range recs {
-		when := config.FormatSite(rec.StartedAt, "2 Jan 2006 15:04")
+		when := i18n.Date(lang, config.InSite(rec.StartedAt), i18n.DayMonthYearShortAt)
 		b.WriteString(`<tr>
   <td class="muted">` + strconv.FormatInt(rec.ID, 10) + `</td>
   <td>` + html.EscapeString(dashOr(rec.FromVersion)) + `</td>
   <td>` + html.EscapeString(dashOr(rec.ToVersion)) + `</td>
-  <td>` + updateHistoryState(rec.Status) + `</td>
-  <td class="muted text-sm">` + html.EscapeString(rec.Detail) + `</td>
+  <td>` + updateHistoryState(lang, rec.Status) + `</td>
+  <td class="muted text-sm" translate="no">` + html.EscapeString(rec.Detail) + `</td>
   <td class="muted text-sm">` + html.EscapeString(when) + `</td>
 </tr>`)
 	}
@@ -288,16 +287,18 @@ func (a *App) updateHistoryRowsHTML(r *http.Request) string {
 
 // updateHistoryState is a history row's outcome as the page grammar shows
 // state: a dot and a word, never a filled pill.
-func updateHistoryState(status string) string {
+func updateHistoryState(lang, status string) string {
 	switch status {
 	case "success":
-		return string(ui.State("ok", "Done"))
+		return string(ui.State("ok", i18n.T(lang, "Done")))
 	case "failed":
-		return string(ui.State("danger", "Failed"))
+		return string(ui.State("danger", i18n.T(lang, "Failed")))
 	case "started":
-		return string(ui.State("accent", "Started"))
+		return string(ui.State("accent", i18n.T(lang, "Started")))
 	case "checked":
-		return string(ui.State("neutral", "Checked"))
+		return string(ui.State("neutral", i18n.T(lang, "Checked")))
+	case "rolled_back":
+		return string(ui.State("neutral", i18n.T(lang, "Rolled back")))
 	}
 	return string(ui.State("neutral", status))
 }
@@ -359,10 +360,12 @@ func (a *App) handleOSUpdateCheck(w http.ResponseWriter, r *http.Request) {
 		// anything to do with whether the release was signed — and read as though
 		// it did. Every release is signature-verified now, so it says so; hasKey
 		// says whether this build also requires the release key's signature.
-		"signed":     true,
-		"enabled":    enabled,
-		"hasKey":     hasKey,
-		"mode":       string(mode.Global.Current()),
+		"signed":  true,
+		"enabled": enabled,
+		"hasKey":  hasKey,
+		"mode":    string(mode.Global.Current()),
+		// The mode's name as the page says it, for the sentence that names it.
+		"modeLabel":  strings.ToLower(saModeLabelIn(i18n.Lang(r.Context()), mode.Global.Current())),
 		"prerelease": includePre,
 		// Which endpoint in the chain answered (github / mirror / cdn) — the
 		// panel shows it as a small pill so an operator whose host cannot reach
@@ -468,7 +471,7 @@ func isTruthyParam(v string) bool {
 // {"dryRun": true} it verifies signatures without writing anything.
 func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Only an administrator can do this."), "")
 		return
 	}
 	// Backup defaults to ON when the field is absent, so older callers / the CLI
@@ -492,9 +495,7 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 	if backup && !body.DryRun {
 		if sz := dbSizeBytes(); sz > inlineBackupMaxBytes {
 			writeAPIError(w, r, http.StatusPreconditionFailed, "backup-too-large",
-				"Your database is "+humanBytes(sz)+", which is too large to back up safely from inside the update — gzipping it here can overload the server. "+
-					"Untick “Back up the database first” and click Update now (a binary update never changes your database, and the previous binary is kept for rollback), "+
-					"or take a snapshot during a quiet window / use Export first, then update.", "")
+				i18n.T(i18n.Lang(r.Context()), "The database is {size}, too large to back up safely from inside the update: compressing it here can overload the server. Untick “Back up the database first” and press Update now (a binary update never changes the database, and the previous binary is kept for rollback), or take a snapshot in a quiet moment or download a copy first, then update.", "size", humanBytes(sz)), "")
 			return
 		}
 	}
@@ -525,9 +526,9 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 	// root-owned /usr/local/bin (which the non-root service cannot write, and
 	// which systemd ProtectSystem also mounts read-only) — fail fast with the
 	// permanent fix rather than a confusing mid-update error.
-	if why := binaryDirWritable(realPath); why != "" {
+	if why := binaryDirWritable(i18n.Lang(r.Context()), realPath); why != "" {
 		writeAPIError(w, r, http.StatusPreconditionFailed, "binary-readonly",
-			updateReadonlyHelp(realPath, why), "")
+			updateReadonlyHelp(i18n.Lang(r.Context()), realPath, why), "")
 		return
 	}
 
@@ -584,8 +585,7 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 		// pre-update backup couldn't be written (slow/large DB, low space). The
 		// binary was NOT touched, so the operator can simply retry without backup.
 		if backup && strings.Contains(msg, "backup") {
-			msg = "The pre-update database backup could not be completed, so the update was not applied (your binary is unchanged). " +
-				"Untick “Back up the database first” and try again — a binary update never modifies your database, and the previous binary is kept for rollback — or take a backup from the Export section first. Original error: " + msg
+			msg = i18n.T(i18n.Lang(r.Context()), "The database backup before the update could not be completed, so the update was not installed (the binary is unchanged). Untick “Back up the database first” and try again (a binary update never changes the database, and the previous binary is kept for rollback), or download a copy first. The error: {error}", "error", msg)
 		}
 		writeAPIError(w, r, http.StatusBadGateway, "apply-failed", msg, "")
 		return
@@ -597,7 +597,7 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, r, http.StatusOK, map[string]interface{}{
 			"status": "verified", "version": newVersion,
-			"note": "Signature + checksum verified. Nothing was written (dry run).",
+			"note": i18n.T(i18n.Lang(r.Context()), "Signature and checksum checked. Nothing was written (a dry run)."),
 		})
 		return
 	}
@@ -640,7 +640,7 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 		go a.activateUpdate(realPath, newVersion, histID)
 		writeJSON(w, r, http.StatusOK, map[string]interface{}{
 			"status": "updated-restarting", "version": newVersion, "history": histID,
-			"note": "Update installed. The database is prepared for " + newVersion + " while this version keeps serving, then the service re-launches to activate it.",
+			"note": i18n.T(i18n.Lang(r.Context()), "Update installed. The database is prepared for {version} while this version keeps serving, then the service starts again on it.", "version", newVersion),
 		})
 		return
 	}
@@ -654,7 +654,7 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 // prior apply) back over the running binary, then restarts to activate it.
 func (a *App) handleOSUpdateRollback(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Only an administrator can do this."), "")
 		return
 	}
 	binPath, err := os.Executable()
@@ -667,7 +667,7 @@ func (a *App) handleOSUpdateRollback(w http.ResponseWriter, r *http.Request) {
 	realPath := update.ResolveInstallPath(binPath)
 	bak := realPath + ".bak"
 	if _, err := os.Stat(bak); err != nil {
-		writeAPIError(w, r, http.StatusNotFound, "no-rollback", "No rollback artifact found — nothing to roll back to.", "")
+		writeAPIError(w, r, http.StatusNotFound, "no-rollback", i18n.T(i18n.Lang(r.Context()), "There is no previous binary to roll back to."), "")
 		return
 	}
 
@@ -785,7 +785,7 @@ func serveExport(w http.ResponseWriter, r *http.Request, path string) {
 	f, err := os.Open(path)
 	if err != nil {
 		writeAPIError(w, r, http.StatusNotFound, "export-gone",
-			"This download is no longer on the server. Prepare it again from Backup & Recovery.", "")
+			i18n.T(i18n.Lang(r.Context()), "This download is no longer on the server. Prepare it again on Backups."), "")
 		return
 	}
 	defer f.Close()
@@ -815,12 +815,12 @@ func serveExport(w http.ResponseWriter, r *http.Request, path string) {
 // prepares the download as background work instead (handleOSBackupExportStart).
 func (a *App) handleOSBackupExport(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Only an administrator can do this."), "")
 		return
 	}
 	path, _, err := buildExport(r.Context(), updatePacing())
 	if err != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "export-failed", "Backup failed: "+err.Error(), "")
+		writeAPIError(w, r, http.StatusInternalServerError, "export-failed", i18n.T(i18n.Lang(r.Context()), "The backup failed: {error}", "error", err.Error()), "")
 		return
 	}
 	defer os.Remove(path)
@@ -832,7 +832,7 @@ func (a *App) handleOSBackupExport(w http.ResponseWriter, r *http.Request) {
 // the file (handleOSBackupExportFile).
 func (a *App) handleOSBackupExportStart(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Only an administrator can do this."), "")
 		return
 	}
 	lang := i18n.Lang(r.Context())
@@ -871,13 +871,13 @@ func (a *App) handleOSBackupExportStart(w http.ResponseWriter, r *http.Request) 
 // from the request: the only file it can send is the one the slot recorded.
 func (a *App) handleOSBackupExportFile(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Only an administrator can do this."), "")
 		return
 	}
 	path := a.keepRun.download()
 	if path == "" {
 		writeAPIError(w, r, http.StatusNotFound, "export-none",
-			"No download is waiting. Prepare one from Backup & Recovery.", "")
+			i18n.T(i18n.Lang(r.Context()), "No download is waiting. Prepare one on Backups."), "")
 		return
 	}
 	serveExport(w, r, path)
@@ -889,7 +889,7 @@ func (a *App) handleOSBackupExportFile(w http.ResponseWriter, r *http.Request) {
 // (never ParseMultipartForm), so there is no size limit and no buffering.
 func (a *App) handleOSBackupImport(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Only an administrator can do this."), "")
 		return
 	}
 	// Lift the server ReadTimeout for a potentially large upload.
@@ -899,7 +899,7 @@ func (a *App) handleOSBackupImport(w http.ResponseWriter, r *http.Request) {
 
 	mr, err := r.MultipartReader()
 	if err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "bad-multipart", "Expected a multipart file upload.", "")
+		writeAPIError(w, r, http.StatusBadRequest, "bad-multipart", i18n.T(i18n.Lang(r.Context()), "The request carries no file."), "")
 		return
 	}
 
@@ -927,7 +927,7 @@ func (a *App) handleOSBackupImport(w http.ResponseWriter, r *http.Request) {
 		break
 	}
 	if !found {
-		writeAPIError(w, r, http.StatusBadRequest, "no-file", `No "snapshot" file field in the upload.`, "")
+		writeAPIError(w, r, http.StatusBadRequest, "no-file", i18n.T(i18n.Lang(r.Context()), "The upload carries no backup file."), "")
 		return
 	}
 
@@ -944,7 +944,7 @@ func (a *App) handleOSBackupImport(w http.ResponseWriter, r *http.Request) {
 	update.ScheduleRestart(1500*time.Millisecond, restartCleanup)
 	resp := map[string]interface{}{
 		"status": "restoring-restarting",
-		"note":   "Backup validated and staged. The service is restarting to load the restored data.",
+		"note":   i18n.T(i18n.Lang(r.Context()), "The backup was checked and set in place. The service is restarting to load the restored data."),
 	}
 	if manifest != nil {
 		resp["createdAt"] = manifest.CreatedAt.UTC().Format(time.RFC3339)

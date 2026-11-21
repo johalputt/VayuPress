@@ -9,11 +9,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/ui"
 )
 
@@ -209,10 +209,11 @@ func (a *App) handleOSProvisionRequest(w http.ResponseWriter, r *http.Request) {
 		a.denyAccess(w, r, osHome)
 		return
 	}
+	lang := i18n.Lang(r.Context())
 	if !provisionUnitsInstalled() {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "provision-unavailable",
-			"One-click provisioning is not installed on this server",
-			"Re-run scripts/deploy-vayupress.sh once to install the privileged helper, then this button works.")
+			i18n.T(lang, "One-click provisioning is not installed on this server"),
+			i18n.T(lang, "Run {script} once to install the privileged helper; then this button works.", "script", "scripts/deploy-vayupress.sh"))
 		return
 	}
 	path := filepath.Join(provisionStateDir(), provisionRequestFile)
@@ -242,15 +243,14 @@ func (a *App) handleOSProvisionRequest(w http.ResponseWriter, r *http.Request) {
 	// root one — the thing this design exists to avoid.
 	if err := os.WriteFile(path, nil, 0o644); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "provision-request-failed",
-			"Could not create the provisioning request", err.Error())
+			i18n.T(lang, "Could not create the provisioning request"), err.Error())
 		return
 	}
 	dbpkg.AuditLog(provisionAuditAction, dbpkg.AuditActor(r), "provision", "requested via the panel")
 
-	note := "Provisioning runs in the background; it usually finishes within a minute."
+	note := i18n.T(lang, "Provisioning runs in the background; it usually finishes within a minute.")
 	if staleCleared {
-		note = "An earlier request was still waiting — it was cleared and a fresh one made, " +
-			"which is what re-arms the watcher."
+		note = i18n.T(lang, "An earlier request was still waiting: it was cleared and a fresh one made, which is what re-arms the watcher.")
 	}
 	writeJSON(w, r, http.StatusOK, map[string]any{
 		"status": "requested", "rearmed": staleCleared, "note": note,
@@ -273,29 +273,33 @@ func (a *App) handleOSProvisionStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// nginxTestCommand finds what is wrong in nginx's configuration: a command,
+// the same in every language.
+const nginxTestCommand = "sudo nginx -t"
+
 // provisionCardHTML renders the Update-page card.
-func provisionCardHTML() string {
+func provisionCardHTML(lang string) string {
 	installed := provisionUnitsInstalled()
 	res, haveRun := readProvisionResult()
 
 	var status string
 	switch {
 	case !installed:
-		status = string(ui.State("warn", "Helper not installed"))
+		status = string(ui.State("warn", i18n.T(lang, "Helper not installed")))
 	case provisionPending():
-		status = string(ui.State("accent", "Running"))
+		status = string(ui.State("accent", i18n.T(lang, "Running")))
 	case haveRun && res.Failed > 0:
-		status = string(ui.State("warn", "Last run had "+strconv.Itoa(res.Failed)+" problem"+plural(res.Failed)))
+		status = string(ui.State("warn", i18n.T(lang, "{n, plural, one {Last run had # problem} other {Last run had # problems}}", "n", res.Failed)))
 	case haveRun && res.Ran == 0:
 		// Nothing was provisioned. Previously this rendered as "clean", which is
 		// how a run that did absolutely nothing came to look like success.
-		status = string(ui.State("warn", "Last run provisioned nothing"))
+		status = string(ui.State("warn", i18n.T(lang, "Last run provisioned nothing")))
 	case haveRun && res.Skipped > 0:
-		status = string(ui.State("ok", strconv.Itoa(res.Ran)+" provisioned, "+strconv.Itoa(res.Skipped)+" skipped"))
+		status = string(ui.State("ok", i18n.T(lang, "{ran} provisioned, {skipped} skipped", "ran", res.Ran, "skipped", res.Skipped)))
 	case haveRun:
-		status = string(ui.State("ok", "Last run clean"))
+		status = string(ui.State("ok", i18n.T(lang, "Last run clean")))
 	default:
-		status = string(ui.State("neutral", "Never run"))
+		status = string(ui.State("neutral", i18n.T(lang, "Never run")))
 	}
 
 	var detail string
@@ -304,30 +308,26 @@ func provisionCardHTML() string {
 		// beside it lists them by filename. Reading it as five subdomains is the
 		// natural mistake, and it is how a run where one helper covered no domains
 		// at all read as five domains provisioned.
-		detail = `<p class="text-xs muted">Last run ` + html.EscapeString(res.FinishedAt) +
-			` — of ` + strconv.Itoa(res.Ran+res.Skipped+res.Failed) + ` helpers: ` +
-			strconv.Itoa(res.Ran) + ` did work, ` + strconv.Itoa(res.Skipped) + ` had nothing to do, ` +
-			strconv.Itoa(res.Failed) + ` reported a problem.`
+		detail = `<p class="text-xs muted">` + esc(i18n.T(lang, "Last run {when}: of {total} helpers, {ran} did work, {skipped} had nothing to do, {failed} reported a problem.",
+			"when", res.FinishedAt, "total", res.Ran+res.Skipped+res.Failed, "ran", res.Ran, "skipped", res.Skipped, "failed", res.Failed))
 		if res.Details != "" {
 			detail += string(ui.Tip(res.Details))
 		}
 		detail += `</p>`
 		if strings.Contains(res.Details, "nginx-config-broken") {
-			detail += `<p class="text-xs muted"><strong>nginx's configuration was already invalid ` +
-				`before provisioning ran</strong>, so nothing changed. Find it with <code>sudo nginx -t</code>.` +
-				string(ui.Tip("Every helper aborted without changing anything. One stale vhost anywhere under "+
-					"sites-enabled does this, most often one written while DOMAIN was still localhost, naming a "+
-					"certificate that cannot exist. Remove the offending symlink and run this again.")) + `</p>`
+			detail += `<p class="text-xs muted"><strong>` + esc(i18n.T(lang, "nginx's configuration was already invalid before provisioning ran, so nothing changed.")) + `</strong> ` +
+				escFill(i18n.T(lang, "Find it with {command}.", "command", htmlMark(0)), `<code>`+nginxTestCommand+`</code>`) +
+				string(ui.Tip(i18n.T(lang, "Every helper stopped without changing anything. One stale vhost anywhere under {dir} does this, most often one written while {setting} was still localhost, naming a certificate that cannot exist. Remove the offending symlink and run this again.",
+					"dir", "sites-enabled", "setting", "DOMAIN"))) + `</p>`
 		}
 		if res.Ran == 0 {
-			detail += `<p class="text-xs muted">No helper did any work.` +
-				string(ui.Tip("A helper skips when its DNS is not pointed, or when DOMAIN cannot be read from "+
-					"/etc/vayupress/env, which skips every one of them at once. "+
-					"/var/lib/vayupress-provision/provision.log has the reason.")) + `</p>`
+			detail += `<p class="text-xs muted">` + esc(i18n.T(lang, "No helper did any work.")) +
+				string(ui.Tip(i18n.T(lang, "A helper skips when its DNS is not pointed, or when {setting} cannot be read from {file}, which skips every one of them at once. {log} has the reason.",
+					"setting", "DOMAIN", "file", "/etc/vayupress/env", "log", "/var/lib/vayupress-provision/provision.log"))) + `</p>`
 		}
 	}
 
-	action := `<button type="button" class="btn btn--primary btn--sm" data-provision-run>Provision subdomains</button>`
+	action := `<button type="button" class="btn btn--primary btn--sm" data-provision-run>` + esc(i18n.T(lang, "Provision subdomains")) + `</button>`
 	if !installed {
 		// Show the EXACT command, copyable. The previous wording said "re-run
 		// scripts/deploy-vayupress.sh", which assumes the operator knows where
@@ -336,24 +336,27 @@ func provisionCardHTML() string {
 		// postponed and the certificate never appeared. This command installs only
 		// the privileged helper, runs one pass immediately, and touches neither
 		// the binary nor the database.
-		action = `<p class="text-sm">A one-time install, as root:` +
-			string(ui.Tip("Installing a systemd unit needs root, and this service deliberately cannot become root. "+
-				"This is the one command you ever have to run: it installs only the helper and provisions "+
-				"immediately, leaving the binary and database untouched.")) + `</p>` +
+		action = `<p class="text-sm">` + esc(i18n.T(lang, "A one-time install, as root:")) +
+			string(ui.Tip(i18n.T(lang, "Installing a systemd unit needs root, and this service on purpose cannot become root. This is the one command you ever have to run: it installs only the helper and provisions at once, leaving the binary and database untouched."))) + `</p>` +
 			`<div class="vm-row"><code class="mono text-xs vm-pgp__wkd" data-provision-cmd>` +
 			html.EscapeString(provisionInstallCommand) + `</code>` +
-			`<button type="button" class="btn btn--sm" data-provision-copy>Copy</button></div>`
+			`<button type="button" class="btn btn--sm" data-provision-copy>` + esc(i18n.T(lang, "Copy")) + `</button></div>`
 	}
 
-	return `<div class="section-head"><span class="section-head__title">Subdomains &amp; certificates</span>` +
-		`<span class="section-head__hint">Issue TLS and write vhosts for mail, PGP discovery, chat, MCP and the API</span></div>
+	subs := make([]string, 0, 5)
+	for _, s := range []string{"mail.", "openpgpkey.", "talk.", "mcp.", "api."} {
+		subs = append(subs, "<code>"+s+"</code>")
+	}
+	return `<div class="section-head"><span class="section-head__title">` + esc(i18n.T(lang, "Subdomains and certificates")) + `</span>` +
+		`<span class="section-head__hint">` + esc(i18n.T(lang, "Issue TLS and write vhosts for mail, PGP discovery, chat, MCP and the API")) + `</span></div>
 <div class="card">
 <p class="text-sm">` + status + `</p>
-<p class="text-sm muted">Runs daily on its own, and is safe to run any time.</p>
+<p class="text-sm muted">` + esc(i18n.T(lang, "Runs daily on its own, and is safe to run any time.")) + `</p>
 ` + detail + `
 <div class="vm-row">` + action + `<span class="text-sm muted" data-provision-status></span></div>
-` + string(ui.Explain(`<p>Installing an update swaps the <strong>binary only</strong>: the service runs unprivileged and cannot obtain a certificate or reload nginx by itself. This runs that privileged step for every subdomain whose DNS is pointed: <code>mail.</code>, <code>openpgpkey.</code>, <code>talk.</code>, <code>mcp.</code> and <code>api.</code>. A subdomain that is not pointed is skipped, so it is always safe to run.</p>
-<p>It also runs <strong>daily on its own</strong>, so a DNS record you point later is picked up without you doing anything; once the helper is installed there is no further terminal use.</p>
-<p>Requesting a run creates an empty flag file that a root-side service watches. No argument is passed and its contents are never read, so this console can ask for provisioning and cannot influence what the privileged step does.</p>`)) + `
+` + string(ui.ExplainTitled(i18n.T(lang, "How this works"), ui.HTML(`<p>`+escFill(i18n.T(lang, "Installing an update swaps the binary only: the service runs unprivileged and cannot obtain a certificate or reload nginx by itself. This runs that privileged step for every subdomain whose DNS is pointed: {mail}, {pgp}, {talk}, {mcp} and {api}. A subdomain that is not pointed is skipped, so it is always safe to run.",
+		"mail", htmlMark(0), "pgp", htmlMark(1), "talk", htmlMark(2), "mcp", htmlMark(3), "api", htmlMark(4)), subs...)+`</p>
+<p>`+esc(i18n.T(lang, "It also runs daily on its own, so a DNS record you point later is picked up without you doing anything; once the helper is installed there is no further terminal use."))+`</p>
+<p>`+esc(i18n.T(lang, "Requesting a run creates an empty flag file that a root-side service watches. No argument is passed and its contents are never read, so this console can ask for provisioning and cannot influence what the privileged step does."))+`</p>`))) + `
 </div>`
 }

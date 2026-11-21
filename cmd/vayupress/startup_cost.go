@@ -31,6 +31,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/settings"
 )
 
@@ -133,29 +134,22 @@ func readStartupCost(ctx context.Context, store *settings.Store, queued bool) st
 // Every branch names what the number IS — visitors getting errors, or visitors
 // waiting — because "startup: 1.2s" is a statistic and "1.2 seconds of 502 for
 // everyone" is a decision an operator can make.
-func (c startupCost) Describe() string {
+func (c startupCost) Describe(lang string) string {
 	if c.Samples == 0 {
-		return "This install has not recorded a startup yet, so what a restart costs here is " +
-			"not known. It is measured from the next one onwards and reported here rather than " +
-			"estimated."
+		return i18n.T(lang, "This install has not recorded a startup yet, so what a restart costs here is not known. It is measured from the next one onwards and reported here rather than estimated.")
 	}
 	span := fmtMillis(c.FastMS)
 	if c.SlowMS != c.FastMS {
 		span = fmtMillis(c.FastMS) + "–" + fmtMillis(c.SlowMS)
 	}
-	sample := "across " + strconv.Itoa(c.Samples) + " recorded starts"
+	starts := i18n.T(lang, "This install starts in {span} across {n} recorded starts.", "span", span, "n", c.Samples)
 	if c.Samples == 1 {
-		sample = "from a single recorded start, so treat it as an indication rather than a range"
+		starts = i18n.T(lang, "This install starts in {span} from a single recorded start, so treat it as an indication rather than a range.", "span", span)
 	}
-
 	if c.Queued {
-		return "This install starts in " + span + " " + sample + ". Because systemd holds the " +
-			"listening socket, that time is spent with connections QUEUED rather than refused: a " +
-			"visitor mid-restart waits, and nobody sees an error page."
+		return starts + " " + i18n.T(lang, "Because systemd holds the listening socket, that time is spent with connections QUEUED rather than refused: a visitor mid-restart waits, and nobody sees an error page.")
 	}
-	return "This install starts in " + span + " " + sample + ". nginx has no queue in front of " +
-		"the app, so that is how long every visitor gets a 502 when it restarts. Enabling the " +
-		"socket unit turns that time into a wait instead of an error."
+	return starts + " " + i18n.T(lang, "nginx has no queue in front of the app, so that is how long every visitor gets a 502 when it restarts. Enabling the socket unit turns that time into a wait instead of an error.")
 }
 
 // fmtMillis renders a duration the way an operator thinks about downtime.
