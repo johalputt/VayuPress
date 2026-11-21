@@ -229,6 +229,11 @@ func Date(lang string, t time.Time, form DateForm) string {
 	case Month:
 		pattern, month = "{m}", n.monthsAlone[t.Month()-1]
 	}
+	if lang == Pseudo {
+		// No language of its own, so the English names, accented as its
+		// sentences are: a month left plain is a date T never saw.
+		month, day = pseudoAccent.Replace(month), pseudoAccent.Replace(day)
+	}
 	return strings.NewReplacer("{wd}", day, "{d}", strconv.Itoa(t.Day()), "{m}", month,
 		"{y}", strconv.Itoa(t.Year()), "{t}", t.Format("15:04")).Replace(pattern)
 }

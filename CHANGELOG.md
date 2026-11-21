@@ -40,9 +40,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - **Updates in thirteen languages.** The Updates page, its install,
   rollback and provisioning controls, and what they answer follow the
   language chosen in the account menu, as do the subdomain card on DNS and
-  the backup download and restore replies on Backups. What the updater
-  itself reports about a release or the network, and the history's
-  recorded details, are still in English.
+  the backup download and restore replies on Backups. The release notes'
+  card names its sections in that language too, and shows each change as
+  the release wrote it. What the updater itself reports about a release
+  or the network, and the history's recorded details, are still in
+  English.
 - **VayuTor in thirteen languages.** The Tor page, its setup page, its
   bridges, vanity address, hardening, health and privacy cards follow the
   language chosen in the account menu, and so do the durations its live

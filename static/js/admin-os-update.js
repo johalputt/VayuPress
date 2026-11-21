@@ -158,13 +158,13 @@
       // as-is rather than showing nothing.
       var raw = clean(text);
       if (!raw) { el.hidden = true; return; }
-      el.appendChild(withClass('div', 'upd-notes__raw', raw));
+      el.appendChild(asWritten(withClass('div', 'upd-notes__raw', raw)));
       el.hidden = false;
       return;
     }
 
     el.appendChild(withClass('div', 'upd-notes__title',
-      version ? "What's in " + version : "What's in this update"));
+      version ? vpT('What\'s in {version}', { version: version }) : vpT('What\'s in this update')));
 
     var shown = 0, hidden = 0;
     for (var s = 0; s < sections.length; s++) {
@@ -172,7 +172,7 @@
       var remaining = MAX_ITEMS - shown;
       if (remaining <= 0) { hidden += sec.items.length; continue; }
 
-      if (sec.heading) { el.appendChild(withClass('div', 'upd-notes__head', sec.heading)); }
+      if (sec.heading) { el.appendChild(notesHead(sec.heading)); }
       var list = withClass('ul', 'upd-notes__list', '');
       for (var i = 0; i < sec.items.length; i++) {
         if (i >= remaining) { hidden += sec.items.length - i; break; }
@@ -183,7 +183,7 @@
         // of any length, and on show it made this card a page of prose (1,219
         // characters for one release, past the console's calm-page limit).
         // The full notes are one link away.
-        li.appendChild(withClass('span', 'upd-notes__lead', truncate(it.lead, 120)));
+        li.appendChild(asWritten(withClass('span', 'upd-notes__lead', truncate(it.lead, 120))));
         list.appendChild(li);
         shown++;
       }
@@ -191,9 +191,35 @@
     }
     if (hidden > 0) {
       el.appendChild(withClass('div', 'upd-notes__more',
-        '+ ' + hidden + ' more ' + (hidden === 1 ? 'change' : 'changes') + ' in the full changelog'));
+        vpT('{n, plural, one {+ # more change in the full changelog} other {+ # more changes in the full changelog}}', { n: hidden })));
     }
     el.hidden = false;
+  }
+
+  // notesHead names a changelog section in the reader's language when it is
+  // one of the fixed headings a changelog uses; any other heading is the
+  // release's own words, shown as written.
+  function notesHead(h) {
+    var n = withClass('div', 'upd-notes__head', '');
+    switch (h.toLowerCase()) {
+      case 'added': n.textContent = vpT('Added'); break;
+      case 'changed': n.textContent = vpT('Changed'); break;
+      case 'fixed': n.textContent = vpT('Fixed'); break;
+      case 'security': n.textContent = vpT('Security'); break;
+      case 'removed': n.textContent = vpT('Removed'); break;
+      case 'deprecated': n.textContent = vpT('Deprecated'); break;
+      case 'performance': n.textContent = vpT('Performance'); break;
+      case 'upgrade notes': n.textContent = vpT('Upgrade notes'); break;
+      default: n.textContent = h; asWritten(n);
+    }
+    return n;
+  }
+
+  // asWritten marks the release's own text, which is in the language it was
+  // written in, so the page's language does not claim it.
+  function asWritten(n) {
+    n.setAttribute('translate', 'no');
+    return n;
   }
 
   function withClass(tag, cls, text) {

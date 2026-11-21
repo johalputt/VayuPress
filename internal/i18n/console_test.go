@@ -133,6 +133,8 @@ func TestDatesAreWrittenAsEachLanguageWritesThem(t *testing.T) {
 		{"en", WeekdayDayMonthAt, "Fri 20 Nov, 15:04"},
 		{"ja", WeekdayDayMonthAt, "11月20日(金) 15:04"},
 		{"pt-BR", DayMonthYearShortAt, "20 de nov. de 2026, 15:04"},
+		{Pseudo, DayMonthYearShortAt, "20 Növ 2026, 15:04"},
+		{Pseudo, DayMonthYearAt, "Frídáy 20 Növémbér 2026, 15:04"},
 		{"xx", DayMonthShort, "20 Nov"},
 		{"en", DayMonthYear, "Friday 20 November 2026"},
 		{"de", DayMonthYear, "Freitag, 20. November 2026"},

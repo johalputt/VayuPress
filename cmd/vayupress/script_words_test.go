@@ -48,6 +48,12 @@ func TestAMovedScriptHasNoEnglishOutsideVpT(t *testing.T) {
 			// prefix rescans the script once per literal, which made this test
 			// quadratic (35 s of the race job's 600 s). 20 bytes holds the
 			// longest name, its bracket and the character before it that \b reads.
+			if strings.HasSuffix(before, "vpT(") && m[2] < 0 {
+				// The page's words are read from single-quoted sentences only
+				// (vpTCall): a double-quoted one is said in English everywhere.
+				t.Errorf("%s: vpT(%s) is double-quoted; write it in single quotes", name, src[m[0]:m[1]])
+				continue
+			}
 			if strings.HasSuffix(before, "vpT(") || jsSelectorCall.MatchString(before[max(0, len(before)-20):]) {
 				continue
 			}

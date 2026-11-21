@@ -260,8 +260,12 @@ func abs(n int) int {
 }
 
 // pseudo is msg accented and lengthened, its placeholders kept as written.
+// pseudoAccent is the pseudo-language's alphabet, for a sentence and for
+// the names a date is written with.
+var pseudoAccent = strings.NewReplacer("a", "á", "e", "é", "i", "í", "o", "ö", "u", "ü", "A", "Å", "E", "É", "O", "Ö", "c", "ç", "n", "ñ")
+
 func pseudo(msg string) string {
-	accent := strings.NewReplacer("a", "á", "e", "é", "i", "í", "o", "ö", "u", "ü", "A", "Å", "E", "É", "O", "Ö", "c", "ç", "n", "ñ")
+	accent := pseudoAccent
 	var b strings.Builder
 	for i := 0; i < len(msg); {
 		if msg[i] == '{' {

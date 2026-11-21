@@ -237,9 +237,11 @@ test("Settings in another language has no English left on it", async ({ page }) 
 // withSheets says the page opens at least one, or is asked of the page as
 // drawn: a page whose sheets went missing would otherwise pass with nothing
 // read.
-async function pseudoPageAndSheets(page, path, withSheets) {
+// ready, when given, waits for what the page draws after it loads.
+async function pseudoPageAndSheets(page, path, withSheets, ready) {
   await page.goto(path + "?lang=en-XA");
   await expect(page.locator("html")).toHaveAttribute("lang", "en-XA");
+  if (ready) await ready(page);
   const found = {};
   const own = await englishLeft(page);
   if (own.length) found.page = own;
@@ -264,7 +266,7 @@ async function pseudoPageAndSheets(page, path, withSheets) {
 // changes nothing, and reads the page it finds, its sheets when it is on.
 const adsIsOn = async (page) => (await page.locator("main [data-page-kind]").first().getAttribute("data-page-kind")) === "settings";
 for (const [name, path, withSheets] of [["Backups", "/os/vayukeep", true], ["API keys", "/os/apikeys", true], ["Newsletter", "/os/newsletter", false],
-  ["YouTube", "/os/youtube", true], ["Advertising", "/os/ads", adsIsOn], ["VayuTor", "/os/tor", false], ["Updates", "/os/update", false], ["Tools and plugins", "/os/tools", false]]) {
+  ["YouTube", "/os/youtube", true], ["Advertising", "/os/ads", adsIsOn], ["VayuTor", "/os/tor", false], ["Tools and plugins", "/os/tools", false]]) {
   test(name + " in another language has no English left on it", async ({ page }) => {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
@@ -272,3 +274,22 @@ for (const [name, path, withSheets] of [["Backups", "/os/vayukeep", true], ["API
     expect(errors).toEqual([]);
   });
 }
+
+// Updates checks for a release as it loads, and draws the release's notes
+// only where the release feed answers: CI's install reaches it, this one's
+// may not. The check is answered here with a release of its own, so the
+// notes' card is always drawn, and read once it is. Its change lines are
+// the release's words, as written.
+test("Updates in another language has no English left on it", async ({ page }) => {
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const notes = ["## [9.9.9] — 2026-11-21", "", "### Security", "", "- **A security change.**", "", "### Added", "",
+    "- **An addition.**", "- **Another addition.**", "", "### Upgrade Notes", "", "- **Read this first.**", "",
+    "### Something else", "", "- **A change.**", "- **One more change.**", "- **And the last.**"].join("\n");
+  await page.route("**/os/api/update/check*", (r) => r.fulfill({
+    json: { latest: "v9.9.9", available: true, canApply: false, source: "github", notes },
+  }));
+  const ready = (p) => expect(p.locator("[data-update-notes] .upd-notes__more")).toBeVisible();
+  expect(await pseudoPageAndSheets(page, "/os/update", false, ready)).toEqual({});
+  expect(errors).toEqual([]);
+});
