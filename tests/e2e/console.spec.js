@@ -234,8 +234,9 @@ test("Settings in another language has no English left on it", async ({ page }) 
 
 // pseudoPageAndSheets is what a console page in the pseudo-language still
 // says in English: the page itself, then each sheet it opens, read while open.
-// withSheets says the page opens at least one: a page whose sheets went
-// missing would otherwise pass with nothing read.
+// withSheets says the page opens at least one, or is asked of the page as
+// drawn: a page whose sheets went missing would otherwise pass with nothing
+// read.
 async function pseudoPageAndSheets(page, path, withSheets) {
   await page.goto(path + "?lang=en-XA");
   await expect(page.locator("html")).toHaveAttribute("lang", "en-XA");
@@ -243,7 +244,7 @@ async function pseudoPageAndSheets(page, path, withSheets) {
   const own = await englishLeft(page);
   if (own.length) found.page = own;
   const sheets = await page.locator("button[data-sheet]").evaluateAll((bs) => [...new Set(bs.map((b) => b.getAttribute("data-sheet")))]);
-  expect(sheets.length > 0).toBe(withSheets);
+  expect(sheets.length > 0).toBe(typeof withSheets === "function" ? await withSheets(page) : withSheets);
   for (const id of sheets) {
     await page.locator('button[data-sheet="' + id + '"]').first().click();
     const sheet = page.locator("#" + id);
@@ -258,19 +259,15 @@ async function pseudoPageAndSheets(page, path, withSheets) {
 
 // The spec install has no mail relay, so the Newsletter is its setup page,
 // with no composer to open; the composer's words are checked in Go.
-// Advertising is its setup page until it is turned on, which another spec
-// does at a moment of its own, so this one turns it on first.
-async function adsOn(page) {
-  await page.goto("/os/ads?lang=en-XA");
-  const on = page.locator('[data-action="module-on"][data-module="ads"]').first();
-  if (await on.isVisible()) await Promise.all([page.waitForEvent("load"), on.click()]);
-}
-for (const [name, path, withSheets, before] of [["Backups", "/os/vayukeep", true], ["API keys", "/os/apikeys", true], ["Newsletter", "/os/newsletter", false],
-  ["YouTube", "/os/youtube", true], ["Advertising", "/os/ads", true, adsOn]]) {
+// Advertising is its setup page until stillair.spec.js turns it on, at a
+// moment of its own, and that file's setup test needs it off: this one
+// changes nothing, and reads the page it finds, its sheets when it is on.
+const adsIsOn = async (page) => (await page.locator("main [data-page-kind]").first().getAttribute("data-page-kind")) === "settings";
+for (const [name, path, withSheets] of [["Backups", "/os/vayukeep", true], ["API keys", "/os/apikeys", true], ["Newsletter", "/os/newsletter", false],
+  ["YouTube", "/os/youtube", true], ["Advertising", "/os/ads", adsIsOn]]) {
   test(name + " in another language has no English left on it", async ({ page }) => {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
-    if (before) await before(page);
     expect(await pseudoPageAndSheets(page, path, withSheets)).toEqual({});
     expect(errors).toEqual([]);
   });
