@@ -13,7 +13,7 @@ import (
 // server-side: one deployable card per catalogue theme, each with a Deploy
 // action, a visual preview, descriptive metadata, and CSP-safe colours.
 func TestThemeStoreCardsRender(t *testing.T) {
-	out := themeStoreCards("")
+	out := themeStoreCards("en", "")
 
 	if got, want := strings.Count(out, "data-store-item"), len(theme.Store()); got != want {
 		t.Fatalf("expected %d store cards, got %d", want, got)
@@ -51,7 +51,7 @@ func TestThemeStoreCardsRender(t *testing.T) {
 // TestThemeStoreActiveBadge proves the active theme is badged and its Deploy
 // button is rendered in the disabled "Active" state.
 func TestThemeStoreActiveBadge(t *testing.T) {
-	out := themeStoreCards("Aurora")
+	out := themeStoreCards("en", "Aurora")
 
 	if !strings.Contains(out, "store-card--active") {
 		t.Error("expected the active theme card to be marked store-card--active")

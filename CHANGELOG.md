@@ -34,6 +34,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   The restore commands and environment variables it shows stay as they are
   typed, and what the engine records (a pause's reason, a test restore's
   error and the counts it read back) as written.
+- **Theme Studio and the theme store in thirteen languages.** The Studio,
+  its options and their choices, its readability panel, the menu, code and
+  brand panels and every status its script writes, and the store with each
+  theme's tagline, description, category and tags, follow the language
+  chosen in the account menu; a theme's name stays its own. The store's
+  preview shows its sample posts as a site would.
 - **Tools and plugins in thirteen languages.** Every module's name, what it
   does and its state follow the language chosen in the account menu, and a
   switch says which module it changed by its name rather than its id.

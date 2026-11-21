@@ -4,12 +4,14 @@ package main
 
 import "github.com/johalputt/vayupress/internal/i18n"
 
-// themeWord is one of the Theme Studio's option words (an option's label, its
-// help, a choice's label) in lang. The theme package keeps them in English,
-// which its tests and the saved option values are written against; a word is
-// translated as it is drawn. Each case hands i18n.T a literal, so the
+// themeWord is one of the theme package's words in lang: an option's label,
+// its help and its choices' labels, and a store theme's tagline,
+// description, category and tags. The theme package keeps them in English,
+// which its tests and the saved option values are written against; a word
+// is translated as it is drawn. Each case hands i18n.T a literal, so the
 // catalogue test sees every one, and TestEveryThemeOptionWordIsTranslated
-// fails on an option added without its case.
+// fails on an option or a store theme added without its cases. A theme's
+// name is not here: it is the theme's own.
 func themeWord(lang, s string) string {
 	switch s {
 	case "Layout archetype":
@@ -388,6 +390,340 @@ func themeWord(lang, s string) string {
 		return i18n.T(lang, "Comments")
 	case "Shown while comments are switched on for the site.":
 		return i18n.T(lang, "Shown while comments are switched on for the site.")
+	case "The VayuPress theme: calm, quiet, for reading.":
+		return i18n.T(lang, "The VayuPress theme: calm, quiet, for reading.")
+	case "The theme new VayuPress sites start on, and the first to bring its own layout. A reading serif (Newsreader) on warm paper and a dusk that is never black, one quiet accent held to 4.5:1 on every surface, hairline rules instead of boxes, and large italic numerals for the topics on its front page. Home is a front page, a river or an index; articles are a centred column or a margin with the facts; topics are an index by month. Readers choose their own face, size, width and appearance (saved on their device only), follow an outline that marks where they are, and on a phone read with a dock at the foot of the screen. Code wraps and tables become labelled blocks, so nothing scrolls sideways. Comments, most read, pinned and related posts, sign-in, sign-up and the member pages all take the same design. One small script, its own fonts served from this site, no third-party request, light and dark.":
+		return i18n.T(lang, "The theme new VayuPress sites start on, and the first to bring its own layout. A reading serif (Newsreader) on warm paper and a dusk that is never black, one quiet accent held to 4.5:1 on every surface, hairline rules instead of boxes, and large italic numerals for the topics on its front page. Home is a front page, a river or an index; articles are a centred column or a margin with the facts; topics are an index by month. Readers choose their own face, size, width and appearance (saved on their device only), follow an outline that marks where they are, and on a phone read with a dock at the foot of the screen. Code wraps and tables become labelled blocks, so nothing scrolls sideways. Comments, most read, pinned and related posts, sign-in, sign-up and the member pages all take the same design. One small script, its own fonts served from this site, no third-party request, light and dark.")
+	case "Flagship":
+		return i18n.T(lang, "Flagship")
+	case "flagship":
+		return i18n.T(lang, "flagship")
+	case "reading":
+		return i18n.T(lang, "reading")
+	case "serif":
+		return i18n.T(lang, "serif")
+	case "editorial":
+		return i18n.T(lang, "editorial")
+	case "calm":
+		return i18n.T(lang, "calm")
+	case "layout":
+		return i18n.T(lang, "layout")
+	case "fast":
+		return i18n.T(lang, "fast")
+	case "Balanced neutral tones, ready for anything.":
+		return i18n.T(lang, "Balanced neutral tones, ready for anything.")
+	case "The stock VayuPress look — calm slate-and-teal palette with comfortable typography. A dependable starting point you can deploy as-is or fine-tune in the Studio.":
+		return i18n.T(lang, "The stock VayuPress look — calm slate-and-teal palette with comfortable typography. A dependable starting point you can deploy as-is or fine-tune in the Studio.")
+	case "neutral":
+		return i18n.T(lang, "neutral")
+	case "teal":
+		return i18n.T(lang, "teal")
+	case "balanced":
+		return i18n.T(lang, "balanced")
+	case "Aurora-inspired purple and teal.":
+		return i18n.T(lang, "Aurora-inspired purple and teal.")
+	case "Deep indigo canvas lit with violet and mint accents, evoking the northern lights. Generous line-height makes long reads feel airy.":
+		return i18n.T(lang, "Deep indigo canvas lit with violet and mint accents, evoking the northern lights. Generous line-height makes long reads feel airy.")
+	case "Vibrant":
+		return i18n.T(lang, "Vibrant")
+	case "purple":
+		return i18n.T(lang, "purple")
+	case "atmospheric":
+		return i18n.T(lang, "atmospheric")
+	case "Cool, quiet, and minimal.":
+		return i18n.T(lang, "Cool, quiet, and minimal.")
+	case "A restrained cool-grey palette with a single sky-blue accent. Tight radii and modest contrast keep the focus squarely on your words.":
+		return i18n.T(lang, "A restrained cool-grey palette with a single sky-blue accent. Tight radii and modest contrast keep the focus squarely on your words.")
+	case "grey":
+		return i18n.T(lang, "grey")
+	case "blue":
+		return i18n.T(lang, "blue")
+	case "clean":
+		return i18n.T(lang, "clean")
+	case "Green-on-black, pure hacker.":
+		return i18n.T(lang, "Green-on-black, pure hacker.")
+	case "Phosphor-green text on true black with a monospace stack throughout. Zero border radius and wide measure — a love letter to the CRT.":
+		return i18n.T(lang, "Phosphor-green text on true black with a monospace stack throughout. Zero border radius and wide measure — a love letter to the CRT.")
+	case "green":
+		return i18n.T(lang, "green")
+	case "monospace":
+		return i18n.T(lang, "monospace")
+	case "retro":
+		return i18n.T(lang, "retro")
+	case "Warm parchment for long reads.":
+		return i18n.T(lang, "Warm parchment for long reads.")
+	case "Soft sepia tones, a serif body face, and roomy 1.8 line-height tuned for sustained reading comfort, day or night.":
+		return i18n.T(lang, "Soft sepia tones, a serif body face, and roomy 1.8 line-height tuned for sustained reading comfort, day or night.")
+	case "Reading":
+		return i18n.T(lang, "Reading")
+	case "warm":
+		return i18n.T(lang, "warm")
+	case "comfortable":
+		return i18n.T(lang, "comfortable")
+	case "High-contrast technical dark.":
+		return i18n.T(lang, "High-contrast technical dark.")
+	case "An IBM-Carbon-flavoured palette: near-black surfaces, crisp blue and pink accents, and sharp corners for a precise, engineered feel.":
+		return i18n.T(lang, "An IBM-Carbon-flavoured palette: near-black surfaces, crisp blue and pink accents, and sharp corners for a precise, engineered feel.")
+	case "contrast":
+		return i18n.T(lang, "contrast")
+	case "technical":
+		return i18n.T(lang, "technical")
+	case "Deep-sea blues and cyans.":
+		return i18n.T(lang, "Deep-sea blues and cyans.")
+	case "An immersive midnight-ocean background with bright cyan highlights. Rounded corners and easy spacing give it a fluid, modern feel.":
+		return i18n.T(lang, "An immersive midnight-ocean background with bright cyan highlights. Rounded corners and easy spacing give it a fluid, modern feel.")
+	case "cyan":
+		return i18n.T(lang, "cyan")
+	case "deep":
+		return i18n.T(lang, "deep")
+	case "Soft cherry-blossom pinks.":
+		return i18n.T(lang, "Soft cherry-blossom pinks.")
+	case "Gentle rose and blush tones over a plum-dark base. Large radii and a relaxed measure make it feel light and welcoming.":
+		return i18n.T(lang, "Gentle rose and blush tones over a plum-dark base. Large radii and a relaxed measure make it feel light and welcoming.")
+	case "pink":
+		return i18n.T(lang, "pink")
+	case "soft":
+		return i18n.T(lang, "soft")
+	case "rounded":
+		return i18n.T(lang, "rounded")
+	case "Deep indigo journal.":
+		return i18n.T(lang, "Deep indigo journal.")
+	case "Inky indigo surfaces with indigo-violet accents and a narrow journal measure. Inter + IBM Plex Mono for a focused writing mood.":
+		return i18n.T(lang, "Inky indigo surfaces with indigo-violet accents and a narrow journal measure. Inter + IBM Plex Mono for a focused writing mood.")
+	case "indigo":
+		return i18n.T(lang, "indigo")
+	case "journal":
+		return i18n.T(lang, "journal")
+	case "focused":
+		return i18n.T(lang, "focused")
+	case "Warm rose, soft and welcoming.":
+		return i18n.T(lang, "Warm rose, soft and welcoming.")
+	case "A friendly rose-and-coral palette over a warm dark base. Soft corners and a cosy measure suit personal blogs and newsletters.":
+		return i18n.T(lang, "A friendly rose-and-coral palette over a warm dark base. Soft corners and a cosy measure suit personal blogs and newsletters.")
+	case "rose":
+		return i18n.T(lang, "rose")
+	case "friendly":
+		return i18n.T(lang, "friendly")
+	case "Fresh green, crisp and modern.":
+		return i18n.T(lang, "Fresh green, crisp and modern.")
+	case "Cool mint and emerald accents on a deep forest base. Tight radii and a compact measure give a clean, contemporary edge.":
+		return i18n.T(lang, "Cool mint and emerald accents on a deep forest base. Tight radii and a compact measure give a clean, contemporary edge.")
+	case "mint":
+		return i18n.T(lang, "mint")
+	case "modern":
+		return i18n.T(lang, "modern")
+	case "Amber-gold and energetic.":
+		return i18n.T(lang, "Amber-gold and energetic.")
+	case "Warm amber and gold over a dark espresso base, with a large body size and generous spacing — bold, sunny, and confident.":
+		return i18n.T(lang, "Warm amber and gold over a dark espresso base, with a large body size and generous spacing — bold, sunny, and confident.")
+	case "amber":
+		return i18n.T(lang, "amber")
+	case "gold":
+		return i18n.T(lang, "gold")
+	case "bold":
+		return i18n.T(lang, "bold")
+	case "Rich purple, sophisticated.":
+		return i18n.T(lang, "Rich purple, sophisticated.")
+	case "Luxe purple surfaces with orchid accents and a refined measure. A sophisticated dark theme for essays and editorial writing.":
+		return i18n.T(lang, "Luxe purple surfaces with orchid accents and a refined measure. A sophisticated dark theme for essays and editorial writing.")
+	case "rich":
+		return i18n.T(lang, "rich")
+	case "elegant":
+		return i18n.T(lang, "elegant")
+	case "Misty grey, calm and minimal.":
+		return i18n.T(lang, "Misty grey, calm and minimal.")
+	case "Muted greys with a whisper of blue. The lowest-contrast, quietest theme in the catalogue — ideal when the content is the star.":
+		return i18n.T(lang, "Muted greys with a whisper of blue. The lowest-contrast, quietest theme in the catalogue — ideal when the content is the star.")
+	case "muted":
+		return i18n.T(lang, "muted")
+	case "Golden hour, retro film.":
+		return i18n.T(lang, "Golden hour, retro film.")
+	case "Warm golden tones with a Georgia serif and extra-loose 1.85 line-height. Square corners lend a vintage, printed-page character.":
+		return i18n.T(lang, "Warm golden tones with a Georgia serif and extra-loose 1.85 line-height. Square corners lend a vintage, printed-page character.")
+	case "Forest green, grounded.":
+		return i18n.T(lang, "Forest green, grounded.")
+	case "Evergreen surfaces with emerald accents and a touch of gold. Natural, grounded, and easy on the eyes for daily reading.":
+		return i18n.T(lang, "Evergreen surfaces with emerald accents and a touch of gold. Natural, grounded, and easy on the eyes for daily reading.")
+	case "forest":
+		return i18n.T(lang, "forest")
+	case "natural":
+		return i18n.T(lang, "natural")
+	case "Soft purple, gentle and dreamy.":
+		return i18n.T(lang, "Soft purple, gentle and dreamy.")
+	case "Pale violet accents over a muted purple base, with rounded corners and a relaxed measure — quiet, dreamy, and soft-spoken.":
+		return i18n.T(lang, "Pale violet accents over a muted purple base, with rounded corners and a relaxed measure — quiet, dreamy, and soft-spoken.")
+	case "dreamy":
+		return i18n.T(lang, "dreamy")
+	case "True black, high-contrast editorial.":
+		return i18n.T(lang, "True black, high-contrast editorial.")
+	case "Pure black and white with no chrome at all — zero radius, maximum contrast, large type. Stark, confident, and unmistakably editorial.":
+		return i18n.T(lang, "Pure black and white with no chrome at all — zero radius, maximum contrast, large type. Stark, confident, and unmistakably editorial.")
+	case "black":
+		return i18n.T(lang, "black")
+	case "Green-yellow, fresh and organic.":
+		return i18n.T(lang, "Green-yellow, fresh and organic.")
+	case "Lime and chartreuse accents on a deep green base with a bright yellow highlight. Light, organic, and energetic.":
+		return i18n.T(lang, "Lime and chartreuse accents on a deep green base with a bright yellow highlight. Light, organic, and energetic.")
+	case "lime":
+		return i18n.T(lang, "lime")
+	case "fresh":
+		return i18n.T(lang, "fresh")
+	case "organic":
+		return i18n.T(lang, "organic")
+	case "Terracotta earth tones.":
+		return i18n.T(lang, "Terracotta earth tones.")
+	case "Warm terracotta and clay over a dark earthen base, paired with a Georgia serif. Grounded warmth for storytelling.":
+		return i18n.T(lang, "Warm terracotta and clay over a dark earthen base, paired with a Georgia serif. Grounded warmth for storytelling.")
+	case "orange":
+		return i18n.T(lang, "orange")
+	case "earth":
+		return i18n.T(lang, "earth")
+	case "Icy blue, clean and crisp.":
+		return i18n.T(lang, "Icy blue, clean and crisp.")
+	case "Cool glacier blues and cyans with soft corners. Crisp and refreshing, with a comfortable measure for technical writing.":
+		return i18n.T(lang, "Cool glacier blues and cyans with soft corners. Crisp and refreshing, with a comfortable measure for technical writing.")
+	case "icy":
+		return i18n.T(lang, "icy")
+	case "crisp":
+		return i18n.T(lang, "crisp")
+	case "Orange-pink tropical energy.":
+		return i18n.T(lang, "Orange-pink tropical energy.")
+	case "Vibrant coral and rose accents over a warm dark base. Lively and inviting, with rounded corners and a relaxed measure.":
+		return i18n.T(lang, "Vibrant coral and rose accents over a warm dark base. Lively and inviting, with rounded corners and a relaxed measure.")
+	case "coral":
+		return i18n.T(lang, "coral")
+	case "vibrant":
+		return i18n.T(lang, "vibrant")
+	case "Editorial magazine, bold typography.":
+		return i18n.T(lang, "Editorial magazine, bold typography.")
+	case "A full editorial layout: large hero sections, card-based grids, and bold amber accents over sophisticated dark surfaces. Ships its own layout CSS for a true magazine feel.":
+		return i18n.T(lang, "A full editorial layout: large hero sections, card-based grids, and bold amber accents over sophisticated dark surfaces. Ships its own layout CSS for a true magazine feel.")
+	case "magazine":
+		return i18n.T(lang, "magazine")
+	case "Bright, creative, open layout.":
+		return i18n.T(lang, "Bright, creative, open layout.")
+	case "An airy, creative theme with coral-rose accents, prominent calls-to-action, and a multi-column footer. Ships its own layout CSS for a modern marketing-site feel.":
+		return i18n.T(lang, "An airy, creative theme with coral-rose accents, prominent calls-to-action, and a multi-column footer. Ships its own layout CSS for a modern marketing-site feel.")
+	case "creative":
+		return i18n.T(lang, "creative")
+	case "Modern newsletter & email publication.":
+		return i18n.T(lang, "Modern newsletter & email publication.")
+	case "A modern newsletter and email-publication theme. A clean neutral canvas with a confident emerald accent and an email-width measure, shipping a complete component kit: a customizable hero with inline/section subscribe, a 'Featured in' logos strip, a story section, inbox-style featured issues, a reviews slider, a latest-issues feed with a sticky subscribe sidebar, a topic list, newsletter cards, membership tiers, archive, and web/email post formats — light & dark.":
+		return i18n.T(lang, "A modern newsletter and email-publication theme. A clean neutral canvas with a confident emerald accent and an email-width measure, shipping a complete component kit: a customizable hero with inline/section subscribe, a 'Featured in' logos strip, a story section, inbox-style featured issues, a reviews slider, a latest-issues feed with a sticky subscribe sidebar, a topic list, newsletter cards, membership tiers, archive, and web/email post formats — light & dark.")
+	case "Newsletter":
+		return i18n.T(lang, "Newsletter")
+	case "newsletter":
+		return i18n.T(lang, "newsletter")
+	case "email":
+		return i18n.T(lang, "email")
+	case "subscribe":
+		return i18n.T(lang, "subscribe")
+	case "emerald":
+		return i18n.T(lang, "emerald")
+	case "Bold, expressive magazine with color schemes.":
+		return i18n.T(lang, "Bold, expressive magazine with color schemes.")
+	case "A bold, expressive magazine theme with a clean grid, playful rounded shapes, an accent-colored header band, and expressive serif display headings over a modern sans body. Ships a complete component kit: a hero with five intro modes (signup form/button, search, dual CTA, or none) plus optional cover, a featured-posts slider, a popular-tags carousel, a quote widget, five featured-image aspect ratios, author/tags/contact templates, membership tiers, a multi-column footer, an announcement bar, and six swappable color schemes — light & dark.":
+		return i18n.T(lang, "A bold, expressive magazine theme with a clean grid, playful rounded shapes, an accent-colored header band, and expressive serif display headings over a modern sans body. Ships a complete component kit: a hero with five intro modes (signup form/button, search, dual CTA, or none) plus optional cover, a featured-posts slider, a popular-tags carousel, a quote widget, five featured-image aspect ratios, author/tags/contact templates, membership tiers, a multi-column footer, an announcement bar, and six swappable color schemes — light & dark.")
+	case "expressive":
+		return i18n.T(lang, "expressive")
+	case "color schemes":
+		return i18n.T(lang, "color schemes")
+	case "Sleek startup & company blog.":
+		return i18n.T(lang, "Sleek startup & company blog.")
+	case "A modern, sleek startup and company-blog theme with a clean light-first canvas, a confident royal-blue accent, and a sticky glassy header. Ships a complete component kit: a brand-accent hero with four background styles and three action styles, adaptive featured posts (1–5), pinned/sponsored pages, a featured-tags topic list in three layouts (list/section/cards), list & grid post feeds with three card styles (minimal/bordered/shadowed), a CTA section, narrow/wide post templates with a table of contents, membership tiers, archive and tags index, and a multi-column footer with a light/dark toggle.":
+		return i18n.T(lang, "A modern, sleek startup and company-blog theme with a clean light-first canvas, a confident royal-blue accent, and a sticky glassy header. Ships a complete component kit: a brand-accent hero with four background styles and three action styles, adaptive featured posts (1–5), pinned/sponsored pages, a featured-tags topic list in three layouts (list/section/cards), list & grid post feeds with three card styles (minimal/bordered/shadowed), a CTA section, narrow/wide post templates with a table of contents, membership tiers, archive and tags index, and a multi-column footer with a light/dark toggle.")
+	case "Business":
+		return i18n.T(lang, "Business")
+	case "startup":
+		return i18n.T(lang, "startup")
+	case "company":
+		return i18n.T(lang, "company")
+	case "saas":
+		return i18n.T(lang, "saas")
+	case "professional":
+		return i18n.T(lang, "professional")
+	case "Fluid, wave-styled sidebar blog.":
+		return i18n.T(lang, "Fluid, wave-styled sidebar blog.")
+	case "A friendly, fluid blog and magazine theme on a cool turquoise palette, whose signature is decorative wave-shaped section dividers. Ships a complete component kit: a wave-edged hero, a content + sidebar layout with a full set of widgets (about me, recent/related articles, social profiles, tag cloud, advertising), four single-post dispositions (classic, vertical, fullcover, no-sidebar), membership pricing tables with a monthly/yearly toggle, post cards with per-post accents, custom tag/author/popular-authors/404 pages, a gallery grid, and a footer with quick links — light & dark.":
+		return i18n.T(lang, "A friendly, fluid blog and magazine theme on a cool turquoise palette, whose signature is decorative wave-shaped section dividers. Ships a complete component kit: a wave-edged hero, a content + sidebar layout with a full set of widgets (about me, recent/related articles, social profiles, tag cloud, advertising), four single-post dispositions (classic, vertical, fullcover, no-sidebar), membership pricing tables with a monthly/yearly toggle, post cards with per-post accents, custom tag/author/popular-authors/404 pages, a gallery grid, and a footer with quick links — light & dark.")
+	case "blog":
+		return i18n.T(lang, "blog")
+	case "sidebar":
+		return i18n.T(lang, "sidebar")
+	case "waves":
+		return i18n.T(lang, "waves")
+	case "widgets":
+		return i18n.T(lang, "widgets")
+	case "Bold, creative statement theme.":
+		return i18n.T(lang, "Bold, creative statement theme.")
+	case "A bold, creative statement theme for those who dare to stand out — a high-contrast monochrome canvas with a punchy magenta accent, big display typography, and sharp corners. Ships a complete component kit: full-bleed background-media heroes with overlaid text (configurable button style, content position and length), an 'our selection' slider, animated floating circles for testimonials or tags, creative/default post cards with eight image aspect ratios, four post templates (default and right-aligned, each with optional featured video), text-style and heading-scale controls, page-load animations, custom account pages with background video, and authors/FAQ/archive/all-posts pages — light & dark.":
+		return i18n.T(lang, "A bold, creative statement theme for those who dare to stand out — a high-contrast monochrome canvas with a punchy magenta accent, big display typography, and sharp corners. Ships a complete component kit: full-bleed background-media heroes with overlaid text (configurable button style, content position and length), an 'our selection' slider, animated floating circles for testimonials or tags, creative/default post cards with eight image aspect ratios, four post templates (default and right-aligned, each with optional featured video), text-style and heading-scale controls, page-load animations, custom account pages with background video, and authors/FAQ/archive/all-posts pages — light & dark.")
+	case "Creative":
+		return i18n.T(lang, "Creative")
+	case "portfolio":
+		return i18n.T(lang, "portfolio")
+	case "animated":
+		return i18n.T(lang, "animated")
+	case "Community & discussion, dual sidebars.":
+		return i18n.T(lang, "Community & discussion, dual sidebars.")
+	case "A clean, forum-inspired community and discussion theme on a neutral canvas with a friendly indigo-violet accent. Ships a complete component kit: a three-column layout with dual toggleable sidebars, a customizable hero (six image positions and three actions), homepage feed tabs (latest/featured/updated/categories) with four switchable view styles (list/compact/cards/articles), post cards with a comment-count badge and an inline comments drawer, topic/category sections and a tag-cards template, default and full-width post templates, membership pages (sign in/up, account, tiers), an authors page, a blank landing template, and a footer with a light/dark toggle.":
+		return i18n.T(lang, "A clean, forum-inspired community and discussion theme on a neutral canvas with a friendly indigo-violet accent. Ships a complete component kit: a three-column layout with dual toggleable sidebars, a customizable hero (six image positions and three actions), homepage feed tabs (latest/featured/updated/categories) with four switchable view styles (list/compact/cards/articles), post cards with a comment-count badge and an inline comments drawer, topic/category sections and a tag-cards template, default and full-width post templates, membership pages (sign in/up, account, tiers), an authors page, a blank landing template, and a footer with a light/dark toggle.")
+	case "Community":
+		return i18n.T(lang, "Community")
+	case "community":
+		return i18n.T(lang, "community")
+	case "discussion":
+		return i18n.T(lang, "discussion")
+	case "forum":
+		return i18n.T(lang, "forum")
+	case "sidebars":
+		return i18n.T(lang, "sidebars")
+	case "The flagship do-everything theme.":
+		return i18n.T(lang, "The flagship do-everything theme.")
+	case "The flagship, do-everything theme — a premium, infinitely-configurable publication system on a gradient-driven indigo-violet and cyan palette. Ships the most complete component kit in the catalogue: a glass sticky header with mega-menu, four hero styles (split, centered, full-bleed media, pure-CSS gradient mesh), a signature bento grid, four feed layouts (grid/list/magazine/masonry) and several card styles, plus features, stats, logos, testimonials, pricing tiers, FAQ accordion, gallery, timeline, newsletter and CTA sections, a full reading experience (reading-progress bar, sticky table of contents, share, author box, related posts), a mega footer, and ten swappable color schemes with density (compact/comfortable/spacious) and shape (sharp/rounded/pill) modes plus an optional gradient accent — CSP-safe, WCAG-AA, light & dark.":
+		return i18n.T(lang, "The flagship, do-everything theme — a premium, infinitely-configurable publication system on a gradient-driven indigo-violet and cyan palette. Ships the most complete component kit in the catalogue: a glass sticky header with mega-menu, four hero styles (split, centered, full-bleed media, pure-CSS gradient mesh), a signature bento grid, four feed layouts (grid/list/magazine/masonry) and several card styles, plus features, stats, logos, testimonials, pricing tiers, FAQ accordion, gallery, timeline, newsletter and CTA sections, a full reading experience (reading-progress bar, sticky table of contents, share, author box, related posts), a mega footer, and ten swappable color schemes with density (compact/comfortable/spacious) and shape (sharp/rounded/pill) modes plus an optional gradient accent — CSP-safe, WCAG-AA, light & dark.")
+	case "premium":
+		return i18n.T(lang, "premium")
+	case "multipurpose":
+		return i18n.T(lang, "multipurpose")
+	case "bento":
+		return i18n.T(lang, "bento")
+	case "gradient":
+		return i18n.T(lang, "gradient")
+	case "configurable":
+		return i18n.T(lang, "configurable")
+	case "The world-newsroom flagship — a broadsheet front page.":
+		return i18n.T(lang, "The world-newsroom flagship — a broadsheet front page.")
+	case "A broadsheet-grade newspaper theme for serious, multinational publications. Warm paper and true-ink dark editions, serif display type over quiet sans chrome, and one rationed editorial red used only for labels and hairline rules. Ships a complete newsroom kit: a centred masthead with an uppercase section bar, a hairline story lattice with a lead-story package, a numbered most-read treatment for trending and pinned posts, breaking & live kickers, drop caps, pull quotes, standfirsts, a pure-CSS reading-progress bar and soft page transitions — plus paper-tone (ivory/bright/FT-salmon), drop-cap, column-rule, reading-progress and page-fade controls in the Theme Studio. Zero JavaScript, zero external requests, zero layout shift — 100/100 fast, light & dark.":
+		return i18n.T(lang, "A broadsheet-grade newspaper theme for serious, multinational publications. Warm paper and true-ink dark editions, serif display type over quiet sans chrome, and one rationed editorial red used only for labels and hairline rules. Ships a complete newsroom kit: a centred masthead with an uppercase section bar, a hairline story lattice with a lead-story package, a numbered most-read treatment for trending and pinned posts, breaking & live kickers, drop caps, pull quotes, standfirsts, a pure-CSS reading-progress bar and soft page transitions — plus paper-tone (ivory/bright/FT-salmon), drop-cap, column-rule, reading-progress and page-fade controls in the Theme Studio. Zero JavaScript, zero external requests, zero layout shift — 100/100 fast, light & dark.")
+	case "newspaper":
+		return i18n.T(lang, "newspaper")
+	case "news":
+		return i18n.T(lang, "news")
+	case "broadsheet":
+		return i18n.T(lang, "broadsheet")
+	case "Match your site — the vayupress.com look for your blog.":
+		return i18n.T(lang, "Match your site — the vayupress.com look for your blog.")
+	case "The flagship theme that mirrors vayupress.com: a deep cosmic “ink” canvas lit with bright teal and saffron, gradient display headings, glassy post cards with a teal glow-lift, an underlined nav, gradient-bordered code blocks and a refined reading experience. Deploy it in one click so your blog and website share one identity. Pure CSS with a system-font stack — no web fonts, no JavaScript, no external requests — so it stays blazing fast (100/100 PageSpeed) and fully sovereign, in light and dark.":
+		return i18n.T(lang, "The flagship theme that mirrors vayupress.com: a deep cosmic “ink” canvas lit with bright teal and saffron, gradient display headings, glassy post cards with a teal glow-lift, an underlined nav, gradient-bordered code blocks and a refined reading experience. Deploy it in one click so your blog and website share one identity. Pure CSS with a system-font stack — no web fonts, no JavaScript, no external requests — so it stays blazing fast (100/100 PageSpeed) and fully sovereign, in light and dark.")
+	case "saffron":
+		return i18n.T(lang, "saffron")
+	case "cosmic":
+		return i18n.T(lang, "cosmic")
+	case "brand":
+		return i18n.T(lang, "brand")
+	case "An observatory log, not a magazine.":
+		return i18n.T(lang, "An observatory log, not a magazine.")
+	case "The archive as an instrument log. Where every other dark theme reaches for a rounded, softly-lit card grid, Orbit inverts each of those decisions: one column of numbered entries, sharp corners, hairline rules instead of filled surfaces, and a mono-led chrome tracked wide over a neutral near-black. Each post's date sits in a rail of its own beside the title, the entry number is a CSS counter, and the thumbnail is a small desaturated square at the end of the row rather than a banner above it. Entries arrive on the scroll position itself — a real scroll-driven animation, guarded so a browser that lacks it shows them plainly rather than not at all — and hovering draws a rule under the row instead of lifting a card. Article headings carry a numbered § rail, tags are bracketed mono tokens, and even the 404 reads as a status line. Ships four hero modes — the signature tick rail, a measured grid field, a full-width search bar as the primary call to action, or no ornament — each emitted on its own so a reader downloads only the mode in use. No web fonts, no JavaScript and no external request of any kind; every animation is transform/opacity only and every one stops under prefers-reduced-motion, so nothing on the page can move once it has painted. Light & dark, WCAG-AA, CSP-safe.":
+		return i18n.T(lang, "The archive as an instrument log. Where every other dark theme reaches for a rounded, softly-lit card grid, Orbit inverts each of those decisions: one column of numbered entries, sharp corners, hairline rules instead of filled surfaces, and a mono-led chrome tracked wide over a neutral near-black. Each post's date sits in a rail of its own beside the title, the entry number is a CSS counter, and the thumbnail is a small desaturated square at the end of the row rather than a banner above it. Entries arrive on the scroll position itself — a real scroll-driven animation, guarded so a browser that lacks it shows them plainly rather than not at all — and hovering draws a rule under the row instead of lifting a card. Article headings carry a numbered § rail, tags are bracketed mono tokens, and even the 404 reads as a status line. Ships four hero modes — the signature tick rail, a measured grid field, a full-width search bar as the primary call to action, or no ornament — each emitted on its own so a reader downloads only the mode in use. No web fonts, no JavaScript and no external request of any kind; every animation is transform/opacity only and every one stops under prefers-reduced-motion, so nothing on the page can move once it has painted. Light & dark, WCAG-AA, CSP-safe.")
+	case "dark":
+		return i18n.T(lang, "dark")
+	case "minimal":
+		return i18n.T(lang, "minimal")
+	case "mono":
+		return i18n.T(lang, "mono")
+	case "search":
+		return i18n.T(lang, "search")
 	}
 	return s
 }

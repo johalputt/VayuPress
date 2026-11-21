@@ -79,6 +79,7 @@ var i18nMoved = map[string][]string{
 	"startup_cost.go":              nil,
 	"admin_os_theme.go":            nil,
 	"admin_os_theme_a11y.go":       {"themeA11yPanel", "a11ySummary"},
+	"admin_os_theme_store.go":      {"handleOSThemeStore", "themeStoreFilterChips", "themeStoreCard"},
 	"admin_os_tools.go":            nil,
 	"api_usage_middleware.go":      {"rateLabelIn"},
 	"backup_coverage.go":           {"keepHoldsSection"},

@@ -177,10 +177,12 @@ async function englishLeft(page) {
     // "Add the slot" is English; "px", an acronym (URL, CLI), a token (AIza…)
     // and "try", which has no letter the pseudo-language accents, are not.
     const english = (w) => w.length >= 3 && /^[A-Z]?[a-z]+$/.test(w) && /[aeiou]/i.test(w);
-    // A product's name shown whole, and the capability tokens a page lists
-    // (its data-section values), are names rather than sentences.
+    // A product's name shown whole, the capability tokens a page lists (its
+    // data-section values) and the themes it lists (data-preset, data-name)
+    // are names rather than sentences.
     const products = new Set(["IndexNow", "OpenRouter", "OpenAI", "Pixabay", "YouTube Data API", "Vayu Compatibility Bible"]);
     const tokens = new Set([...document.querySelectorAll("[data-section]")].map((el) => el.getAttribute("data-section")));
+    for (const el of document.querySelectorAll("[data-preset], [data-name]")) tokens.add(el.getAttribute("data-preset") || el.getAttribute("data-name"));
     const names = new Set(["Authorization", "Bearer", "VayuOS", "VayuMail", "VayuPress", "VayuTalk", "VayuMCP", "VayuShield", "VayuVeil", "VayuFlow", "VayuKeep", "YouTube", "Tor", "PGP", "DNS", "SEO", "API", "CSS", "PNG", "ICO", "Analytics", "Audience", "Monetization", "Theme", "Site", "Backups", "Storage", "Shield", "Talk", "Buzz", "Claude", "Code", "Argon2id", "UTC", "ReadWritePaths"]);
     const out = new Set();
     const check = (text, where) => {
@@ -265,12 +267,16 @@ async function pseudoPageAndSheets(page, path, withSheets, ready) {
 // moment of its own, and that file's setup test needs it off: this one
 // changes nothing, and reads the page it finds, its sheets when it is on.
 const adsIsOn = async (page) => (await page.locator("main [data-page-kind]").first().getAttribute("data-page-kind")) === "settings";
-for (const [name, path, withSheets] of [["Backups", "/os/vayukeep", true], ["API keys", "/os/apikeys", true], ["Newsletter", "/os/newsletter", false],
-  ["YouTube", "/os/youtube", true], ["Advertising", "/os/ads", adsIsOn], ["VayuTor", "/os/tor", false], ["Tools and plugins", "/os/tools", false]]) {
+// The Theme Studio writes its status once its saved theme has loaded, and is
+// read after that.
+const studioReady = (page) => expect(page.locator("[data-theme-status]")).not.toBeEmpty();
+for (const [name, path, withSheets, ready] of [["Backups", "/os/vayukeep", true], ["API keys", "/os/apikeys", true], ["Newsletter", "/os/newsletter", false],
+  ["YouTube", "/os/youtube", true], ["Advertising", "/os/ads", adsIsOn], ["VayuTor", "/os/tor", false], ["Tools and plugins", "/os/tools", false],
+  ["Theme Studio", "/os/theme", false, studioReady], ["The theme store", "/os/theme/store", false]]) {
   test(name + " in another language has no English left on it", async ({ page }) => {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
-    expect(await pseudoPageAndSheets(page, path, withSheets)).toEqual({});
+    expect(await pseudoPageAndSheets(page, path, withSheets, ready)).toEqual({});
     expect(errors).toEqual([]);
   });
 }

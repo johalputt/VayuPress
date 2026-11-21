@@ -28,6 +28,7 @@ import (
 	"strings"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/theme"
 )
@@ -38,16 +39,18 @@ import (
 func (a *App) handleOSThemeStore(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
+	lang := i18n.Lang(r.Context())
+	t := func(s string) string { return esc(s) }
 
 	// Best-effort active-theme detection; on error we simply badge nothing.
 	active := ""
-	if t, err := theme.Load(r.Context(), dbpkg.DB); err == nil {
-		active = t.Name
+	if th, err := theme.Load(r.Context(), dbpkg.DB); err == nil {
+		active = th.Name
 	}
 
 	store := theme.Store()
 
-	activeLabel := "Default"
+	activeLabel := i18n.T(lang, "Default")
 	if active != "" {
 		activeLabel = active
 	}
@@ -58,49 +61,50 @@ func (a *App) handleOSThemeStore(w http.ResponseWriter, r *http.Request) {
 	// assets" was a zero drawn as a figure for what is a property of every
 	// theme, said in the line instead.
 	body := `<div data-page-kind="gallery"><div class="page-header">
-  <h1>Theme store <span class="sa-list__count">` + intToStr(len(store)) + ` themes in ` + intToStr(len(theme.Categories())) + ` styles</span></h1>
+  <h1>` + t(i18n.T(lang, "Theme store")) + ` <span class="sa-list__count">` + t(i18n.T(lang, "{themes, plural, one {# theme} other {# themes}} in {styles, plural, one {# style} other {# styles}}", "themes", len(store), "styles", len(theme.Categories()))) + `</span></h1>
   <div class="page-actions">
     <span class="text-sm muted" data-store-status></span>
-    <a class="btn btn--ghost btn--sm" href="/os/theme">Open Theme Studio</a>
+    <a class="btn btn--ghost btn--sm" href="/os/theme">` + t(i18n.T(lang, "Open Theme Studio")) + `</a>
   </div>
 </div>
-<p class="sa-list__note">Your site uses <strong>` + html.EscapeString(activeLabel) + `</strong>. Any theme deploys in one click and loads nothing from outside your server.</p>
+<p class="sa-list__note">` + escFill(i18n.T(lang, "Your site uses {theme}. Any theme deploys in one click and loads nothing from outside your server.", "theme", htmlMark(0)), `<strong>`+t(activeLabel)+`</strong>`) + `</p>
 
 <div class="store" data-theme-store data-active-theme="` + html.EscapeString(active) + `">
   <div class="store-toolbar">
-    <div class="store-filters" role="group" aria-label="Filter themes by category">` + themeStoreFilterChips() + `</div>
+    <div class="store-filters" role="group" aria-label="` + t(i18n.T(lang, "Filter themes by category")) + `">` + themeStoreFilterChips(lang) + `</div>
     <label class="store-search">
-      <input type="search" class="input" data-store-search placeholder="Search themes…" aria-label="Search themes" autocomplete="off">
+      <input type="search" class="input" data-store-search placeholder="` + t(i18n.T(lang, "Search themes…")) + `" aria-label="` + t(i18n.T(lang, "Search themes")) + `" autocomplete="off">
     </label>
   </div>
-  <div class="store-meta text-sm muted"><span data-store-count>` + intToStr(len(store)) + `</span> themes</div>
-  <div class="store-grid" data-store-grid>` + themeStoreCards(active) + `</div>
-  <div class="store-empty" data-store-empty hidden>No themes match your filters.</div>
+  <div class="store-meta text-sm muted" data-store-count>` + t(i18n.T(lang, "{n, plural, one {# theme} other {# themes}}", "n", len(store))) + `</div>
+  <div class="store-grid" data-store-grid>` + themeStoreCards(lang, active) + `</div>
+  <div class="store-empty" data-store-empty hidden>` + t(i18n.T(lang, "No themes match your filters.")) + `</div>
 </div>
 
 <div class="store-preview" data-store-overlay hidden>
   <div class="store-preview__bar">
-    <span class="store-preview__title" data-store-preview-title>Preview</span>
+    <span class="store-preview__title" data-store-preview-title>` + t(i18n.T(lang, "Preview")) + `</span>
     <span class="store-preview__spacer"></span>
-    <button type="button" class="btn btn--primary btn--sm" data-store-preview-deploy>Deploy this theme</button>
-    <a class="btn btn--ghost btn--sm" data-store-preview-customize href="/os/theme">Customize</a>
-    <button type="button" class="store-preview__close" data-store-preview-close aria-label="Close preview">&times;</button>
+    <button type="button" class="btn btn--primary btn--sm" data-store-preview-deploy>` + t(i18n.T(lang, "Deploy this theme")) + `</button>
+    <a class="btn btn--ghost btn--sm" data-store-preview-customize href="/os/theme">` + t(i18n.T(lang, "Customize")) + `</a>
+    <button type="button" class="store-preview__close" data-store-preview-close aria-label="` + t(i18n.T(lang, "Close preview")) + `">&times;</button>
   </div>
-  <iframe class="store-preview__frame" data-store-preview-frame title="Live theme preview" loading="lazy" referrerpolicy="no-referrer"></iframe>
+  <iframe class="store-preview__frame" data-store-preview-frame title="` + t(i18n.T(lang, "Live theme preview")) + `" loading="lazy" referrerpolicy="no-referrer"></iframe>
 </div>
 </div>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-theme-store.js?v=` + assetVer("js/admin-os-theme-store.js") + `"></script>`
 
-	writeOSHTML(w, r, adminOSLayout(nonce, "Theme Store", "theme-store", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Theme store"), "theme-store", cfg, htmpl.HTML(body)))
 }
 
 // themeStoreFilterChips renders the category filter buttons. "All" is the
 // default-active chip; the rest come from the curated theme.Categories() list.
-func themeStoreFilterChips() string {
-	out := `<button type="button" class="store-chip store-chip--active" data-store-filter="all" aria-pressed="true">All</button>`
+// A chip filters by the category as the theme package names it, and shows it
+// in lang.
+func themeStoreFilterChips(lang string) string {
+	out := `<button type="button" class="store-chip store-chip--active" data-store-filter="all" aria-pressed="true">` + esc(i18n.T(lang, "All")) + `</button>`
 	for _, c := range theme.Categories() {
-		ec := html.EscapeString(c)
-		out += `<button type="button" class="store-chip" data-store-filter="` + ec + `" aria-pressed="false">` + ec + `</button>`
+		out += `<button type="button" class="store-chip" data-store-filter="` + html.EscapeString(c) + `" aria-pressed="false">` + esc(themeWord(lang, c)) + `</button>`
 	}
 	return out
 }
@@ -108,16 +112,17 @@ func themeStoreFilterChips() string {
 // themeStoreCards renders one showcase card per deployable theme. Preview
 // colours ride on data-color attributes (applied via CSSOM in JS, CSP-safe);
 // data-category / data-name / data-haystack power the client-side filtering.
-func themeStoreCards(active string) string {
+func themeStoreCards(lang, active string) string {
 	out := ""
 	for _, e := range theme.Store() {
-		out += themeStoreCard(e, e.Meta.Name == active)
+		out += themeStoreCard(lang, e, e.Meta.Name == active)
 	}
 	return out
 }
 
-// themeStoreCard renders a single theme card.
-func themeStoreCard(e theme.StoreEntry, isActive bool) string {
+// themeStoreCard renders a single theme card, its words in lang. The theme's
+// name and the category the filter matches on are the theme package's own.
+func themeStoreCard(lang string, e theme.StoreEntry, isActive bool) string {
 	t := e.Tokens
 	m := e.Meta
 	name := html.EscapeString(m.Name)
@@ -131,14 +136,18 @@ func themeStoreCard(e theme.StoreEntry, isActive bool) string {
 		return `<span data-color="` + html.EscapeString(color) + `" aria-hidden="true"></span>`
 	}
 
-	// Tags.
+	// Tags, as the card shows them; the search reads the same words.
 	tags := ""
+	shown := make([]string, 0, len(m.Tags))
 	for _, tg := range m.Tags {
-		tags += `<span class="store-tag">` + html.EscapeString(tg) + `</span>`
+		word := themeWord(lang, tg)
+		shown = append(shown, word)
+		tags += `<span class="store-tag">` + esc(word) + `</span>`
 	}
+	tagline, desc, category := themeWord(lang, m.Tagline), themeWord(lang, m.Description), themeWord(lang, m.Category)
 
 	// Search haystack (lowercased on the client; we pass the raw, escaped text).
-	haystack := html.EscapeString(m.Name + " " + m.Tagline + " " + m.Description + " " + m.Category + " " + joinTags(m.Tags))
+	haystack := html.EscapeString(m.Name + " " + tagline + " " + desc + " " + category + " " + joinTags(shown))
 
 	cardCls := "store-card"
 	if isActive {
@@ -146,16 +155,16 @@ func themeStoreCard(e theme.StoreEntry, isActive bool) string {
 	}
 
 	// Deploy button: shown as a disabled "Active" state for the live theme.
-	deploy := `<button type="button" class="btn btn--primary btn--sm store-card__deploy" data-store-deploy="` + name + `">Deploy</button>`
+	deploy := `<button type="button" class="btn btn--primary btn--sm store-card__deploy" data-store-deploy="` + name + `">` + esc(i18n.T(lang, "Deploy")) + `</button>`
 	if isActive {
-		deploy = `<button type="button" class="btn btn--sm store-card__deploy" data-store-deploy="` + name + `" data-store-active="true" disabled>Active</button>`
+		deploy = `<button type="button" class="btn btn--sm store-card__deploy" data-store-deploy="` + name + `" data-store-active="true" disabled>` + esc(i18n.T(lang, "Active")) + `</button>`
 	}
 
 	badge := ""
 	if isActive {
-		badge = `<span class="store-card__badge" data-store-badge>Active</span>`
+		badge = `<span class="store-card__badge" data-store-badge>` + esc(i18n.T(lang, "Active")) + `</span>`
 	} else {
-		badge = `<span class="store-card__badge" data-store-badge hidden>Active</span>`
+		badge = `<span class="store-card__badge" data-store-badge hidden>` + esc(i18n.T(lang, "Active")) + `</span>`
 	}
 
 	return `<article class="` + cardCls + `" data-store-item data-name="` + name + `" data-category="` + cat + `" data-haystack="` + haystack + `">
@@ -171,15 +180,15 @@ func themeStoreCard(e theme.StoreEntry, isActive bool) string {
   <div class="store-card__info">
     <div class="store-card__head">
       <h3 class="store-card__name">` + name + `</h3>
-      <span class="store-card__cat">` + cat + `</span>
+      <span class="store-card__cat">` + esc(category) + `</span>
     </div>
-    <p class="store-card__tagline">` + html.EscapeString(m.Tagline) + `</p>
-    <p class="store-card__desc">` + html.EscapeString(m.Description) + `</p>
+    <p class="store-card__tagline">` + esc(tagline) + `</p>
+    <p class="store-card__desc">` + esc(desc) + `</p>
     <div class="store-card__tags">` + tags + `</div>
     <div class="store-card__actions">
       ` + deploy + `
-      <button type="button" class="btn btn--ghost btn--sm" data-store-preview="` + name + `">Preview</button>
-      <a class="btn btn--ghost btn--sm" href="/os/theme?load=` + name + `">Customize</a>
+      <button type="button" class="btn btn--ghost btn--sm" data-store-preview="` + name + `">` + esc(i18n.T(lang, "Preview")) + `</button>
+      <a class="btn btn--ghost btn--sm" href="/os/theme?load=` + name + `">` + esc(i18n.T(lang, "Customize")) + `</a>
     </div>
   </div>
 </article>`

@@ -202,7 +202,7 @@ func colorRow(f themeColorField) string {
 func textRow(field, label, placeholder string) string {
 	return `<label class="theme-field theme-field--text">
   <span class="theme-field__label">` + html.EscapeString(label) + `</span>
-  <input type="text" class="input" data-token="` + html.EscapeString(field) + `" placeholder="` + html.EscapeString(placeholder) + `" aria-label="` + html.EscapeString(label) + `">
+  <input type="text" class="input" data-token="` + html.EscapeString(field) + `" translate="no" placeholder="` + html.EscapeString(placeholder) + `" aria-label="` + html.EscapeString(label) + `">
 </label>`
 }
 

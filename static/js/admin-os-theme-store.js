@@ -57,7 +57,7 @@
       card.hidden = !show;
       if (show) visible++;
     });
-    if (countEl) countEl.textContent = String(visible);
+    if (countEl) countEl.textContent = vpT('{n, plural, one {# theme} other {# themes}}', { n: visible });
     if (emptyEl) emptyEl.hidden = visible !== 0;
   }
 
@@ -90,12 +90,12 @@
       var btn = card.querySelector('[data-store-deploy]');
       if (btn) {
         if (isActive) {
-          btn.textContent = 'Active';
+          btn.textContent = vpT('Active');
           btn.setAttribute('data-store-active', 'true');
           btn.classList.remove('btn--primary');
           btn.disabled = true;
         } else {
-          btn.textContent = 'Deploy';
+          btn.textContent = vpT('Deploy');
           btn.removeAttribute('data-store-active');
           btn.classList.add('btn--primary');
           btn.disabled = false;
@@ -107,8 +107,8 @@
   function deploy(name, btn) {
     if (!name) return;
     var prevLabel = btn ? btn.textContent : '';
-    if (btn) { btn.disabled = true; btn.textContent = 'Deploying…'; }
-    setStatus('Deploying “' + name + '”…');
+    if (btn) { btn.disabled = true; btn.textContent = vpT('Deploying…'); }
+    setStatus(vpT('Deploying {theme}…', { theme: name }));
     fetch('/os/api/theme/apply', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
@@ -116,19 +116,19 @@
     }).then(function (r) {
       if (!r.ok) {
         return r.json().then(function (e) {
-          throw new Error((e.error && e.error.message) || e.error || ('deploy failed (' + r.status + ')'));
+          throw new Error(e.detail || (e.error && e.error.message) || (typeof e.error === 'string' && e.error) || e.title || vpT('That did not go through.'));
         });
       }
       return r.json();
     }).then(function (d) {
       var deployed = (d && d.name) || name;
       markActive(deployed);
-      setStatus('Deployed “' + deployed + '” · live on your site · ' + new Date().toLocaleTimeString(), 'ok');
-      if (window.vpToast) window.vpToast('“' + deployed + '” deployed', 'ok');
+      setStatus(vpT('{theme} is live on your site, since {time}', { theme: deployed, time: new Date().toLocaleTimeString(document.documentElement.lang || []) }), 'ok');
+      if (window.vpToast) window.vpToast(vpT('{theme} deployed', { theme: deployed }), 'ok');
     }).catch(function (err) {
-      if (btn) { btn.disabled = false; btn.textContent = prevLabel || 'Deploy'; }
+      if (btn) { btn.disabled = false; btn.textContent = prevLabel || vpT('Deploy'); }
       setStatus(String(err.message || err), 'danger');
-      if (window.vpToast) window.vpToast('Deploy failed', 'error');
+      if (window.vpToast) window.vpToast(vpT('The theme was not deployed.'), 'error');
     });
   }
 
@@ -153,7 +153,7 @@
     if (!overlay || !frame || !name) return;
     previewName = name;
     frame.src = '/os/theme/preview?preset=' + encodeURIComponent(name);
-    if (pvTitle) pvTitle.textContent = 'Preview — ' + name;
+    if (pvTitle) pvTitle.textContent = vpT('Preview of {theme}', { theme: name });
     if (pvCustomize) pvCustomize.setAttribute('href', '/os/theme?load=' + encodeURIComponent(name));
     overlay.hidden = false;
     document.body.style.overflow = 'hidden';
