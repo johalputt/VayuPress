@@ -34,6 +34,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   The restore commands and environment variables it shows stay as they are
   typed, and what the engine records (a pause's reason, a test restore's
   error and the counts it read back) as written.
+- **Updates in thirteen languages.** The Updates page, its install,
+  rollback and provisioning controls, and what they answer follow the
+  language chosen in the account menu, as do the subdomain card on DNS and
+  the backup download and restore replies on Backups. What the updater
+  itself reports about a release or the network, and the history's
+  recorded details, are still in English.
 - **VayuTor in thirteen languages.** The Tor page, its setup page, its
   bridges, vanity address, hardening, health and privacy cards follow the
   language chosen in the account menu, and so do the durations its live
