@@ -171,7 +171,12 @@ async function englishLeft(page) {
     // What the install holds (a field's value, a person's name or address)
     // and what is a name rather than a sentence.
     const data = "kbd, code, pre, .mono, textarea, option[lang], [translate=no], .sa-mark, .sa-appname, .sa-menu__name, .sa-sites__btn";
-    const plain = /(^|[^\p{L}])([A-Za-z]*[aeiou][A-Za-z]{2,})(?=$|[^\p{L}])/u;
+    // A word is English when every letter of it is plain ASCII: the
+    // pseudo-language accents its words, and a, e, i, o and u always. A
+    // sentence's word is lowercase or capitalised, three letters or more:
+    // "Add the slot" is English; "px", an acronym (URL, CLI), a token (AIza…)
+    // and "try", which has no letter the pseudo-language accents, are not.
+    const english = (w) => w.length >= 3 && /^[A-Z]?[a-z]+$/.test(w) && /[aeiou]/i.test(w);
     // A product's name shown whole, and the capability tokens a page lists
     // (its data-section values), are names rather than sentences.
     const products = new Set(["IndexNow", "OpenRouter", "OpenAI", "Pixabay", "YouTube Data API", "Vayu Compatibility Bible"]);
@@ -180,12 +185,15 @@ async function englishLeft(page) {
     const out = new Set();
     const check = (text, where) => {
       if (products.has(text.trim())) return;
-      // A {placeholder} a sentence shows as it is, an address, a path and a
-      // section:action token.
-      for (const part of text.replace(/\{[a-z]+\}/g, " ").split(/\s+/)) {
+      // A {placeholder} or <placeholder> a sentence shows as it is, an
+      // address, a path and a section:action token.
+      for (const part of text.replace(/\{[a-z]+\}|<[a-z]+>/g, " ").split(/\s+/)) {
         if (part.includes("@") || part.includes("/") || part.includes(":") || /\w\.\w/.test(part)) continue;
-        const m = part.match(plain);
-        if (m && !names.has(m[2]) && !tokens.has(m[2])) out.add(where + ": " + text.trim().slice(0, 80));
+        // A header's name (X-API-Key) is code.
+        if (/^[A-Z][A-Za-z]*(-[A-Z][A-Za-z]*)+\W*$/.test(part)) continue;
+        for (const w of part.match(/\p{L}+/gu) || []) {
+          if (english(w) && !names.has(w) && !tokens.has(w)) { out.add(where + ": " + text.trim().slice(0, 80)); break; }
+        }
       }
     };
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
