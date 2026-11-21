@@ -23,6 +23,7 @@ import (
 	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/pace"
 	"github.com/johalputt/vayupress/internal/pixabay"
@@ -286,16 +287,17 @@ func copyPixabayImage(ctx context.Context, link string) (string, error) {
 
 // postImagesSummary is the Tools row's line: what the job has done since
 // the server started, or what it is waiting for.
-func (a *App) postImagesSummary(ctx context.Context) string {
-	const what = "Posts with no card image get one from Pixabay in the background: the picture a post already links to, or the first photo found for its title, copied into the media library."
+func (a *App) postImagesSummary(ctx context.Context, lang string) string {
+	what := i18n.T(lang, "Posts with no card image get one from Pixabay in the background: the picture a post already links to, or the first photo found for its title, copied into the media library.")
 	if a.pixabayKey(ctx) == "" {
-		return what + " Needs the Pixabay key on API Keys."
+		return what + " " + i18n.T(lang, "It needs the Pixabay key on API keys.")
 	}
 	postImagesState.mu.Lock()
 	defer postImagesState.mu.Unlock()
-	line := what + " Since the server started: " + strconv.Itoa(postImagesState.given) + " given, " + strconv.Itoa(postImagesState.missed) + " without."
+	line := what + " " + i18n.T(lang, "Since the server started: {given} given, {missed} without.", "given", postImagesState.given, "missed", postImagesState.missed)
 	if postImagesState.lastErr != "" {
-		line += " Last failure: " + postImagesState.lastErr + "."
+		// The failure is what Pixabay or the fetch answered, as it came.
+		line += " " + i18n.T(lang, "Last failure: {error}.", "error", postImagesState.lastErr)
 	}
 	return line
 }

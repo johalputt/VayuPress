@@ -62,7 +62,7 @@ func TestTheServerLoadsTheInstalledPlugins(t *testing.T) {
 	if n := len(a.pluginRegistry.Handlers("article.create")); n != 1 {
 		t.Fatalf("the installed plugin is subscribed to article.create %d times, want once", n)
 	}
-	if page := pluginRegistryHTML(); !strings.Contains(page, "wordcount") || !strings.Contains(page, "Running") {
+	if page := pluginRegistryHTML("en"); !strings.Contains(page, "wordcount") || !strings.Contains(page, "Running") {
 		t.Errorf("Tools and plugins does not list the loaded plugin as running:\n%s", page)
 	}
 }
@@ -79,7 +79,7 @@ func TestPluginsStayOffUnlessTheInstallTurnsThemOn(t *testing.T) {
 	if n := len(a.pluginRegistry.Handlers("article.create")); n != 0 {
 		t.Fatalf("a plugin was loaded on an install with plugins off (%d handlers)", n)
 	}
-	if page := pluginRegistryHTML(); !strings.Contains(page, "Plugins are off") || !strings.Contains(page, "VAYU_PLUGINS_ENABLED=true") {
+	if page := pluginRegistryHTML("en"); !strings.Contains(page, "Plugins are off") || !strings.Contains(page, "VAYU_PLUGINS_ENABLED=true") {
 		t.Errorf("Tools and plugins does not say plugins are off and how to turn them on:\n%s", page)
 	}
 }

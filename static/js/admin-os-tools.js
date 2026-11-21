@@ -4,7 +4,8 @@
  *
  * Wires each module switch to POST /os/api/tools/toggle. On success the
  * card's status label is updated in place; on failure the switch reverts so the
- * UI never drifts from server state.
+ * UI never drifts from server state. Its words go through vpT, so the page
+ * says them in its own language.
  */
 (function () {
   'use strict';
@@ -25,7 +26,7 @@
     dot.className = 'sa-dot sa-dot--' + (enabled ? 'ok' : 'neutral');
     dot.setAttribute('aria-hidden', 'true');
     mark.appendChild(dot);
-    mark.appendChild(document.createTextNode(enabled ? 'On' : 'Off'));
+    mark.appendChild(document.createTextNode(enabled ? vpT('On') : vpT('Off')));
     el.textContent = '';
     el.appendChild(mark);
   }
@@ -34,6 +35,8 @@
   Array.prototype.forEach.call(toggles, function (input) {
     input.addEventListener('change', function () {
       var id = input.getAttribute('data-tool-toggle');
+      // The module's name as the page shows it, not its id.
+      var name = input.getAttribute('aria-label') || id;
       var card = input.closest('[data-tool-card]');
       var want = input.checked;
       input.disabled = true;
@@ -50,13 +53,13 @@
         .then(function () {
           if (card) setStatus(card, want);
           if (window.vpToast) {
-            window.vpToast((want ? 'Enabled ' : 'Disabled ') + id, 'ok');
+            window.vpToast(want ? vpT('{name} is on', { name: name }) : vpT('{name} is off', { name: name }), 'ok');
           }
         })
         .catch(function () {
           // Revert the optimistic switch so the UI matches server truth.
           input.checked = !want;
-          if (window.vpToast) window.vpToast('Could not update ' + id, 'error');
+          if (window.vpToast) window.vpToast(vpT('{name} could not be switched', { name: name }), 'error');
         })
         .finally(function () { input.disabled = false; });
     });

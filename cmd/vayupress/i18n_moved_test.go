@@ -77,6 +77,7 @@ var i18nMoved = map[string][]string{
 	"admin_os_update.go":           nil,
 	"admin_os_provision.go":        nil,
 	"startup_cost.go":              nil,
+	"admin_os_tools.go":            nil,
 	"api_usage_middleware.go":      {"rateLabelIn"},
 	"backup_coverage.go":           {"keepHoldsSection"},
 	"vayuos_mail_drive_upload.go":  nil,

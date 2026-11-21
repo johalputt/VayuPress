@@ -10,7 +10,7 @@ import (
 )
 
 // toolRowHTML renders one module the way the Tools page does.
-func toolRowHTML(s toolState) string { return string(ui.Rows(toolRow(s))) }
+func toolRowHTML(s toolState) string { return string(ui.Rows(toolRow("en", s))) }
 
 // TestToolRowCSPSafe ensures a rendered module row carries no inline styles
 // or external hosts and reads its state correctly.
