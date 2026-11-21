@@ -396,9 +396,18 @@ func osAPIKeysOwnSection(lang string, keys []apikeys.Key) string {
 	return list + sheets + string(ui.SheetClosing("ak-create", createKey, closeLabel, osAPIKeysCreateForm(lang)))
 }
 
-// akRootKeyVar is the environment variable that sets the root key: code, the
-// same in every language.
-const akRootKeyVar = "API_KEY"
+// The names and code the page shows, the same in every language: the
+// variable that sets the root key, the contract's name, a capability's form,
+// and the contract's endpoints, grant and command-line tool.
+const (
+	akRootKeyVar  = "API_KEY"
+	akBibleName   = "Vayu Compatibility Bible"
+	akCapToken    = "section:action"
+	akVCBContract = "GET /api/v1/vcb/contract"
+	akVCBValidate = "POST /api/v1/vcb/validate"
+	akVCBGrant    = "plugins:read"
+	akVCBCLI      = "vayu-compat"
+)
 
 // rateControl edits a budget, in lang: empty for the default, a number, or
 // Unlimited. action names the data-action the page's script sends it with;
@@ -477,13 +486,13 @@ func osAPIKeysCreateForm(lang string) ui.HTML {
 // validate a plugin or theme before trusting it. Every action is a same-origin
 // link. The documents it opens are in English.
 func osAPIKeysVCB(lang string) ui.HTML {
-	bible := "Vayu Compatibility Bible"
+	bible := akBibleName
 	return ui.Rows(ui.Row{Icon: "book", Label: bible, Hint: i18n.T(lang, "Validate a plugin or theme against the contract this API enforces, then grant it only what it declares."),
 		Control: ui.HTML(`<button type="button" class="btn btn--sm" data-sheet="ak-vcb">` + esc(i18n.T(lang, "How it works")) + `</button><a class="settings-row-go" href="/docs/compatibility/vcb" target="_blank" rel="noopener">` + esc(i18n.T(lang, "Open")) + string(ui.Icon("chev-r")) + `</a>`)}) +
 		ui.SheetClosing("ak-vcb", bible, i18n.T(lang, "Close"), ui.HTML(`<p class="text-sm muted mb-4">`+
 			escFill(i18n.T(lang, "Before you trust a plugin or theme, validate it against the {contract}. An extension declares the hooks, capabilities and {token} permissions it needs; VCB checks them and you mint a key granting {only} those, never more. Themes that fetch from another host, plugins that over-ask, or manifests built against a hook that doesn't exist are refused with a plain, exact reason.",
 				"contract", htmlMark(0), "token", htmlMark(1), "only", htmlMark(2)),
-				keepStrong(i18n.T(lang, "same contract this API enforces")), `<code>section:action</code>`, keepStrong(i18n.T(lang, "only")))+`</p>
+				keepStrong(i18n.T(lang, "same contract this API enforces")), `<code>`+akCapToken+`</code>`, keepStrong(i18n.T(lang, "only")))+`</p>
 <div class="ak-cred-actions">
   <a class="btn btn--primary btn--sm" href="/docs/compatibility/vcb" target="_blank" rel="noopener">`+iconVCB+` `+esc(i18n.T(lang, "Open the Compatibility Bible"))+`</a>
   <a class="btn btn--sm" href="/docs/compatibility/vayuapi" target="_blank" rel="noopener">`+esc(i18n.T(lang, "API keys and permissions reference"))+`</a>
@@ -491,7 +500,7 @@ func osAPIKeysVCB(lang string) ui.HTML {
 </div>
 <p class="field-hint mt-2">`+escFill(i18n.T(lang, "Build tools can read the live contract at {contract} and check a manifest against this running host at {validate} (both need a key with {grant}). The {cli} CLI runs the same checks offline for CI.",
 			"contract", htmlMark(0), "validate", htmlMark(1), "grant", htmlMark(2), "cli", htmlMark(3)),
-			`<code>GET /api/v1/vcb/contract</code>`, `<code>POST /api/v1/vcb/validate</code>`, `<code>plugins:read</code>`, `<code>vayu-compat</code>`)+`</p>`))
+			`<code>`+akVCBContract+`</code>`, `<code>`+akVCBValidate+`</code>`, `<code>`+akVCBGrant+`</code>`, `<code>`+akVCBCLI+`</code>`)+`</p>`))
 }
 
 // osAPIKeysServicesSection lists each known provider and every custom

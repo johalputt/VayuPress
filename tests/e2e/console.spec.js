@@ -218,16 +218,14 @@ test("Settings in another language has no English left on it", async ({ page }) 
   expect(errors).toEqual([]);
 });
 
-// Backups in the pseudo-language has no English left on it: the page, and
-// each sheet it opens, read while open.
-test("Backups in another language has no English left on it", async ({ page }) => {
-  const errors = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto("/os/vayukeep?lang=en-XA");
+// pseudoPageAndSheets is what a console page in the pseudo-language still
+// says in English: the page itself, then each sheet it opens, read while open.
+async function pseudoPageAndSheets(page, path) {
+  await page.goto(path + "?lang=en-XA");
   await expect(page.locator("html")).toHaveAttribute("lang", "en-XA");
   const found = {};
-  const page1 = await englishLeft(page);
-  if (page1.length) found.page = page1;
+  const own = await englishLeft(page);
+  if (own.length) found.page = own;
   const sheets = await page.locator("button[data-sheet]").evaluateAll((bs) => [...new Set(bs.map((b) => b.getAttribute("data-sheet")))]);
   expect(sheets.length).toBeGreaterThan(0);
   for (const id of sheets) {
@@ -239,6 +237,14 @@ test("Backups in another language has no English left on it", async ({ page }) =
     await sheet.locator("[data-sheet-close]").click();
     await expect(sheet).toBeHidden();
   }
-  expect(found).toEqual({});
-  expect(errors).toEqual([]);
-});
+  return found;
+}
+
+for (const [name, path] of [["Backups", "/os/vayukeep"], ["API keys", "/os/apikeys"]]) {
+  test(name + " in another language has no English left on it", async ({ page }) => {
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    expect(await pseudoPageAndSheets(page, path)).toEqual({});
+    expect(errors).toEqual([]);
+  });
+}

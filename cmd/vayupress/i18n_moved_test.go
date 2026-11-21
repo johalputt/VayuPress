@@ -68,6 +68,8 @@ var i18nMoved = map[string][]string{
 	"vayukeep_pace.go":             {"keepHeldNotice", "keepResultFor", "keepRunHTML", "paceIn"},
 	"admin_os_services.go":         {"cspReportOnlyNotices"},
 	"admin_os_vayukeep.go":         nil,
+	"admin_os_apikeys.go":          nil,
+	"api_usage_middleware.go":      {"rateLabelIn"},
 	"backup_coverage.go":           {"keepHoldsSection"},
 	"vayuos_mail_drive_upload.go":  nil,
 	"vayuos_mail_export_api.go":    nil,
