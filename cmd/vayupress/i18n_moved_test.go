@@ -69,6 +69,7 @@ var i18nMoved = map[string][]string{
 	"admin_os_services.go":         {"cspReportOnlyNotices"},
 	"admin_os_vayukeep.go":         nil,
 	"admin_os_apikeys.go":          nil,
+	"admin_os_newsletter.go":       nil,
 	"api_usage_middleware.go":      {"rateLabelIn"},
 	"backup_coverage.go":           {"keepHoldsSection"},
 	"vayuos_mail_drive_upload.go":  nil,
@@ -97,6 +98,8 @@ var i18nMoved = map[string][]string{
 var i18nNotRead = map[string]string{
 	// The XML a mail app reads to set itself up (Mozilla autoconfig).
 	"handleMailAutoconfig": "a mail app",
+	// The footer every broadcast carries, read by its subscribers.
+	"deliverBroadcastTracked": "a newsletter's subscribers",
 }
 
 // i18nExempt are the calls whose words are for the operator or the code, not

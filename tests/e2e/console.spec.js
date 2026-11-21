@@ -246,7 +246,7 @@ async function pseudoPageAndSheets(page, path) {
   return found;
 }
 
-for (const [name, path] of [["Backups", "/os/vayukeep"], ["API keys", "/os/apikeys"]]) {
+for (const [name, path] of [["Backups", "/os/vayukeep"], ["API keys", "/os/apikeys"], ["Newsletter", "/os/newsletter"]]) {
   test(name + " in another language has no English left on it", async ({ page }) => {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));

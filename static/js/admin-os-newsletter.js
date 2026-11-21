@@ -5,7 +5,8 @@
  * the server-rendered table; delete/broadcast re-render the page in place
  * (vpRefresh) so the stats, history and table reflect the new state. Listeners
  * are delegated and elements looked up when used, because that refresh replaces
- * them; the search text and segment survive it.
+ * them; the search text and segment survive it. Its words go through vpT,
+ * so the page says them in its own language.
  */
 (function () {
   'use strict';
@@ -34,9 +35,13 @@
     msg.classList.toggle('is-error', !!isErr);
     msg.classList.add('visible');
   }
+  // A refusal written as an error carries its words in error.message, and
+  // showed as "[object Object]".
   function errText(d) {
-    return (d && (d.detail || d.title || d.error)) || 'The server refused this without saying why. Reload the page and try again.';
+    d = d || {};
+    return d.detail || (d.error && d.error.message) || d.title || vpT('The server refused this without saying why. Reload the page and try again.');
   }
+  function failed(e) { return vpT('Request failed: {error}', { error: String(e) }); }
   // After a change: confirm it in a toast (the page's own message line is about
   // to be re-rendered), then refresh in place.
   function done(text) {
@@ -93,8 +98,8 @@
     };
   }
   function validate(p) {
-    if (!p.subject) { show('A subject is required.', true); return false; }
-    if (!p.text) { show('Plain-text content is required.', true); return false; }
+    if (!p.subject) { show(vpT('A subject is required.'), true); return false; }
+    if (!p.text) { show(vpT('Plain-text content is required.'), true); return false; }
     return true;
   }
 
@@ -102,17 +107,17 @@
     var email = btn.getAttribute('data-email');
     var id = btn.getAttribute('data-id');
     vpConfirm({
-      title: 'Delete this subscriber',
-      message: 'Permanently delete ' + email + '? This cannot be undone.',
-      confirm: 'Delete',
+      title: vpT('Delete this subscriber'),
+      message: vpT('Permanently delete {email}? This cannot be undone.', { email: email }),
+      confirm: vpT('Delete'),
     }, function () {
       btn.disabled = true;
       api('DELETE', '/os/api/newsletter/subscribers/' + encodeURIComponent(id))
         .then(function (res) {
-          if (res.ok) { done('Deleted ' + email + '.'); }
+          if (res.ok) { done(vpT('Deleted {email}.', { email: email })); }
           else { btn.disabled = false; show(errText(res.d), true); }
         })
-        .catch(function (e) { btn.disabled = false; show('Error: ' + e, true); });
+        .catch(function (e) { btn.disabled = false; show(failed(e), true); });
     });
   }
 
@@ -121,34 +126,34 @@
     if (!validate(p)) { return; }
     var toEl = document.getElementById('nl-test-to');
     var to = toEl ? toEl.value.trim() : '';
-    if (!to) { show('Enter a test recipient address first.', true); return; }
+    if (!to) { show(vpT('Enter a test recipient address first.'), true); return; }
     p.to = to;
     testBtn.disabled = true;
-    show('Sending test…', false);
+    show(vpT('Sending test…'), false);
     api('POST', '/os/api/newsletter/test', p).then(function (res) {
       testBtn.disabled = false;
-      show(res.ok ? ('Test sent to ' + to) : errText(res.d), !res.ok);
-    }).catch(function (e) { testBtn.disabled = false; show('Error: ' + e, true); });
+      show(res.ok ? vpT('Test sent to {address}', { address: to }) : errText(res.d), !res.ok);
+    }).catch(function (e) { testBtn.disabled = false; show(failed(e), true); });
   }
 
   function sendBroadcast(sendBtn) {
     var p = payload();
     if (!validate(p)) { return; }
     vpConfirm({
-      title: 'Send this broadcast',
-      message: 'Send this broadcast to all confirmed subscribers?',
-      confirm: 'Send',
+      title: vpT('Send this broadcast'),
+      message: vpT('Send this broadcast to all confirmed subscribers?'),
+      confirm: vpT('Send'),
     }, function () {
       sendBtn.disabled = true;
-      show('Queuing broadcast…', false);
+      show(vpT('Queuing broadcast…'), false);
       api('POST', '/os/api/newsletter/broadcast', p).then(function (res) {
         if (res.ok) {
-          done('Broadcast queued to ' + (res.d.queued || 0) + ' subscribers.');
+          done(vpT('{n, plural, one {Broadcast queued to # subscriber.} other {Broadcast queued to # subscribers.}}', { n: res.d.queued || 0 }));
         } else {
           sendBtn.disabled = false;
           show(errText(res.d), true);
         }
-      }).catch(function (e) { sendBtn.disabled = false; show('Error: ' + e, true); });
+      }).catch(function (e) { sendBtn.disabled = false; show(failed(e), true); });
     });
   }
 
