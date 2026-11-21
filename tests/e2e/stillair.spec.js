@@ -1886,7 +1886,7 @@ test("a key is made in a sheet, and a confirmation asked in a sheet can be answe
   await expect(sheet).toBeVisible();
   await sheet.locator("#ak-create-btn").click();
   // Refused in the sheet, where the operator is looking.
-  await expect(sheet.locator("[data-sheet-status]")).toHaveText("Grant at least one permission (or tick Full access)");
+  await expect(sheet.locator("[data-sheet-status]")).toHaveText("Grant at least one permission, or tick Full access.");
   await sheet.locator("#ak-new-label").fill(label);
   await sheet.locator('.ak-perm[data-section="posts"][data-action="read"]').check();
   await sheet.locator("#ak-create-btn").click();
