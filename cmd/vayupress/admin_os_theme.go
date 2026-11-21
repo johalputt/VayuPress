@@ -28,6 +28,7 @@ import (
 	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
@@ -56,6 +57,18 @@ type themeHeadExport struct {
 	VerifyBing   string `json:"verify_bing"`
 }
 
+// The pieces of CSS and HTML the Studio names inside a translated sentence:
+// code, the same in every language.
+const (
+	themeCSSPath = "/theme.css"
+	cssImport    = "@import"
+	cssURL       = "url()"
+	metaTag      = "<meta>"
+	// typeSpecimen is the pair of letters a theme card shows its headline
+	// type in: a sample of the face, not a word.
+	typeSpecimen = "Aa"
+)
+
 // themeCardSVG renders a miniature REAL page for a preset — masthead, display
 // headline in the preset's own palette, body lines and an accent button — as
 // inline SVG. Every colour is a presentational fill/text attribute (not a style
@@ -69,7 +82,7 @@ func themeCardSVG(p theme.Tokens) string {
 		`<rect x="86" y="11" width="8" height="3.4" rx="1.7" fill="` + esc(p.MutedDark) + `"/>` +
 		`<rect x="97" y="11" width="8" height="3.4" rx="1.7" fill="` + esc(p.MutedDark) + `"/>` +
 		// Display headline — the actual type sample.
-		`<text x="10" y="42" font-family="system-ui,-apple-system,'Segoe UI',sans-serif" font-size="21" font-weight="700" letter-spacing="-0.6" fill="` + esc(p.TextDark) + `">Aa</text>` +
+		`<text x="10" y="42" font-family="system-ui,-apple-system,'Segoe UI',sans-serif" font-size="21" font-weight="700" letter-spacing="-0.6" fill="` + esc(p.TextDark) + `">` + typeSpecimen + `</text>` +
 		`<text x="44" y="41" font-family="system-ui,-apple-system,'Segoe UI',sans-serif" font-size="7.5" font-weight="600" fill="` + esc(p.AccentDark) + `">` + esc(p.Name) + `</text>` +
 		// Body copy lines.
 		`<rect x="10" y="50" width="100" height="4" rx="2" fill="` + esc(p.MutedDark) + `"/>` +
@@ -105,7 +118,7 @@ func hexLum(hex string) float64 {
 // themePresetCards renders the Tumblr-style theme gallery server-side: each card
 // is a real miniature page (themeCardSVG) tagged with its archetype and default
 // scheme so the Studio's filter chips and search can narrow 30 presets fast.
-func themePresetCards() string {
+func themePresetCards(lang string) string {
 	out := ""
 	for _, p := range theme.AllPresets() {
 		name := html.EscapeString(p.Name)
@@ -119,9 +132,9 @@ func themePresetCards() string {
 		}
 		out += `<button type="button" class="theme-card" data-preset="` + name +
 			`" data-archetype="` + arch + `" data-scheme="` + scheme +
-			`" data-search="` + strings.ToLower(name+" "+arch+" "+scheme) + `" aria-label="Apply the ` + name + ` theme">` +
+			`" data-search="` + strings.ToLower(name+" "+arch+" "+scheme) + `" aria-label="` + html.EscapeString(i18n.T(lang, "Apply the {theme} theme", "theme", p.Name)) + `">` +
 			themeCardSVG(p) +
-			`<span class="theme-card__name">` + name + `</span></button>`
+			`<span class="theme-card__name" translate="no">` + name + `</span></button>`
 	}
 	return out
 }
@@ -137,37 +150,37 @@ type themeColorField struct {
 
 // brandColorFields are the accent colours surfaced prominently in the Brand
 // group (the most-used controls), with live preview wiring for the dark accents.
-func brandColorFields() []themeColorField {
+func brandColorFields(lang string) []themeColorField {
 	return []themeColorField{
-		{"AccentDark", "Accent", "accent"},
-		{"Accent2Dark", "Accent 2", "accent2"},
-		{"AccentLight", "Accent (light mode)", ""},
-		{"Accent2Light", "Accent 2 (light mode)", ""},
+		{"AccentDark", i18n.T(lang, "Accent"), "accent"},
+		{"Accent2Dark", i18n.T(lang, "Accent 2"), "accent2"},
+		{"AccentLight", i18n.T(lang, "Accent (light mode)"), ""},
+		{"Accent2Light", i18n.T(lang, "Accent 2 (light mode)"), ""},
 	}
 }
 
 // themeDarkColors are the dark-mode surface tokens (accents live in the Brand
 // group), each wired to a preview variable.
-func themeDarkColors() []themeColorField {
+func themeDarkColors(lang string) []themeColorField {
 	return []themeColorField{
-		{"BgDark", "Background", "bg"},
-		{"SurfaceDark", "Surface", "surface"},
-		{"TextDark", "Text", "text"},
-		{"MutedDark", "Muted", "muted"},
-		{"HiDark", "Highlight", "hi"},
-		{"GreenDark", "Success", "green"},
+		{"BgDark", i18n.T(lang, "Background"), "bg"},
+		{"SurfaceDark", i18n.T(lang, "Surface"), "surface"},
+		{"TextDark", i18n.T(lang, "Text"), "text"},
+		{"MutedDark", i18n.T(lang, "Muted"), "muted"},
+		{"HiDark", i18n.T(lang, "Highlight"), "hi"},
+		{"GreenDark", i18n.T(lang, "Success"), "green"},
 	}
 }
 
 // themeLightColors are the light-mode surface tokens (no live preview — preview
 // is dark; accents live in the Brand group).
-func themeLightColors() []themeColorField {
+func themeLightColors(lang string) []themeColorField {
 	return []themeColorField{
-		{"BgLight", "Background", ""},
-		{"SurfaceLight", "Surface", ""},
-		{"TextLight", "Text", ""},
-		{"MutedLight", "Muted", ""},
-		{"HiLight", "Highlight", ""},
+		{"BgLight", i18n.T(lang, "Background"), ""},
+		{"SurfaceLight", i18n.T(lang, "Surface"), ""},
+		{"TextLight", i18n.T(lang, "Text"), ""},
+		{"MutedLight", i18n.T(lang, "Muted"), ""},
+		{"HiLight", i18n.T(lang, "Highlight"), ""},
 	}
 }
 
@@ -196,7 +209,7 @@ func textRow(field, label, placeholder string) string {
 // optionSelectRow renders one customization option as a labelled <select> bound
 // to data-token-opt. When themesCSV is non-empty the row carries data-opt-theme
 // and starts hidden, so the Studio JS shows it only for matching themes.
-func optionSelectRow(o theme.Option, themesCSV string) string {
+func optionSelectRow(lang string, o theme.Option, themesCSV string) string {
 	opts := ""
 	for _, c := range o.Choices {
 		// The default is marked: it is not always the first choice (text size
@@ -205,11 +218,11 @@ func optionSelectRow(o theme.Option, themesCSV string) string {
 		if c.Value == o.Default {
 			def = ` data-default`
 		}
-		opts += `<option value="` + html.EscapeString(c.Value) + `"` + def + `>` + html.EscapeString(c.Label) + `</option>`
+		opts += `<option value="` + html.EscapeString(c.Value) + `"` + def + `>` + html.EscapeString(themeWord(lang, c.Label)) + `</option>`
 	}
 	hint := ""
 	if o.Help != "" {
-		hint = `<span class="theme-field__hint">` + html.EscapeString(o.Help) + `</span>`
+		hint = `<span class="theme-field__hint">` + html.EscapeString(themeWord(lang, o.Help)) + `</span>`
 	}
 	// A shared option is marked so the Studio can hide it for a theme that
 	// brings its own layout, which the shared options would not change.
@@ -218,24 +231,24 @@ func optionSelectRow(o theme.Option, themesCSV string) string {
 		attr = ` data-opt-theme="` + html.EscapeString(themesCSV) + `" hidden`
 	}
 	return `<label class="theme-field theme-field--text"` + attr + `>
-  <span class="theme-field__label">` + html.EscapeString(o.Label) + `</span>
-  <select class="input" data-token-opt="` + html.EscapeString(o.Key) + `" aria-label="` + html.EscapeString(o.Label) + `">` + opts + `</select>` + hint + `</label>`
+  <span class="theme-field__label">` + html.EscapeString(themeWord(lang, o.Label)) + `</span>
+  <select class="input" data-token-opt="` + html.EscapeString(o.Key) + `" aria-label="` + html.EscapeString(themeWord(lang, o.Label)) + `">` + opts + `</select>` + hint + `</label>`
 }
 
 // optionRowsByKeys renders the named options (shared or per-theme) in order, so
 // the Studio can compose them into Ghost-style groups (Brand, Layout, …).
-func optionRowsByKeys(keys ...string) string {
+func optionRowsByKeys(lang string, keys ...string) string {
 	out := ""
 	for _, k := range keys {
 		for _, o := range theme.AllOptions() {
 			if o.Key == k {
-				out += optionSelectRow(o, "")
+				out += optionSelectRow(lang, o, "")
 				goto next
 			}
 		}
 		for _, to := range theme.PerThemeOptions() {
 			if to.Option.Key == k {
-				out += optionSelectRow(to.Option, strings.Join(to.Themes, ","))
+				out += optionSelectRow(lang, to.Option, strings.Join(to.Themes, ","))
 				goto next
 			}
 		}
@@ -248,32 +261,34 @@ func optionRowsByKeys(keys ...string) string {
 // carries a sans + mono font stack (system/web-safe only — zero external
 // requests) that the Studio JS applies to the FontSans/FontMono tokens at once.
 // "Keep current" is the default so loading a preset doesn't force a pairing.
-func fontPairSelectHTML() string {
+func fontPairSelectHTML(lang string) string {
 	type pair struct{ Label, Sans, Mono string }
 	pairs := []pair{
-		{"Keep current", "", ""},
-		{"System UI", `system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`, `ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`},
-		{"Modern (Inter-style)", `"Inter", system-ui, -apple-system, "Segoe UI", sans-serif`, `ui-monospace, SFMono-Regular, Menlo, monospace`},
-		{"Classic serif", `Georgia, Cambria, "Times New Roman", Times, serif`, `"Courier New", ui-monospace, monospace`},
-		{"Editorial serif", `"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif`, `ui-monospace, Menlo, monospace`},
-		{"Humanist", `"Optima", Candara, "Segoe UI", "Helvetica Neue", sans-serif`, `ui-monospace, Menlo, monospace`},
-		{"Geometric", `"Avenir Next", "Century Gothic", Futura, system-ui, sans-serif`, `ui-monospace, Menlo, monospace`},
-		{"Monospace", `ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`, `ui-monospace, SFMono-Regular, Menlo, monospace`},
+		{i18n.T(lang, "Keep current"), "", ""},
+		{i18n.T(lang, "System UI"), `system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`, `ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`},
+		{i18n.T(lang, "Modern (Inter-style)"), `"Inter", system-ui, -apple-system, "Segoe UI", sans-serif`, `ui-monospace, SFMono-Regular, Menlo, monospace`},
+		{i18n.T(lang, "Classic serif"), `Georgia, Cambria, "Times New Roman", Times, serif`, `"Courier New", ui-monospace, monospace`},
+		{i18n.T(lang, "Editorial serif"), `"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif`, `ui-monospace, Menlo, monospace`},
+		{i18n.T(lang, "Humanist"), `"Optima", Candara, "Segoe UI", "Helvetica Neue", sans-serif`, `ui-monospace, Menlo, monospace`},
+		{i18n.T(lang, "Geometric"), `"Avenir Next", "Century Gothic", Futura, system-ui, sans-serif`, `ui-monospace, Menlo, monospace`},
+		{i18n.T(lang, "Monospace"), `ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`, `ui-monospace, SFMono-Regular, Menlo, monospace`},
 	}
 	opts := ""
 	for _, p := range pairs {
 		opts += `<option value="` + html.EscapeString(p.Label) + `" data-sans="` + html.EscapeString(p.Sans) + `" data-mono="` + html.EscapeString(p.Mono) + `">` + html.EscapeString(p.Label) + `</option>`
 	}
 	return `<label class="theme-field theme-field--text mb-4">
-  <span class="theme-field__label">Font pairing</span>
-  <select class="input" data-font-pair aria-label="Font pairing">` + opts + `</select>
-  <span class="theme-field__hint">Sets the body &amp; mono fonts in one click. Fine-tune the exact stacks below. All system/web-safe — no external fonts loaded.</span>
+  <span class="theme-field__label">` + esc(i18n.T(lang, "Font pairing")) + `</span>
+  <select class="input" data-font-pair aria-label="` + esc(i18n.T(lang, "Font pairing")) + `">` + opts + `</select>
+  <span class="theme-field__hint">` + esc(i18n.T(lang, "Sets the body and mono fonts in one click; fine-tune the exact stacks below. All are system or web-safe fonts: no font is loaded from elsewhere.")) + `</span>
 </label>`
 }
 
 func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
+	lang := i18n.Lang(r.Context())
+	t := func(s string) string { return esc(s) }
 
 	// Current persisted custom CSS + head/SEO values (Tumblr-style code editor).
 	// Guard the settings store like every other settings-dependent handler does:
@@ -293,24 +308,24 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 	}
 
 	darkRows := ""
-	for _, f := range themeDarkColors() {
+	for _, f := range themeDarkColors(lang) {
 		darkRows += colorRow(f)
 	}
 	lightRows := ""
-	for _, f := range themeLightColors() {
+	for _, f := range themeLightColors(lang) {
 		lightRows += colorRow(f)
 	}
 	brandRows := ""
-	for _, f := range brandColorFields() {
+	for _, f := range brandColorFields(lang) {
 		brandRows += colorRow(f)
 	}
-	typoRows := textRow("FontSans", "Sans-serif stack", "system-ui, sans-serif") +
-		textRow("FontMono", "Monospace stack", "ui-monospace, monospace") +
-		textRow("FontSizeBase", "Base font size", "1rem") +
-		textRow("LineHeight", "Line height", "1.6") +
-		textRow("MaxWidth", "Max content width", "72ch") +
-		textRow("RadiusSm", "Small radius", "0.25rem") +
-		textRow("RadiusLg", "Large radius", "0.75rem")
+	typoRows := textRow("FontSans", i18n.T(lang, "Sans-serif stack"), "system-ui, sans-serif") +
+		textRow("FontMono", i18n.T(lang, "Monospace stack"), "ui-monospace, monospace") +
+		textRow("FontSizeBase", i18n.T(lang, "Base font size"), "1rem") +
+		textRow("LineHeight", i18n.T(lang, "Line height"), "1.6") +
+		textRow("MaxWidth", i18n.T(lang, "Max content width"), "72ch") +
+		textRow("RadiusSm", i18n.T(lang, "Small radius"), "0.25rem") +
+		textRow("RadiusLg", i18n.T(lang, "Large radius"), "0.75rem")
 
 	// Accessibility readout for the saved palette (see admin_os_theme_a11y.go).
 	a11y := themeA11yChecks(
@@ -351,7 +366,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 		if on {
 			sel = "true"
 		}
-		return `<button type="button" class="sa-itabs__tab" role="tab" id="tt-` + key + `" aria-controls="tp-` + key + `" aria-selected="` + sel + `" data-theme-tab="` + key + `">` + label + `</button>`
+		return `<button type="button" class="sa-itabs__tab" role="tab" id="tt-` + key + `" aria-controls="tp-` + key + `" aria-selected="` + sel + `" data-theme-tab="` + key + `">` + t(label) + `</button>`
 	}
 	panel := func(key string, on bool, body string) string {
 		hidden := " hidden"
@@ -362,167 +377,170 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 	}
 	sec := func(title, body string) string { return string(ui.InspectorSection(title, ui.HTML(body))) }
 
-	design := sec("Presets", `<div class="theme-filter" data-theme-filter>
-          <input type="search" class="input theme-filter__search" data-theme-search placeholder="Search 30 themes" aria-label="Search themes">
-          <div class="theme-filter__chips" role="group" aria-label="Filter themes">
-            <button type="button" class="seg-btn is-active" aria-pressed="true" data-ffilter="all">All</button>
-            <button type="button" class="seg-btn" aria-pressed="false" data-ffilter="scheme:dark">Dark</button>
-            <button type="button" class="seg-btn" aria-pressed="false" data-ffilter="scheme:light">Light</button>
-            <button type="button" class="seg-btn" aria-pressed="false" data-ffilter="arch:minimal">Minimal</button>
-            <button type="button" class="seg-btn" aria-pressed="false" data-ffilter="arch:classic">Classic</button>
-            <button type="button" class="seg-btn" aria-pressed="false" data-ffilter="arch:magazine">Magazine</button>
-            <button type="button" class="seg-btn" aria-pressed="false" data-ffilter="arch:editorial">Editorial</button>
-            <button type="button" class="seg-btn" aria-pressed="false" data-ffilter="arch:bold">Bold</button>
-            <button type="button" class="seg-btn" aria-pressed="false" data-ffilter="arch:design">Design</button>
+	chip := func(filter, label string, on bool) string {
+		pressed, cls := "false", "seg-btn"
+		if on {
+			pressed, cls = "true", "seg-btn is-active"
+		}
+		return `<button type="button" class="` + cls + `" aria-pressed="` + pressed + `" data-ffilter="` + filter + `">` + t(label) + `</button>`
+	}
+	design := sec(i18n.T(lang, "Presets"), `<div class="theme-filter" data-theme-filter>
+          <input type="search" class="input theme-filter__search" data-theme-search placeholder="`+t(i18n.T(lang, "Search 30 themes"))+`" aria-label="`+t(i18n.T(lang, "Search themes"))+`">
+          <div class="theme-filter__chips" role="group" aria-label="`+t(i18n.T(lang, "Filter themes"))+`">`+
+		chip("all", i18n.T(lang, "All"), true)+chip("scheme:dark", i18n.T(lang, "Dark"), false)+chip("scheme:light", i18n.T(lang, "Light"), false)+
+		chip("arch:minimal", themeWord(lang, "Minimal"), false)+chip("arch:classic", themeWord(lang, "Classic"), false)+chip("arch:magazine", themeWord(lang, "Magazine"), false)+
+		chip("arch:editorial", themeWord(lang, "Editorial"), false)+chip("arch:bold", themeWord(lang, "Bold"), false)+chip("arch:design", i18n.T(lang, "Design"), false)+`
           </div>
           <span class="sa-insp__hint" data-theme-filter-count role="status" aria-live="polite"></span>
         </div>
-        <div class="theme-gallery" data-theme-presets aria-label="Theme presets">`+themePresetCards()+`</div>`) +
-		sec("Logo and share image", `<p class="sa-insp__text">These stay when the theme changes.</p>
+        <div class="theme-gallery" data-theme-presets aria-label="`+t(i18n.T(lang, "Theme presets"))+`">`+themePresetCards(lang)+`</div>`) +
+		sec(i18n.T(lang, "Logo and share image"), `<p class="sa-insp__text">`+t(i18n.T(lang, "These stay when the theme changes."))+`</p>
         <div class="cz-logo">
-          <img id="brand-favicon-img" class="cz-logo__img" src="`+brandMarkURL+`" alt="Current site mark" width="44" height="44">
-          <div class="cz-logo__meta"><div class="cz-logo__title">Logo and favicon</div><div class="sa-insp__hint" id="brand-favicon-state">The favicon and the logo in the menu.</div></div>
+          <img id="brand-favicon-img" class="cz-logo__img" src="`+brandMarkURL+`" alt="`+t(i18n.T(lang, "Current site mark"))+`" width="44" height="44">
+          <div class="cz-logo__meta"><div class="cz-logo__title">`+t(i18n.T(lang, "Logo and favicon"))+`</div><div class="sa-insp__hint" id="brand-favicon-state">`+t(i18n.T(lang, "The favicon and the logo in the menu."))+`</div></div>
         </div>
         <div class="cz-upload">
-          <input type="file" id="brand-favicon-file" accept="image/png,image/jpeg,image/webp,image/gif,image/x-icon,.png,.jpg,.jpeg,.webp,.gif,.ico" class="input" aria-label="Logo file">
-          <button type="button" class="btn btn--sm" id="brand-favicon-upload">Upload</button>
-          <button type="button" class="btn btn--ghost btn--sm" id="brand-favicon-remove">Default</button>
+          <input type="file" id="brand-favicon-file" accept="image/png,image/jpeg,image/webp,image/gif,image/x-icon,.png,.jpg,.jpeg,.webp,.gif,.ico" class="input" aria-label="`+t(i18n.T(lang, "Logo file"))+`">
+          <button type="button" class="btn btn--sm" id="brand-favicon-upload">`+t(i18n.T(lang, "Upload"))+`</button>
+          <button type="button" class="btn btn--ghost btn--sm" id="brand-favicon-remove">`+t(i18n.T(lang, "Default"))+`</button>
           <span id="brand-favicon-status" class="sa-insp__hint" role="status" aria-live="polite"></span>
         </div>
-        <span class="sa-insp__hint">PNG or ICO, square, up to 256 KB. Live at once.</span>
+        <span class="sa-insp__hint">`+t(i18n.T(lang, "PNG or ICO, square, up to 256 KB. Live at once."))+`</span>
         <div class="cz-logo">
-          <img id="og-img" class="cz-logo__img" src="/theme-assets/og?t=`+faviconBust+`" alt="Current share image" width="64" height="34">
-          <div class="cz-logo__meta"><div class="cz-logo__title">Share image</div><div class="sa-insp__hint" id="og-img-state">Shown when the site or a post is shared.</div></div>
+          <img id="og-img" class="cz-logo__img" src="/theme-assets/og?t=`+faviconBust+`" alt="`+t(i18n.T(lang, "Current share image"))+`" width="64" height="34">
+          <div class="cz-logo__meta"><div class="cz-logo__title">`+t(i18n.T(lang, "Share image"))+`</div><div class="sa-insp__hint" id="og-img-state">`+t(i18n.T(lang, "Shown when the site or a post is shared."))+`</div></div>
         </div>
         <div class="cz-upload">
-          <input type="file" id="og-img-file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" class="input" aria-label="Share image file">
-          <button type="button" class="btn btn--sm" id="og-img-upload">Upload</button>
-          <button type="button" class="btn btn--ghost btn--sm" id="og-img-remove">Remove</button>
+          <input type="file" id="og-img-file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" class="input" aria-label="`+t(i18n.T(lang, "Share image file"))+`">
+          <button type="button" class="btn btn--sm" id="og-img-upload">`+t(i18n.T(lang, "Upload"))+`</button>
+          <button type="button" class="btn btn--ghost btn--sm" id="og-img-remove">`+t(i18n.T(lang, "Remove"))+`</button>
           <span id="og-img-status" class="sa-insp__hint" role="status" aria-live="polite"></span>
         </div>
-        <span class="sa-insp__hint">PNG, JPEG or WebP, up to 1.5 MB.</span>
-        <label class="sa-insp__check"><input type="checkbox" class="toggle" role="switch" id="site-membership"`+membershipChecked+`> Sign in and Sign up in the menu</label>
+        <span class="sa-insp__hint">`+t(i18n.T(lang, "PNG, JPEG or WebP, up to 1.5 MB."))+`</span>
+        <label class="sa-insp__check"><input type="checkbox" class="toggle" role="switch" id="site-membership"`+membershipChecked+`> `+t(i18n.T(lang, "Sign in and Sign up in the menu"))+`</label>
         <span class="sa-insp__hint" id="site-membership-status" role="status" aria-live="polite"></span>`)
 
-	colour := sec("Palette from one colour", `<div class="cz-gen" data-studio-gen>
+	colour := sec(i18n.T(lang, "Palette from one colour"), `<div class="cz-gen" data-studio-gen>
           <div class="cz-upload">
-            <input type="color" class="theme-field__color" value="#e0562f" data-gen-accent aria-label="Seed accent">
-            <select class="input" data-gen-mood aria-label="Mood"><option value="calm">Calm</option><option value="vivid">Vivid</option><option value="muted">Muted</option></select>
-            <button type="button" class="btn btn--sm" data-gen-apply>Recolour</button>
-            <button type="button" class="btn btn--ghost btn--sm" data-gen-surprise>Surprise me</button>
+            <input type="color" class="theme-field__color" value="#e0562f" data-gen-accent aria-label="`+t(i18n.T(lang, "Seed accent"))+`">
+            <select class="input" data-gen-mood aria-label="`+t(i18n.T(lang, "Mood"))+`"><option value="calm">`+t(i18n.T(lang, "Calm"))+`</option><option value="vivid">`+t(i18n.T(lang, "Vivid"))+`</option><option value="muted">`+t(i18n.T(lang, "Muted"))+`</option></select>
+            <button type="button" class="btn btn--sm" data-gen-apply>`+t(i18n.T(lang, "Recolour"))+`</button>
+            <button type="button" class="btn btn--ghost btn--sm" data-gen-surprise>`+t(i18n.T(lang, "Surprise me"))+`</button>
           </div>
-          <span class="sa-insp__hint">One accent becomes a whole dark and light palette.</span>
+          <span class="sa-insp__hint">`+t(i18n.T(lang, "One accent becomes a whole dark and light palette."))+`</span>
           <span id="gen-status" class="sa-insp__hint" role="status" aria-live="polite"></span>
         </div>`) +
-		sec("Brand colours", a11ySummary(a11y)+`<div class="theme-fields">`+brandRows+`</div>
-        <div class="theme-fields theme-fields--text">`+optionRowsByKeys("scheme", "accentfill", "paper")+`</div>`+themeA11yPanel(a11y)) +
-		`<details class="sa-insp sa-insp--more"><summary class="sa-insp__head">Every colour, dark</summary><div class="theme-fields">` + darkRows + `</div></details>` +
-		`<details class="sa-insp sa-insp--more"><summary class="sa-insp__head">Every colour, light</summary><div class="theme-fields">` + lightRows + `</div></details>`
+		sec(i18n.T(lang, "Brand colours"), a11ySummary(lang, a11y)+`<div class="theme-fields">`+brandRows+`</div>
+        <div class="theme-fields theme-fields--text">`+optionRowsByKeys(lang, "scheme", "accentfill", "paper")+`</div>`+themeA11yPanel(lang, a11y)) +
+		`<details class="sa-insp sa-insp--more"><summary class="sa-insp__head">` + t(i18n.T(lang, "Every colour, dark")) + `</summary><div class="theme-fields">` + darkRows + `</div></details>` +
+		`<details class="sa-insp sa-insp--more"><summary class="sa-insp__head">` + t(i18n.T(lang, "Every colour, light")) + `</summary><div class="theme-fields">` + lightRows + `</div></details>`
 
 	var halcyonRows strings.Builder
 	for _, o := range theme.HalcyonOptions() {
-		halcyonRows.WriteString(optionSelectRow(o, theme.Halcyon().Name))
+		halcyonRows.WriteString(optionSelectRow(lang, o, theme.Halcyon().Name))
 	}
 	layout := sec("Halcyon", `<div class="theme-fields theme-fields--text">`+halcyonRows.String()+`</div>`) +
-		sec("Layout", `<div class="theme-fields theme-fields--text">`+optionRowsByKeys("archetype", "width", "corners", "feedlayout", "cardimage", "headeralign", "navstyle", "cardstyle", "density", "columnrules", "pagefade")+`</div>`) +
-		sec("Hero", `<label class="sa-insp__check"><input type="checkbox" class="toggle" role="switch" id="home-hero"`+heroChecked+`> A hero on the home page</label>
+		sec(i18n.T(lang, "Layout"), `<div class="theme-fields theme-fields--text">`+optionRowsByKeys(lang, "archetype", "width", "corners", "feedlayout", "cardimage", "headeralign", "navstyle", "cardstyle", "density", "columnrules", "pagefade")+`</div>`) +
+		sec(i18n.T(lang, "Hero"), `<label class="sa-insp__check"><input type="checkbox" class="toggle" role="switch" id="home-hero"`+heroChecked+`> `+t(i18n.T(lang, "A hero on the home page"))+`</label>
         <span class="sa-insp__hint" id="home-hero-status" role="status" aria-live="polite"></span>
         <div class="cz-logo">
-          <img id="hero-img" class="cz-logo__img" src="/theme-assets/hero?t=`+faviconBust+`" alt="Current hero image" width="64" height="40">
-          <div class="cz-logo__meta"><div class="cz-logo__title">Hero image</div><div class="sa-insp__hint" id="hero-img-state">Shown when the hero background is Image.</div></div>
+          <img id="hero-img" class="cz-logo__img" src="/theme-assets/hero?t=`+faviconBust+`" alt="`+t(i18n.T(lang, "Current hero image"))+`" width="64" height="40">
+          <div class="cz-logo__meta"><div class="cz-logo__title">`+t(i18n.T(lang, "Hero image"))+`</div><div class="sa-insp__hint" id="hero-img-state">`+t(i18n.T(lang, "Shown when the hero background is an uploaded image."))+`</div></div>
         </div>
         <div class="cz-upload">
-          <input type="file" id="hero-img-file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" class="input" aria-label="Hero image file">
-          <button type="button" class="btn btn--sm" id="hero-img-upload">Upload</button>
-          <button type="button" class="btn btn--ghost btn--sm" id="hero-img-remove">Remove</button>
+          <input type="file" id="hero-img-file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" class="input" aria-label="`+t(i18n.T(lang, "Hero image file"))+`">
+          <button type="button" class="btn btn--sm" id="hero-img-upload">`+t(i18n.T(lang, "Upload"))+`</button>
+          <button type="button" class="btn btn--ghost btn--sm" id="hero-img-remove">`+t(i18n.T(lang, "Remove"))+`</button>
           <span id="hero-img-status" class="sa-insp__hint" role="status" aria-live="polite"></span>
         </div>
-        <div class="theme-fields theme-fields--text">`+optionRowsByKeys("herostyle", "herobg", "heroheight")+`</div>`) +
-		sec("Type", fontPairSelectHTML()+`<div class="theme-fields theme-fields--text">`+optionRowsByKeys("headingcase", "headingscale", "dropcap")+typoRows+`</div>`) +
-		sec("Posts", `<div class="theme-fields theme-fields--text">`+optionRowsByKeys("articlealign", "articlemeta", "relatedposts", "trendingposts", "authorbox", "linkstyle", "readingprogress")+`</div>
-        <label class="theme-field theme-field--text"><span class="theme-field__label">Author bio</span>
-          <textarea class="input" id="author-bio" rows="4" maxlength="`+strconv.Itoa(settings.MaxAuthorBioLen)+`" placeholder="A few lines about the author">`+html.EscapeString(val(settings.KeyAuthorBio))+`</textarea>
-          <span class="theme-field__hint" id="author-bio-status">In the author box, beside the author's name; up to `+strconv.Itoa(settings.MaxAuthorBioLen)+` characters. Saved as you leave the field.</span></label>`)
+        <div class="theme-fields theme-fields--text">`+optionRowsByKeys(lang, "herostyle", "herobg", "heroheight")+`</div>`) +
+		sec(i18n.T(lang, "Type"), fontPairSelectHTML(lang)+`<div class="theme-fields theme-fields--text">`+optionRowsByKeys(lang, "headingcase", "headingscale", "dropcap")+typoRows+`</div>`) +
+		sec(i18n.T(lang, "Posts"), `<div class="theme-fields theme-fields--text">`+optionRowsByKeys(lang, "articlealign", "articlemeta", "relatedposts", "trendingposts", "authorbox", "linkstyle", "readingprogress")+`</div>
+        <label class="theme-field theme-field--text"><span class="theme-field__label">`+t(i18n.T(lang, "Author bio"))+`</span>
+          <textarea class="input" id="author-bio" rows="4" maxlength="`+strconv.Itoa(settings.MaxAuthorBioLen)+`" placeholder="`+t(i18n.T(lang, "A few lines about the author"))+`">`+html.EscapeString(val(settings.KeyAuthorBio))+`</textarea>
+          <span class="theme-field__hint" id="author-bio-status">`+t(i18n.T(lang, "In the author box, beside the author's name; up to {n} characters. Saved as you leave the field.", "n", settings.MaxAuthorBioLen))+`</span></label>`)
 
-	advanced := sec("Menu", `<p class="sa-insp__text">Saved straight to the live site; the preview shows a sample menu.</p>
+	advanced := sec(i18n.T(lang, "Menu"), `<p class="sa-insp__text">`+t(i18n.T(lang, "Saved straight to the live site; the preview shows a sample menu."))+`</p>
         <div id="cz-nav-rows" data-nav-editor></div>
         <div class="cz-upload">
-          <button type="button" class="btn btn--ghost btn--sm" id="cz-nav-add">Add a link</button>
-          <button type="button" class="btn btn--sm" id="cz-nav-save">Save the menu</button>
+          <button type="button" class="btn btn--ghost btn--sm" id="cz-nav-add">`+t(i18n.T(lang, "Add a link"))+`</button>
+          <button type="button" class="btn btn--sm" id="cz-nav-save">`+t(i18n.T(lang, "Save the menu"))+`</button>
           <span class="sa-insp__hint" id="cz-nav-status"></span>
         </div>
         <input type="hidden" id="cz-nav-seed" value="`+navSeed+`">`) +
-		sec("Custom CSS", `<textarea class="input theme-code" data-theme-css rows="10" maxlength="65536" spellcheck="false" aria-label="Custom CSS" placeholder="/* .vayu-post-title { letter-spacing: -0.02em; } */">`+html.EscapeString(val(settings.KeyThemeCustomCSS))+`</textarea>`+
-			string(ui.Explain(ui.HTML(`<p>Served from this site as <code>/theme.css</code>, after the theme's own styles. <code>@import</code> and outside <code>url()</code> are removed, so it loads nothing from elsewhere. Up to 64 KB.</p>`)))) +
-		sec("Head tags", `<div class="theme-fields theme-fields--text">
-          <label class="theme-field theme-field--text"><span class="theme-field__label">Keywords</span>
-            <input type="text" class="input" data-head="keywords" maxlength="256" value="`+html.EscapeString(val(settings.KeyHeadKeywords))+`" placeholder="publishing, sovereignty"></label>
-          <label class="theme-field theme-field--text"><span class="theme-field__label">Theme colour</span>
+		sec(i18n.T(lang, "Custom CSS"), `<textarea class="input theme-code" data-theme-css rows="10" maxlength="65536" spellcheck="false" aria-label="`+t(i18n.T(lang, "Custom CSS"))+`" placeholder="/* .vayu-post-title { letter-spacing: -0.02em; } */">`+html.EscapeString(val(settings.KeyThemeCustomCSS))+`</textarea>`+
+			string(ui.ExplainTitled(i18n.T(lang, "How this works"), ui.HTML(`<p>`+escFill(i18n.T(lang, "Served from this site as {file}, after the theme's own styles. {import} and outside {url} are removed, so it loads nothing from elsewhere. Up to 64 KB.",
+				"file", htmlMark(0), "import", htmlMark(1), "url", htmlMark(2)), "<code>"+themeCSSPath+"</code>", "<code>"+cssImport+"</code>", "<code>"+cssURL+"</code>")+`</p>`)))) +
+		sec(i18n.T(lang, "Head tags"), `<div class="theme-fields theme-fields--text">
+          <label class="theme-field theme-field--text"><span class="theme-field__label">`+t(i18n.T(lang, "Keywords"))+`</span>
+            <input type="text" class="input" data-head="keywords" maxlength="256" value="`+html.EscapeString(val(settings.KeyHeadKeywords))+`" placeholder="`+t(i18n.T(lang, "publishing, sovereignty"))+`"></label>
+          <label class="theme-field theme-field--text"><span class="theme-field__label">`+t(i18n.T(lang, "Theme colour"))+`</span>
             <input type="text" class="input" data-head="theme_color" maxlength="7" value="`+html.EscapeString(val(settings.KeyHeadThemeColor))+`" placeholder="#0d9488"></label>
-          <label class="theme-field theme-field--text"><span class="theme-field__label">Robots</span>
-            <select class="input" data-head="robots">`+robotsOptionsHTML(val(settings.KeyHeadRobots))+`</select></label>
-          <label class="theme-field theme-field--text"><span class="theme-field__label">Google verification</span>
-            <input type="text" class="input" data-head="verify_google" maxlength="128" value="`+html.EscapeString(val(settings.KeyHeadVerifyGoogle))+`" placeholder="token"></label>
-          <label class="theme-field theme-field--text"><span class="theme-field__label">Bing verification</span>
-            <input type="text" class="input" data-head="verify_bing" maxlength="128" value="`+html.EscapeString(val(settings.KeyHeadVerifyBing))+`" placeholder="token"></label>
+          <label class="theme-field theme-field--text"><span class="theme-field__label">`+t(i18n.T(lang, "Robots"))+`</span>
+            <select class="input" data-head="robots">`+robotsOptionsHTML(lang, val(settings.KeyHeadRobots))+`</select></label>
+          <label class="theme-field theme-field--text"><span class="theme-field__label">`+t(i18n.T(lang, "Google verification"))+`</span>
+            <input type="text" class="input" data-head="verify_google" maxlength="128" value="`+html.EscapeString(val(settings.KeyHeadVerifyGoogle))+`" placeholder="`+t(i18n.T(lang, "token"))+`"></label>
+          <label class="theme-field theme-field--text"><span class="theme-field__label">`+t(i18n.T(lang, "Bing verification"))+`</span>
+            <input type="text" class="input" data-head="verify_bing" maxlength="128" value="`+html.EscapeString(val(settings.KeyHeadVerifyBing))+`" placeholder="`+t(i18n.T(lang, "token"))+`"></label>
         </div>
-        <div class="cz-upload"><button type="button" class="btn btn--sm" data-theme-code-save>Save CSS and head tags</button><span class="sa-insp__hint" data-theme-code-status></span></div>`+
-			string(ui.Explain(ui.HTML(`<p>Written as escaped <code>&lt;meta&gt;</code> tags from this list only; raw head HTML is not accepted.</p>`)))) +
-		sec("Move a theme", `<p class="sa-insp__text">The whole theme as JSON, to keep or to bring to another install. An imported theme is checked before it goes live.</p>
-        <div class="cz-upload"><a class="btn btn--ghost btn--sm" href="/os/api/theme/export" download>Export</a></div>
+        <div class="cz-upload"><button type="button" class="btn btn--sm" data-theme-code-save>`+t(i18n.T(lang, "Save CSS and head tags"))+`</button><span class="sa-insp__hint" data-theme-code-status></span></div>`+
+			string(ui.ExplainTitled(i18n.T(lang, "How this works"), ui.HTML(`<p>`+escFill(i18n.T(lang, "Written as escaped {meta} tags from this list only; raw head HTML is not accepted.", "meta", htmlMark(0)), "<code>"+esc(metaTag)+"</code>")+`</p>`)))) +
+		sec(i18n.T(lang, "Move a theme"), `<p class="sa-insp__text">`+t(i18n.T(lang, "The whole theme as JSON, to keep or to bring to another install. An imported theme is checked before it goes live."))+`</p>
+        <div class="cz-upload"><a class="btn btn--ghost btn--sm" href="/os/api/theme/export" download>`+t(i18n.T(lang, "Export"))+`</a></div>
         <div class="cz-upload">
-          <input type="file" accept="application/json,.json" class="input" data-theme-import-file aria-label="Theme file">
-          <button type="button" class="btn btn--sm" data-theme-import>Import</button>
+          <input type="file" accept="application/json,.json" class="input" data-theme-import-file aria-label="`+t(i18n.T(lang, "Theme file"))+`">
+          <button type="button" class="btn btn--sm" data-theme-import>`+t(i18n.T(lang, "Import"))+`</button>
           <span class="sa-insp__hint" data-theme-import-status></span>
         </div>`)
 
-	inspector := `<div class="sa-itabs" role="tablist" aria-label="Theme settings">` + tab("design", "Design", true) + tab("colour", "Colour", false) + tab("layout", "Layout", false) + tab("advanced", "Advanced", false) + `</div>` +
+	inspector := `<div class="sa-itabs" role="tablist" aria-label="` + t(i18n.T(lang, "Theme settings")) + `">` + tab("design", i18n.T(lang, "Design"), true) + tab("colour", i18n.T(lang, "Colour"), false) + tab("layout", i18n.T(lang, "Layout"), false) + tab("advanced", i18n.T(lang, "Advanced"), false) + `</div>` +
 		panel("design", true, design) + panel("colour", false, colour) + panel("layout", false, layout) + panel("advanced", false, advanced)
 
+	opt := func(attr, value, label string, on bool) string {
+		pressed := "false"
+		if on {
+			pressed = "true"
+		}
+		return `<button type="button" class="sa-seg__opt" ` + attr + `="` + value + `" aria-pressed="` + pressed + `">` + t(label) + `</button>`
+	}
 	preview := `<div class="theme-draft-banner" data-theme-draft hidden data-has-draft="0">
-  <span>Resume the theme you were changing?</span>
-  <button type="button" class="btn btn--sm" data-draft-resume>Restore</button>
-  <button type="button" class="btn btn--ghost btn--sm" data-draft-discard>Discard</button>
+  <span>` + t(i18n.T(lang, "Resume the theme you were changing?")) + `</span>
+  <button type="button" class="btn btn--sm" data-draft-resume>` + t(i18n.T(lang, "Restore")) + `</button>
+  <button type="button" class="btn btn--ghost btn--sm" data-draft-discard>` + t(i18n.T(lang, "Discard")) + `</button>
 </div>
 <div class="customizer__toolbar">
-  <div class="sa-seg" role="group" aria-label="Preview device">
-    <button type="button" class="sa-seg__opt" data-theme-device="desktop" aria-pressed="true">Desktop</button>
-    <button type="button" class="sa-seg__opt" data-theme-device="tablet" aria-pressed="false">Tablet</button>
-    <button type="button" class="sa-seg__opt" data-theme-device="mobile" aria-pressed="false">Phone</button>
+  <div class="sa-seg" role="group" aria-label="` + t(i18n.T(lang, "Preview device")) + `">` +
+		opt("data-theme-device", "desktop", i18n.T(lang, "Desktop"), true) + opt("data-theme-device", "tablet", i18n.T(lang, "Tablet"), false) + opt("data-theme-device", "mobile", i18n.T(lang, "Phone"), false) + `
   </div>
-  <div class="sa-seg" role="group" aria-label="Preview page" data-theme-pages hidden>
-    <button type="button" class="sa-seg__opt" data-theme-page="home" aria-pressed="true">Home</button>
-    <button type="button" class="sa-seg__opt" data-theme-page="topic" aria-pressed="false">Topic</button>
-    <button type="button" class="sa-seg__opt" data-theme-page="article" aria-pressed="false">Article</button>
-    <button type="button" class="sa-seg__opt" data-theme-page="search" aria-pressed="false">Search</button>
-    <button type="button" class="sa-seg__opt" data-theme-page="signin" aria-pressed="false">Sign in</button>
+  <div class="sa-seg" role="group" aria-label="` + t(i18n.T(lang, "Preview page")) + `" data-theme-pages hidden>` +
+		opt("data-theme-page", "home", i18n.T(lang, "Home"), true) + opt("data-theme-page", "topic", i18n.T(lang, "Topic"), false) + opt("data-theme-page", "article", i18n.T(lang, "Article"), false) +
+		opt("data-theme-page", "search", i18n.T(lang, "Search"), false) + opt("data-theme-page", "signin", i18n.T(lang, "Sign in"), false) + `
   </div>
-  <div class="sa-seg" role="group" aria-label="Preview colour scheme">
-    <button type="button" class="sa-seg__opt" data-theme-scheme="dark" aria-pressed="true">Dark</button>
-    <button type="button" class="sa-seg__opt" data-theme-scheme="light" aria-pressed="false">Light</button>
+  <div class="sa-seg" role="group" aria-label="` + t(i18n.T(lang, "Preview colour scheme")) + `">` +
+		opt("data-theme-scheme", "dark", i18n.T(lang, "Dark"), true) + opt("data-theme-scheme", "light", i18n.T(lang, "Light"), false) + `
   </div>
   <span class="sa-doc__fill"></span>
-  <span class="sa-insp__hint" data-theme-preview-status>Live preview</span>
-  <a class="btn btn--ghost btn--sm" data-theme-newtab href="#" target="_blank" rel="noopener">Open in a tab ↗</a>
+  <span class="sa-insp__hint" data-theme-preview-status>` + t(i18n.T(lang, "Live preview")) + `</span>
+  <a class="btn btn--ghost btn--sm" data-theme-newtab href="#" target="_blank" rel="noopener">` + t(i18n.T(lang, "Open in a tab")) + ` ↗</a>
 </div>
 <div class="customizer__viewport" data-theme-viewport data-device="desktop">
   <div class="customizer__frame-wrap">
-    <iframe class="customizer__frame" data-theme-frame title="Live theme preview" referrerpolicy="no-referrer"></iframe>
-    <div class="customizer__frame-loading" data-theme-frame-loading>Building the preview</div>
+    <iframe class="customizer__frame" data-theme-frame title="` + t(i18n.T(lang, "Live theme preview")) + `" referrerpolicy="no-referrer"></iframe>
+    <div class="customizer__frame-loading" data-theme-frame-loading>` + t(i18n.T(lang, "Building the preview")) + `</div>
   </div>
 </div>`
 
 	body := string(ui.Document(ui.DocumentPage{
-		Title: "Theme",
+		Title: i18n.T(lang, "Theme"),
 		Hook:  "data-theme-studio",
-		State: ui.HTML(`<span data-active-preset-name>Current theme</span> <span class="sa-doc__msg" data-theme-status>Loading</span>`),
+		State: ui.HTML(`<span data-active-preset-name>` + t(i18n.T(lang, "Current theme")) + `</span> <span class="sa-doc__msg" data-theme-status>` + t(i18n.T(lang, "Loading")) + `</span>`),
 		Actions: ui.HTML(`<span class="sa-doc__msg" data-theme-changes hidden aria-live="polite"></span>` +
-			`<a class="btn btn--ghost btn--sm" href="/os/theme/store">Theme store</a>` +
-			`<button type="button" class="btn btn--ghost btn--sm" data-theme-revert>Revert</button>` +
-			`<button type="button" class="btn btn--ghost btn--sm btn--icon" data-studio-focus aria-pressed="true" aria-label="Theme settings beside the preview" title="Hide or show the settings">` + saIcon("settings") + `</button>` +
-			`<button type="button" class="btn btn--primary btn--sm" data-theme-apply>Apply theme</button>`),
+			`<a class="btn btn--ghost btn--sm" href="/os/theme/store">` + t(i18n.T(lang, "Theme store")) + `</a>` +
+			`<button type="button" class="btn btn--ghost btn--sm" data-theme-revert>` + t(i18n.T(lang, "Revert")) + `</button>` +
+			`<button type="button" class="btn btn--ghost btn--sm btn--icon" data-studio-focus aria-pressed="true" aria-label="` + t(i18n.T(lang, "Theme settings beside the preview")) + `" title="` + t(i18n.T(lang, "Hide or show the settings")) + `">` + saIcon("settings") + `</button>` +
+			`<button type="button" class="btn btn--primary btn--sm" data-theme-apply>` + t(i18n.T(lang, "Apply theme")) + `</button>`),
 		Inspector: ui.HTML(inspector),
-		Label:     "Theme settings",
+		Label:     i18n.T(lang, "Theme settings"),
 	}, ui.HTML(preview))) +
 		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-theme.js?v=` + assetVer("js/admin-os-theme.js") + `"></script>`
 
@@ -533,7 +551,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 		body = strings.Replace(body, `data-has-draft="0"`,
 			`data-has-draft="1" data-draft-payload="`+html.EscapeString(d)+`"`, 1)
 	}
-	writeOSHTML(w, r, adminOSLayout(nonce, "Theme Studio", "theme", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, i18n.T(lang, "Theme Studio"), "theme", cfg, htmpl.HTML(body)))
 }
 
 // handleOSThemeCode persists the Theme Studio "Custom CSS" + head/SEO meta
@@ -545,7 +563,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleOSThemeCode(w http.ResponseWriter, r *http.Request) {
 	cur := mode.Global.Current()
 	if cur == mode.ModeReadOnly || cur == mode.ModeQuarantined {
-		writeJSON(w, r, http.StatusServiceUnavailable, map[string]string{"error": "settings cannot be saved in " + string(cur) + " mode"})
+		writeJSON(w, r, http.StatusServiceUnavailable, map[string]string{"error": i18n.T(i18n.Lang(r.Context()), "Settings cannot be saved while the install is in {mode} mode.", "mode", strings.ToLower(saModeLabelIn(i18n.Lang(r.Context()), cur)))})
 		return
 	}
 	var body struct {
@@ -558,23 +576,23 @@ func (a *App) handleOSThemeCode(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 128*1024)
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": i18n.T(i18n.Lang(r.Context()), "The request could not be read: {error}", "error", err.Error())})
 		return
 	}
 
 	css := strings.TrimSpace(body.CustomCSS)
 	if len(css) > 64*1024 {
-		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "Custom CSS exceeds the 64 KB limit"})
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": i18n.T(i18n.Lang(r.Context()), "Custom CSS is over its 64 KB limit.")})
 		return
 	}
 	keywords := strings.TrimSpace(body.Keywords)
 	if len(keywords) > 256 {
-		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "Keywords exceed the 256-character limit"})
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": i18n.T(i18n.Lang(r.Context()), "Keywords are over their 256-character limit.")})
 		return
 	}
 	themeColor := strings.TrimSpace(body.ThemeColor)
 	if themeColor != "" && !hexColorRe.MatchString(themeColor) {
-		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "Theme colour must be a hex colour like #0d9488"})
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": i18n.T(i18n.Lang(r.Context()), "The theme colour must be a hex colour, like {example}.", "example", "#0d9488")})
 		return
 	}
 	robots := strings.TrimSpace(body.Robots)
@@ -582,14 +600,14 @@ func (a *App) handleOSThemeCode(w http.ResponseWriter, r *http.Request) {
 		robots = settings.Defaults[settings.KeyHeadRobots]
 	}
 	if !settings.RobotsOptions[robots] {
-		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "Robots directive is not an allowed value"})
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": i18n.T(i18n.Lang(r.Context()), "That is not a robots directive this page offers.")})
 		return
 	}
 	verifyGoogle := strings.TrimSpace(body.VerifyGoogle)
 	verifyBing := strings.TrimSpace(body.VerifyBing)
 	for _, tok := range []string{verifyGoogle, verifyBing} {
 		if tok != "" && !verifyTokenRe.MatchString(tok) {
-			writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "Verification token may contain only letters, digits, '-', '_', and '.'"})
+			writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": i18n.T(i18n.Lang(r.Context()), "A verification token holds only letters, digits and {chars}.", "chars", "- _ .")})
 			return
 		}
 	}
@@ -603,7 +621,7 @@ func (a *App) handleOSThemeCode(w http.ResponseWriter, r *http.Request) {
 		settings.KeyHeadVerifyBing:   verifyBing,
 	}
 	if err := a.siteSettings.SetMany(r.Context(), osScope(r), kv); err != nil {
-		writeJSON(w, r, http.StatusInternalServerError, map[string]string{"error": "save failed: " + err.Error()})
+		writeJSON(w, r, http.StatusInternalServerError, map[string]string{"error": i18n.T(i18n.Lang(r.Context()), "Saving failed: {error}", "error", err.Error())})
 		return
 	}
 
@@ -656,7 +674,7 @@ func (a *App) handleOSThemeCode(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleOSThemeExport(w http.ResponseWriter, r *http.Request) {
 	t, err := theme.Load(r.Context(), dbpkg.DB)
 	if err != nil {
-		writeJSON(w, r, http.StatusInternalServerError, map[string]string{"error": "failed to load theme: " + err.Error()})
+		writeJSON(w, r, http.StatusInternalServerError, map[string]string{"error": i18n.T(i18n.Lang(r.Context()), "The theme could not be read: {error}", "error", err.Error())})
 		return
 	}
 	vals, _ := a.siteSettings.GetAll(r.Context(), osScope(r))
@@ -696,30 +714,30 @@ func (a *App) handleOSThemeExport(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleOSThemeImport(w http.ResponseWriter, r *http.Request) {
 	cur := mode.Global.Current()
 	if cur == mode.ModeReadOnly || cur == mode.ModeQuarantined {
-		writeJSON(w, r, http.StatusServiceUnavailable, map[string]string{"error": "theme cannot be imported in " + string(cur) + " mode"})
+		writeJSON(w, r, http.StatusServiceUnavailable, map[string]string{"error": i18n.T(i18n.Lang(r.Context()), "A theme cannot be imported while the install is in {mode} mode.", "mode", strings.ToLower(saModeLabelIn(i18n.Lang(r.Context()), cur)))})
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 128*1024)
 	var env themeExport
 	if err := json.NewDecoder(r.Body).Decode(&env); err != nil {
-		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "not a valid theme file: " + err.Error()})
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": i18n.T(i18n.Lang(r.Context()), "That is not a theme file: {error}", "error", err.Error())})
 		return
 	}
 	if env.Schema != 1 {
-		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "unsupported or missing theme schema (expected vayupress_theme: 1)"})
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": i18n.T(i18n.Lang(r.Context()), "That theme file names no version this install reads ({expected}).", "expected", "vayupress_theme: 1")})
 		return
 	}
 
 	// Validate tokens by compiling them (rejects malformed colours/values).
 	css, err := theme.CompileCSS(env.Tokens)
 	if err != nil {
-		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "invalid theme tokens: " + err.Error()})
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": i18n.T(i18n.Lang(r.Context()), "The theme's values are not valid: {error}", "error", err.Error())})
 		return
 	}
 
 	ccss := strings.TrimSpace(env.CustomCSS)
 	if len(ccss) > 64*1024 {
-		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "custom CSS in file exceeds the 64 KB limit"})
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": i18n.T(i18n.Lang(r.Context()), "The file's custom CSS is over its 64 KB limit.")})
 		return
 	}
 	keywords := strings.TrimSpace(env.Head.Keywords)
@@ -728,7 +746,7 @@ func (a *App) handleOSThemeImport(w http.ResponseWriter, r *http.Request) {
 	}
 	themeColor := strings.TrimSpace(env.Head.ThemeColor)
 	if themeColor != "" && !hexColorRe.MatchString(themeColor) {
-		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "head theme_color is not a valid hex colour"})
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": i18n.T(i18n.Lang(r.Context()), "The file's theme colour is not a hex colour.")})
 		return
 	}
 	robots := strings.TrimSpace(env.Head.Robots)
@@ -739,13 +757,13 @@ func (a *App) handleOSThemeImport(w http.ResponseWriter, r *http.Request) {
 	verifyBing := strings.TrimSpace(env.Head.VerifyBing)
 	for _, tok := range []string{verifyGoogle, verifyBing} {
 		if tok != "" && !verifyTokenRe.MatchString(tok) {
-			writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "head verification token contains invalid characters"})
+			writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": i18n.T(i18n.Lang(r.Context()), "A verification token in the file holds characters it may not.")})
 			return
 		}
 	}
 
 	if err := theme.Save(r.Context(), dbpkg.DB, env.Tokens); err != nil {
-		writeJSON(w, r, http.StatusInternalServerError, map[string]string{"error": "failed to persist tokens: " + err.Error()})
+		writeJSON(w, r, http.StatusInternalServerError, map[string]string{"error": i18n.T(i18n.Lang(r.Context()), "The theme could not be saved: {error}", "error", err.Error())})
 		return
 	}
 	render.ActivateTheme(env.Tokens, css)
@@ -759,7 +777,7 @@ func (a *App) handleOSThemeImport(w http.ResponseWriter, r *http.Request) {
 		settings.KeyHeadVerifyBing:   verifyBing,
 	}
 	if err := a.siteSettings.SetMany(r.Context(), osScope(r), kv); err != nil {
-		writeJSON(w, r, http.StatusInternalServerError, map[string]string{"error": "failed to persist settings: " + err.Error()})
+		writeJSON(w, r, http.StatusInternalServerError, map[string]string{"error": i18n.T(i18n.Lang(r.Context()), "The settings could not be saved: {error}", "error", err.Error())})
 		return
 	}
 	// The render package's active settings are a PROCESS-WIDE singleton: they are

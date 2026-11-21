@@ -16,6 +16,7 @@ import (
 	"html"
 	"strings"
 
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/theme"
 	"github.com/johalputt/vayupress/internal/ui"
 )
@@ -34,17 +35,48 @@ type a11yCheck struct {
 
 // grade returns the strongest WCAG level the ratio clears, plus a badge class.
 // AAA is 7.0 for normal text; AA is 4.5; below 3.0 fails everything.
-func (c a11yCheck) grade() (label, cls string) {
+func (c a11yCheck) grade(lang string) (label, cls string) {
 	switch {
 	case c.Ratio >= 7.0:
 		return "AAA", "badge badge--ok"
 	case c.Ratio >= wcagAANormal:
 		return "AA", "badge badge--ok"
 	case c.Ratio >= wcagAALarge:
-		return "AA large only", "badge badge--warn"
+		return i18n.T(lang, "AA large only"), "badge badge--warn"
 	default:
-		return "Fails", "badge badge--danger"
+		return i18n.T(lang, "Fails"), "badge badge--danger"
 	}
+}
+
+// a11yLabelIn is a check's pairing in lang. The checks are named in English
+// where they are measured, which their tests read; a pairing is translated as
+// it is drawn.
+func a11yLabelIn(lang, label string) string {
+	switch label {
+	case "Accent on dark background":
+		return i18n.T(lang, "Accent on dark background")
+	case "Accent 2 on dark background":
+		return i18n.T(lang, "Accent 2 on dark background")
+	case "Accent on light background":
+		return i18n.T(lang, "Accent on light background")
+	case "Accent 2 on light background":
+		return i18n.T(lang, "Accent 2 on light background")
+	case "Accent on dark card":
+		return i18n.T(lang, "Accent on dark card")
+	case "Accent 2 on dark card":
+		return i18n.T(lang, "Accent 2 on dark card")
+	case "Body text on dark background":
+		return i18n.T(lang, "Body text on dark background")
+	case "Body text on light background":
+		return i18n.T(lang, "Body text on light background")
+	case "Muted text on dark background":
+		return i18n.T(lang, "Muted text on dark background")
+	case "Muted text on dark card":
+		return i18n.T(lang, "Muted text on dark card")
+	case "Muted text on light background":
+		return i18n.T(lang, "Muted text on light background")
+	}
+	return label
 }
 
 // Reading-text tokens the public article theme ships (see articleCSSMin in
@@ -109,7 +141,7 @@ func themeA11yChecks(accentDark, accent2Dark, accentLight, accent2Light string) 
 
 // a11ySummary grades the WEAKEST pairing, as a dot and a word, so the section tells the
 // truth rather than the most flattering number.
-func a11ySummary(checks []a11yCheck) string {
+func a11ySummary(lang string, checks []a11yCheck) string {
 	if len(checks) == 0 {
 		return ""
 	}
@@ -122,11 +154,11 @@ func a11ySummary(checks []a11yCheck) string {
 	var s ui.HTML
 	switch {
 	case worst.Ratio >= wcagAANormal:
-		s = ui.State("ok", "Readable")
+		s = ui.State("ok", i18n.T(lang, "Readable"))
 	case worst.Ratio >= wcagAALarge:
-		s = ui.State("warn", "Low contrast")
+		s = ui.State("warn", i18n.T(lang, "Low contrast"))
 	default:
-		s = ui.State("danger", "Hard to read")
+		s = ui.State("danger", i18n.T(lang, "Hard to read"))
 	}
 	return `<div class="sa-insp__text">` + string(s) + `</div>`
 }
@@ -134,27 +166,26 @@ func a11ySummary(checks []a11yCheck) string {
 // themeA11yPanel renders the readout. It is server-measured from the SAVED
 // palette, so it reflects what readers currently get; the Studio re-renders it
 // after Apply. Rows name the pairing, show the measured ratio and the WCAG grade.
-func themeA11yPanel(checks []a11yCheck) string {
+func themeA11yPanel(lang string, checks []a11yCheck) string {
 	if len(checks) == 0 {
 		return ""
 	}
 	var b strings.Builder
 	b.WriteString(`<div class="cz-a11y" data-theme-a11y>`)
-	b.WriteString(`<div class="cz-a11y__head"><span class="cz-a11y__title">Readability</span>` +
-		`<span class="text-xs muted">WCAG AA wants 4.5:1 for link text · AAA is 7:1</span></div>`)
+	b.WriteString(`<div class="cz-a11y__head"><span class="cz-a11y__title">` + html.EscapeString(i18n.T(lang, "Readability")) + `</span>` +
+		`<span class="text-xs muted">` + html.EscapeString(i18n.T(lang, "WCAG AA wants 4.5:1 for link text · AAA is 7:1")) + `</span></div>`)
 	b.WriteString(`<div class="table-wrap"><table class="table"><tbody>`)
 	for _, c := range checks {
-		gl, gc := c.grade()
+		gl, gc := c.grade(lang)
 		b.WriteString(`<tr>` +
 			`<td class="row-title"><span class="cz-a11y__dot" data-color="` + html.EscapeString(c.Foreground) + `" aria-hidden="true"></span>` +
-			html.EscapeString(c.Label) + `</td>` +
+			html.EscapeString(a11yLabelIn(lang, c.Label)) + `</td>` +
 			`<td class="muted text-sm mono">` + fmt.Sprintf("%.1f:1", c.Ratio) + `</td>` +
 			`<td><span class="` + gc + `">` + gl + `</span></td>` +
 			`</tr>`)
 	}
 	b.WriteString(`</tbody></table></div>`)
-	b.WriteString(`<p class="muted text-xs mt-2">Measured against the theme's own page backgrounds. ` +
-		`A colour that fails is still yours to keep — this only tells you what readers will experience.</p>`)
+	b.WriteString(`<p class="muted text-xs mt-2">` + html.EscapeString(i18n.T(lang, "Measured against the theme's own page backgrounds. A colour that fails is still yours to keep: this only tells you what readers will see.")) + `</p>`)
 	b.WriteString(`</div>`)
 	return b.String()
 }

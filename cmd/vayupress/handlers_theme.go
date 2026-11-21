@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
@@ -68,14 +69,20 @@ var robotsChoices = []struct{ value, label string }{
 
 // robotsOptionsHTML renders the <option> elements for the robots <select>,
 // marking current as selected.
-func robotsOptionsHTML(current string) string {
+func robotsOptionsHTML(lang, current string) string {
 	var sb strings.Builder
 	for _, c := range robotsChoices {
 		sel := ""
 		if c.value == current {
 			sel = " selected"
 		}
-		sb.WriteString(`<option value="` + template.HTMLEscapeString(c.value) + `"` + sel + `>` + template.HTMLEscapeString(c.label) + `</option>`)
+		// The directives are the words robots read; only the default is a
+		// sentence.
+		label := c.label
+		if c.value == "" {
+			label = i18n.T(lang, "Default (no directive: fully indexable)")
+		}
+		sb.WriteString(`<option value="` + template.HTMLEscapeString(c.value) + `"` + sel + `>` + template.HTMLEscapeString(label) + `</option>`)
 	}
 	return sb.String()
 }

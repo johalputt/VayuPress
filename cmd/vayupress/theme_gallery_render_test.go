@@ -10,7 +10,7 @@ import (
 // TestThemePresetCardsRender proves the Theme Studio gallery is emitted
 // server-side: one card button per preset, including Gale and Zephyr.
 func TestThemePresetCardsRender(t *testing.T) {
-	out := themePresetCards()
+	out := themePresetCards("en")
 	cards := strings.Count(out, `class="theme-card"`)
 	if cards < 20 {
 		t.Fatalf("expected 20+ preset cards rendered, got %d", cards)

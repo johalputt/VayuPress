@@ -52,31 +52,31 @@ func TestThemeA11yGradesContrastHonestly(t *testing.T) {
 		if c.Ratio < 1 || c.Ratio > 21 {
 			t.Errorf("%s ratio %.2f out of range", c.Label, c.Ratio)
 		}
-		if lbl, _ := c.grade(); lbl == "" {
+		if lbl, _ := c.grade("en"); lbl == "" {
 			t.Errorf("%s produced no grade", c.Label)
 		}
 	}
-	if chip := a11ySummary(checks); !strings.Contains(chip, `sa-dot--ok" aria-hidden="true"></span>Readable`) {
+	if chip := a11ySummary("en", checks); !strings.Contains(chip, `sa-dot--ok" aria-hidden="true"></span>Readable`) {
 		t.Errorf("high-contrast palette chip = %q, want Readable", chip)
 	}
 
 	// A washed-out accent on the dark background must be called out, not hidden.
 	weak := themeA11yChecks("#1a1f2b", "", "#ffffff", "")
-	chip := a11ySummary(weak)
+	chip := a11ySummary("en", weak)
 	if strings.Contains(chip, "Readable") {
 		t.Errorf("chip = %q, want a low-contrast warning for a near-invisible accent", chip)
 	}
-	body := themeA11yPanel(weak)
+	body := themeA11yPanel("en", weak)
 	if !strings.Contains(body, "Readability") || !strings.Contains(body, ":1") {
 		t.Error("panel must name itself and show measured ratios")
 	}
 	assertCSPSafe(t, "themeA11yPanel", body)
 
 	// No colours supplied → nothing to claim.
-	if got := a11ySummary(nil); got != "" {
+	if got := a11ySummary("en", nil); got != "" {
 		t.Errorf("empty checks chip = %q, want empty", got)
 	}
-	if got := themeA11yPanel(nil); got != "" {
+	if got := themeA11yPanel("en", nil); got != "" {
 		t.Errorf("empty checks panel = %q, want empty", got)
 	}
 }
@@ -93,7 +93,7 @@ func TestThemeA11yGradeBoundaries(t *testing.T) {
 		{3.5, "AA large only"},
 		{2.0, "Fails"},
 	} {
-		got, _ := a11yCheck{Ratio: tc.ratio}.grade()
+		got, _ := a11yCheck{Ratio: tc.ratio}.grade("en")
 		if got != tc.want {
 			t.Errorf("ratio %.1f graded %q, want %q", tc.ratio, got, tc.want)
 		}
@@ -149,7 +149,7 @@ func TestA11yPanelMeasuresReadingText(t *testing.T) {
 	// The summary must still grade the WEAKEST pairing, now that more pairings
 	// exist — otherwise widening the check would hide the very failure it adds.
 	weak := themeA11yChecks("#1a1f2e", "#818cf8", "#4f46e5", "#6366f1")
-	if chip := a11ySummary(weak); !strings.Contains(chip, `sa-dot--danger" aria-hidden="true"></span>Hard to read`) {
+	if chip := a11ySummary("en", weak); !strings.Contains(chip, `sa-dot--danger" aria-hidden="true"></span>Hard to read`) {
 		t.Errorf("summary chip = %q for a failing accent; it must grade the worst pairing", chip)
 	}
 }

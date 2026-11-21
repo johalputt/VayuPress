@@ -48,7 +48,7 @@ func TestDarkColorsCoverPreviewVars(t *testing.T) {
 		"bg": true, "surface": true, "text": true, "muted": true,
 		"accent": true, "accent2": true, "hi": true, "green": true,
 	}
-	fields := append(brandColorFields(), themeDarkColors()...)
+	fields := append(brandColorFields("en"), themeDarkColors("en")...)
 	for _, f := range fields {
 		if f.Vari == "" {
 			continue // light-mode accents in the brand set carry no preview var
