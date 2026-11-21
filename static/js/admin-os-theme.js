@@ -105,6 +105,16 @@
     return m ? decodeURIComponent(m[1]) : '';
   }
 
+  // clock is the time now, as the page's language writes it.
+  function clock() { return new Date().toLocaleTimeString(document.documentElement.lang || []); }
+
+  // refusal is what a refused request said, in the page's language, or
+  // fallback when it said nothing a person can read.
+  function refusal(d, fallback) {
+    return (d && (d.detail || (d.error && d.error.message) || (typeof d.error === 'string' && d.error) || d.title)) ||
+      fallback || vpT('That did not go through.');
+  }
+
   // ── Load tokens into controls ──────────────────────────────────────────────
   function loadTokens(tok) {
     model = {};
@@ -127,7 +137,7 @@
       el.value = saved[key] != null ? String(saved[key]) : (def ? def.value : '');
       options[key] = el.value;
     });
-    if (activeNameEl) activeNameEl.textContent = activePresetName ? 'Current theme: ' + activePresetName : 'Current theme';
+    if (activeNameEl) activeNameEl.textContent = activePresetName ? vpT('Current theme: {theme}', { theme: activePresetName }) : vpT('Current theme');
     updateOptionVisibility();
     highlightActiveCard(activePresetName);
   }
@@ -193,13 +203,13 @@
   function refreshPreview() {
     var seq = ++reqSeq;
     showLoading(true);
-    setPreviewStatus('Updating…');
+    setPreviewStatus(vpT('Updating…'));
     fetch('/os/api/theme/preview-draft', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
       body: JSON.stringify({ tokens: buildTokens() })
     }).then(function (r) {
-      if (!r.ok) return r.json().then(function (e) { throw new Error((e.error) || ('preview failed (' + r.status + ')')); });
+      if (!r.ok) return r.json().then(function (e) { throw new Error(refusal(e)); });
       return r.json();
     }).then(function (d) {
       if (seq !== reqSeq) return; // a newer request superseded this one
@@ -207,7 +217,7 @@
     }).catch(function (err) {
       if (seq !== reqSeq) return;
       showLoading(false);
-      setPreviewStatus('Preview error');
+      setPreviewStatus(vpT('Preview error'));
       setStatus(String(err.message || err), 'danger');
     });
   }
@@ -253,7 +263,7 @@
       useReload = true;
       if (frame) frame.src = pageURL;
       showLoading(false);
-      setPreviewStatus(fitNote || 'Live preview');
+      setPreviewStatus(fitNote || vpT('Live preview'));
     }, 900);
   }
 
@@ -265,7 +275,7 @@
       previewReady = true;
       clearTimeout(readyTimer);
       showLoading(false);
-      setPreviewStatus(fitNote || 'Live preview');
+      setPreviewStatus(fitNote || vpT('Live preview'));
       if (pending && frame && frame.contentWindow) {
         var p = pending; pending = null;
         frame.contentWindow.postMessage({ type: 'vayu-preview-css', href: p.cssHref }, location.origin);
@@ -274,14 +284,14 @@
     } else if (d.type === 'vayu-preview-ack') {
       clearTimeout(ackTimer);
       showLoading(false);
-      setPreviewStatus(fitNote || 'Live preview');
+      setPreviewStatus(fitNote || vpT('Live preview'));
     }
   });
   if (frame) {
     frame.addEventListener('load', function () {
       showLoading(false);
       // A page rendered for the options (no stylesheet handshake) is live once it loads.
-      if (ownLayout()) setPreviewStatus(fitNote || 'Live preview');
+      if (ownLayout()) setPreviewStatus(fitNote || vpT('Live preview'));
     });
   }
 
@@ -302,12 +312,12 @@
       frame.style.height = (wrap.clientHeight / k) + 'px';
       frame.style.transform = 'scale(' + k + ')';
       frame.style.transformOrigin = '0 0';
-      fitNote = 'Desktop at 1440 px, shown at ' + Math.round(k * 100) + '%';
+      fitNote = vpT('Desktop at {width} px, shown at {percent}%', { width: DESKTOP, percent: Math.round(k * 100) });
     } else {
       frame.style.width = frame.style.height = frame.style.transform = frame.style.transformOrigin = '';
       fitNote = '';
     }
-    setPreviewStatus(fitNote || 'Live preview');
+    setPreviewStatus(fitNote || vpT('Live preview'));
   }
   window.addEventListener('resize', fitFrame);
 
@@ -388,11 +398,11 @@
   function markDirty() {
     if (dirty) return;
     dirty = true;
-    if (applyBtn) { applyBtn.classList.add('is-dirty'); applyBtn.textContent = 'Apply theme •'; }
+    if (applyBtn) { applyBtn.classList.add('is-dirty'); applyBtn.textContent = vpT('Apply theme') + ' •'; }
   }
   function clearDirty() {
     dirty = false;
-    if (applyBtn) { applyBtn.classList.remove('is-dirty'); applyBtn.textContent = 'Apply theme'; }
+    if (applyBtn) { applyBtn.classList.remove('is-dirty'); applyBtn.textContent = vpT('Apply theme'); }
   }
   window.addEventListener('beforeunload', function (e) {
     if (dirty) { e.preventDefault(); e.returnValue = ''; }
@@ -447,7 +457,7 @@
       var preset = allPresets.find(function (p) { return p.Name === name; });
       if (preset) {
         loadTokens(preset);
-        setStatus('Preset "' + name + '" loaded — not yet applied', 'warn');
+        setStatus(vpT('{theme} is loaded, not yet applied.', { theme: name }), 'warn');
         markDirty();
         schedulePreview();
       }
@@ -456,7 +466,7 @@
 
   // ── Apply / Revert ──────────────────────────────────────────────────────────
   function apply() {
-    setStatus('Applying…');
+    setStatus(vpT('Applying…'));
     var payload = {};
     Object.keys(model).forEach(function (k) { payload[k] = model[k]; });
     if (loadedCustomCSS) payload.custom_css = loadedCustomCSS;
@@ -470,14 +480,14 @@
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
       body: JSON.stringify({ tokens: payload })
     }).then(function (r) {
-      if (!r.ok) return r.json().then(function (e) { throw new Error((e.error && e.error.message) || ('apply failed (' + r.status + ')')); });
+      if (!r.ok) return r.json().then(function (e) { throw new Error(refusal(e)); });
       return r.json();
     }).then(function (d) {
       clearDirty();
-      setStatus('Applied · ' + (d.name || '') + ' · ' + new Date().toLocaleTimeString(), 'ok');
+      setStatus(vpT('Applied {theme} at {time}', { theme: d.name || vpT('Custom'), time: clock() }), 'ok');
       highlightActiveCard(d.name || '');
-      if (activeNameEl) activeNameEl.textContent = 'Current theme: ' + (d.name || 'Custom');
-      if (window.vpToast) window.vpToast('Theme applied', 'ok');
+      if (activeNameEl) activeNameEl.textContent = vpT('Current theme: {theme}', { theme: d.name || vpT('Custom') });
+      if (window.vpToast) window.vpToast(vpT('Theme applied'), 'ok');
     }).catch(function (err) { setStatus(String(err.message || err), 'danger'); });
   }
 
@@ -494,7 +504,7 @@
 
   if (applyBtn) applyBtn.addEventListener('click', apply);
   if (revertBtn) revertBtn.addEventListener('click', function () {
-    fetchTokens().then(function () { clearDirty(); setStatus('Reverted to saved theme', 'ok'); schedulePreview(); });
+    fetchTokens().then(function () { clearDirty(); setStatus(vpT('Reverted to the saved theme.'), 'ok'); schedulePreview(); });
   });
 
   // ── Custom CSS + Head/SEO save ────────────────────────────────────────────────
@@ -508,7 +518,7 @@
   function headVal(name) { var el = root.querySelector('[data-head="' + name + '"]'); return el ? el.value : ''; }
   if (codeSaveBtn) {
     codeSaveBtn.addEventListener('click', function () {
-      setCodeStatus('Saving…');
+      setCodeStatus(vpT('Saving…'));
       codeSaveBtn.disabled = true;
       fetch('/os/api/theme/code', {
         method: 'POST',
@@ -519,11 +529,11 @@
           robots: headVal('robots'), verify_google: headVal('verify_google'), verify_bing: headVal('verify_bing')
         })
       }).then(function (r) {
-        if (!r.ok) return r.json().then(function (e) { throw new Error(e.error || ('save failed (' + r.status + ')')); });
+        if (!r.ok) return r.json().then(function (e) { throw new Error(refusal(e)); });
         return r.json();
       }).then(function () {
-        setCodeStatus('Saved · live on public pages · ' + new Date().toLocaleTimeString(), 'ok');
-        if (window.vpToast) window.vpToast('Custom CSS & meta saved', 'ok');
+        setCodeStatus(vpT('Saved, live on public pages at {time}', { time: clock() }), 'ok');
+        if (window.vpToast) window.vpToast(vpT('Custom CSS and head tags saved'), 'ok');
       }).catch(function (err) { setCodeStatus(String(err.message || err), 'danger'); })
         .then(function () { codeSaveBtn.disabled = false; });
     });
@@ -541,24 +551,24 @@
   if (importBtn) {
     importBtn.addEventListener('click', function () {
       var f = importFile && importFile.files && importFile.files[0];
-      if (!f) { setImportStatus('Choose a .json theme file first', 'danger'); return; }
+      if (!f) { setImportStatus(vpT('Choose a theme file first.'), 'danger'); return; }
       var reader = new FileReader();
       reader.onload = function () {
-        setImportStatus('Importing…');
+        setImportStatus(vpT('Importing…'));
         importBtn.disabled = true;
         fetch('/os/api/theme/import', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
           body: reader.result
         }).then(function (r) {
-          if (!r.ok) return r.json().then(function (e) { throw new Error(e.error || ('import failed (' + r.status + ')')); });
+          if (!r.ok) return r.json().then(function (e) { throw new Error(refusal(e)); });
           return r.json();
         }).then(function (d) {
-          setImportStatus('Imported “' + (d.name || 'theme') + '” — reloading…', 'ok');
+          setImportStatus(d.name ? vpT('Imported {theme}. Reloading…', { theme: d.name }) : vpT('Imported. Reloading…'), 'ok');
           setTimeout(function () { window.location.reload(); }, 900);
         }).catch(function (err) { setImportStatus(String(err.message || err), 'danger'); importBtn.disabled = false; });
       };
-      reader.onerror = function () { setImportStatus('Could not read the file', 'danger'); };
+      reader.onerror = function () { setImportStatus(vpT('The file could not be read.'), 'danger'); };
       reader.readAsText(f);
     });
   }
@@ -574,27 +584,27 @@
   function favBust() { if (favImg) favImg.src = '/favicon.ico?t=' + Date.now(); }
   if (favUp) favUp.addEventListener('click', function () {
     var f = favFile && favFile.files && favFile.files[0];
-    if (!f) { favSet('Choose a PNG or ICO first', 'danger'); return; }
-    favUp.disabled = true; favSet('Uploading…');
+    if (!f) { favSet(vpT('Choose a PNG or ICO file first.'), 'danger'); return; }
+    favUp.disabled = true; favSet(vpT('Uploading…'));
     var fd = new FormData(); fd.append('favicon', f);
     fetch('/os/api/branding/favicon', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }, body: fd })
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (res) {
         favUp.disabled = false;
-        if (res.ok) { favSet('Logo updated', 'ok'); favBust(); if (favState) favState.textContent = 'Custom logo active — live on your site.'; }
-        else { favSet((res.d && res.d.error && res.d.error.message) || 'Upload failed', 'danger'); }
-      }).catch(function (e) { favUp.disabled = false; favSet('Error: ' + e, 'danger'); });
+        if (res.ok) { favSet(vpT('Logo updated'), 'ok'); favBust(); if (favState) favState.textContent = vpT('Your own logo is live on your site.'); }
+        else { favSet(refusal(res.d, vpT('The upload did not go through.')), 'danger'); }
+      }).catch(function () { favUp.disabled = false; favSet(vpT('The server could not be reached.'), 'danger'); });
   });
   if (favRm) favRm.addEventListener('click', function () {
-    favRm.disabled = true; favSet('Removing…');
+    favRm.disabled = true; favSet(vpT('Removing…'));
     var fd = new FormData(); fd.append('remove', '1');
     fetch('/os/api/branding/favicon', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }, body: fd })
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (res) {
         favRm.disabled = false;
-        if (res.ok) { favSet('Default restored', 'ok'); favBust(); if (favState) favState.textContent = 'Using the default mark.'; }
-        else { favSet((res.d && res.d.error && res.d.error.message) || 'Remove failed', 'danger'); }
-      }).catch(function (e) { favRm.disabled = false; favSet('Error: ' + e, 'danger'); });
+        if (res.ok) { favSet(vpT('Default restored'), 'ok'); favBust(); if (favState) favState.textContent = vpT('Using the default mark.'); }
+        else { favSet(refusal(res.d, vpT('The removal did not go through.')), 'danger'); }
+      }).catch(function () { favRm.disabled = false; favSet(vpT('The server could not be reached.'), 'danger'); });
   });
 
   // ── Hero background image upload + live preview refresh ─────────────────────
@@ -610,32 +620,32 @@
   if (heroImg) heroImg.addEventListener('error', function () { heroImg.style.display = 'none'; });
   if (heroUp) heroUp.addEventListener('click', function () {
     var f = heroFile && heroFile.files && heroFile.files[0];
-    if (!f) { heroSet('Choose a PNG, JPEG or WebP first', 'danger'); return; }
-    heroUp.disabled = true; heroSet('Uploading…');
+    if (!f) { heroSet(vpT('Choose a PNG, JPEG or WebP file first.'), 'danger'); return; }
+    heroUp.disabled = true; heroSet(vpT('Uploading…'));
     var fd = new FormData(); fd.append('image', f);
     fetch('/os/api/branding/hero', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }, body: fd })
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (res) {
         heroUp.disabled = false;
         if (res.ok) {
-          heroSet('Hero image updated', 'ok'); heroBust();
-          if (heroState) heroState.textContent = 'Custom hero image active.';
+          heroSet(vpT('Hero image updated'), 'ok'); heroBust();
+          if (heroState) heroState.textContent = vpT('Your own hero image is in use.');
           // Switch the Hero background option to Image and refresh the preview.
           if (optInputs.herobg) { optInputs.herobg.value = 'image'; options.herobg = 'image'; }
           schedulePreview();
-        } else { heroSet((res.d && res.d.error) || 'Upload failed', 'danger'); }
-      }).catch(function (e) { heroUp.disabled = false; heroSet('Error: ' + e, 'danger'); });
+        } else { heroSet(refusal(res.d, vpT('The upload did not go through.')), 'danger'); }
+      }).catch(function () { heroUp.disabled = false; heroSet(vpT('The server could not be reached.'), 'danger'); });
   });
   if (heroRm) heroRm.addEventListener('click', function () {
-    heroRm.disabled = true; heroSet('Removing…');
+    heroRm.disabled = true; heroSet(vpT('Removing…'));
     var fd = new FormData(); fd.append('remove', '1');
     fetch('/os/api/branding/hero', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }, body: fd })
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (res) {
         heroRm.disabled = false;
-        if (res.ok) { heroSet('Hero image removed', 'ok'); if (heroImg) heroImg.style.display = 'none'; if (heroState) heroState.textContent = 'No hero image set.'; schedulePreview(); }
-        else { heroSet((res.d && res.d.error) || 'Remove failed', 'danger'); }
-      }).catch(function (e) { heroRm.disabled = false; heroSet('Error: ' + e, 'danger'); });
+        if (res.ok) { heroSet(vpT('Hero image removed'), 'ok'); if (heroImg) heroImg.style.display = 'none'; if (heroState) heroState.textContent = vpT('No hero image set.'); schedulePreview(); }
+        else { heroSet(refusal(res.d, vpT('The removal did not go through.')), 'danger'); }
+      }).catch(function () { heroRm.disabled = false; heroSet(vpT('The server could not be reached.'), 'danger'); });
   });
 
   // ── Social/share (OG) image upload ─────────────────────────────────────────
@@ -650,43 +660,43 @@
   if (ogImg) ogImg.addEventListener('error', function () { ogImg.style.display = 'none'; });
   if (ogUp) ogUp.addEventListener('click', function () {
     var f = ogFile && ogFile.files && ogFile.files[0];
-    if (!f) { ogSet('Choose a PNG, JPEG or WebP first', 'danger'); return; }
-    ogUp.disabled = true; ogSet('Uploading…');
+    if (!f) { ogSet(vpT('Choose a PNG, JPEG or WebP file first.'), 'danger'); return; }
+    ogUp.disabled = true; ogSet(vpT('Uploading…'));
     var fd = new FormData(); fd.append('image', f);
     fetch('/os/api/branding/og', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }, body: fd })
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (res) {
         ogUp.disabled = false;
-        if (res.ok) { ogSet('Share image updated', 'ok'); ogBust(); if (ogState) ogState.textContent = 'Custom share image active.'; }
-        else { ogSet((res.d && res.d.error) || 'Upload failed', 'danger'); }
-      }).catch(function (e) { ogUp.disabled = false; ogSet('Error: ' + e, 'danger'); });
+        if (res.ok) { ogSet(vpT('Share image updated'), 'ok'); ogBust(); if (ogState) ogState.textContent = vpT('Your own share image is in use.'); }
+        else { ogSet(refusal(res.d, vpT('The upload did not go through.')), 'danger'); }
+      }).catch(function () { ogUp.disabled = false; ogSet(vpT('The server could not be reached.'), 'danger'); });
   });
   if (ogRm) ogRm.addEventListener('click', function () {
-    ogRm.disabled = true; ogSet('Removing…');
+    ogRm.disabled = true; ogSet(vpT('Removing…'));
     var fd = new FormData(); fd.append('remove', '1');
     fetch('/os/api/branding/og', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }, body: fd })
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (res) {
         ogRm.disabled = false;
-        if (res.ok) { ogSet('Share image removed', 'ok'); if (ogImg) ogImg.style.display = 'none'; if (ogState) ogState.textContent = 'No share image set.'; }
-        else { ogSet((res.d && res.d.error) || 'Remove failed', 'danger'); }
-      }).catch(function (e) { ogRm.disabled = false; ogSet('Error: ' + e, 'danger'); });
+        if (res.ok) { ogSet(vpT('Share image removed'), 'ok'); if (ogImg) ogImg.style.display = 'none'; if (ogState) ogState.textContent = vpT('No share image set.'); }
+        else { ogSet(refusal(res.d, vpT('The removal did not go through.')), 'danger'); }
+      }).catch(function () { ogRm.disabled = false; ogSet(vpT('The server could not be reached.'), 'danger'); });
   });
 
   // ── Membership buttons toggle (saved straight to the live site) ─────────────
   var memToggle = document.getElementById('site-membership');
   var memStatus = document.getElementById('site-membership-status');
   if (memToggle) memToggle.addEventListener('change', function () {
-    if (memStatus) { memStatus.textContent = 'Saving…'; memStatus.className = 'text-xs muted'; }
+    if (memStatus) { memStatus.textContent = vpT('Saving…'); memStatus.className = 'text-xs muted'; }
     fetch('/os/api/settings', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
       body: JSON.stringify({ key: 'site.membership_buttons', value: memToggle.checked ? 'true' : 'false' })
     }).then(function (r) {
-      if (!r.ok) return r.json().then(function (e) { throw new Error((e.error && e.error.message) || e.error || ('save failed (' + r.status + ')')); });
+      if (!r.ok) return r.json().then(function (e) { throw new Error(refusal(e)); });
       return r.json();
     }).then(function () {
-      if (memStatus) { memStatus.textContent = 'Saved'; memStatus.className = 'text-xs status--ok'; }
-      if (window.vpToast) window.vpToast('Saved', 'ok');
+      if (memStatus) { memStatus.textContent = vpT('Saved'); memStatus.className = 'text-xs status--ok'; }
+      if (window.vpToast) window.vpToast(vpT('Saved'), 'ok');
     }).catch(function (err) { if (memStatus) { memStatus.textContent = String(err.message || err); memStatus.className = 'text-xs status--danger'; } });
   });
 
@@ -694,16 +704,16 @@
   var heroToggle = document.getElementById('home-hero');
   var heroToggleStatus = document.getElementById('home-hero-status');
   if (heroToggle) heroToggle.addEventListener('change', function () {
-    if (heroToggleStatus) { heroToggleStatus.textContent = 'Saving…'; heroToggleStatus.className = 'text-xs muted'; }
+    if (heroToggleStatus) { heroToggleStatus.textContent = vpT('Saving…'); heroToggleStatus.className = 'text-xs muted'; }
     fetch('/os/api/settings', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
       body: JSON.stringify({ key: 'home.hero', value: heroToggle.checked ? 'true' : 'false' })
     }).then(function (r) {
-      if (!r.ok) return r.json().then(function (e) { throw new Error((e.error && e.error.message) || e.error || ('save failed (' + r.status + ')')); });
+      if (!r.ok) return r.json().then(function (e) { throw new Error(refusal(e)); });
       return r.json();
     }).then(function () {
-      if (heroToggleStatus) { heroToggleStatus.textContent = 'Saved'; heroToggleStatus.className = 'text-xs status--ok'; }
-      if (window.vpToast) window.vpToast('Saved', 'ok');
+      if (heroToggleStatus) { heroToggleStatus.textContent = vpT('Saved'); heroToggleStatus.className = 'text-xs status--ok'; }
+      if (window.vpToast) window.vpToast(vpT('Saved'), 'ok');
     }).catch(function (err) { if (heroToggleStatus) { heroToggleStatus.textContent = String(err.message || err); heroToggleStatus.className = 'text-xs status--danger'; } });
   });
 
@@ -711,16 +721,16 @@
   var bioInput = document.getElementById('author-bio');
   var bioStatus = document.getElementById('author-bio-status');
   if (bioInput) bioInput.addEventListener('change', function () {
-    if (bioStatus) { bioStatus.textContent = 'Saving…'; bioStatus.className = 'theme-field__hint'; }
+    if (bioStatus) { bioStatus.textContent = vpT('Saving…'); bioStatus.className = 'theme-field__hint'; }
     fetch('/os/api/settings', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
       body: JSON.stringify({ key: 'site.author_bio', value: bioInput.value })
     }).then(function (r) {
-      if (!r.ok) return r.json().then(function (e) { throw new Error((e.error && e.error.message) || e.error || ('save failed (' + r.status + ')')); });
+      if (!r.ok) return r.json().then(function (e) { throw new Error(refusal(e)); });
       return r.json();
     }).then(function () {
-      if (bioStatus) { bioStatus.textContent = 'Saved · live on your posts'; bioStatus.className = 'theme-field__hint status--ok'; }
-      if (window.vpToast) window.vpToast('Author bio saved', 'ok');
+      if (bioStatus) { bioStatus.textContent = vpT('Saved, live on your posts'); bioStatus.className = 'theme-field__hint status--ok'; }
+      if (window.vpToast) window.vpToast(vpT('Author bio saved'), 'ok');
     }).catch(function (err) { if (bioStatus) { bioStatus.textContent = String(err.message || err); bioStatus.className = 'theme-field__hint status--danger'; } });
   });
 
@@ -733,9 +743,10 @@
   function navSet(t, kind) { if (navStatus) { navStatus.textContent = t; navStatus.className = 'text-sm' + (kind ? ' status--' + kind : ' muted'); } }
   function navRow(label, href) {
     var row = document.createElement('div'); row.setAttribute('data-nav-row', ''); row.className = 'cz-nav-row';
-    var li = document.createElement('input'); li.className = 'input'; li.type = 'text'; li.placeholder = 'Label'; li.value = label || ''; li.setAttribute('data-nav-label', '');
-    var hi = document.createElement('input'); hi.className = 'input'; hi.type = 'text'; hi.placeholder = '/path or https://…'; hi.value = href || ''; hi.setAttribute('data-nav-href', '');
+    var li = document.createElement('input'); li.className = 'input'; li.type = 'text'; li.placeholder = vpT('Label'); li.value = label || ''; li.setAttribute('data-nav-label', '');
+    var hi = document.createElement('input'); hi.className = 'input'; hi.type = 'text'; hi.placeholder = vpT('/path or https://…'); hi.value = href || ''; hi.setAttribute('data-nav-href', '');
     var rm = document.createElement('button'); rm.type = 'button'; rm.className = 'btn btn--sm'; rm.textContent = '✕';
+    rm.setAttribute('aria-label', vpT('Remove this link'));
     rm.addEventListener('click', function () { row.remove(); });
     row.appendChild(li); row.appendChild(hi); row.appendChild(rm);
     return row;
@@ -743,6 +754,8 @@
   if (navRows) {
     var navSeed = [];
     try { navSeed = JSON.parse(navSeedEl && navSeedEl.value ? navSeedEl.value : '[]'); } catch (e) { navSeed = []; }
+    // The seed is the public site's own menu, in the site's words, not the
+    // console's: what is saved here is what readers see.
     if (!Array.isArray(navSeed) || !navSeed.length) navSeed = [{ label: 'Home', href: '/' }, { label: 'Archive', href: '/feed.xml' }];
     navSeed.forEach(function (it) { navRows.appendChild(navRow(it.label || it.Label, it.href || it.Href)); });
   }
@@ -754,16 +767,16 @@
       var h = row.querySelector('[data-nav-href]').value.trim();
       if (l && h) items.push({ label: l, href: h });
     });
-    navSet('Saving…'); navSave.disabled = true;
+    navSet(vpT('Saving…')); navSave.disabled = true;
     fetch('/os/api/settings', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
       body: JSON.stringify({ key: 'nav.items', value: JSON.stringify(items) })
     }).then(function (r) {
-      if (!r.ok) return r.json().then(function (e) { throw new Error((e.error && e.error.message) || e.error || ('save failed (' + r.status + ')')); });
+      if (!r.ok) return r.json().then(function (e) { throw new Error(refusal(e)); });
       return r.json();
     }).then(function () {
-      navSet('Saved · live on your site · ' + new Date().toLocaleTimeString(), 'ok');
-      if (window.vpToast) window.vpToast('Navigation saved', 'ok');
+      navSet(vpT('Saved, live on your site at {time}', { time: clock() }), 'ok');
+      if (window.vpToast) window.vpToast(vpT('Navigation saved'), 'ok');
     }).catch(function (err) { navSet(String(err.message || err), 'danger'); })
       .then(function () { navSave.disabled = false; });
   });
@@ -793,7 +806,7 @@
     var preset = allPresets.find(function (p) { return p.Name === want; });
     if (preset) {
       loadTokens(preset);
-      setStatus('Loaded "' + preset.Name + '" from the Store — not yet applied', 'warn');
+      setStatus(vpT('{theme} is loaded from the Store, not yet applied.', { theme: preset.Name }), 'warn');
       return true;
     }
     return false;
@@ -801,13 +814,13 @@
 
   Promise.all([fetchTokens(), fetchPresets()])
     .then(function () {
-      if (!applyLoadParam()) { highlightActiveCard(activePresetName); setStatus('Ready'); }
+      if (!applyLoadParam()) { highlightActiveCard(activePresetName); setStatus(vpT('Ready')); }
       baseline = snapshot(); countDiff(); // seed the changes pill from saved state
       fitFrame();
       schedulePreview(); // first preview load
       offerDraft();
     })
-    .catch(function () { setStatus('Could not load theme', 'danger'); });
+    .catch(function () { setStatus(vpT('The theme could not be loaded.'), 'danger'); });
   // ── Undo / redo + changes pill (2026 Wave A) ─────────────────────────
   // Every mutating interaction first snapshots the full editor state onto the
   // undo stack (capture-phase, so it sees the value BEFORE the change lands).
@@ -830,7 +843,7 @@
       for (k in a.m) { if (a.m[k] !== b.m[k]) n++; }
       for (k in a.o) { if (a.o[k] !== b.o[k]) n++; }
       if ((a.c || '') !== (b.c || '')) n++;
-      pill.textContent = n === 0 ? '' : n + (n === 1 ? ' change' : ' changes');
+      pill.textContent = n === 0 ? '' : vpT('{n, plural, one {# change} other {# changes}}', { n: n });
       pill.hidden = n === 0;
     } catch (_) { /* never block editing on a diff hiccup */ }
   }
@@ -862,13 +875,13 @@
     if (!undoStack.length) return;
     redoStack.push(snapshot());
     restore(undoStack.pop());
-    setStatus('Undone');
+    setStatus(vpT('Undone'));
   }
   function redo() {
     if (!redoStack.length) return;
     undoStack.push(snapshot());
     restore(redoStack.pop());
-    setStatus('Redone');
+    setStatus(vpT('Redone'));
   }
   document.addEventListener('keydown', function (e) {
     if (!e.ctrlKey && !e.metaKey) return;
@@ -928,7 +941,7 @@
         inputs[f].value = map[f];
       });
       markDirty(); schedulePreview();
-      if (genStatus) genStatus.textContent = 'Palette generated';
+      if (genStatus) genStatus.textContent = vpT('Palette generated');
     }
     function generate(seedRandom) {
       var accent = seedRandom
@@ -937,7 +950,7 @@
       if (seedRandom && genAccent) genAccent.value = accent;
       postJSON('/os/api/theme/harmony', { accent: accent, mood: genMood ? genMood.value : 'calm' })
         .then(function (p) { applyPalette(p); })
-        .catch(function () { if (genStatus) genStatus.textContent = 'Generation failed'; });
+        .catch(function () { if (genStatus) genStatus.textContent = vpT('The palette could not be made.'); });
     }
     var genBtn = GEN.querySelector('[data-gen-apply]');
     if (genBtn) genBtn.addEventListener('click', function () { generate(false); });
@@ -982,9 +995,10 @@
       var b = badgeEls[field];
       if (isNaN(r)) { b.textContent=''; b.className='theme-badge'; b.removeAttribute('data-fix'); return; }
       var ok = r >= 4.5;
-      b.textContent = ok ? '\u2713 ' + r.toFixed(1) : 'Low ' + r.toFixed(1);
+      b.textContent = ok ? '\u2713 ' + r.toFixed(1) : vpT('Low {ratio}', { ratio: r.toFixed(1) });
       b.className = 'theme-badge ' + (ok ? 'theme-badge--ok' : 'theme-badge--warn');
-      b.title = 'Contrast vs ' + bgTok + ': ' + r.toFixed(2) + ':1' + (ok ? '' : ' — click to fix');
+      b.title = (bgTok.indexOf('Surface') === 0 ? vpT('Contrast with the card: {ratio}:1', { ratio: r.toFixed(2) })
+        : vpT('Contrast with the background: {ratio}:1', { ratio: r.toFixed(2) })) + (ok ? '' : ' ' + vpT('Click to fix.'));
       if (ok) b.removeAttribute('data-fix');
       else b.setAttribute('data-fix', field + '|' + bgTok);
     });
@@ -1035,7 +1049,7 @@
       restore(draft);
       pushHistory(prev);
       banner.hidden = true;
-      setStatus('Draft restored — not yet applied', 'warn');
+      setStatus(vpT('Draft restored, not yet applied.'), 'warn');
     });
     banner.querySelector('[data-draft-discard]').addEventListener('click', function () {
       banner.hidden = true;
