@@ -20,6 +20,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   does: the mode in the status area and what it means, the strip a
   read-only or quarantined install shows with the actions it refuses, and
   the switch between Clearnet and Tor.
+- **The notification bell in the page's language.** Each item and the last
+  day's events are said in the language the page is drawn in, with the
+  count where that language puts it. Clear all remembers an item by its
+  English words, so an item cleared in one language stays cleared in
+  another. Names, addresses and post titles an event quotes are marked not
+  to be translated.
+
+### Fixed
+
+- The bell said "1 1 waiting for you" for someone locked out of their
+  mailbox, and "1 a live site has…" and "1 example.com shows…": a count
+  put in front of a sentence that already said it, or did not take one.
+- Mail's overview gave a mail domain's next DNS step in English on a page
+  in another language.
+- The app's tests had outgrown the race check's ten minutes; four tests
+  that read the whole source tree now skip, after one look, a file that
+  cannot hold what they look for.
 
 ## [3.18.45] — 2026-11-20
 
