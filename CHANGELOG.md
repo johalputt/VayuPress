@@ -34,6 +34,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   The restore commands and environment variables it shows stay as they are
   typed, and what the engine records (a pause's reason, a test restore's
   error and the counts it read back) as written.
+- **The Newsletter in thirteen languages.** The Newsletter page, its
+  composer and what it answers follow the language chosen in the account
+  menu; a subscriber's address and a broadcast's subject are shown as they
+  are. The message each subscriber receives is unchanged.
 - **API keys in thirteen languages.** The API keys page follows the
   language chosen in the account menu: its keys, limits, permission grid,
   provider cards and credentials, and what each control answers. A
@@ -47,8 +51,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ### Fixed
 
 - On Backups, a control the server refused with an error showed "Done" in
-  the error colour, and on API keys only "Error"; both now say the server's
-  reason.
+  the error colour, on API keys only "Error", and in the Newsletter's
+  composer "[object Object]"; each now says the server's reason.
 
 - The bell said "1 1 waiting for you" for someone locked out of their
   mailbox, and "1 a live site has…" and "1 example.com shows…": a count
