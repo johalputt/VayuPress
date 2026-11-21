@@ -28,6 +28,7 @@ import (
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/settings"
 )
 
@@ -72,11 +73,14 @@ func (a *App) keyRatePerMin(ctx context.Context, ki apikeys.KeyInfo) int {
 }
 
 // rateLabel says a budget as the console shows it.
-func rateLabel(rate int) string {
+func rateLabel(rate int) string { return rateLabelIn("en", rate) }
+
+// rateLabelIn is rateLabel in lang.
+func rateLabelIn(lang string, rate int) string {
 	if rate == apikeys.Unlimited {
-		return "unlimited"
+		return i18n.T(lang, "unlimited")
 	}
-	return strconv.Itoa(rate) + " a minute"
+	return i18n.T(lang, "{n} a minute", "n", rate)
 }
 
 // serveWithKeyUsage applies the caller key's per-minute budget, serves the

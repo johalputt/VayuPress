@@ -37,7 +37,7 @@ func TestAPIKeysOwnSectionCSPSafe(t *testing.T) {
 		{ID: "k-super", Label: "Automation root", Prefix: "vp_super00", Scope: apikeys.ScopeExternal, Active: true, Permissions: apikeys.Superuser()},
 	}
 
-	out := osAPIKeysOwnSection(keys)
+	out := osAPIKeysOwnSection("en", keys)
 	assertCSPSafe(t, "osAPIKeysOwnSection", out)
 
 	// Each lifecycle state appears as a dot and a word, in its own tone.
@@ -107,7 +107,7 @@ func TestAPIKeysOwnSectionCSPSafe(t *testing.T) {
 // TestAPIKeysVCBCSPSafe verifies the VCB gateway is CSP-safe and links to the
 // compatibility docs and the live contract endpoints.
 func TestAPIKeysVCBCSPSafe(t *testing.T) {
-	out := string(osAPIKeysVCB())
+	out := string(osAPIKeysVCB("en"))
 	assertCSPSafe(t, "osAPIKeysVCB", out)
 	for _, want := range []string{
 		`href="/docs/compatibility/vcb"`,
@@ -132,7 +132,7 @@ func TestAPIKeysServicesSectionCSPSafe(t *testing.T) {
 		{ID: "c1", Provider: secrets.ProviderOpenRouter, Label: "OpenRouter", Endpoint: "https://openrouter.ai/api/v1", HasSecret: true, Hint: "sk-…9f2", Enabled: true},
 		{ID: "c2", Provider: secrets.ProviderCustom, Label: "Pushover", HasSecret: true, Hint: "az…7k", Enabled: false},
 	}
-	out := osAPIKeysServicesSection(creds)
+	out := osAPIKeysServicesSection("en", creds)
 	assertCSPSafe(t, "osAPIKeysServicesSection", out)
 
 	if !strings.Contains(out, "Pushover") {
@@ -157,7 +157,7 @@ func TestAPIKeysServicesSectionCSPSafe(t *testing.T) {
 	// Every sheet a row opens exists: one per provider, one per custom
 	// credential, and the one that adds a credential.
 	ids := []string{"ak-cc-c2", "ak-cc-new"}
-	for _, p := range knownProviders {
+	for _, p := range providersIn("en") {
 		ids = append(ids, "ak-cred-"+p.Provider)
 	}
 	for _, id := range ids {
@@ -206,7 +206,7 @@ func TestInternalKeyOffersNoImpossibleActions(t *testing.T) {
 		Scope: apikeys.ScopeInternal, Permissions: apikeys.Superuser(), Active: true,
 		CreatedAt: time.Now().Add(-30 * 24 * time.Hour),
 	}
-	out := osAPIKeysOwnSection([]apikeys.Key{internal})
+	out := osAPIKeysOwnSection("en", []apikeys.Key{internal})
 
 	for _, forbidden := range []string{
 		`data-action="ak-rotate" data-id="` + apikeys.InternalKeyID + `"`,
@@ -235,7 +235,7 @@ func TestAPIKeyStateCountsOnlyUsableGrants(t *testing.T) {
 		{ID: "expired", Scope: apikeys.ScopeExternal, Permissions: apikeys.Superuser(), Active: true, ExpiresAt: &past},
 		{ID: "off", Scope: apikeys.ScopeExternal, Permissions: apikeys.Superuser(), Active: false},
 	}
-	out := string(osAPIKeysState(keys))
+	out := string(osAPIKeysState("en", keys))
 	// Exactly one usable external key, and exactly one usable full-access grant;
 	// the other three are accounted for, not silently dropped.
 	for _, want := range []ui.HTML{
@@ -248,7 +248,7 @@ func TestAPIKeyStateCountsOnlyUsableGrants(t *testing.T) {
 		}
 	}
 	// The auto-managed system key is not an operator-issued grant.
-	if clean := string(osAPIKeysState([]apikeys.Key{keys[0]})); clean != string(ui.State("neutral", "No keys issued")) {
+	if clean := string(osAPIKeysState("en", []apikeys.Key{keys[0]})); clean != string(ui.State("neutral", "No keys issued")) {
 		t.Errorf("the auto-managed system key is being counted as an operator's key: %s", clean)
 	}
 }

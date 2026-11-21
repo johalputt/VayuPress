@@ -16,6 +16,7 @@ import (
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/secrets"
 	"github.com/johalputt/vayupress/internal/settings"
@@ -40,70 +41,75 @@ type providerMeta struct {
 	EndpointHint string
 }
 
-// knownProviders are the built-in integrations with tailored UI. "custom"
-// covers anything else and is handled by the add-credential form.
-var knownProviders = []providerMeta{
-	{
-		Provider:    secrets.ProviderIndexNow,
-		Title:       "IndexNow",
-		Desc:        "Instantly notify participating search engines whenever you publish or update a post. VayuPress already submits URLs automatically — add a key here to switch it on (no file upload needed; the verification file is served for you).",
-		SecretLabel: "IndexNow key",
-		SecretPH:    "32+ character key (letters and digits)",
-	},
-	{
-		Provider:     secrets.ProviderOpenRouter,
-		Title:        "OpenRouter",
-		Desc:         "Hosted access to a wide range of AI models through a single key. Used by the writing assistant when configured.",
-		SecretLabel:  "API key",
-		SecretPH:     "sk-or-...",
-		HasEndpoint:  true,
-		EndpointPH:   "https://openrouter.ai/api/v1",
-		EndpointHint: "Base URL — leave blank to use the default.",
-	},
-	{
-		Provider:     secrets.ProviderOpenAI,
-		Title:        "OpenAI",
-		Desc:         "Use OpenAI's models for the writing assistant. Enter your API key; the base URL defaults to OpenAI and can point at any OpenAI-compatible gateway.",
-		SecretLabel:  "API key",
-		SecretPH:     "sk-...",
-		HasEndpoint:  true,
-		EndpointPH:   "https://api.openai.com/v1",
-		EndpointHint: "Base URL — leave blank to use OpenAI's default.",
-	},
-	{
-		Provider:    secrets.ProviderYouTube,
-		Title:       "YouTube Data API",
-		Desc:        "Lets a channel followed on Content › YouTube bring its whole back catalogue, not only its newest videos, and post premieres and streams before they start. Without a key, channels are followed from their public feeds. Create a key in Google Cloud with the YouTube Data API v3 enabled; it is kept sealed and only ever sent to YouTube.",
-		SecretLabel: "API key",
-		SecretPH:    "AIza...",
-	},
-	{
-		Provider:    secrets.ProviderPixabay,
-		Title:       "Pixabay",
-		Desc:        "Gives posts with no card image one from Pixabay: the picture a post already links to, or the first photo found for its title, copied into the media library in the background. Switch it on under Tools and plugins. The key is kept sealed and only ever sent to Pixabay; readers fetch nothing from Pixabay.",
-		SecretLabel: "API key",
-		SecretPH:    "From pixabay.com/api/docs",
-	},
-	{
-		Provider:     secrets.ProviderOllama,
-		Title:        "Local AI (Ollama)",
-		Desc:         "Connect a self-hosted model runtime so AI features run on infrastructure you control. No data leaves your server.",
-		SecretLabel:  "API key (optional)",
-		SecretPH:     "Leave blank if your runtime needs no key",
-		HasEndpoint:  true,
-		EndpointPH:   "http://localhost:11434",
-		EndpointHint: "Endpoint URL of your local model runtime.",
-	},
-	{
-		Provider:     secrets.ProviderN8N,
-		Title:        "n8n automation",
-		Desc:         "Trigger automation workflows by calling an n8n webhook — wire VayuPress events into hundreds of downstream apps.",
-		SecretLabel:  "Webhook token / API key",
-		SecretPH:     "Optional bearer token for the webhook",
-		HasEndpoint:  true,
-		EndpointPH:   "https://n8n.example.com/webhook/abc123",
-		EndpointHint: "Webhook URL n8n exposes for the workflow.",
-	},
+// providersIn are the built-in integrations with tailored UI, described in
+// lang. "custom" covers anything else and is handled by the add-credential
+// form. A product's name, a key's shape and an address are the same in every
+// language.
+func providersIn(lang string) []providerMeta {
+	apiKey := i18n.T(lang, "API key")
+	return []providerMeta{
+		{
+			Provider:    secrets.ProviderIndexNow,
+			Title:       "IndexNow",
+			Desc:        i18n.T(lang, "Instantly notify participating search engines whenever you publish or update a post. VayuPress already submits URLs automatically: add a key here to switch it on (no file upload needed; the verification file is served for you)."),
+			SecretLabel: i18n.T(lang, "IndexNow key"),
+			SecretPH:    i18n.T(lang, "32+ character key (letters and digits)"),
+		},
+		{
+			Provider:     secrets.ProviderOpenRouter,
+			Title:        "OpenRouter",
+			Desc:         i18n.T(lang, "Hosted access to a wide range of AI models through a single key. Used by the writing assistant when configured."),
+			SecretLabel:  apiKey,
+			SecretPH:     "sk-or-...",
+			HasEndpoint:  true,
+			EndpointPH:   "https://openrouter.ai/api/v1",
+			EndpointHint: i18n.T(lang, "Base URL: leave blank to use the default."),
+		},
+		{
+			Provider:     secrets.ProviderOpenAI,
+			Title:        "OpenAI",
+			Desc:         i18n.T(lang, "Use OpenAI's models for the writing assistant. Enter your API key; the base URL defaults to OpenAI and can point at any OpenAI-compatible gateway."),
+			SecretLabel:  apiKey,
+			SecretPH:     "sk-...",
+			HasEndpoint:  true,
+			EndpointPH:   "https://api.openai.com/v1",
+			EndpointHint: i18n.T(lang, "Base URL: leave blank to use OpenAI's default."),
+		},
+		{
+			Provider:    secrets.ProviderYouTube,
+			Title:       "YouTube Data API",
+			Desc:        i18n.T(lang, "Lets a channel followed on Content › YouTube bring its whole back catalogue, not only its newest videos, and post premieres and streams before they start. Without a key, channels are followed from their public feeds. Create a key in Google Cloud with the YouTube Data API v3 enabled; it is kept sealed and only ever sent to YouTube."),
+			SecretLabel: apiKey,
+			SecretPH:    "AIza...",
+		},
+		{
+			Provider:    secrets.ProviderPixabay,
+			Title:       "Pixabay",
+			Desc:        i18n.T(lang, "Gives posts with no card image one from Pixabay: the picture a post already links to, or the first photo found for its title, copied into the media library in the background. Switch it on under Tools and plugins. The key is kept sealed and only ever sent to Pixabay; readers fetch nothing from Pixabay."),
+			SecretLabel: apiKey,
+			SecretPH:    i18n.T(lang, "From pixabay.com/api/docs"),
+		},
+		{
+			Provider:     secrets.ProviderOllama,
+			Title:        i18n.T(lang, "Local AI (Ollama)"),
+			Desc:         i18n.T(lang, "Connect a self-hosted model runtime so AI features run on infrastructure you control. No data leaves your server."),
+			SecretLabel:  i18n.T(lang, "API key (optional)"),
+			SecretPH:     i18n.T(lang, "Leave blank if your runtime needs no key"),
+			HasEndpoint:  true,
+			EndpointPH:   "http://localhost:11434",
+			EndpointHint: i18n.T(lang, "Endpoint URL of your local model runtime."),
+		},
+		{
+			Provider:     secrets.ProviderN8N,
+			Title:        i18n.T(lang, "n8n automation"),
+			Desc:         i18n.T(lang, "Trigger automation workflows by calling an n8n webhook: wire VayuPress events into hundreds of downstream apps."),
+			SecretLabel:  i18n.T(lang, "Webhook token / API key"),
+			SecretPH:     i18n.T(lang, "Optional bearer token for the webhook"),
+			HasEndpoint:  true,
+			EndpointPH:   "https://n8n.example.com/webhook/abc123",
+			EndpointHint: i18n.T(lang, "Webhook URL n8n exposes for the workflow."),
+		},
+	}
 }
 
 // handleIndexNowKeyFile serves the IndexNow ownership-verification file at
@@ -141,6 +147,7 @@ func (a *App) InternalAPIKey() string {
 func (a *App) handleOSAPIKeys(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
+	lang := i18n.Lang(r.Context())
 
 	var keys []apikeys.Key
 	if a.apiKeys != nil {
@@ -151,13 +158,14 @@ func (a *App) handleOSAPIKeys(w http.ResponseWriter, r *http.Request) {
 		creds, _ = a.secrets.List(r.Context())
 	}
 
-	body := osAPIKeysPage(keys, creds, a.apiDefaultRatePerMin(r.Context()))
+	body := osAPIKeysPage(lang, keys, creds, a.apiDefaultRatePerMin(r.Context())) +
+		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-apikeys.js?v=` + assetVer("js/admin-os-apikeys.js") + `"></script>`
 
 	// This page hosts the filter island (x-data="filterList"), so it opts into
 	// the Alpine runtime; pageUsesAlpine keeps the decision tied to the markup.
-	full := adminOSShellHead(nonce, "API Keys", "apikeys", cfg) +
+	full := adminOSShellHead(nonce, i18n.T(lang, "API keys"), "apikeys", cfg) +
 		body +
-		adminOSShellFoot(nonce, osAPIKeysScript, pageUsesAlpine(body))
+		adminOSShellFoot(nonce, "", pageUsesAlpine(body))
 	writeOSHTML(w, r, full)
 }
 
@@ -176,68 +184,73 @@ func apiBaseURL() string {
 	return "https://" + host + "/api/v1"
 }
 
-// osAPIKeysPage is the page body, apart from the request so the tests render
-// exactly what an operator sees.
-func osAPIKeysPage(keys []apikeys.Key, creds []secrets.Credential, defaultRate int) string {
-	return string(ui.SettingsPage("API keys", osAPIKeysState(keys),
-		"Keys for your API, and the credentials VayuPress uses with other services.",
+// osAPIKeysPage is the page body, in lang, apart from the request so the
+// tests render exactly what an operator sees.
+func osAPIKeysPage(lang string, keys []apikeys.Key, creds []secrets.Credential, defaultRate int) string {
+	return string(ui.SettingsPage(i18n.T(lang, "API keys"), osAPIKeysState(lang, keys),
+		i18n.T(lang, "Keys for your API, and the credentials VayuPress uses with other services."),
 		ui.HTML(`<div id="ak-token-banner" class="card ak-token-banner" hidden>
-  <div class="settings-block-title">Copy your new key now</div>
-  <p class="text-sm muted">This is the only time the full key is shown. Store it somewhere safe; you won't be able to see it again.</p>
+  <div class="settings-block-title">`+esc(i18n.T(lang, "Copy your new key now"))+`</div>
+  <p class="text-sm muted">`+esc(i18n.T(lang, "This is the only time the full key is shown. Store it somewhere safe; you won't be able to see it again."))+`</p>
   <div class="ak-token-row">
-    <input id="ak-token-value" class="input font-mono ak-token-input" type="text" readonly>
-    <button type="button" class="btn btn--sm" id="ak-token-copy">Copy</button>
-    <button type="button" class="btn btn--primary btn--sm" id="ak-token-done">Done</button>
+    <input id="ak-token-value" class="input font-mono ak-token-input" type="text" readonly aria-label="`+esc(i18n.T(lang, "Your new key"))+`">
+    <button type="button" class="btn btn--sm" id="ak-token-copy">`+esc(i18n.T(lang, "Copy"))+`</button>
+    <button type="button" class="btn btn--primary btn--sm" id="ak-token-done">`+esc(i18n.T(lang, "Done"))+`</button>
   </div>
 </div>
 <p class="page-lead"><span id="ak-status" role="status" aria-live="polite" class="text-xs muted"></span></p>`),
-		ui.Section("Your API", "Where scripts, CI and agents send their calls", ui.Rows(osAPIBaseRows()...)),
-		ui.Section("Limits", "Requests a minute for each key, through the API and MCP", ui.Rows(ui.Row{
-			Label: "Each key, unless it sets its own",
-			Hint:  "Now " + rateLabel(defaultRate) + ". Empty is the built-in " + strconv.Itoa(apiKeyBuiltInRatePerMin()) + " a minute; Unlimited counts no key's calls. Sign-in attempts and public pages keep their own limits, which this does not lift.",
-			Control: rateControl("ak-rate-default", "", func() int {
+		ui.Section(i18n.T(lang, "Your API"), i18n.T(lang, "Where scripts, CI and agents send their calls"), ui.Rows(osAPIBaseRows(lang)...)),
+		ui.Section(i18n.T(lang, "Limits"), i18n.T(lang, "Requests a minute for each key, through the API and MCP"), ui.Rows(ui.Row{
+			Label: i18n.T(lang, "Each key, unless it sets its own"),
+			Hint: i18n.T(lang, "Now {rate}. Empty is the built-in {n} a minute; Unlimited counts no key's calls. Sign-in attempts and public pages keep their own limits, which this does not lift.",
+				"rate", rateLabelIn(lang, defaultRate), "n", apiKeyBuiltInRatePerMin()),
+			Control: rateControl(lang, "ak-rate-default", "", func() int {
 				if defaultRate == apiKeyBuiltInRatePerMin() {
 					return 0
 				}
 				return defaultRate
 			}())})),
-		ui.Section("Issued keys", "Each key can do only what it was granted", ui.HTML(osAPIKeysOwnSection(keys))),
-		ui.Section("Third-party services", "Credentials VayuPress uses to reach other providers", ui.HTML(osAPIKeysServicesSection(creds))),
-		ui.Section("Extension compatibility", "The contract an add-on must satisfy before it loads", osAPIKeysVCB()),
+		ui.Section(i18n.T(lang, "Issued keys"), i18n.T(lang, "Each key can do only what it was granted"), ui.HTML(osAPIKeysOwnSection(lang, keys))),
+		ui.Section(i18n.T(lang, "Third-party services"), i18n.T(lang, "Credentials VayuPress uses to reach other providers"), ui.HTML(osAPIKeysServicesSection(lang, creds))),
+		ui.Section(i18n.T(lang, "Extension compatibility"), i18n.T(lang, "The contract an add-on must satisfy before it loads"), osAPIKeysVCB(lang)),
 	))
 }
 
 // osAPIBaseRows show the API base URL operators point scripts, CI and AI
-// agents at, and which host serves it. Copy avoids the literal "CDN" per the
-// CSP-safe-prose rule.
-func osAPIBaseRows() []ui.Row {
-	host, hint := ui.State("neutral", "Main domain"), "Behind a proxy that challenges visitors? A script or agent cannot solve a bot challenge. Point a dedicated api.<your-domain> record straight at this server with the proxy off (DNS only), set VAYUOS_API_HOST=api.<your-domain> and re-run the installer: VayuPress serves a hardened, API-only host there."
+// agents at, and which host serves it, in lang. Copy avoids the literal "CDN"
+// per the CSP-safe-prose rule.
+func osAPIBaseRows(lang string) []ui.Row {
+	host := ui.State("neutral", i18n.T(lang, "Main domain"))
+	hint := i18n.T(lang, "Behind a proxy that challenges visitors? A script or agent cannot solve a bot challenge. Point a dedicated {record} record straight at this server with the proxy off (DNS only), set {setting} and re-run the installer: VayuPress serves a hardened, API-only host there.",
+		"record", "api.<your-domain>", "setting", "VAYUOS_API_HOST=api.<your-domain>")
 	if h := strings.TrimSpace(config.Cfg.APIHost); h != "" {
-		host, hint = ui.State("ok", "Dedicated host"), "Served on "+h+", set by VAYUOS_API_HOST and pointed straight at this server with the proxy off. Only /api and /health are exposed there, not the console, and VayuShield still guards it."
+		host = ui.State("ok", i18n.T(lang, "Dedicated host"))
+		hint = i18n.T(lang, "Served on {host}, set by {setting} and pointed straight at this server with the proxy off. Only {paths} are exposed there, not the console, and VayuShield still guards it.",
+			"host", h, "setting", "VAYUOS_API_HOST", "paths", "/api, /health")
 	}
 	return []ui.Row{
-		{Label: "Base URL", Hint: "For scripts, CI jobs and agents, with a key sent as Authorization: Bearer.",
-			Control: ui.HTML(`<code class="space-addr" id="ak-apibase">` + html.EscapeString(apiBaseURL()) + `</code><button type="button" class="btn btn--sm" data-copy="#ak-apibase">Copy</button>`)},
-		{Label: "Host", Hint: hint, Control: host},
+		{Label: i18n.T(lang, "Base URL"), Hint: i18n.T(lang, "For scripts, CI jobs and agents, with a key sent as {header}.", "header", "Authorization: Bearer"),
+			Control: ui.HTML(`<code class="space-addr" id="ak-apibase">` + html.EscapeString(apiBaseURL()) + `</code><button type="button" class="btn btn--sm" data-copy="#ak-apibase">` + esc(i18n.T(lang, "Copy")) + `</button>`)},
+		{Label: i18n.T(lang, "Host"), Hint: hint, Control: host},
 	}
 }
 
 // apiKeyCapabilitySummary renders a compact set of capability badges for a key's
-// grant set (or a single "Full access" badge for a superuser/legacy key).
-func apiKeyCapabilitySummary(k apikeys.Key) string {
+// grant set (or a single "Full access" badge for a superuser/legacy key). A
+// capability is its section:action token, the same in every language.
+func apiKeyCapabilitySummary(lang string, k apikeys.Key) string {
 	if k.Scope == apikeys.ScopeInternal || k.Permissions.IsSuperuser() {
-		return string(ui.State("accent", "Full access"))
+		return string(ui.State("accent", i18n.T(lang, "Full access")))
 	}
 	caps := k.Permissions.Capabilities()
 	if len(caps) == 0 {
-		return string(ui.State("neutral", "No grants"))
+		return string(ui.State("neutral", i18n.T(lang, "No grants")))
 	}
-	// Collapse a section whose every action is granted to "section:*".
 	out := ""
 	shown := 0
 	for _, c := range caps {
 		if shown >= 8 {
-			out += `<span class="ak-cap-more">+` + itoaSafe(len(caps)-shown) + ` more</span>`
+			out += `<span class="ak-cap-more">` + esc(i18n.T(lang, "+{n} more", "n", len(caps)-shown)) + `</span>`
 			break
 		}
 		out += `<span class="ak-cap">` + html.EscapeString(c) + `</span>`
@@ -255,7 +268,7 @@ func apiKeyCapabilitySummary(k apikeys.Key) string {
 // grant is not exposure, and inflating the number would make the one figure
 // that should provoke a reaction easy to ignore. The system key is managed by
 // VayuPress, not issued by the operator, so it is not counted at all.
-func osAPIKeysState(keys []apikeys.Key) ui.HTML {
+func osAPIKeysState(lang string, keys []apikeys.Key) ui.HTML {
 	now := time.Now().UTC()
 	live, full, idle := 0, 0, 0
 	for _, k := range keys {
@@ -271,15 +284,15 @@ func osAPIKeysState(keys []apikeys.Key) ui.HTML {
 			full++
 		}
 	}
-	st := ui.State("neutral", "No keys issued")
+	st := ui.State("neutral", i18n.T(lang, "No keys issued"))
 	if live > 0 {
-		st = ui.State("ok", strconv.Itoa(live)+" key"+plural(live)+" active")
+		st = ui.State("ok", i18n.T(lang, "{n, plural, one {# key active} other {# keys active}}", "n", live))
 	}
 	if idle > 0 {
-		st += " " + ui.State("neutral", strconv.Itoa(idle)+" inactive")
+		st += " " + ui.State("neutral", i18n.T(lang, "{n} inactive", "n", idle))
 	}
 	if full > 0 {
-		st += " " + ui.State("warn", strconv.Itoa(full)+" with full access")
+		st += " " + ui.State("warn", i18n.T(lang, "{n} with full access", "n", full))
 	}
 	return st
 }
@@ -287,7 +300,11 @@ func osAPIKeysState(keys []apikeys.Key) ui.HTML {
 // osAPIKeysOwnSection renders the issued-token list and the scoped-key create
 // form (permission grid + expiry + rate). CSP-safe: no inline styles, all layout
 // via utility/component classes.
-func osAPIKeysOwnSection(keys []apikeys.Key) string {
+func osAPIKeysOwnSection(lang string, keys []apikeys.Key) string {
+	closeLabel := i18n.T(lang, "Close")
+	button := func(action, id, label string) string {
+		return `<button type="button" class="btn btn--sm" data-action="` + action + `" data-id="` + html.EscapeString(id) + `">` + esc(label) + `</button>`
+	}
 	rows, sheets := "", ""
 	for _, k := range keys {
 		var status, actions string
@@ -298,25 +315,23 @@ func osAPIKeysOwnSection(keys []apikeys.Key) string {
 			// a button that could only ever produce an error. A control that cannot
 			// succeed is worse than no control: it reads as a capability, and its
 			// failure reads as a bug rather than as the protection it actually is.
-			status = string(ui.State("neutral", "System, auto-managed"))
-			actions = `<span class="text-xs muted">Protected</span>` + string(ui.Tip("Not rotatable or revocable: VayuPress manages this key itself."))
+			status = string(ui.State("neutral", i18n.T(lang, "System, auto-managed")))
+			actions = `<span class="text-xs muted">` + esc(i18n.T(lang, "Protected")) + `</span>` + string(ui.Tip(i18n.T(lang, "Not rotatable or revocable: VayuPress manages this key itself.")))
 		} else if k.Revoked {
-			status = string(ui.State("neutral", "Revoked"))
-			actions = `<button type="button" class="btn btn--sm" data-action="ak-delete" data-id="` + html.EscapeString(k.ID) + `">Delete</button>`
+			status = string(ui.State("neutral", i18n.T(lang, "Revoked")))
+			actions = button("ak-delete", k.ID, i18n.T(lang, "Delete"))
 		} else if k.ExpiresAt != nil && !k.ExpiresAt.After(time.Now().UTC()) {
-			status = string(ui.State("warn", "Expired"))
-			actions = `<button type="button" class="btn btn--sm" data-action="ak-delete" data-id="` + html.EscapeString(k.ID) + `">Delete</button>`
+			status = string(ui.State("warn", i18n.T(lang, "Expired")))
+			actions = button("ak-delete", k.ID, i18n.T(lang, "Delete"))
 		} else if !k.Active {
-			status = string(ui.State("neutral", "Inactive"))
-			actions = `<button type="button" class="btn btn--sm" data-action="ak-activate" data-id="` + html.EscapeString(k.ID) + `">Activate</button>
-        <button type="button" class="btn btn--sm" data-action="ak-revoke" data-id="` + html.EscapeString(k.ID) + `">Revoke</button>`
+			status = string(ui.State("neutral", i18n.T(lang, "Inactive")))
+			actions = button("ak-activate", k.ID, i18n.T(lang, "Activate")) + "\n        " + button("ak-revoke", k.ID, i18n.T(lang, "Revoke"))
 		} else {
-			status = string(ui.State("ok", "Active"))
-			actions = `<button type="button" class="btn btn--sm" data-action="ak-rotate" data-id="` + html.EscapeString(k.ID) + `">Rotate</button>
-        <button type="button" class="btn btn--sm" data-action="ak-deactivate" data-id="` + html.EscapeString(k.ID) + `">Deactivate</button>
-        <button type="button" class="btn btn--sm" data-action="ak-revoke" data-id="` + html.EscapeString(k.ID) + `">Revoke</button>`
+			status = string(ui.State("ok", i18n.T(lang, "Active")))
+			actions = button("ak-rotate", k.ID, i18n.T(lang, "Rotate")) + "\n        " + button("ak-deactivate", k.ID, i18n.T(lang, "Deactivate")) +
+				"\n        " + button("ak-revoke", k.ID, i18n.T(lang, "Revoke"))
 		}
-		last := "Never"
+		last := i18n.T(lang, "Never")
 		if k.LastUsedAt != nil {
 			last = config.FormatSite(*k.LastUsedAt, "2006-01-02 15:04 MST")
 		}
@@ -330,14 +345,14 @@ func osAPIKeysOwnSection(keys []apikeys.Key) string {
 		manage := actions
 		if k.Scope != apikeys.ScopeInternal {
 			id := "ak-key-" + k.ID
-			manage = `<button type="button" class="btn btn--sm" data-sheet="` + html.EscapeString(id) + `">Manage</button>`
-			sheets += string(ui.Sheet(id, k.Label, ui.HTML(`<div class="cx-details">`+
-				connectorDetailRow("Key", `<code class="font-mono">`+html.EscapeString(apikeys.Mask(k.Prefix))+`</code>`)+
-				connectorDetailRow("State", status)+
-				connectorDetailRow("Can reach", apiKeyCapabilitySummary(k))+
-				connectorDetailRow("Expires", html.EscapeString(expiry))+
-				connectorDetailRow("Requests a minute", string(rateControl("ak-rate", k.ID, k.RatePerMin)))+
-				connectorDetailRow("Last used", html.EscapeString(last))+
+			manage = `<button type="button" class="btn btn--sm" data-sheet="` + html.EscapeString(id) + `">` + esc(i18n.T(lang, "Manage")) + `</button>`
+			sheets += string(ui.SheetClosing(id, k.Label, closeLabel, ui.HTML(`<div class="cx-details">`+
+				connectorDetailRow(i18n.T(lang, "Key"), `<code class="font-mono">`+html.EscapeString(apikeys.Mask(k.Prefix))+`</code>`)+
+				connectorDetailRow(i18n.T(lang, "State"), status)+
+				connectorDetailRow(i18n.T(lang, "Can reach"), apiKeyCapabilitySummary(lang, k))+
+				connectorDetailRow(i18n.T(lang, "Expires"), html.EscapeString(expiry))+
+				connectorDetailRow(i18n.T(lang, "Requests a minute"), string(rateControl(lang, "ak-rate", k.ID, k.RatePerMin)))+
+				connectorDetailRow(i18n.T(lang, "Last used"), html.EscapeString(last))+
 				`</div>
 <div class="ak-cred-actions">`+actions+`
   <span class="text-xs muted" data-sheet-status role="status" aria-live="polite"></span>
@@ -345,41 +360,50 @@ func osAPIKeysOwnSection(keys []apikeys.Key) string {
 		}
 		rows += `<tr data-filter-text="` + html.EscapeString(k.Label+" "+k.Prefix) + `">
       <td><div class="ak-key-label">` + html.EscapeString(k.Label) + `</div><code class="font-mono text-xs muted">` + html.EscapeString(apikeys.Mask(k.Prefix)) + `</code></td>
-      <td>` + apiKeyCapabilitySummary(k) + `</td>
+      <td>` + apiKeyCapabilitySummary(lang, k) + `</td>
       <td class="text-xs muted">` + html.EscapeString(last) + `</td>
       <td>` + status + `</td>
       <td class="ak-row-actions">` + manage + `</td>
     </tr>`
 	}
 	if rows == "" {
-		rows = `<tr><td colspan="5" class="text-sm muted ak-empty">No keys issued yet. Create one to authenticate API requests.</td></tr>`
+		rows = `<tr><td colspan="5" class="text-sm muted ak-empty">` + esc(i18n.T(lang, "No keys issued yet. Create one to authenticate API requests.")) + `</td></tr>`
 	}
 
 	// x-data="filterList" powers the live client-side filter below (ADR-0136,
 	// vayu-islands.js). It is a pure enhancement: if Alpine is absent the input
 	// is inert and every row stays visible, and the create/rotate/revoke flows
-	// (vanilla JS) are untouched.
-	create := ui.Rows(ui.Row{Icon: "key", Label: "Create a key", Hint: "Grant exactly the sections and actions you choose. The full key is shown once, when it is made.",
-		Control: `<button type="button" class="btn btn--primary btn--sm" data-sheet="ak-create">Create a key</button>`})
-	list := string(create) + `<div class="mt-4" x-data="filterList" data-filter-noun="keys">
-  <p class="text-sm muted mb-4">Send a key as a header.` + string(ui.Tip("Send a key as the X-API-Key header or Authorization: Bearer <key>. Rotating invalidates the old value immediately; deactivating disables a key reversibly; revoking disables it permanently, keeping its audit row. The System key is managed automatically for internal use.")) + `</p>
-  <div class="ak-filter"><input type="search" class="input ak-filter-input" placeholder="Filter keys by label or prefix…" x-model="q" @input="apply()" aria-label="Filter API keys"><span data-filter-status role="status" aria-live="polite" class="vp-sr-only"></span></div>
+	// (vanilla JS) are untouched. The island says how many matched in the
+	// sentences the page gives it (data-filter-none, data-filter-some).
+	createKey := i18n.T(lang, "Create a key")
+	create := ui.Rows(ui.Row{Icon: "key", Label: createKey, Hint: i18n.T(lang, "Grant exactly the sections and actions you choose. The full key is shown once, when it is made."),
+		Control: ui.HTML(`<button type="button" class="btn btn--primary btn--sm" data-sheet="ak-create">` + esc(createKey) + `</button>`)})
+	list := string(create) + `<div class="mt-4" x-data="filterList" data-filter-none="` + esc(i18n.T(lang, "No keys match your filter.")) +
+		`" data-filter-some="` + esc(i18n.T(lang, "Keys matching your filter: {n}", "n", "{n}")) + `">
+  <p class="text-sm muted mb-4">` + esc(i18n.T(lang, "Send a key as a header.")) + string(ui.Tip(i18n.T(lang, "Send a key as the {header} header or {bearer}. Rotating invalidates the old value immediately; deactivating disables a key reversibly; revoking disables it permanently, keeping its audit row. The System key is managed automatically for internal use.",
+		"header", "X-API-Key", "bearer", "Authorization: Bearer <key>"))) + `</p>
+  <div class="ak-filter"><input type="search" class="input ak-filter-input" placeholder="` + esc(i18n.T(lang, "Filter keys by label or prefix…")) + `" x-model="q" @input="apply()" aria-label="` + esc(i18n.T(lang, "Filter API keys")) + `"><span data-filter-status role="status" aria-live="polite" class="vp-sr-only"></span></div>
   <div class="table-wrap">
     <table class="table ak-table">
-      <thead><tr><th>Label</th><th>Permissions</th><th>Last used</th><th>Status</th><th></th></tr></thead>
-      <tbody>` + rows + `<tr data-filter-empty hidden><td colspan="5" class="text-sm muted ak-empty">No keys match your filter.</td></tr></tbody>
+      <thead><tr><th>` + esc(i18n.T(lang, "Label")) + `</th><th>` + esc(i18n.T(lang, "Permissions")) + `</th><th>` + esc(i18n.T(lang, "Last used")) + `</th><th>` + esc(i18n.T(lang, "Status")) + `</th><th></th></tr></thead>
+      <tbody>` + rows + `<tr data-filter-empty hidden><td colspan="5" class="text-sm muted ak-empty">` + esc(i18n.T(lang, "No keys match your filter.")) + `</td></tr></tbody>
     </table>
   </div>
-  <p class="field-hint mt-2">The <code>API_KEY</code> root key is not listed here.` + string(ui.Tip("A root key set through the API_KEY environment variable always remains valid as a bootstrap credential with full access.")) + `</p>
+  <p class="field-hint mt-2">` + escFill(i18n.T(lang, "The {key} root key is not listed here.", "key", htmlMark(0)), `<code>`+akRootKeyVar+`</code>`) +
+		string(ui.Tip(i18n.T(lang, "A root key set through the {variable} environment variable always remains valid as a bootstrap credential with full access.", "variable", akRootKeyVar))) + `</p>
 </div>
 `
-	return list + sheets + string(ui.Sheet("ak-create", "Create a key", osAPIKeysCreateForm()))
+	return list + sheets + string(ui.SheetClosing("ak-create", createKey, closeLabel, osAPIKeysCreateForm(lang)))
 }
 
-// rateControl edits a budget: empty for the default, a number, or
+// akRootKeyVar is the environment variable that sets the root key: code, the
+// same in every language.
+const akRootKeyVar = "API_KEY"
+
+// rateControl edits a budget, in lang: empty for the default, a number, or
 // Unlimited. action names the data-action the page's script sends it with;
 // id is the key's, or "" for the default.
-func rateControl(action, id string, rate int) ui.HTML {
+func rateControl(lang, action, id string, rate int) ui.HTML {
 	n, unl := "", ""
 	switch {
 	case rate == apikeys.Unlimited:
@@ -388,8 +412,8 @@ func rateControl(action, id string, rate int) ui.HTML {
 		n = strconv.Itoa(rate)
 	}
 	return ui.HTML(`<span class="ak-cred-actions" data-ak-rate><input class="input ak-field-narrow" type="number" min="1" max="` + strconv.Itoa(apikeys.MaxRatePerMin) +
-		`" step="1" placeholder="Default" value="` + n + `" aria-label="Requests a minute"><label><input type="checkbox"` + unl + `> Unlimited</label>` +
-		`<button type="button" class="btn btn--sm" data-action="` + action + `" data-id="` + html.EscapeString(id) + `">Save</button></span>`)
+		`" step="1" placeholder="` + esc(i18n.T(lang, "Default")) + `" value="` + n + `" aria-label="` + esc(i18n.T(lang, "Requests a minute")) + `"><label><input type="checkbox"` + unl + `> ` + esc(i18n.T(lang, "Unlimited")) + `</label>` +
+		`<button type="button" class="btn btn--sm" data-action="` + action + `" data-id="` + html.EscapeString(id) + `">` + esc(i18n.T(lang, "Save")) + `</button></span>`)
 }
 
 // osAPIKeysCreateForm is the scoped-key create form, shown in a sheet: a 12×6
@@ -397,18 +421,19 @@ func rateControl(action, id string, rate int) ui.HTML {
 // "select all" toggles, plus optional expiry and a per-key rate budget. It is
 // the largest control on the page and needed only while issuing a key, so it
 // does not stand between the operator and the key list they came to read.
-func osAPIKeysCreateForm() ui.HTML {
-	// Column header.
-	head := `<th scope="col" class="ak-grid-section">Section</th><th scope="col" class="ak-grid-all">All</th>`
+// The grid's sections and actions are the capability tokens a key is granted
+// and a manifest declares, so they are shown as they are written.
+func osAPIKeysCreateForm(lang string) ui.HTML {
+	head := `<th scope="col" class="ak-grid-section">` + esc(i18n.T(lang, "Section")) + `</th><th scope="col" class="ak-grid-all">` + esc(i18n.T(lang, "All")) + `</th>`
 	for _, act := range apikeys.AllActions {
-		head += `<th scope="col">` + html.EscapeString(string(act)) + `</th>`
+		head += `<th scope="col" translate="no">` + html.EscapeString(string(act)) + `</th>`
 	}
 
 	body := ""
 	for _, sec := range apikeys.AllSections {
 		s := html.EscapeString(string(sec))
-		cells := `<th scope="row" class="ak-grid-section">` + s + `</th>` +
-			`<td><input type="checkbox" class="ak-perm-all" data-section="` + s + `" aria-label="All ` + s + ` actions"></td>`
+		cells := `<th scope="row" class="ak-grid-section" translate="no">` + s + `</th>` +
+			`<td><input type="checkbox" class="ak-perm-all" data-section="` + s + `" aria-label="` + esc(i18n.T(lang, "Every {section} action", "section", string(sec))) + `"></td>`
 		for _, act := range apikeys.AllActions {
 			a := html.EscapeString(string(act))
 			cells += `<td><input type="checkbox" class="ak-perm" data-section="` + s + `" data-action="` + a + `" aria-label="` + s + `:` + a + `"></td>`
@@ -418,22 +443,22 @@ func osAPIKeysCreateForm() ui.HTML {
 
 	return ui.HTML(`<div class="ak-create-row">
     <div class="field ak-field-grow">
-      <label class="field-label" for="ak-new-label">Label</label>
-      <input id="ak-new-label" class="input" type="text" placeholder="e.g. Theme builder, Zapier, CI">
+      <label class="field-label" for="ak-new-label">` + esc(i18n.T(lang, "Label")) + `</label>
+      <input id="ak-new-label" class="input" type="text" placeholder="` + esc(i18n.T(lang, "e.g. Theme builder, Zapier, CI")) + `">
     </div>
     <div class="field">
-      <label class="field-label" for="ak-new-expiry">Expires (optional)</label>
+      <label class="field-label" for="ak-new-expiry">` + esc(i18n.T(lang, "Expires (optional)")) + `</label>
       <input id="ak-new-expiry" class="input" type="datetime-local">
     </div>
     <div class="field ak-field-narrow">
-      <label class="field-label" for="ak-new-rate">Requests a minute</label>
-      <input id="ak-new-rate" class="input" type="number" min="1" max="100000" step="1" placeholder="Default">
-      <label class="text-xs"><input type="checkbox" id="ak-new-rate-unl"> Unlimited</label>
+      <label class="field-label" for="ak-new-rate">` + esc(i18n.T(lang, "Requests a minute")) + `</label>
+      <input id="ak-new-rate" class="input" type="number" min="1" max="100000" step="1" placeholder="` + esc(i18n.T(lang, "Default")) + `">
+      <label class="text-xs"><input type="checkbox" id="ak-new-rate-unl"> ` + esc(i18n.T(lang, "Unlimited")) + `</label>
     </div>
   </div>
   <div class="ak-grid-toolbar">
-    <span class="field-label">Permissions</span>
-    <label class="ak-superuser"><input type="checkbox" id="ak-perm-super"> <span>Full access (all sections &amp; actions)</span></label>
+    <span class="field-label">` + esc(i18n.T(lang, "Permissions")) + `</span>
+    <label class="ak-superuser"><input type="checkbox" id="ak-perm-super"> <span>` + esc(i18n.T(lang, "Full access (all sections and actions)")) + `</span></label>
   </div>
   <div class="table-wrap">
     <table class="table ak-grid" id="ak-perm-grid">
@@ -442,7 +467,7 @@ func osAPIKeysCreateForm() ui.HTML {
     </table>
   </div>
   <div class="ak-create-actions">
-    <button type="button" class="btn btn--primary" id="ak-create-btn">Create key</button>
+    <button type="button" class="btn btn--primary" id="ak-create-btn">` + esc(i18n.T(lang, "Create key")) + `</button>
     <span class="text-xs muted" data-sheet-status role="status" aria-live="polite"></span>
   </div>`)
 }
@@ -450,23 +475,29 @@ func osAPIKeysCreateForm() ui.HTML {
 // osAPIKeysVCB is the gateway to the Vayu Compatibility Bible (VCB, ADR-0135):
 // what to grant an extension, where the full contract lives, and how to
 // validate a plugin or theme before trusting it. Every action is a same-origin
-// link.
-func osAPIKeysVCB() ui.HTML {
-	return ui.Rows(ui.Row{Icon: "book", Label: "Vayu Compatibility Bible", Hint: "Validate a plugin or theme against the contract this API enforces, then grant it only what it declares.",
-		Control: `<button type="button" class="btn btn--sm" data-sheet="ak-vcb">How it works</button><a class="settings-row-go" href="/docs/compatibility/vcb" target="_blank" rel="noopener">Open` + ui.Icon("chev-r") + `</a>`}) +
-		ui.Sheet("ak-vcb", "Vayu Compatibility Bible", ui.HTML(`<p class="text-sm muted mb-4">Before you trust a plugin or theme, validate it against the <strong>same contract this API enforces</strong>. An extension declares the hooks, capabilities and <code>section:action</code> permissions it needs; VCB checks them and you mint a key granting <strong>only</strong> those, never more. Themes that fetch from another host, plugins that over-ask, or manifests built against a hook that doesn't exist are refused with a plain, exact reason.</p>
+// link. The documents it opens are in English.
+func osAPIKeysVCB(lang string) ui.HTML {
+	bible := "Vayu Compatibility Bible"
+	return ui.Rows(ui.Row{Icon: "book", Label: bible, Hint: i18n.T(lang, "Validate a plugin or theme against the contract this API enforces, then grant it only what it declares."),
+		Control: ui.HTML(`<button type="button" class="btn btn--sm" data-sheet="ak-vcb">` + esc(i18n.T(lang, "How it works")) + `</button><a class="settings-row-go" href="/docs/compatibility/vcb" target="_blank" rel="noopener">` + esc(i18n.T(lang, "Open")) + string(ui.Icon("chev-r")) + `</a>`)}) +
+		ui.SheetClosing("ak-vcb", bible, i18n.T(lang, "Close"), ui.HTML(`<p class="text-sm muted mb-4">`+
+			escFill(i18n.T(lang, "Before you trust a plugin or theme, validate it against the {contract}. An extension declares the hooks, capabilities and {token} permissions it needs; VCB checks them and you mint a key granting {only} those, never more. Themes that fetch from another host, plugins that over-ask, or manifests built against a hook that doesn't exist are refused with a plain, exact reason.",
+				"contract", htmlMark(0), "token", htmlMark(1), "only", htmlMark(2)),
+				keepStrong(i18n.T(lang, "same contract this API enforces")), `<code>section:action</code>`, keepStrong(i18n.T(lang, "only")))+`</p>
 <div class="ak-cred-actions">
-  <a class="btn btn--primary btn--sm" href="/docs/compatibility/vcb" target="_blank" rel="noopener">`+iconVCB+` Open the Compatibility Bible</a>
-  <a class="btn btn--sm" href="/docs/compatibility/vayuapi" target="_blank" rel="noopener">API keys &amp; permissions reference</a>
-  <a class="btn btn--sm" href="/docs/adr/ADR-0135-vayu-compatibility-bible" target="_blank" rel="noopener">Design record (ADR-0135)</a>
+  <a class="btn btn--primary btn--sm" href="/docs/compatibility/vcb" target="_blank" rel="noopener">`+iconVCB+` `+esc(i18n.T(lang, "Open the Compatibility Bible"))+`</a>
+  <a class="btn btn--sm" href="/docs/compatibility/vayuapi" target="_blank" rel="noopener">`+esc(i18n.T(lang, "API keys and permissions reference"))+`</a>
+  <a class="btn btn--sm" href="/docs/adr/ADR-0135-vayu-compatibility-bible" target="_blank" rel="noopener">`+esc(i18n.T(lang, "Design record ({adr})", "adr", "ADR-0135"))+`</a>
 </div>
-<p class="field-hint mt-2">Build tools can read the live contract at <code>GET /api/v1/vcb/contract</code> and check a manifest against this running host at <code>POST /api/v1/vcb/validate</code> (both need a key with <code>plugins:read</code>). The <code>vayu-compat</code> CLI runs the same checks offline for CI.</p>`))
+<p class="field-hint mt-2">`+escFill(i18n.T(lang, "Build tools can read the live contract at {contract} and check a manifest against this running host at {validate} (both need a key with {grant}). The {cli} CLI runs the same checks offline for CI.",
+			"contract", htmlMark(0), "validate", htmlMark(1), "grant", htmlMark(2), "cli", htmlMark(3)),
+			`<code>GET /api/v1/vcb/contract</code>`, `<code>POST /api/v1/vcb/validate</code>`, `<code>plugins:read</code>`, `<code>vayu-compat</code>`)+`</p>`))
 }
 
 // osAPIKeysServicesSection lists each known provider and every custom
-// credential as a row with its state; the fields that set one up open in a
-// sheet.
-func osAPIKeysServicesSection(creds []secrets.Credential) string {
+// credential as a row with its state, in lang; the fields that set one up open
+// in a sheet.
+func osAPIKeysServicesSection(lang string, creds []secrets.Credential) string {
 	var custom []secrets.Credential
 	firstByProvider := map[string]secrets.Credential{}
 	for _, c := range creds {
@@ -478,61 +509,68 @@ func osAPIKeysServicesSection(creds []secrets.Credential) string {
 			firstByProvider[c.Provider] = c
 		}
 	}
+	// A provider's credential is stored under its English name, whoever saved it.
+	stored := map[string]string{}
+	for _, p := range providersIn("en") {
+		stored[p.Provider] = p.Title
+	}
 
+	closeLabel := i18n.T(lang, "Close")
 	var rows []ui.Row
 	sheets := ""
-	for _, p := range knownProviders {
+	for _, p := range providersIn(lang) {
 		c := firstByProvider[p.Provider]
 		id := "ak-cred-" + p.Provider
 		rows = append(rows, ui.Row{Label: p.Title, Hint: firstSentence(p.Desc),
-			Control: credState(c) + ui.HTML(`<button type="button" class="btn btn--sm" data-sheet="`+html.EscapeString(id)+`">`+credVerb(c)+`</button>`)})
-		sheets += string(ui.Sheet(id, p.Title, ui.HTML(osAPIKeysProviderCard(p, c))))
+			Control: credState(lang, c) + ui.HTML(`<button type="button" class="btn btn--sm" data-sheet="`+html.EscapeString(id)+`">`+esc(credVerb(lang, c))+`</button>`)})
+		sheets += string(ui.SheetClosing(id, p.Title, closeLabel, ui.HTML(osAPIKeysProviderCard(lang, p, stored[p.Provider], c))))
 	}
 	for _, c := range custom {
 		id := "ak-cc-" + c.ID
-		hint := "No endpoint"
+		hint := i18n.T(lang, "No endpoint")
 		if c.Endpoint != "" {
 			hint = c.Endpoint
 		}
 		rows = append(rows, ui.Row{Label: c.Label, Hint: hint,
-			Control: credState(c) + ui.HTML(`<button type="button" class="btn btn--sm" data-sheet="`+html.EscapeString(id)+`">Edit</button>`)})
-		sheets += string(ui.Sheet(id, c.Label, ui.HTML(osAPIKeysCustomRow(c))))
+			Control: credState(lang, c) + ui.HTML(`<button type="button" class="btn btn--sm" data-sheet="`+html.EscapeString(id)+`">`+esc(i18n.T(lang, "Edit"))+`</button>`)})
+		sheets += string(ui.SheetClosing(id, c.Label, closeLabel, ui.HTML(osAPIKeysCustomRow(lang, c))))
 	}
-	rows = append(rows, ui.Row{Icon: "plus", Label: "Another service", Hint: "Any other service, by name.",
-		Control: `<button type="button" class="btn btn--sm" data-sheet="ak-cc-new">Add a credential</button>`})
-	sheets += string(ui.Sheet("ak-cc-new", "Add a credential", ui.HTML(`<div class="field">
-  <label class="field-label" for="cc-label">Name</label>
-  <input id="cc-label" class="input" type="text" placeholder="e.g. Sendgrid, Pushover">
+	addCred := i18n.T(lang, "Add a credential")
+	rows = append(rows, ui.Row{Icon: "plus", Label: i18n.T(lang, "Another service"), Hint: i18n.T(lang, "Any other service, by name."),
+		Control: ui.HTML(`<button type="button" class="btn btn--sm" data-sheet="ak-cc-new">` + esc(addCred) + `</button>`)})
+	sheets += string(ui.SheetClosing("ak-cc-new", addCred, closeLabel, ui.HTML(`<div class="field">
+  <label class="field-label" for="cc-label">`+esc(i18n.T(lang, "Name"))+`</label>
+  <input id="cc-label" class="input" type="text" placeholder="`+esc(i18n.T(lang, "e.g. Sendgrid, Pushover"))+`">
 </div>
 <div class="field">
-  <label class="field-label" for="cc-endpoint">Endpoint (optional)</label>
+  <label class="field-label" for="cc-endpoint">`+esc(i18n.T(lang, "Endpoint (optional)"))+`</label>
   <input id="cc-endpoint" class="input" type="text" placeholder="https://…">
 </div>
 <div class="field">
-  <label class="field-label" for="cc-secret">Secret</label>
-  <input id="cc-secret" class="input" type="password" placeholder="API key / token" autocomplete="new-password">
+  <label class="field-label" for="cc-secret">`+esc(i18n.T(lang, "Secret"))+`</label>
+  <input id="cc-secret" class="input" type="password" placeholder="`+esc(i18n.T(lang, "API key / token"))+`" autocomplete="new-password">
 </div>
 <div class="ak-cred-actions">
-  <button type="button" class="btn btn--primary btn--sm" id="cc-add-btn">Add</button>
+  <button type="button" class="btn btn--primary btn--sm" id="cc-add-btn">`+esc(i18n.T(lang, "Add"))+`</button>
   <span class="text-xs muted" data-sheet-status role="status" aria-live="polite"></span>
 </div>`)))
 
-	return `<p class="text-sm muted mb-3">Secrets are encrypted before they are stored and shown only masked afterwards.` +
-		string(ui.Tip("Encrypted at rest with AES-256-GCM; they never leave your server in clear text. Every issue, rotate, revoke and reveal is written to the audit log.")) + `</p>` +
+	return `<p class="text-sm muted mb-3">` + esc(i18n.T(lang, "Secrets are encrypted before they are stored and shown only masked afterwards.")) +
+		string(ui.Tip(i18n.T(lang, "Encrypted at rest with AES-256-GCM; they never leave your server in clear text. Every issue, rotate, revoke and reveal is written to the audit log."))) + `</p>` +
 		string(ui.Rows(rows...)) + sheets
 }
 
-// credState is a stored credential's state as a dot and a word. A provider
-// with no record has never been set up, which is different from one the
-// operator switched off.
-func credState(c secrets.Credential) ui.HTML {
+// credState is a stored credential's state as a dot and a word, in lang. A
+// provider with no record has never been set up, which is different from one
+// the operator switched off.
+func credState(lang string, c secrets.Credential) ui.HTML {
 	switch {
 	case c.ID == "":
-		return ui.State("neutral", "Not set up")
+		return ui.State("neutral", i18n.T(lang, "Not set up"))
 	case !c.Enabled:
-		return ui.State("neutral", "Off")
+		return ui.State("neutral", i18n.T(lang, "Off"))
 	}
-	return ui.State("ok", "On")
+	return ui.State("ok", i18n.T(lang, "On"))
 }
 
 // firstSentence is a description's first sentence, for a row's hint; the
@@ -542,16 +580,27 @@ func firstSentence(s string) string {
 	return first
 }
 
-// credVerb names the row's button for what it will do.
-func credVerb(c secrets.Credential) string {
+// credVerb names the row's button for what it will do, in lang.
+func credVerb(lang string, c secrets.Credential) string {
 	if c.ID == "" {
-		return "Set up"
+		return i18n.T(lang, "Set up")
 	}
-	return "Edit"
+	return i18n.T(lang, "Edit")
 }
 
-// osAPIKeysProviderCard is one known provider's fields, shown in its sheet.
-func osAPIKeysProviderCard(p providerMeta, c secrets.Credential) string {
+// credHint says, in lang, whether a credential holds a secret, and its
+// masked end.
+func credHint(lang string, c secrets.Credential) string {
+	if c.HasSecret {
+		return i18n.T(lang, "Stored key: {hint}", "hint", c.Hint)
+	}
+	return i18n.T(lang, "No key stored.")
+}
+
+// osAPIKeysProviderCard is one known provider's fields, shown in its sheet,
+// in lang. storedLabel is the provider's English name, which its credential
+// is saved under.
+func osAPIKeysProviderCard(lang string, p providerMeta, storedLabel string, c secrets.Credential) string {
 	endpointField := ""
 	if p.HasEndpoint {
 		hint := ""
@@ -559,14 +608,10 @@ func osAPIKeysProviderCard(p providerMeta, c secrets.Credential) string {
 			hint = `<span class="field-hint">` + html.EscapeString(p.EndpointHint) + `</span>`
 		}
 		endpointField = `<div class="field">
-    <label class="field-label">Endpoint</label>
+    <label class="field-label">` + esc(i18n.T(lang, "Endpoint")) + `</label>
     <input class="input" type="text" data-cred-endpoint value="` + html.EscapeString(c.Endpoint) + `" placeholder="` + html.EscapeString(p.EndpointPH) + `">
     ` + hint + `
   </div>`
-	}
-	hintLine := "No key stored."
-	if c.HasSecret {
-		hintLine = "Stored key: " + c.Hint
 	}
 	checked := " checked"
 	if c.ID != "" && !c.Enabled {
@@ -576,22 +621,22 @@ func osAPIKeysProviderCard(p providerMeta, c secrets.Credential) string {
 	revealDel := ""
 	if c.ID != "" {
 		dataID = html.EscapeString(c.ID)
-		revealDel = `<button type="button" class="btn btn--sm" data-action="cred-reveal" data-id="` + dataID + `">Reveal</button>
-    <button type="button" class="btn btn--sm" data-action="cred-delete" data-id="` + dataID + `">Delete</button>`
+		revealDel = `<button type="button" class="btn btn--sm" data-action="cred-reveal" data-id="` + dataID + `">` + esc(i18n.T(lang, "Reveal")) + `</button>
+    <button type="button" class="btn btn--sm" data-action="cred-delete" data-id="` + dataID + `">` + esc(i18n.T(lang, "Delete")) + `</button>`
 	}
 
 	return `<div data-cred-card data-provider="` + html.EscapeString(p.Provider) + `" data-id="` + dataID + `">
   <p class="text-sm muted mb-4">` + html.EscapeString(p.Desc) + `</p>
-  <label class="settings-row ak-cred-toggle"><span class="text-sm">Enabled</span>
+  <label class="settings-row ak-cred-toggle"><span class="text-sm">` + esc(i18n.T(lang, "Enabled")) + `</span>
     <input type="checkbox" class="toggle" role="switch" data-cred-enabled` + checked + `></label>
   ` + endpointField + `
   <div class="field">
     <label class="field-label">` + html.EscapeString(p.SecretLabel) + `</label>
     <input class="input font-mono" type="password" data-cred-secret placeholder="` + html.EscapeString(p.SecretPH) + `" autocomplete="new-password">
-    <span class="field-hint" data-cred-hint>` + html.EscapeString(hintLine) + `</span>
+    <span class="field-hint" data-cred-hint>` + html.EscapeString(credHint(lang, c)) + `</span>
   </div>
   <div class="ak-cred-actions">
-    <button type="button" class="btn btn--primary btn--sm" data-action="cred-save" data-provider="` + html.EscapeString(p.Provider) + `" data-label="` + html.EscapeString(p.Title) + `">Save</button>
+    <button type="button" class="btn btn--primary btn--sm" data-action="cred-save" data-provider="` + html.EscapeString(p.Provider) + `" data-label="` + html.EscapeString(storedLabel) + `">` + esc(i18n.T(lang, "Save")) + `</button>
     ` + revealDel + `
     <span class="text-xs muted" data-cred-status role="status" aria-live="polite"></span>
   </div>
@@ -599,33 +644,29 @@ func osAPIKeysProviderCard(p providerMeta, c secrets.Credential) string {
 }
 
 // osAPIKeysCustomRow is one stored custom credential's fields, shown in its
-// sheet.
-func osAPIKeysCustomRow(c secrets.Credential) string {
-	hintLine := "No key stored."
-	if c.HasSecret {
-		hintLine = "Stored key: " + c.Hint
-	}
+// sheet, in lang.
+func osAPIKeysCustomRow(lang string, c secrets.Credential) string {
 	checked := " checked"
 	if !c.Enabled {
 		checked = ""
 	}
 	id := html.EscapeString(c.ID)
 	return `<div data-cred-card data-provider="custom" data-id="` + id + `" data-label="` + html.EscapeString(c.Label) + `">
-  <label class="settings-row ak-cred-toggle"><span class="text-sm">Enabled</span>
+  <label class="settings-row ak-cred-toggle"><span class="text-sm">` + esc(i18n.T(lang, "Enabled")) + `</span>
     <input type="checkbox" class="toggle" role="switch" data-cred-enabled` + checked + `></label>
   <div class="field">
-    <label class="field-label">Endpoint</label>
+    <label class="field-label">` + esc(i18n.T(lang, "Endpoint")) + `</label>
     <input class="input" type="text" data-cred-endpoint value="` + html.EscapeString(c.Endpoint) + `" placeholder="https://…">
   </div>
   <div class="field">
-    <label class="field-label">Secret</label>
-    <input class="input font-mono" type="password" data-cred-secret placeholder="Leave blank to keep current" autocomplete="new-password">
-    <span class="field-hint" data-cred-hint>` + html.EscapeString(hintLine) + `</span>
+    <label class="field-label">` + esc(i18n.T(lang, "Secret")) + `</label>
+    <input class="input font-mono" type="password" data-cred-secret placeholder="` + esc(i18n.T(lang, "Leave blank to keep current")) + `" autocomplete="new-password">
+    <span class="field-hint" data-cred-hint>` + html.EscapeString(credHint(lang, c)) + `</span>
   </div>
   <div class="ak-cred-actions">
-    <button type="button" class="btn btn--primary btn--sm" data-action="cred-save" data-provider="custom" data-label="` + html.EscapeString(c.Label) + `">Save</button>
-    <button type="button" class="btn btn--sm" data-action="cred-reveal" data-id="` + id + `">Reveal</button>
-    <button type="button" class="btn btn--sm" data-action="cred-delete" data-id="` + id + `">Delete</button>
+    <button type="button" class="btn btn--primary btn--sm" data-action="cred-save" data-provider="custom" data-label="` + html.EscapeString(c.Label) + `">` + esc(i18n.T(lang, "Save")) + `</button>
+    <button type="button" class="btn btn--sm" data-action="cred-reveal" data-id="` + id + `">` + esc(i18n.T(lang, "Reveal")) + `</button>
+    <button type="button" class="btn btn--sm" data-action="cred-delete" data-id="` + id + `">` + esc(i18n.T(lang, "Delete")) + `</button>
     <span class="text-xs muted" data-cred-status role="status" aria-live="polite"></span>
   </div>
 </div>`
@@ -635,7 +676,7 @@ func osAPIKeysCustomRow(c secrets.Credential) string {
 
 func (a *App) handleOSAPIKeyCreate(w http.ResponseWriter, r *http.Request) {
 	if a.apiKeys == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "apikeys-error", "API key store not initialised", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "apikeys-error", i18n.T(i18n.Lang(r.Context()), "API keys are not available yet: their store is not ready."), "")
 		return
 	}
 	var body struct {
@@ -669,7 +710,7 @@ func (a *App) handleOSAPIKeyCreate(w http.ResponseWriter, r *http.Request) {
 	if ki, ok := auth.KeyInfoFromContext(r.Context()); ok && !ki.IsSuperuser() {
 		if !ki.Perms.Covers(perms) {
 			writeAPIError(w, r, http.StatusForbidden, "grant-exceeds-key",
-				"an API key cannot mint a key with capabilities it does not itself hold", "/docs/compatibility/vayuapi")
+				i18n.T(i18n.Lang(r.Context()), "An API key cannot make a key with capabilities it does not hold itself."), "/docs/compatibility/vayuapi")
 			return
 		}
 	}
@@ -680,11 +721,11 @@ func (a *App) handleOSAPIKeyCreate(w http.ResponseWriter, r *http.Request) {
 	if s := strings.TrimSpace(body.ExpiresAt); s != "" {
 		t, err := parseAPIKeyExpiry(s)
 		if err != nil {
-			writeAPIError(w, r, http.StatusBadRequest, "bad-expiry", "Could not read the expiry date/time.", "")
+			writeAPIError(w, r, http.StatusBadRequest, "bad-expiry", i18n.T(i18n.Lang(r.Context()), "The expiry date and time could not be read."), "")
 			return
 		}
 		if !t.After(time.Now()) {
-			writeAPIError(w, r, http.StatusBadRequest, "past-expiry", "The expiry must be in the future.", "")
+			writeAPIError(w, r, http.StatusBadRequest, "past-expiry", i18n.T(i18n.Lang(r.Context()), "The expiry must be in the future."), "")
 			return
 		}
 		expiresAt = &t
@@ -749,11 +790,11 @@ func (a *App) handleOSAPIKeySetActive(active bool) http.HandlerFunc {
 
 func (a *App) handleOSAPIKeyRotate(w http.ResponseWriter, r *http.Request) {
 	if a.apiKeys == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "apikeys-error", "API key store not initialised", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "apikeys-error", i18n.T(i18n.Lang(r.Context()), "API keys are not available yet: their store is not ready."), "")
 		return
 	}
 	if !a.keyLifecycleAuthorized(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "rotating an API key requires an administrator or a superuser key", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Only an administrator or a full-access key can rotate a key."), "")
 		return
 	}
 	id := strings.TrimSpace(r.URL.Query().Get("id"))
@@ -817,11 +858,11 @@ func (a *App) revokeOAuthRefreshForKey(r *http.Request, id string) {
 // revoke; the key id is the target. No secret is ever recorded.
 func (a *App) apiKeyMutate(w http.ResponseWriter, r *http.Request, action string, fn func(id string) error) {
 	if a.apiKeys == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "apikeys-error", "API key store not initialised", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "apikeys-error", i18n.T(i18n.Lang(r.Context()), "API keys are not available yet: their store is not ready."), "")
 		return
 	}
 	if !a.keyLifecycleAuthorized(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "modifying an API key requires an administrator or a superuser key", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Only an administrator or a full-access key can change a key."), "")
 		return
 	}
 	var body struct {
@@ -845,11 +886,11 @@ func (a *App) apiKeyMutate(w http.ResponseWriter, r *http.Request, action string
 // lifting a key's budget is a decision the audit log should be able to show.
 func (a *App) handleOSAPIKeyRate(w http.ResponseWriter, r *http.Request) {
 	if a.apiKeys == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "apikeys-error", "API key store not initialised", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "apikeys-error", i18n.T(i18n.Lang(r.Context()), "API keys are not available yet: their store is not ready."), "")
 		return
 	}
 	if !a.keyLifecycleAuthorized(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "changing a key's limit requires an administrator or a superuser key", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Only an administrator or a full-access key can change a key's limit."), "")
 		return
 	}
 	var body struct {
@@ -857,7 +898,7 @@ func (a *App) handleOSAPIKeyRate(w http.ResponseWriter, r *http.Request) {
 		Rate int    `json:"rate_per_min"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "Could not read the limit.", "")
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", i18n.T(i18n.Lang(r.Context()), "The limit could not be read."), "")
 		return
 	}
 	id := strings.TrimSpace(body.ID)
@@ -873,11 +914,11 @@ func (a *App) handleOSAPIKeyRate(w http.ResponseWriter, r *http.Request) {
 // none: 0 for the built-in budget, apikeys.Unlimited, or a number.
 func (a *App) handleOSAPIRateDefault(w http.ResponseWriter, r *http.Request) {
 	if a.siteSettings == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "settings-error", "Settings are not available", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "settings-error", i18n.T(i18n.Lang(r.Context()), "Settings cannot be saved yet: their storage is not ready."), "")
 		return
 	}
 	if !a.keyLifecycleAuthorized(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "changing the keys' default limit requires an administrator or a superuser key", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Only an administrator or a full-access key can change the keys' default limit."), "")
 		return
 	}
 	var body struct {
@@ -904,7 +945,7 @@ func (a *App) handleOSAPIRateDefault(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleOSCredentialSave(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Only an administrator can do this."), "")
 		return
 	}
 	var body struct {
@@ -915,18 +956,18 @@ func (a *App) handleOSCredentialSave(w http.ResponseWriter, r *http.Request) {
 		Enabled  bool   `json:"enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", i18n.T(i18n.Lang(r.Context()), "The request could not be read."), "")
 		return
 	}
 	// The backup passphrase is set on the Backups page, which says to keep the
 	// old one for the backups it sealed. Saved here under another label it
 	// would become the newest and replace it with no word said.
 	if strings.EqualFold(strings.TrimSpace(body.Provider), secrets.ProviderVayuKeep) {
-		writeAPIError(w, r, http.StatusBadRequest, "secrets-error", "The backup passphrase is set on the Backups page.", "")
+		writeAPIError(w, r, http.StatusBadRequest, "secrets-error", i18n.T(i18n.Lang(r.Context()), "The backup passphrase is set on the Backups page."), "")
 		return
 	}
 	if a.secrets == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "secrets-error", "secrets store not initialised", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "secrets-error", i18n.T(i18n.Lang(r.Context()), "Credentials are not available yet: their store is not ready."), "")
 		return
 	}
 	id, err := a.secrets.Upsert(r.Context(), body.Provider, body.Label, body.Endpoint, body.Secret, body.Enabled, false)
@@ -951,11 +992,11 @@ func (a *App) handleOSCredentialSave(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleOSCredentialReveal(w http.ResponseWriter, r *http.Request) {
 	if a.secrets == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "secrets-error", "secrets store not initialised", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "secrets-error", i18n.T(i18n.Lang(r.Context()), "Credentials are not available yet: their store is not ready."), "")
 		return
 	}
 	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Only an administrator can do this."), "")
 		return
 	}
 	var body struct {
@@ -977,11 +1018,11 @@ func (a *App) handleOSCredentialReveal(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleOSCredentialDelete(w http.ResponseWriter, r *http.Request) {
 	if a.secrets == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "secrets-error", "secrets store not initialised", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "secrets-error", i18n.T(i18n.Lang(r.Context()), "Credentials are not available yet: their store is not ready."), "")
 		return
 	}
 	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Only an administrator can do this."), "")
 		return
 	}
 	var body struct {
@@ -999,147 +1040,3 @@ func (a *App) handleOSCredentialDelete(w http.ResponseWriter, r *http.Request) {
 	dbpkg.AuditLog("credential.delete", dbpkg.AuditActor(r), strings.TrimSpace(body.ID), "")
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 }
-
-// osAPIKeysScript is the nonce-gated page controller for the API Keys console.
-// It runs inside the shared bootstrap IIFE (see adminOSShellFoot), so csrf() is
-// already in scope.
-const osAPIKeysScript = `
-var akStatus=document.getElementById('ak-status');
-// A message about something done in a sheet is said in that sheet: the page's
-// own status line is behind the sheet while it is open.
-function akSet(t,isErr,from){var d=from&&from.closest('dialog');var s=(d&&d.querySelector('[data-sheet-status]'))||akStatus;if(s){s.textContent=t;s.style.color=isErr?'var(--danger)':'var(--ok)';}}
-function jpost(url,payload){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify(payload||{})}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});});}
-
-// ── Token reveal banner (shown once after create/rotate) ──
-var banner=document.getElementById('ak-token-banner');
-var tokenVal=document.getElementById('ak-token-value');
-var copyBtn=document.getElementById('ak-token-copy');
-var doneBtn=document.getElementById('ak-token-done');
-// The key is shown once, so the sheet it was made in closes first: left open,
-// it would cover the only copy of the key.
-function showToken(tok){if(!banner)return;var d=banner.ownerDocument.querySelector('dialog.sa-sheet[open]');if(d)d.close();tokenVal.value=tok;banner.hidden=false;banner.scrollIntoView({behavior:'smooth',block:'start'});}
-if(copyBtn)copyBtn.addEventListener('click',function(){tokenVal.select();try{document.execCommand('copy');}catch(e){}if(navigator.clipboard)navigator.clipboard.writeText(tokenVal.value);akSet('Copied to clipboard',false);});
-if(doneBtn)doneBtn.addEventListener('click',function(){location.reload();});
-
-// ── Permission grid wiring (row "all", grand superuser) ──
-var grid=document.getElementById('ak-perm-grid');
-var superBox=document.getElementById('ak-perm-super');
-function permBoxes(){return grid?grid.querySelectorAll('.ak-perm'):[];}
-function rowBox(section){return grid?grid.querySelector('.ak-perm-all[data-section="'+section+'"]'):null;}
-function rowCells(section){return grid?grid.querySelectorAll('.ak-perm[data-section="'+section+'"]'):[];}
-function syncRow(section){var r=rowBox(section);if(!r)return;var cells=rowCells(section),all=cells.length>0;cells.forEach(function(c){if(!c.checked)all=false;});r.checked=all;}
-if(grid)grid.addEventListener('change',function(ev){
-  var t=ev.target;
-  if(t.classList.contains('ak-perm-all')){var sec=t.getAttribute('data-section');rowCells(sec).forEach(function(c){c.checked=t.checked;});}
-  else if(t.classList.contains('ak-perm')){syncRow(t.getAttribute('data-section'));}
-  if(superBox&&superBox.checked&&!(t===superBox)){/* editing individual boxes leaves superuser as-is */}
-});
-if(superBox)superBox.addEventListener('change',function(){
-  // Full access dims the grid — grants are then implicit.
-  if(grid)grid.classList.toggle('ak-grid--disabled',superBox.checked);
-});
-function collectCapabilities(){
-  if(superBox&&superBox.checked)return['*:*'];
-  var caps=[];permBoxes().forEach(function(c){if(c.checked)caps.push(c.getAttribute('data-section')+':'+c.getAttribute('data-action'));});
-  return caps;
-}
-
-// ── Create / rotate / activate / deactivate / revoke / delete own keys ──
-var createBtn=document.getElementById('ak-create-btn');
-if(createBtn)createBtn.addEventListener('click',function(){
-  var label=(document.getElementById('ak-new-label')||{}).value||'';
-  var expiry=(document.getElementById('ak-new-expiry')||{}).value||'';
-  var rateRaw=(document.getElementById('ak-new-rate')||{}).value||'';
-  var rate=parseInt(rateRaw,10);if(isNaN(rate)||rate<0)rate=0;
-  if((document.getElementById('ak-new-rate-unl')||{}).checked)rate=-1;
-  var caps=collectCapabilities();
-  if(caps.length===0){akSet('Grant at least one permission (or tick Full access)',true,createBtn);return;}
-  createBtn.disabled=true;akSet('Creating…',false,createBtn);
-  jpost('/os/api/apikeys/create',{label:label,capabilities:caps,expires_at:expiry,rate_per_min:rate}).then(function(res){
-    createBtn.disabled=false;
-    if(res.ok){showToken(res.d.token);akSet('Key created',false);}else{akSet(res.d.detail||res.d.title||'Error',true,createBtn);}
-  }).catch(function(e){createBtn.disabled=false;akSet('Error: '+e,true,createBtn);});
-});
-
-document.addEventListener('click',function(ev){
-  var cp=ev.target.closest('[data-copy]');
-  if(cp){var el=document.querySelector(cp.getAttribute('data-copy'));if(el){var v=el.value!==undefined?el.value:el.textContent;if(navigator.clipboard)navigator.clipboard.writeText(v).then(function(){akSet('Copied',false);},function(){akSet('Copy failed; select it instead',true);});}return;}
-  var b=ev.target.closest('[data-action]');if(!b)return;
-  var act=b.getAttribute('data-action');var id=b.getAttribute('data-id');
-  if(act==='ak-rate'||act==='ak-rate-default'){
-    var box=b.closest('[data-ak-rate]');var n=parseInt(box.querySelector('input[type=number]').value,10);
-    var r=box.querySelector('input[type=checkbox]').checked?-1:(isNaN(n)?0:n);
-    var body={rate_per_min:r};if(act==='ak-rate')body.id=id;
-    b.disabled=true;jpost(act==='ak-rate'?'/os/api/apikeys/rate':'/os/api/apikeys/rate-default',body).then(function(res){b.disabled=false;if(res.ok){akSet('Saved',false,b);}else{akSet(res.d.detail||'Error',true,b);}});
-  }else if(act==='ak-rotate'){
-    vpConfirm({title:'Rotate this key?',message:'The current value stops working immediately.',confirm:'Rotate'},function(){
-    b.disabled=true;jpost('/os/api/apikeys/rotate',{id:id}).then(function(res){b.disabled=false;if(res.ok){showToken(res.d.token);akSet('Key rotated',false);}else{akSet(res.d.detail||'Error',true,b);}});
-    });
-  }else if(act==='ak-activate'){
-    b.disabled=true;jpost('/os/api/apikeys/activate',{id:id}).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;akSet(res.d.detail||'Error',true,b);}});
-  }else if(act==='ak-deactivate'){
-    vpConfirm({title:'Deactivate this key?',message:'It stops authenticating until you re-activate it.',confirm:'Deactivate'},function(){
-    b.disabled=true;jpost('/os/api/apikeys/deactivate',{id:id}).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;akSet(res.d.detail||'Error',true,b);}});
-    });
-  }else if(act==='ak-revoke'){
-    vpConfirm({title:'Revoke this key?',message:'It can no longer authenticate.',confirm:'Revoke'},function(){
-    b.disabled=true;jpost('/os/api/apikeys/revoke',{id:id}).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;akSet(res.d.detail||'Error',true,b);}});
-    });
-  }else if(act==='ak-delete'){
-    vpConfirm({title:'Delete this key permanently?',confirm:'Delete'},function(){
-    b.disabled=true;jpost('/os/api/apikeys/delete',{id:id}).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;akSet(res.d.detail||'Error',true,b);}});
-    });
-  }else if(act==='cred-save'){
-    saveCred(b);
-  }else if(act==='cred-reveal'){
-    revealCred(b,id);
-  }else if(act==='cred-delete'){
-    vpConfirm({title:'Delete this credential?',message:'The stored secret is erased.',confirm:'Delete'},function(){
-    b.disabled=true;jpost('/os/api/credentials/delete',{id:id}).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;cardStatus(cardOf(b),res.d.detail||'Error',true);}});
-    });
-  }
-});
-
-function cardOf(el){return el.closest('[data-cred-card]');}
-function cardStatus(card,t,isErr){var s=card.querySelector('[data-cred-status]');if(s){s.textContent=t;s.style.color=isErr?'var(--danger)':'var(--ok)';}}
-
-function saveCred(btn){
-  var card=cardOf(btn);if(!card)return;
-  var provider=btn.getAttribute('data-provider');
-  var label=btn.getAttribute('data-label')||'';
-  var ep=card.querySelector('[data-cred-endpoint]');
-  var sec=card.querySelector('[data-cred-secret]');
-  var en=card.querySelector('[data-cred-enabled]');
-  var payload={provider:provider,label:label,endpoint:ep?ep.value:'',secret:sec?sec.value:'',enabled:en?en.checked:true};
-  btn.disabled=true;cardStatus(card,'Saving…',false);
-  jpost('/os/api/credentials/save',payload).then(function(res){
-    btn.disabled=false;
-    if(res.ok){cardStatus(card,'Saved',false);if(sec)sec.value='';setTimeout(function(){location.reload();},600);}
-    else{cardStatus(card,res.d.detail||res.d.title||'Error',true);}
-  }).catch(function(e){btn.disabled=false;cardStatus(card,'Error: '+e,true);});
-}
-
-function revealCred(btn,id){
-  var card=cardOf(btn);if(!card)return;
-  var sec=card.querySelector('[data-cred-secret]');if(!sec)return;
-  btn.disabled=true;
-  jpost('/os/api/credentials/reveal',{id:id}).then(function(res){
-    btn.disabled=false;
-    if(res.ok){sec.type='text';sec.value=res.d.secret;btn.textContent='Hide';btn.setAttribute('data-action','noop');}
-    else{cardStatus(card,res.d.detail||'Error',true);}
-  }).catch(function(e){btn.disabled=false;cardStatus(card,'Error: '+e,true);});
-}
-
-// ── Add a custom credential ──
-var ccAdd=document.getElementById('cc-add-btn');
-if(ccAdd)ccAdd.addEventListener('click',function(){
-  var label=(document.getElementById('cc-label')||{}).value||'';
-  var ep=(document.getElementById('cc-endpoint')||{}).value||'';
-  var sec=(document.getElementById('cc-secret')||{}).value||'';
-  if(!label.trim()){akSet('Give the credential a name',true,ccAdd);return;}
-  ccAdd.disabled=true;akSet('Saving…',false,ccAdd);
-  jpost('/os/api/credentials/save',{provider:'custom',label:label,endpoint:ep,secret:sec,enabled:true}).then(function(res){
-    ccAdd.disabled=false;if(res.ok){location.reload();}else{akSet(res.d.detail||res.d.title||'Error',true,ccAdd);}
-  }).catch(function(e){ccAdd.disabled=false;akSet('Error: '+e,true,ccAdd);});
-});
-`

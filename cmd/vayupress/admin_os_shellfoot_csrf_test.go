@@ -16,7 +16,6 @@ import (
 func TestPageScriptsHaveCSRF(t *testing.T) {
 	def := regexp.MustCompile(`function csrf\(\)\{[^}]*vp_csrf`)
 	for name, script := range map[string]string{
-		"osAPIKeysScript":   osAPIKeysScript,
 		"osConnectorScript": osConnectorScript,
 		"mcpClientScript":   mcpClientScript,
 	} {

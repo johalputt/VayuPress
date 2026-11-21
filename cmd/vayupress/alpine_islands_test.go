@@ -115,7 +115,7 @@ func TestPageUsesAlpineDetection(t *testing.T) {
 		t.Error("body with x-data island must be detected as needing Alpine")
 	}
 	// The real API Keys section must trigger detection end-to-end.
-	if !pageUsesAlpine(osAPIKeysOwnSection(mustSampleKeys())) {
+	if !pageUsesAlpine(osAPIKeysOwnSection("en", mustSampleKeys())) {
 		t.Error("API Keys section hosts the filter island; must be detected as needing Alpine")
 	}
 }
@@ -124,7 +124,7 @@ func TestPageUsesAlpineDetection(t *testing.T) {
 // island (x-data + per-row filter text) without breaking CSP-safety.
 func TestAPIKeysFilterIsland(t *testing.T) {
 	keys := mustSampleKeys()
-	out := osAPIKeysOwnSection(keys)
+	out := osAPIKeysOwnSection("en", keys)
 	assertCSPSafe(t, "osAPIKeysOwnSection+island", out)
 	for _, want := range []string{`x-data="filterList"`, `x-model="q"`, `@input="apply()"`, `data-filter-text=`, `data-filter-empty`} {
 		if !strings.Contains(out, want) {
@@ -133,7 +133,7 @@ func TestAPIKeysFilterIsland(t *testing.T) {
 	}
 	// A11y (WCAG 4.1.3): filter results must be announced to assistive tech via
 	// an aria-live status region carried inside the island root.
-	for _, want := range []string{`data-filter-status`, `role="status"`, `aria-live="polite"`, `data-filter-noun="keys"`} {
+	for _, want := range []string{`data-filter-status`, `role="status"`, `aria-live="polite"`, `data-filter-none="No keys match your filter."`, `data-filter-some="Keys matching your filter: {n}"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("API Keys filter island missing a11y status hook %q", want)
 		}

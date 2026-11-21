@@ -40,7 +40,7 @@ func TestOSAPIBaseRows(t *testing.T) {
 
 	// No dedicated host → apex base + "point a dedicated api.<domain>" guidance.
 	config.Cfg.APIHost, config.Cfg.Domain = "", "example.com"
-	out := string(ui.Rows(osAPIBaseRows()...))
+	out := string(ui.Rows(osAPIBaseRows("en")...))
 	if !strings.Contains(out, `id="ak-apibase">https://example.com/api/v1</code>`) {
 		t.Errorf("rows missing apex base URL:\n%s", out)
 	}
@@ -55,7 +55,7 @@ func TestOSAPIBaseRows(t *testing.T) {
 	// Dedicated host set → confirms the host and that the console is not
 	// exposed there.
 	config.Cfg.APIHost = "api.example.com"
-	out = string(ui.Rows(osAPIBaseRows()...))
+	out = string(ui.Rows(osAPIBaseRows("en")...))
 	if !strings.Contains(out, `id="ak-apibase">https://api.example.com/api/v1</code>`) || !strings.Contains(out, string(ui.State("ok", "Dedicated host"))) {
 		t.Errorf("rows should confirm the dedicated host:\n%s", out)
 	}

@@ -41,10 +41,11 @@
             if (needle === '') {
               status.textContent = '';
             } else {
-              var noun = root.getAttribute('data-filter-noun') || 'results';
+              // The page gives the sentences, in its language: a noun cannot
+              // be put into a sentence in a language that is not English.
               status.textContent = shown === 0
-                ? ('No ' + noun + ' match your filter.')
-                : (shown + ' ' + noun + ' match your filter.');
+                ? (root.getAttribute('data-filter-none') || 'Nothing matches your filter.')
+                : (root.getAttribute('data-filter-some') || 'Matching your filter: {n}').replace('{n}', String(shown));
             }
           }
         }
