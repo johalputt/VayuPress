@@ -15,7 +15,7 @@ import (
 // engine recorded (a health reason) is shown as it was recorded.
 func TestVayuTorIsDrawnInThePagesLanguage(t *testing.T) {
 	setup := torSetup("de", "n", true)
-	for _, want := range []string{"Onion-Dienste sind aus", "Onion-Dienste einschalten"} {
+	for _, want := range []string{"Onion-Dienste sind aus", "Onion-Dienste einschalten", `<span class="vp-sr-only"> (erledigt)</span>`} {
 		if !strings.Contains(setup, want) {
 			t.Errorf("the German setup page lacks %q", want)
 		}

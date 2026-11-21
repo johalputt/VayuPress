@@ -2534,6 +2534,7 @@
  "could not hash password": "não foi possível proteger a senha",
  "delete": "excluir",
  "does not contain": "não contém",
+ "done": "feito",
  "e.g. Sendgrid, Pushover": "ex.: Sendgrid, Pushover",
  "e.g. Theme builder, Zapier, CI": "ex.: Construtor de temas, Zapier, CI",
  "either": "um",

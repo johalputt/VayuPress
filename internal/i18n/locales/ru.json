@@ -2534,6 +2534,7 @@
  "could not hash password": "не удалось сохранить пароль",
  "delete": "удалить",
  "does not contain": "не содержит",
+ "done": "готово",
  "e.g. Sendgrid, Pushover": "например, Sendgrid, Pushover",
  "e.g. Theme builder, Zapier, CI": "например, конструктор тем, Zapier, CI",
  "either": "одном",

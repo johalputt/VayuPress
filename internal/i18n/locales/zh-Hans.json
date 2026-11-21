@@ -2534,6 +2534,7 @@
  "could not hash password": "无法保护密码",
  "delete": "删除",
  "does not contain": "不包含",
+ "done": "已完成",
  "e.g. Sendgrid, Pushover": "例如 Sendgrid、Pushover",
  "e.g. Theme builder, Zapier, CI": "例如 主题构建器、Zapier、CI",
  "either": "任一",

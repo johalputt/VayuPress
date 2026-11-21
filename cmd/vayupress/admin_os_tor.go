@@ -83,7 +83,7 @@ func torSetup(lang, nonce string, available bool) string {
 				Detail: i18n.T(lang, "{setting} in {file} takes it away. Removing the line and restarting brings it back:", "setting", "VAYUOS_TOR=off", "file", "/etc/vayupress/env"), Command: torOnCommand}},
 			Action: copyCommandButton(i18n.T(lang, "Copy the command"), torOnCommand)}))
 	}
-	return string(ui.Setup(ui.SetupPage{Icon: "tor", Title: i18n.T(lang, "Onion services are off"), What: what,
+	return string(ui.Setup(ui.SetupPage{Icon: "tor", Title: i18n.T(lang, "Onion services are off"), What: what, DoneWord: i18n.T(lang, "done"),
 		Steps: []ui.SetupStep{
 			{Title: i18n.T(lang, "Tor available"), Done: true, Detail: i18n.T(lang, "VayuPress runs its own Tor, and fetches a current one when the server's is too old.")},
 			{Title: i18n.T(lang, "Onion services on"), Detail: i18n.T(lang, "One .onion for each site you host, reachable within a few minutes. Tor Browser finds it on its own. If this server's network blocks Tor, the page says so and bridges get round it.")},

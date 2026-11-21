@@ -34,9 +34,10 @@ func (a *App) mailRunning() bool {
 func (a *App) writeMailSetup(w http.ResponseWriter, r *http.Request, title string) {
 	lang := i18n.Lang(r.Context())
 	body := ui.Setup(ui.SetupPage{
-		Icon:  "mail",
-		Title: i18n.T(lang, "Mail isn't set up yet"),
-		What:  i18n.T(lang, "Your own mail server for this site: addresses for you and your team, encrypted with PGP, readable in any mail app and on your phone."),
+		Icon:     "mail",
+		Title:    i18n.T(lang, "Mail isn't set up yet"),
+		DoneWord: i18n.T(lang, "done"),
+		What:     i18n.T(lang, "Your own mail server for this site: addresses for you and your team, encrypted with PGP, readable in any mail app and on your phone."),
 		Steps: []ui.SetupStep{
 			{Title: i18n.T(lang, "A domain"), Detail: i18n.T(lang, "This install answers only on localhost. Mail runs for the domain VayuPress is installed for, and the installer sets it; put yours in place of example.com:"),
 				Command: mailInstallCommand},
@@ -97,10 +98,11 @@ func (a *App) writeTalkSetup(w http.ResponseWriter, r *http.Request) {
 		action = ui.HTML(`<a class="btn btn--primary" href="/os/vayumail/accounts">` + esc(i18n.T(lang, "Create a mailbox")) + `</a>`)
 	}
 	body := ui.Setup(ui.SetupPage{
-		Icon:  "talk",
-		Title: i18n.T(lang, "Talk isn't set up yet"),
-		What:  i18n.T(lang, "Private chat for you and the people you write to: end-to-end encrypted, gone a set time after it is read, in the browser and in the app."),
-		Steps: steps, Action: action,
+		Icon:     "talk",
+		Title:    i18n.T(lang, "Talk isn't set up yet"),
+		DoneWord: i18n.T(lang, "done"),
+		What:     i18n.T(lang, "Private chat for you and the people you write to: end-to-end encrypted, gone a set time after it is read, in the browser and in the app."),
+		Steps:    steps, Action: action,
 	})
 	writeOSHTML(w, r, adminOSLayout(render.CSPNonce(r), "VayuTalk", "talk", a.getOSSettings(r.Context()), body))
 }

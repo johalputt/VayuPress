@@ -2534,6 +2534,7 @@
  "could not hash password": "비밀번호를 보호할 수 없습니다",
  "delete": "삭제",
  "does not contain": "포함 안 함",
+ "done": "완료",
  "e.g. Sendgrid, Pushover": "예: Sendgrid, Pushover",
  "e.g. Theme builder, Zapier, CI": "예: 테마 빌더, Zapier, CI",
  "either": "어느 하나",

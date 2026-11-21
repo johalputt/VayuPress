@@ -2534,6 +2534,7 @@
  "could not hash password": "パスワードを保護できませんでした",
  "delete": "削除",
  "does not contain": "を含まない",
+ "done": "完了",
  "e.g. Sendgrid, Pushover": "例: Sendgrid、Pushover",
  "e.g. Theme builder, Zapier, CI": "例: テーマビルダー、Zapier、CI",
  "either": "どちらか",

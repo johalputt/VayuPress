@@ -2534,6 +2534,7 @@
  "could not hash password": "could not hash password",
  "delete": "delete",
  "does not contain": "does not contain",
+ "done": "done",
  "e.g. Sendgrid, Pushover": "e.g. Sendgrid, Pushover",
  "e.g. Theme builder, Zapier, CI": "e.g. Theme builder, Zapier, CI",
  "either": "either",

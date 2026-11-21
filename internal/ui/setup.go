@@ -27,6 +27,9 @@ type SetupPage struct {
 	Steps             []SetupStep
 	Action            HTML // the one primary button: the next thing to do
 	More              HTML // a quiet secondary link
+	// DoneWord is what a screen reader hears after a step that is done, in
+	// the page's language; "done" when it is empty.
+	DoneWord string
 }
 
 // Setup renders the page.
@@ -44,7 +47,11 @@ func Setup(p SetupPage) HTML {
 			if s.Done {
 				cls += " is-done"
 				mark = string(Icon("check"))
-				done = `<span class="vp-sr-only"> (done)</span>`
+				word := p.DoneWord
+				if word == "" {
+					word = "done"
+				}
+				done = `<span class="vp-sr-only"> (` + string(Text(word)) + `)</span>`
 			}
 			title := string(Text(s.Title)) + done
 			if s.Href != "" {
