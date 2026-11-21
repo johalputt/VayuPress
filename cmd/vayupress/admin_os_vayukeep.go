@@ -99,32 +99,32 @@ func keepStatusVerdict(lang string, st vayukeep.Status, bootErr string, now time
 	ago := humanAgoIn(lang, st.NewestGen, now)
 	switch {
 	case bootErr != "":
-		return keepVerdict{"danger", "Refused to start", i18n.T(lang, "Backups refused to start"),
+		return keepVerdict{"danger", chipRefused, i18n.T(lang, "Backups refused to start"),
 			ui.Text(i18n.T(lang, "It declined the settings it was given, so nothing is being backed up automatically. Your site is unaffected."))}
 	case !st.Enabled:
-		return keepVerdict{"warn", "Not set up", i18n.T(lang, "Automatic backup is off"),
+		return keepVerdict{"warn", chipNotSetUp, i18n.T(lang, "Automatic backup is off"),
 			ui.Text(i18n.T(lang, "Your only copies are the ones you take by hand."))}
 	case st.Paused:
-		return keepVerdict{"warn", "Paused", i18n.T(lang, "Backups are paused"),
+		return keepVerdict{"warn", chipPaused, i18n.T(lang, "Backups are paused"),
 			ui.Text(i18n.T(lang, "{why}. Nothing new is being saved.", "why", strings.TrimSuffix(st.PauseWhy, ".")))}
 	case !st.LastDrill.IsZero() && !st.LastDrillOK:
-		return keepVerdict{"danger", "Test restore FAILED", i18n.T(lang, "The last test restore failed"),
+		return keepVerdict{"danger", chipDrillFailed, i18n.T(lang, "The last test restore failed"),
 			ui.Text(i18n.T(lang, "{why}. Treat this as an outage of your recovery path.", "why", strings.TrimSuffix(st.LastDrillError, ".")))}
 	case st.NewestGen.IsZero():
-		return keepVerdict{"warn", "Unverified", i18n.T(lang, "No backup has been written yet"),
+		return keepVerdict{"warn", chipUnverified, i18n.T(lang, "No backup has been written yet"),
 			ui.Text(i18n.T(lang, "The first is written within a few minutes of a change, or with Back up now."))}
 	case st.LastDrill.IsZero():
-		return keepVerdict{"warn", "Unverified", i18n.T(lang, "Backed up {when}, but never restored", "when", ago),
+		return keepVerdict{"warn", chipUnverified, i18n.T(lang, "Backed up {when}, but never restored", "when", ago),
 			ui.Text(i18n.T(lang, "None has been restored yet: until a test restore passes, these are files rather than proven backups."))}
 	case st.RPO(now) > 24*time.Hour:
-		return keepVerdict{"warn", "Stale", i18n.T(lang, "The newest backup is from {when}", "when", ago),
+		return keepVerdict{"warn", chipStale, i18n.T(lang, "The newest backup is from {when}", "when", ago),
 			ui.HTML(escFill(i18n.T(lang, "Check that writes are reaching {folder}.", "folder", htmlMark(0)), at))}
 	}
 	if len(left) > 0 {
-		return keepVerdict{"warn", "Partial", i18n.T(lang, "Backed up {when}, but not all of it", "when", ago),
+		return keepVerdict{"warn", chipPartial, i18n.T(lang, "Backed up {when}, but not all of it", "when", ago),
 			ui.Text(i18n.T(lang, "Not in it: {what}. What a backup holds, below, says why.", "what", strings.Join(placesWhatIn(lang, left), ", ")))}
 	}
-	return keepVerdict{"ok", "Protected", i18n.T(lang, "Backed up {when}, and it restores", "when", ago),
+	return keepVerdict{"ok", chipProtected, i18n.T(lang, "Backed up {when}, and it restores", "when", ago),
 		ui.HTML(escFill(i18n.T(lang, "Encrypted, to {folder}. You would lose at most {time} of work.", "folder", htmlMark(0), "time", keepLossIn(lang, st.NewestGen, now)), at))}
 }
 
@@ -139,23 +139,36 @@ func backupNotification(lang string, st vayukeep.Status, bootErr string, now tim
 		func(l string) string { return i18n.T(l, "Backups") }, func(l string) string { return backupChipWord(l, v.Chip) }), true
 }
 
+// A verdict's Chip: its English word, the bell's key (fingerprint), which
+// tests read too; backupChipWord says it in a page's language.
+const (
+	chipRefused     = "Refused to start"
+	chipNotSetUp    = "Not set up"
+	chipPaused      = "Paused"
+	chipDrillFailed = "Test restore FAILED"
+	chipUnverified  = "Unverified"
+	chipStale       = "Stale"
+	chipPartial     = "Partial"
+	chipProtected   = "Protected"
+)
+
 // backupChipWord is a verdict's word for the bell in lang. The verdict keeps
 // its English word, which the Backups page's tests and the bell's key read.
 func backupChipWord(lang, chip string) string {
 	switch chip {
-	case "Refused to start":
+	case chipRefused:
 		return i18n.T(lang, "Refused to start")
-	case "Not set up":
+	case chipNotSetUp:
 		return i18n.T(lang, "Not set up")
-	case "Paused":
+	case chipPaused:
 		return i18n.T(lang, "Paused")
-	case "Test restore FAILED":
+	case chipDrillFailed:
 		return i18n.T(lang, "Test restore FAILED")
-	case "Unverified":
+	case chipUnverified:
 		return i18n.T(lang, "Unverified")
-	case "Stale":
+	case chipStale:
 		return i18n.T(lang, "Stale")
-	case "Partial":
+	case chipPartial:
 		return i18n.T(lang, "Partial")
 	}
 	return chip
@@ -218,7 +231,7 @@ func keepSetupCard(lang, bootErr, currentTarget string, envManaged bool) string 
 <div class="section-divider"></div>`
 	}
 	if envManaged {
-		return problem + `<p class="text-sm">` + escFill(i18n.T(lang, "This install is configured by environment variables ({variable}), so the console does not override it. Change it where those are set, or clear the variable to manage backups from here.", "variable", htmlMark(0)), `<code>VAYUKEEP_TARGET</code>`) + `</p>`
+		return problem + `<p class="text-sm">` + escFill(i18n.T(lang, "This install is configured by environment variables ({variable}), so the console does not override it. Change it where those are set, or clear the variable to manage backups from here.", "variable", htmlMark(0)), `<code>`+keepTargetVar+`</code>`) + `</p>`
 	}
 	target := currentTarget
 	if target == "" {
@@ -255,9 +268,26 @@ func keepSetupCard(lang, bootErr, currentTarget string, envManaged bool) string 
 		`</div>`
 }
 
-// keepDefaultTarget is the folder setup suggests: a path, the same in every
-// language.
-const keepDefaultTarget = "/var/backups/vayupress"
+// The code the page shows, the same in every language: the folder setup
+// suggests, the variables that configure backups, and the restore commands.
+const (
+	keepDefaultTarget = "/var/backups/vayupress"
+	keepTargetVar     = "VAYUKEEP_TARGET"
+	keepDrillVar      = "VAYUKEEP_DRILL_MINUTES"
+	keepOffVar        = "VAYUKEEP_OFF=true"
+)
+
+// keepRestoreCommands is the shell restore for backups kept in target (escaped).
+func keepRestoreCommands(target string) string {
+	return `vayupress restore -in ` + target + `/vk-YYYYMMDD-HHMMSS.vpbk -verify
+sudo systemctl stop vayupress
+vayupress restore -in ` + target + `/vk-YYYYMMDD-HHMMSS.vpbk -dest /var/lib/vayupress
+sudo systemctl start vayupress`
+}
+
+// keepSecretLabel is the passphrase's name in the keystore, which the API
+// keys page lists.
+const keepSecretLabel = "Backup passphrase"
 
 // keepWhen names a restore point's moment the way a person says it: today,
 // yesterday, or the date, in lang. In UTC, as every time on this page is.
@@ -432,10 +462,7 @@ func keepRestoreCard(lang string, st vayukeep.Status) string {
 		keepStrong(i18n.T(lang, "Check")), keepStrong(i18n.T(lang, "Restore"))) + `</p>
 <div class="section-divider"></div>
 <p class="text-sm">` + escFill(i18n.T(lang, "{start}, or you are recovering onto a different machine, the console is not reachable, so here is the same job from a shell:", "start", htmlMark(0)), keepStrong(i18n.T(lang, "If this site will not start"))) + `</p>
-<pre class="code-block"><code>vayupress restore -in ` + t + `/vk-YYYYMMDD-HHMMSS.vpbk -verify
-sudo systemctl stop vayupress
-vayupress restore -in ` + t + `/vk-YYYYMMDD-HHMMSS.vpbk -dest /var/lib/vayupress
-sudo systemctl start vayupress</code></pre>
+<pre class="code-block"><code>` + keepRestoreCommands(t) + `</code></pre>
 <p class="text-xs muted">` + esc(i18n.T(lang, "That form also restores uploaded files and stored mail, which the one-click restore leaves alone.")) + `</p>
 <div class="section-divider"></div>
 <div class="cx-details">` +
@@ -480,7 +507,7 @@ func keepScheduleCard(lang string, p keepPrefs) string {
 		detailRow(i18n.T(lang, "If the target breaks"), i18n.T(lang, "After repeated failures it stops trying and says so here, rather than retrying into a full disk. A failing backup never slows or blocks your site.")) +
 		`</div>
 <p class="text-xs muted mt-2">` + escFill(i18n.T(lang, "The schedule and retention are set with {setting}, under Settings. {drill} sets the test-restore interval; {off} turns backup off.", "setting", htmlMark(0), "drill", htmlMark(1), "off", htmlMark(2)),
-		`<em>`+esc(i18n.T(lang, "Back up automatically"))+`</em>`, `<code>VAYUKEEP_DRILL_MINUTES</code>`, `<code>VAYUKEEP_OFF=true</code>`) + `</p>`
+		`<em>`+esc(i18n.T(lang, "Back up automatically"))+`</em>`, `<code>`+keepDrillVar+`</code>`, `<code>`+keepOffVar+`</code>`) + `</p>`
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -784,7 +811,7 @@ func (a *App) handleOSVayuKeepSetup(w http.ResponseWriter, r *http.Request) {
 		Passphrase string `json:"passphrase"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", i18n.T(lang, "The request could not be read."), "")
 		return
 	}
 	target := strings.TrimSpace(body.Target)
@@ -834,7 +861,7 @@ func (a *App) handleOSVayuKeepSetup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if pass != "" {
-		if _, err := a.secrets.Upsert(r.Context(), secrets.ProviderVayuKeep, "Backup passphrase", "", pass, true, false); err != nil {
+		if _, err := a.secrets.Upsert(r.Context(), secrets.ProviderVayuKeep, keepSecretLabel, "", pass, true, false); err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "secrets-error", err.Error(), "")
 			return
 		}

@@ -161,11 +161,43 @@ test("a site's own code runs on its public pages by its hash", async ({ page }) 
   await expect(page.locator("html")).not.toHaveAttribute("data-vp-snippet", mark);
 });
 
-// Settings in the pseudo-language (every sentence accented and made longer)
-// has no English left on any of its pages: a word with a plain vowel, outside
-// what the install holds (its people, addresses and paths), is a sentence that
-// missed i18n.T or vpT. Visible text and the labels a screen reader reads
-// both count.
+// englishLeft is what a console page in the pseudo-language (every sentence
+// accented and made longer) still says in English: a word with a plain vowel,
+// outside what the install holds (its people, addresses and paths), is a
+// sentence that missed i18n.T or vpT. Visible text and the labels a screen
+// reader reads both count.
+async function englishLeft(page) {
+  return page.evaluate(() => {
+    // What the install holds (a field's value, a person's name or address)
+    // and what is a name rather than a sentence.
+    const data = "kbd, code, pre, .mono, textarea, option[lang], [translate=no], .sa-mark, .sa-appname, .sa-menu__name, .sa-sites__btn";
+    const plain = /(^|[^\p{L}])([A-Za-z]*[aeiou][A-Za-z]{2,})(?=$|[^\p{L}])/u;
+    const names = new Set(["VayuOS", "VayuMail", "VayuPress", "VayuTalk", "VayuMCP", "VayuShield", "VayuVeil", "VayuFlow", "VayuKeep", "YouTube", "Tor", "PGP", "DNS", "SEO", "API", "CSS", "PNG", "ICO", "Analytics", "Audience", "Monetization", "Theme", "Site", "Backups", "Storage", "Shield", "Talk", "Buzz", "Claude", "Code", "Argon2id", "UTC", "ReadWritePaths"]);
+    const out = new Set();
+    const check = (text, where) => {
+      // A {placeholder} a sentence shows as it is, an address, and a path.
+      for (const part of text.replace(/\{[a-z]+\}/g, " ").split(/\s+/)) {
+        if (part.includes("@") || part.includes("/")) continue;
+        const m = part.match(plain);
+        if (m && !names.has(m[2])) out.add(where + ": " + text.trim().slice(0, 80));
+      }
+    };
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const el = n.parentElement;
+      if (!el || el.closest(data) || el.closest("script, style, template") || !n.textContent.trim()) continue;
+      if (!el.checkVisibility({ visibilityProperty: true })) continue;
+      check(n.textContent, el.tagName.toLowerCase());
+    }
+    for (const el of document.body.querySelectorAll("[aria-label], [title], [placeholder]")) {
+      if (el.closest(data)) continue;
+      for (const a of ["aria-label", "title", "placeholder"]) if (el.hasAttribute(a)) check(el.getAttribute(a), "@" + a);
+    }
+    return [...out];
+  });
+}
+
+// Settings in the pseudo-language has no English left on any of its pages.
 test("Settings in another language has no English left on it", async ({ page }) => {
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -179,35 +211,33 @@ test("Settings in another language has no English left on it", async ({ page }) 
       await page.locator("[data-notif-toggle]").click();
       await expect(page.locator("[data-notif-panel]")).toBeVisible();
     }
-    const english = await page.evaluate(() => {
-      // What the install holds (a field's value, a person's name or address)
-      // and what is a name rather than a sentence.
-      const data = "kbd, code, .mono, textarea, option[lang], [translate=no], .sa-mark, .sa-appname, .sa-menu__name, .sa-sites__btn";
-      const plain = /(^|[^\p{L}])([A-Za-z]*[aeiou][A-Za-z]{2,})(?=$|[^\p{L}])/u;
-      const names = new Set(["VayuOS", "VayuMail", "VayuPress", "VayuTalk", "VayuMCP", "VayuShield", "VayuVeil", "VayuFlow", "VayuKeep", "YouTube", "Tor", "PGP", "DNS", "SEO", "API", "CSS", "PNG", "ICO", "Analytics", "Audience", "Monetization", "Theme", "Site", "Backups", "Storage", "Shield", "Talk", "Buzz", "Claude", "Code"]);
-      const out = new Set();
-      const check = (text, where) => {
-        // A {placeholder} a sentence shows as it is, and an address.
-        for (const part of text.replace(/\{[a-z]+\}/g, " ").split(/\s+/)) {
-          if (part.includes("@")) continue;
-          const m = part.match(plain);
-          if (m && !names.has(m[2])) out.add(where + ": " + text.trim().slice(0, 80));
-        }
-      };
-      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-        const el = n.parentElement;
-        if (!el || el.closest(data) || el.closest("script, style, template") || !n.textContent.trim()) continue;
-        if (!el.checkVisibility({ visibilityProperty: true })) continue;
-        check(n.textContent, el.tagName.toLowerCase());
-      }
-      for (const el of document.body.querySelectorAll("[aria-label], [title], [placeholder]")) {
-        if (el.closest(data)) continue;
-        for (const a of ["aria-label", "title", "placeholder"]) if (el.hasAttribute(a)) check(el.getAttribute(a), "@" + a);
-      }
-      return [...out];
-    });
+    const english = await englishLeft(page);
     if (english.length) found[slug] = english;
+  }
+  expect(found).toEqual({});
+  expect(errors).toEqual([]);
+});
+
+// Backups in the pseudo-language has no English left on it: the page, and
+// each sheet it opens, read while open.
+test("Backups in another language has no English left on it", async ({ page }) => {
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/os/vayukeep?lang=en-XA");
+  await expect(page.locator("html")).toHaveAttribute("lang", "en-XA");
+  const found = {};
+  const page1 = await englishLeft(page);
+  if (page1.length) found.page = page1;
+  const sheets = await page.locator("button[data-sheet]").evaluateAll((bs) => [...new Set(bs.map((b) => b.getAttribute("data-sheet")))]);
+  expect(sheets.length).toBeGreaterThan(0);
+  for (const id of sheets) {
+    await page.locator('button[data-sheet="' + id + '"]').first().click();
+    const sheet = page.locator("#" + id);
+    await expect(sheet).toBeVisible();
+    const english = await englishLeft(page);
+    if (english.length) found[id] = english;
+    await sheet.locator("[data-sheet-close]").click();
+    await expect(sheet).toBeHidden();
   }
   expect(found).toEqual({});
   expect(errors).toEqual([]);
