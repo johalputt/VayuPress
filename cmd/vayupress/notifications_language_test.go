@@ -42,3 +42,12 @@ func TestAClearedNotificationStaysClearedInAnotherLanguage(t *testing.T) {
 		t.Errorf("a notice cleared in English came back in German:\n%s", bell)
 	}
 }
+
+// What an event quotes from the install is drawn as a name, escaped, so no
+// translator rewrites it and no name can write markup into the bell.
+func TestAnEventsQuotedNameIsMarkedAndEscaped(t *testing.T) {
+	got := recentTitleHTML(osRecentEvent{Title: `Nachricht von <b>Priya</b>`, Name: `<b>Priya</b>`})
+	if want := `Nachricht von <span translate="no">&lt;b&gt;Priya&lt;/b&gt;</span>`; got != want {
+		t.Errorf("an event's title draws as\n%s\nwant\n%s", got, want)
+	}
+}

@@ -1265,13 +1265,13 @@ window.vpRelTime = relativeTime;
       var d = new Date(t.getAttribute('datetime'));
       if (isNaN(d)) return;
       t.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      var day = d.toDateString() === today ? 'Today' : 'Yesterday';
+      var day = d.toDateString() === today ? vpT('Today') : vpT('Yesterday');
       if (firstDay === null) { firstDay = day; if (label) label.textContent = day; return; }
       if (day !== firstDay && !$('[data-notif-yesterday]', recent)) {
         var y = document.createElement('div');
         y.className = 'notif-group__label';
         y.setAttribute('data-notif-yesterday', '');
-        y.textContent = 'Yesterday';
+        y.textContent = vpT('Yesterday');
         var row = t.closest('.notif-item');
         row.parentNode.insertBefore(y, row);
       }

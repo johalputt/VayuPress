@@ -1149,6 +1149,16 @@ func osNotifItem(n osNotification) string {
 </a>`
 }
 
+// recentTitleHTML is an event's title with the name it quotes marked as one.
+func recentTitleHTML(e osRecentEvent) string {
+	title := html.EscapeString(e.Title)
+	if e.Name == "" {
+		return title
+	}
+	name := html.EscapeString(e.Name)
+	return strings.Replace(title, name, `<span translate="no">`+name+`</span>`, 1)
+}
+
 // osRecentItem renders one event with its time. The server writes the time in
 // UTC; the page rewrites it in the viewer's own clock.
 func osRecentItem(e osRecentEvent, unread bool) string {
@@ -1163,7 +1173,7 @@ func osRecentItem(e osRecentEvent, unread bool) string {
 	}
 	return `<a class="` + cls + `" href="` + e.Href + `">
   <span class="notif-item__icon">` + saIcon(saNotifIcon(e.Kind)) + `</span>
-  <span class="notif-item__body"><span class="notif-item__title">` + html.EscapeString(e.Title) + `</span>` + detail + `</span>
+  <span class="notif-item__body"><span class="notif-item__title">` + recentTitleHTML(e) + `</span>` + detail + `</span>
   <time class="notif-item__time" datetime="` + at.Format(time.RFC3339) + `">` + at.Format("15:04") + ` UTC</time>
 </a>`
 }

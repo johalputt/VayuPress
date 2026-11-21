@@ -20,7 +20,11 @@ import (
 // from a row that recorded it rather than inferred.
 type osRecentEvent struct {
 	Title, Detail, Href, Kind string
-	At                        time.Time
+	// Name is what the title quotes from the install (a person's name, an
+	// address, a post's title, a version), drawn marked as a name so no
+	// translator, a browser's included, rewrites it.
+	Name string
+	At   time.Time
 }
 
 // osRecentWindow is how far back the bell looks. The server does not know the
@@ -82,14 +86,14 @@ func (a *App) osRecentEvents(ctx context.Context, s *osSettings, now time.Time) 
 				var name string
 				var at time.Time
 				err := r.Scan(&name, &at)
-				return osRecentEvent{Title: i18n.T(lang, "Message from {name}", "name", name), Href: "/os/messages", Kind: "message", At: at}, err
+				return osRecentEvent{Title: i18n.T(lang, "Message from {name}", "name", name), Name: name, Href: "/os/messages", Kind: "message", At: at}, err
 			})
 		query(`SELECT author, status, created_at FROM comments WHERE datetime(created_at) >= datetime(?) ORDER BY created_at DESC LIMIT 8`,
 			func(r *sql.Rows) (osRecentEvent, error) {
 				var author, status string
 				var at time.Time
 				err := r.Scan(&author, &status, &at)
-				e := osRecentEvent{Title: i18n.T(lang, "Comment from {name}", "name", author), Href: "/os/comments", Kind: "comment", At: at}
+				e := osRecentEvent{Title: i18n.T(lang, "Comment from {name}", "name", author), Name: author, Href: "/os/comments", Kind: "comment", At: at}
 				if status == "pending" {
 					e.Detail = i18n.T(lang, "Held for review")
 				}
@@ -100,21 +104,21 @@ func (a *App) osRecentEvents(ctx context.Context, s *osSettings, now time.Time) 
 				var email string
 				var at time.Time
 				err := r.Scan(&email, &at)
-				return osRecentEvent{Title: i18n.T(lang, "{email} joined", "email", email), Href: "/os/members", Kind: "member", At: at}, err
+				return osRecentEvent{Title: i18n.T(lang, "{email} joined", "email", email), Name: email, Href: "/os/members", Kind: "member", At: at}, err
 			})
 		query(recentPostsSQL,
 			func(r *sql.Rows) (osRecentEvent, error) {
 				var slug, title string
 				var at time.Time
 				err := r.Scan(&slug, &title, &at)
-				return osRecentEvent{Title: i18n.T(lang, "Published “{title}”", "title", title), Href: "/os/editor/" + slug, Kind: "post", At: at}, err
+				return osRecentEvent{Title: i18n.T(lang, "Published “{title}”", "title", title), Name: title, Href: "/os/editor/" + slug, Kind: "post", At: at}, err
 			}, recentPostsFloor(since), cut)
 		query(`SELECT COALESCE(to_version,''), status, COALESCE(detail,''), completed_at FROM update_history WHERE completed_at IS NOT NULL AND datetime(completed_at) >= datetime(?) ORDER BY completed_at DESC LIMIT 3`,
 			func(r *sql.Rows) (osRecentEvent, error) {
 				var to, status, detail string
 				var at time.Time
 				err := r.Scan(&to, &status, &detail, &at)
-				e := osRecentEvent{Title: i18n.T(lang, "Updated to {version}", "version", to), Href: "/os/update", Kind: "update", At: at}
+				e := osRecentEvent{Title: i18n.T(lang, "Updated to {version}", "version", to), Name: to, Href: "/os/update", Kind: "update", At: at}
 				if status != "success" {
 					e.Title, e.Detail = i18n.T(lang, "Update to {version} did not complete", "version", to), detail
 				}

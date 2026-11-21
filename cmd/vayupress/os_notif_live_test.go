@@ -127,7 +127,7 @@ func TestTheStreamSendsTheBellWhenItMovesAndOnlyThen(t *testing.T) {
 	}
 	select {
 	case b := <-events:
-		if !strings.Contains(b.HTML, "Message from Priya") || !strings.Contains(b.HTML, "data-notif-badge") {
+		if !strings.Contains(b.HTML, `Message from <span translate="no">Priya</span>`) || !strings.Contains(b.HTML, "data-notif-badge") {
 			t.Errorf("the redrawn bell does not show the message:\n%s", b.HTML)
 		}
 		if b.Sig == sig || !strings.Contains(b.HTML, `data-notif-sig="`+b.Sig+`"`) {
