@@ -172,14 +172,20 @@ async function englishLeft(page) {
     // and what is a name rather than a sentence.
     const data = "kbd, code, pre, .mono, textarea, option[lang], [translate=no], .sa-mark, .sa-appname, .sa-menu__name, .sa-sites__btn";
     const plain = /(^|[^\p{L}])([A-Za-z]*[aeiou][A-Za-z]{2,})(?=$|[^\p{L}])/u;
-    const names = new Set(["VayuOS", "VayuMail", "VayuPress", "VayuTalk", "VayuMCP", "VayuShield", "VayuVeil", "VayuFlow", "VayuKeep", "YouTube", "Tor", "PGP", "DNS", "SEO", "API", "CSS", "PNG", "ICO", "Analytics", "Audience", "Monetization", "Theme", "Site", "Backups", "Storage", "Shield", "Talk", "Buzz", "Claude", "Code", "Argon2id", "UTC", "ReadWritePaths"]);
+    // A product's name shown whole, and the capability tokens a page lists
+    // (its data-section values), are names rather than sentences.
+    const products = new Set(["IndexNow", "OpenRouter", "OpenAI", "Pixabay", "YouTube Data API", "Vayu Compatibility Bible"]);
+    const tokens = new Set([...document.querySelectorAll("[data-section]")].map((el) => el.getAttribute("data-section")));
+    const names = new Set(["Authorization", "Bearer", "VayuOS", "VayuMail", "VayuPress", "VayuTalk", "VayuMCP", "VayuShield", "VayuVeil", "VayuFlow", "VayuKeep", "YouTube", "Tor", "PGP", "DNS", "SEO", "API", "CSS", "PNG", "ICO", "Analytics", "Audience", "Monetization", "Theme", "Site", "Backups", "Storage", "Shield", "Talk", "Buzz", "Claude", "Code", "Argon2id", "UTC", "ReadWritePaths"]);
     const out = new Set();
     const check = (text, where) => {
-      // A {placeholder} a sentence shows as it is, an address, and a path.
+      if (products.has(text.trim())) return;
+      // A {placeholder} a sentence shows as it is, an address, a path and a
+      // section:action token.
       for (const part of text.replace(/\{[a-z]+\}/g, " ").split(/\s+/)) {
-        if (part.includes("@") || part.includes("/")) continue;
+        if (part.includes("@") || part.includes("/") || part.includes(":") || /\w\.\w/.test(part)) continue;
         const m = part.match(plain);
-        if (m && !names.has(m[2])) out.add(where + ": " + text.trim().slice(0, 80));
+        if (m && !names.has(m[2]) && !tokens.has(m[2])) out.add(where + ": " + text.trim().slice(0, 80));
       }
     };
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);

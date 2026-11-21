@@ -222,7 +222,7 @@ func osAPIKeysPage(lang string, keys []apikeys.Key, creds []secrets.Credential, 
 func osAPIBaseRows(lang string) []ui.Row {
 	host := ui.State("neutral", i18n.T(lang, "Main domain"))
 	hint := i18n.T(lang, "Behind a proxy that challenges visitors? A script or agent cannot solve a bot challenge. Point a dedicated {record} record straight at this server with the proxy off (DNS only), set {setting} and re-run the installer: VayuPress serves a hardened, API-only host there.",
-		"record", "api.<your-domain>", "setting", "VAYUOS_API_HOST=api.<your-domain>")
+		"record", "api.example.com", "setting", "VAYUOS_API_HOST=api.example.com")
 	if h := strings.TrimSpace(config.Cfg.APIHost); h != "" {
 		host = ui.State("ok", i18n.T(lang, "Dedicated host"))
 		hint = i18n.T(lang, "Served on {host}, set by {setting} and pointed straight at this server with the proxy off. Only {paths} are exposed there, not the console, and VayuShield still guards it.",
@@ -359,7 +359,7 @@ func osAPIKeysOwnSection(lang string, keys []apikeys.Key) string {
 </div>`)))
 		}
 		rows += `<tr data-filter-text="` + html.EscapeString(k.Label+" "+k.Prefix) + `">
-      <td><div class="ak-key-label">` + html.EscapeString(k.Label) + `</div><code class="font-mono text-xs muted">` + html.EscapeString(apikeys.Mask(k.Prefix)) + `</code></td>
+      <td><div class="ak-key-label" translate="no">` + html.EscapeString(k.Label) + `</div><code class="font-mono text-xs muted">` + html.EscapeString(apikeys.Mask(k.Prefix)) + `</code></td>
       <td>` + apiKeyCapabilitySummary(lang, k) + `</td>
       <td class="text-xs muted">` + html.EscapeString(last) + `</td>
       <td>` + status + `</td>
