@@ -97,19 +97,24 @@ test("YouTube finds a channel in place, and refuses another host's address", asy
 // A script's sentence in the page's language: vpT reads the page's #vp-words
 // and fills it as i18n.T does on the server (an exact =1 branch first, then
 // the language's own plural rule, # for the number, names inside branches).
-// A German block is put on a console page as the server puts it.
+// A German block is put on a console page as the server puts it: in the
+// <head> of the page as served, before any script runs, since a page's own
+// script may say a sentence as it loads and vpT reads the block once.
 test("a script says its sentences in the page's language", async ({ page }) => {
+  const words = JSON.stringify({
+    "{n, plural, =1 {Just one {what}} one {# {what}} other {# {what}s}}": "{n, plural, =1 {Nur eine {what}} one {# {what}} other {# {what}en}}",
+    "Uploading {file}…": "{file} wird hochgeladen…",
+  });
+  await page.route(/\/os\/$/, async (route) => {
+    const res = await route.fetch();
+    const body = (await res.text())
+      .replace(/<html lang="[^"]*"/, '<html lang="de"')
+      .replace("</head>", '<script type="application/json" id="vp-words">' + words + "</script></head>");
+    await route.fulfill({ response: res, body });
+  });
   await page.goto("/os/");
+  await expect(page.locator("html")).toHaveAttribute("lang", "de");
   const said = await page.evaluate(() => {
-    document.documentElement.lang = "de";
-    const block = document.createElement("script");
-    block.type = "application/json";
-    block.id = "vp-words";
-    block.textContent = JSON.stringify({
-      "{n, plural, =1 {Just one {what}} one {# {what}} other {# {what}s}}": "{n, plural, =1 {Nur eine {what}} one {# {what}} other {# {what}en}}",
-      "Uploading {file}…": "{file} wird hochgeladen…",
-    });
-    document.body.appendChild(block);
     const count = "{n, plural, =1 {Just one {what}} one {# {what}} other {# {what}s}}";
     return [
       window.vpT("Uploading {file}…", { file: "a.txt" }),
