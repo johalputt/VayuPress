@@ -815,7 +815,9 @@
   Promise.all([fetchTokens(), fetchPresets()])
     .then(function () {
       if (!applyLoadParam()) { highlightActiveCard(activePresetName); setStatus(vpT('Ready')); }
-      baseline = snapshot(); countDiff(); // seed the changes pill from saved state
+      // The saved state, with the CSS as the page was served: CSS typed while
+      // the Studio loaded is unapplied work, not part of what is saved.
+      baseline = snapshot(true); countDiff();
       fitFrame();
       schedulePreview(); // first preview load
       offerDraft();
@@ -831,8 +833,8 @@
   var baseline = '';
   var pill = document.querySelector('[data-theme-changes]');
 
-  function snapshot() {
-    var css = cssArea ? cssArea.value : '';
+  function snapshot(served) {
+    var css = cssArea ? (served ? cssArea.defaultValue : cssArea.value) : '';
     return JSON.stringify({ m: model, o: options, c: css });
   }
   function countDiff() {

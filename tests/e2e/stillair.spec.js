@@ -1512,15 +1512,24 @@ test("search settings finds a row and lands on it", async ({ page }) => {
 // Theme Studio keeps unapplied work: it is saved a moment after it stops
 // changing, offered back on the next visit, and gone once discarded. The
 // banner and its buttons existed for a long time with nothing behind them.
+// The saved theme is held back until the CSS is typed: work done while the
+// Studio is still loading is unapplied work too. Typed before the load, it
+// was taken for the saved state, the autosave discarded it, and this test
+// failed whenever the runner was slow enough to open that window.
 test("theme studio offers unapplied work back, and forgets it when discarded", async ({ page }) => {
   await openConsole(page);
+  let release;
+  const held = new Promise((r) => { release = r; });
+  await page.route("**/os/api/theme/tokens", async (route) => { await held; await route.continue(); });
   await page.goto("/os/theme");
   const css = page.locator("[data-theme-css]");
   await expect(css).toBeAttached();
   const mark = "/* e2e draft " + Date.now() + " */";
   await css.evaluate((el, v) => { el.value = v; el.dispatchEvent(new Event("input", { bubbles: true })); }, mark);
-  // The autosave waits for the typing to stop, then posts.
-  await page.waitForResponse((r) => r.url().endsWith("/os/api/theme/draft") && r.status() === 200, { timeout: 10000 });
+  release();
+  // The autosave waits for the typing to stop, then posts the draft.
+  await page.waitForResponse((r) => r.url().endsWith("/os/api/theme/draft") && r.status() === 200 &&
+    (r.request().postData() || "").includes('"draft"'), { timeout: 10000 });
 
   await page.reload();
   const banner = page.locator("[data-theme-draft]");
