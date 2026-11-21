@@ -2,6 +2,7 @@
  * admin-os-tor.js — VayuTor page island. Copy-to-clipboard for onion addresses
  * and a lightweight count-only poller (no per-visitor data ever crosses the
  * wire). Strict CSP: no eval, no inline styles; DOM via textContent only.
+ * Its words go through vpT, so the page says them in its own language.
  */
 (function () {
   'use strict';
@@ -28,7 +29,7 @@
       var val = btn.getAttribute('data-copy') || '';
       var done = function () {
         var prev = btn.textContent;
-        btn.textContent = 'Copied';
+        btn.textContent = vpT('Copied');
         btn.classList.add('is-copied');
         setTimeout(function () { btn.textContent = prev; btn.classList.remove('is-copied'); }, 1400);
       };

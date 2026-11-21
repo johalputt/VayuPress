@@ -264,7 +264,7 @@ async function pseudoPageAndSheets(page, path, withSheets) {
 // changes nothing, and reads the page it finds, its sheets when it is on.
 const adsIsOn = async (page) => (await page.locator("main [data-page-kind]").first().getAttribute("data-page-kind")) === "settings";
 for (const [name, path, withSheets] of [["Backups", "/os/vayukeep", true], ["API keys", "/os/apikeys", true], ["Newsletter", "/os/newsletter", false],
-  ["YouTube", "/os/youtube", true], ["Advertising", "/os/ads", adsIsOn]]) {
+  ["YouTube", "/os/youtube", true], ["Advertising", "/os/ads", adsIsOn], ["VayuTor", "/os/tor", false]]) {
   test(name + " in another language has no English left on it", async ({ page }) => {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));

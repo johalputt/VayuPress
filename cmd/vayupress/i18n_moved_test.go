@@ -73,6 +73,7 @@ var i18nMoved = map[string][]string{
 	"admin_os_youtube.go":          nil,
 	"admin_os_ads.go":              nil,
 	"admin_os_site_ads.go":         nil,
+	"admin_os_tor.go":              nil,
 	"api_usage_middleware.go":      {"rateLabelIn"},
 	"backup_coverage.go":           {"keepHoldsSection"},
 	"vayuos_mail_drive_upload.go":  nil,
@@ -115,7 +116,7 @@ var i18nExempt = map[string]bool{
 // i18nNames are what every language writes as it is: the product's own names,
 // and the armour line OpenPGP fixes, which a key pasted in any language begins
 // with.
-var i18nNames = []string{"VayuPress", "VayuMail", "VayuOS", "-----BEGIN PGP PUBLIC KEY BLOCK-----"}
+var i18nNames = []string{"VayuPress", "VayuMail", "VayuOS", "VayuTor", "-----BEGIN PGP PUBLIC KEY BLOCK-----"}
 
 // i18nWithoutNames is text with the names taken out.
 func i18nWithoutNames(text string) string {
