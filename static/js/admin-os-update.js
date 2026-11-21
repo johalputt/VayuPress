@@ -243,7 +243,7 @@
           if (!r.ok) { sawDown = true; return null; }
           if (sawDown) {
             clearInterval(timer);
-            setMsg(el, 'Service is back online — reloading…', false);
+            setMsg(el, vpT('Service is back online. Reloading…'), false);
             setTimeout(function () { location.reload(); }, 800);
             return null;
           }
@@ -264,7 +264,7 @@
         .finally(function () {
           if (tries >= max) {
             clearInterval(timer);
-            setMsg(el, 'Still restarting — reload the page in a moment.', true);
+            setMsg(el, vpT('Still restarting. Reload the page in a moment.'), true);
           }
         });
     }, 2000);
@@ -443,11 +443,11 @@
 
   function doImport() {
     var f = fileInput && fileInput.files && fileInput.files[0];
-    if (!f) { setMsg(backupMsg, 'Choose a backup file first.', true); return; }
+    if (!f) { setMsg(backupMsg, vpT('Choose a backup file first.'), true); return; }
     vpConfirm({
-      title: 'Restore from a backup',
-      message: 'Restore from "' + f.name + '"? This REPLACES all current content and settings. Your current database is backed up automatically, then the service restarts.',
-      confirm: 'Restore'
+      title: vpT('Restore from a backup'),
+      message: vpT('Restore from “{file}”? This REPLACES all current content and settings. Your current database is backed up automatically, then the service restarts.', { file: f.name }),
+      confirm: vpT('Restore')
     }, function () { importNow(f); });
   }
 
@@ -455,7 +455,7 @@
     if (importBtn) importBtn.disabled = true;
     if (progWrap) progWrap.hidden = false;
     setBar(0);
-    setMsg(backupMsg, 'Uploading…', false);
+    setMsg(backupMsg, vpT('Uploading…'), false);
 
     var fd = new FormData();
     fd.append('snapshot', f, f.name);
@@ -463,11 +463,15 @@
     var xhr = new XMLHttpRequest();
     xhr.open('POST', '/os/api/backup/import', true);
     xhr.setRequestHeader('X-CSRF-Token', csrf());
+    // The page's language, as vayuos.js sends it with fetch: this upload is
+    // an XMLHttpRequest, for its progress, which that wrapper does not see.
+    var lang = document.documentElement.lang;
+    if (lang && lang !== 'en') xhr.setRequestHeader('X-VP-Lang', lang);
     xhr.upload.onprogress = function (e) {
       if (e.lengthComputable) {
         var pct = Math.round((e.loaded / e.total) * 100);
         setBar(pct);
-        setMsg(backupMsg, 'Uploading… ' + pct + '%', false);
+        setMsg(backupMsg, vpT('Uploading… {percent}%', { percent: pct }), false);
       }
     };
     xhr.onload = function () {
@@ -475,15 +479,15 @@
       try { d = JSON.parse(xhr.responseText); } catch (e) { d = {}; }
       if (xhr.status >= 200 && xhr.status < 300) {
         setBar(100);
-        setMsg(backupMsg, 'Backup validated. Restoring and restarting…', false);
+        setMsg(backupMsg, vpT('Backup validated. Restoring and restarting…'), false);
         waitForRestartThenReload(backupMsg);
       } else {
-        setMsg(backupMsg, errText({ d: d, status: xhr.status }, 'Restore failed'), true);
+        setMsg(backupMsg, errText({ d: d, status: xhr.status }, vpT('Restore failed')), true);
         if (importBtn) importBtn.disabled = false;
       }
     };
     xhr.onerror = function () {
-      setMsg(backupMsg, 'Upload failed — network error.', true);
+      setMsg(backupMsg, vpT('Upload failed: network error.'), true);
       if (importBtn) importBtn.disabled = false;
     };
     xhr.send(fd);

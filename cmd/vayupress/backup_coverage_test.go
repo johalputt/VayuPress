@@ -216,13 +216,13 @@ func TestABackupThatLeavesDataOutIsPartial(t *testing.T) {
 	st := vayukeep.Status{Enabled: true, Target: "/mnt/replica", NewestGen: vkNow, LastDrill: vkNow, LastDrillOK: true, Generations: 1}
 	places := backupPlaces(data)
 
-	if v := keepStatusVerdict(st, "", vkNow, leftOut(places)); v.Chip != "Partial" || !strings.Contains(string(v.Detail), "Not in it: media.") {
+	if v := keepStatusVerdict("en", st, "", vkNow, leftOut(places)); v.Chip != "Partial" || !strings.Contains(string(v.Detail), "Not in it: media.") {
 		t.Errorf("the verdict with media left out is %q: %s", v.Chip, v.Detail)
 	}
 	if n, ok := backupNotification("en", st, "", vkNow, leftOut(places)); !ok || n.line() != "Partial" {
 		t.Errorf("the bell says nothing of media left out: %v %+v", ok, n)
 	}
-	page := osVayuKeepBody("n", st, "", nil, "", vkNow, "", false, keepPrefs{}, "", places)
+	page := osVayuKeepBody("en", "n", st, "", nil, "", vkNow, "", false, keepPrefs{}, "", places)
 	if !strings.Contains(page, "What a backup holds") || !strings.Contains(page, "Not backed up") ||
 		!strings.Contains(page, "is outside "+data+", the folder a backup holds.") {
 		t.Error("the page does not say media is outside the backup, and why")
@@ -234,7 +234,7 @@ func TestThePageNamesWhatNoBackupHolds(t *testing.T) {
 	data := coverageLayout(t)
 	st := vayukeep.Status{Enabled: true, Target: "/mnt/replica", NewestGen: vkNow, LastDrill: vkNow, LastDrillOK: true, Generations: 1}
 	t.Setenv("VAYU_SECRET", "")
-	page := osVayuKeepBody("n", st, "", nil, "", vkNow, "", false, keepPrefs{}, "", backupPlaces(data))
+	page := osVayuKeepBody("en", "n", st, "", nil, "", vkNow, "", false, keepPrefs{}, "", backupPlaces(data))
 	for _, want := range []string{"Start-up settings", "Backup passphrase", "Talk"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the page does not name %s", want)
@@ -244,7 +244,7 @@ func TestThePageNamesWhatNoBackupHolds(t *testing.T) {
 		t.Error("the page names VAYU_SECRET on an install that does not set it")
 	}
 	t.Setenv("VAYU_SECRET", "s3cret")
-	if page := osVayuKeepBody("n", st, "", nil, "", vkNow, "", false, keepPrefs{}, "", backupPlaces(data)); !strings.Contains(page, ">VAYU_SECRET<") {
+	if page := osVayuKeepBody("en", "n", st, "", nil, "", vkNow, "", false, keepPrefs{}, "", backupPlaces(data)); !strings.Contains(page, ">VAYU_SECRET<") {
 		t.Error("the page does not name VAYU_SECRET on an install that sets it")
 	}
 }
@@ -252,7 +252,7 @@ func TestThePageNamesWhatNoBackupHolds(t *testing.T) {
 // The census's counts reach the page's line on the last test restore.
 func TestTheLastTestRestoreSaysWhatItReadBack(t *testing.T) {
 	st := vayukeep.Status{LastDrill: vkNow, LastDrillOK: true, LastDrillRows: 3, LastDrillContents: "2 mail messages"}
-	if got := drillSummary(st, vkNow); !strings.Contains(got, "(3 posts, 2 mail messages read back)") {
+	if got := drillSummary("en", st, vkNow); !strings.Contains(got, "(3 posts, 2 mail messages read back)") {
 		t.Errorf("the last test restore reads %q", got)
 	}
 }

@@ -132,6 +132,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	r.Get("/os/static/js/book.js", serveAdminOSAsset("js/book.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-tor.js", serveAdminOSAsset("js/admin-os-tor.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-update.js", serveAdminOSAsset("js/admin-os-update.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-vayukeep.js", serveAdminOSAsset("js/admin-os-vayukeep.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-storage.js", serveAdminOSAsset("js/admin-os-storage.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-website.js", serveAdminOSAsset("js/admin-os-website.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-bundle.js", serveAdminOSAsset("js/admin-os-bundle.js", "application/javascript; charset=utf-8"))
@@ -1763,11 +1764,13 @@ type osNotification struct {
 	key  string
 }
 
-// notifText is one of a notification's sentences in a given language.
-type notifText func(lang string) string
+// sentence is something to say, in whichever language it is asked for: what
+// is kept to be said later, to whoever then reads it (a notification, the
+// outcome of a backup that ran in the background).
+type sentence func(lang string) string
 
 // said is n with its title and line in lang, and its key in English.
-func said(lang string, n osNotification, title, line notifText) osNotification {
+func said(lang string, n osNotification, title, line sentence) osNotification {
 	n.Title, n.Line = title(lang), line(lang)
 	n.key = title("en") + "\x1f" + line("en")
 	return n
@@ -1859,7 +1862,7 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 	lang := i18n.Lang(ctx)
 	// add is a tally: line says the count itself, as {n}, so each language
 	// puts it where it belongs.
-	add := func(href string, title, line notifText, kind string, count int, severity ...string) {
+	add := func(href string, title, line sentence, kind string, count int, severity ...string) {
 		if count <= 0 || s.AccessLevel < osPathMinLevel(href) {
 			return
 		}
@@ -1869,7 +1872,7 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 		}
 		out = append(out, said(lang, osNotification{Href: href, Count: count, Kind: kind, Severity: sev}, title, line))
 	}
-	state := func(href string, title, line notifText, kind, severity string) {
+	state := func(href string, title, line sentence, kind, severity string) {
 		n := len(out)
 		add(href, title, line, kind, 1, severity)
 		if len(out) > n {

@@ -97,7 +97,7 @@ func TestStorageNeverDeletesTheOnlyRestorePoint(t *testing.T) {
 	if len(got.Removed) != 1 || got.Removed[0] != older {
 		t.Errorf("removed %v, want only %s", got.Removed, older)
 	}
-	if len(got.Failed) != 1 || got.Failed[0] != filepath.Base(newest)+": "+onlyRestorePointRefusal {
+	if len(got.Failed) != 1 || got.Failed[0] != filepath.Base(newest)+": "+onlyRestorePointRefusal("en") {
 		t.Errorf("refused %q", got.Failed)
 	}
 	if _, err := os.Stat(newest); err != nil {
@@ -118,7 +118,7 @@ func TestBackupsNeverDeletesTheOnlyRestorePoint(t *testing.T) {
 	r := withUser(httptest.NewRequest(http.MethodPost, "/os/api/vayukeep/delete", strings.NewReader(`{"name":"vk-20261003-114512.vpbk"}`)), &users.User{Role: users.RoleAdmin})
 	w := httptest.NewRecorder()
 	a.handleOSVayuKeepDelete(w, r)
-	if !strings.Contains(w.Body.String(), onlyRestorePointRefusal) {
+	if !strings.Contains(w.Body.String(), onlyRestorePointRefusal("en")) {
 		t.Errorf("Backups answered %d %s", w.Code, w.Body.String())
 	}
 	if _, err := os.Stat(only); err != nil {

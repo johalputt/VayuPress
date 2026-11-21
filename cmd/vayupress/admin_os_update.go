@@ -49,6 +49,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/pacedio"
@@ -834,9 +835,10 @@ func (a *App) handleOSBackupExportStart(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
 		return
 	}
-	if !a.keepRun.startManual("Preparing your download", time.Now()) {
+	lang := i18n.Lang(r.Context())
+	if !a.keepRun.startManual(func(l string) string { return i18n.T(l, "Preparing your download") }, time.Now()) {
 		writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "reload": true,
-			"detail": "A backup, test restore or download is already running; its progress is on this page."})
+			"detail": i18n.T(lang, "A backup, test restore or download is already running; its progress is on this page.")})
 		return
 	}
 	parent := r.Context()
@@ -851,14 +853,18 @@ func (a *App) handleOSBackupExportStart(w http.ResponseWriter, r *http.Request) 
 	go func() {
 		path, size, err := buildExport(parent, pc)
 		if err != nil {
-			a.keepRun.finishManual(keepResult{Detail: "The download could not be prepared: " + err.Error(), At: time.Now()})
+			why := err.Error()
+			a.keepRun.finishManual(keepResult{At: time.Now(), Say: func(l string) string {
+				return i18n.T(l, "The download could not be prepared: {why}", "why", why)
+			}})
 			return
 		}
-		a.keepRun.finishManual(keepResult{OK: true, Download: path, DownloadBytes: size, At: time.Now(),
-			Detail: "Your download is ready: the whole site, checksummed, " + humanBytes(size) + "."})
+		a.keepRun.finishManual(keepResult{OK: true, Download: path, DownloadBytes: size, At: time.Now(), Say: func(l string) string {
+			return i18n.T(l, "Your download is ready: the whole site, checksummed, {size}.", "size", humanBytes(size))
+		}})
 	}()
 	writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "reload": true,
-		"detail": "Preparing your download at the pace the server can spare; it is offered on this page when ready."})
+		"detail": i18n.T(lang, "Preparing your download at the pace the server can spare; it is offered on this page when ready.")})
 }
 
 // handleOSBackupExportFile sends the download prepared last. It takes no name

@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/ui"
 )
 
@@ -212,32 +213,77 @@ func leftOut(places []backupPlace) []string {
 	return out
 }
 
-// keepHoldsSection is What a backup holds: the database and every place this
-// install keeps data, each as a backup stands to it, then what no backup can
-// hold and the operator must keep.
-func keepHoldsSection(places []backupPlace) ui.HTML {
+// placeLabelIn is a place's name in lang. The list keeps its English, which
+// the test restore's census and its tests read.
+func placeLabelIn(lang, label string) string {
+	switch label {
+	case "Media library":
+		return i18n.T(lang, "Media library")
+	case "Website files":
+		return i18n.T(lang, "Website files")
+	case "Mail":
+		return i18n.T(lang, "Mail")
+	case "PGP keys":
+		return i18n.T(lang, "PGP keys")
+	case "Onion address keys":
+		return i18n.T(lang, "Onion address keys")
+	case "Secrets key file":
+		return i18n.T(lang, "Secrets key file")
+	case "PGP key file":
+		return i18n.T(lang, "PGP key file")
+	}
+	return label
+}
+
+// placeWhatIn is how a sentence names a place (its What), in lang.
+func placeWhatIn(lang, what string) string {
+	switch what {
+	case "media":
+		return i18n.T(lang, "media")
+	case "website files":
+		return i18n.T(lang, "website files")
+	case "mail":
+		return i18n.T(lang, "mail")
+	case "PGP keys":
+		return i18n.T(lang, "PGP keys")
+	case "onion address keys":
+		return i18n.T(lang, "onion address keys")
+	case "secrets key file":
+		return i18n.T(lang, "secrets key file")
+	case "PGP key file":
+		return i18n.T(lang, "PGP key file")
+	}
+	return what
+}
+
+// keepHoldsSection is What a backup holds, in lang: the database and every
+// place this install keeps data, each as a backup stands to it, then what no
+// backup can hold and the operator must keep.
+func keepHoldsSection(lang string, places []backupPlace) ui.HTML {
 	dataDir := filepath.Dir(config.Cfg.DBPath)
-	held := ui.State("ok", "In every backup")
-	rows := []ui.Row{{Label: "Database", Hint: "Posts, pages, settings, members, comments and everything else kept in it", Control: held}}
+	held := ui.State("ok", i18n.T(lang, "In every backup"))
+	notBacked := ui.State("warn", i18n.T(lang, "Not backed up"))
+	rows := []ui.Row{{Label: i18n.T(lang, "Database"), Hint: i18n.T(lang, "Posts, pages, settings, members, comments and everything else kept in it"), Control: held}}
 	for _, p := range places {
+		label := placeLabelIn(lang, p.Label)
 		switch p.State {
 		case placeHeld:
-			rows = append(rows, ui.Row{Label: p.Label, Hint: p.Path, Control: held})
+			rows = append(rows, ui.Row{Label: label, Hint: p.Path, Control: held})
 		case placeLinked:
-			rows = append(rows, ui.Row{Label: p.Label, Control: ui.State("warn", "Not backed up"),
-				Hint: p.Path + " is a link to another folder, and a backup does not follow links. Move the folder itself into " + dataDir + ", or keep your own copy."})
+			rows = append(rows, ui.Row{Label: label, Control: notBacked,
+				Hint: i18n.T(lang, "{path} is a link to another folder, and a backup does not follow links. Move the folder itself into {folder}, or keep your own copy.", "path", p.Path, "folder", dataDir)})
 		case placeOutside:
-			rows = append(rows, ui.Row{Label: p.Label, Control: ui.State("warn", "Not backed up"),
-				Hint: p.Path + " is outside " + dataDir + ", the folder a backup holds."})
+			rows = append(rows, ui.Row{Label: label, Control: notBacked,
+				Hint: i18n.T(lang, "{path} is outside {folder}, the folder a backup holds.", "path", p.Path, "folder", dataDir)})
 		}
 	}
-	keep := ui.Text("Keep it yourself")
+	keep := ui.Text(i18n.T(lang, "Keep it yourself"))
 	rows = append(rows,
-		ui.Row{Label: "Start-up settings", Hint: "/etc/vayupress/env on a standard install: your API key and the settings the server starts with", Control: keep},
-		ui.Row{Label: "Backup passphrase", Hint: "Without it no backup opens. Keep it somewhere other than this server.", Control: keep})
+		ui.Row{Label: i18n.T(lang, "Start-up settings"), Hint: i18n.T(lang, "{file} on a standard install: your API key and the settings the server starts with", "file", "/etc/vayupress/env"), Control: keep},
+		ui.Row{Label: i18n.T(lang, "Backup passphrase"), Hint: i18n.T(lang, "Without it no backup opens. Keep it somewhere other than this server."), Control: keep})
 	if strings.TrimSpace(config.EnvOr("VAYU_SECRET", "")) != "" {
-		rows = append(rows, ui.Row{Label: "VAYU_SECRET", Hint: "Set in the start-up settings. Without it, the saved secrets and PGP keys in a restored copy cannot be opened.", Control: keep})
+		rows = append(rows, ui.Row{Label: "VAYU_SECRET", Hint: i18n.T(lang, "Set in the start-up settings. Without it, the saved secrets and PGP keys in a restored copy cannot be opened."), Control: keep})
 	}
-	rows = append(rows, ui.Row{Label: "Talk", Hint: "Talk keeps messages in memory only, by design, so there is nothing to back up.", Control: ui.Text("Never stored")})
-	return ui.Section("What a backup holds", "", ui.Rows(rows...))
+	rows = append(rows, ui.Row{Label: "Talk", Hint: i18n.T(lang, "Talk keeps messages in memory only, by design, so there is nothing to back up."), Control: ui.Text(i18n.T(lang, "Never stored"))})
+	return ui.Section(i18n.T(lang, "What a backup holds"), "", ui.Rows(rows...))
 }

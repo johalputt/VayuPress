@@ -425,7 +425,7 @@ func (a *App) handleOSStorageDelete(w http.ResponseWriter, r *http.Request) {
 		case f.Category == fileRestorePoint:
 			_, err = a.deleteRestorePoint(f.Name)
 			if errors.Is(err, errOnlyRestorePoint) {
-				failed = append(failed, f.Name+": "+onlyRestorePointRefusal)
+				failed = append(failed, f.Name+": "+onlyRestorePointRefusal("en"))
 				continue
 			}
 		case f.Keep != "":

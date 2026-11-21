@@ -190,9 +190,12 @@ func Disclosure(icon HTML, title, sub string, state HTML, open bool, body HTML) 
 // opens to the text. A console page says what is and what to do; why it works
 // that way is there for whoever asks. Status, and anything the operator must
 // act on, never goes in here. No script: <details>.
-func Explain(body HTML) HTML {
+func Explain(body HTML) HTML { return ExplainTitled("How this works", body) }
+
+// ExplainTitled is Explain with its line in the page's own words.
+func ExplainTitled(title string, body HTML) HTML {
 	return HTML(`<details class="sa-explain"><summary class="sa-explain__sum">` + string(Icon("info")) +
-		`<span>How this works</span></summary><div class="sa-explain__body">` + string(body) + `</div></details>`)
+		`<span>` + string(Text(title)) + `</span></summary><div class="sa-explain__body">` + string(body) + `</div></details>`)
 }
 
 // Tip is one sentence of help behind an info mark, shown on hover or focus (a

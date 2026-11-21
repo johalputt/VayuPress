@@ -15,7 +15,7 @@ func TestAJobShowsItsLengthOnlyWhenKnownAndWhyItYields(t *testing.T) {
 	if strings.Contains(unknown, `value=`) {
 		t.Errorf("a job of unknown length drew a fixed bar: %s", unknown)
 	}
-	known := string(Job{Title: "Copying", Percent: 41, Pace: "Easing", Why: "disk stalled 34% of the last 10 s"}.HTML())
+	known := string(Job{Title: "Copying", Percent: 41, Pace: "Easing", Yielding: true, Why: "disk stalled 34% of the last 10 s"}.HTML())
 	for _, want := range []string{`value="41"`, `sa-dot--warn"></span>Easing`, "disk stalled 34% of the last 10 s"} {
 		if !strings.Contains(known, want) {
 			t.Errorf("the easing job is missing %q: %s", want, known)
@@ -23,6 +23,11 @@ func TestAJobShowsItsLengthOnlyWhenKnownAndWhyItYields(t *testing.T) {
 	}
 	if got := string(Job{Title: "Copying", Percent: 10, Pace: "Running"}.HTML()); !strings.Contains(got, `sa-dot--ok"></span>Running`) {
 		t.Errorf("a job at full pace is not marked as running: %s", got)
+	}
+	// The tone is the pace's, not its English name: a page in German says
+	// "Läuft" at full speed and keeps the calm tone.
+	if got := string(Job{Title: "Kopieren", Percent: 10, Pace: "Läuft"}.HTML()); !strings.Contains(got, `sa-dot--ok"></span>Läuft`) {
+		t.Errorf("a job at full pace in another language is marked as yielding: %s", got)
 	}
 	if got := string(Job{Title: "<b>x</b>", Percent: 1}.HTML()); strings.Contains(got, "<b>") {
 		t.Errorf("the title was not escaped: %s", got)

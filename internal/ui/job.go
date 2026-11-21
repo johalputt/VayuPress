@@ -11,13 +11,17 @@ type Job struct {
 	Title    string // "Copying the database"
 	Progress string // "41% · 6.9 of 16.8 GB"
 	Percent  int    // 0–100; below 0 when the length is not known yet
-	Pace     string // the pacer's level: "Running", "Easing", "Waiting"
+	Pace     string // the pacer's level, in the page's words: "Running", "Easing", "Waiting"
 	Why      string // the pacer's reason
+	// Yielding is a pace below full speed (easing or waiting), which takes
+	// the warning tone. It is said apart from Pace, whose words are the
+	// page's language.
+	Yielding bool
 }
 
-// HTML renders the job. Easing and Waiting are marked in the warning tone:
-// the job is yielding, which is the design working, but it is also the answer
-// to "why is this taking so long".
+// HTML renders the job. A yielding job is marked in the warning tone: it is
+// the design working, but it is also the answer to "why is this taking so
+// long".
 func (j Job) HTML() HTML {
 	bar := `<progress class="ui-job__bar" aria-label="` + string(Text(j.Title)) + `"></progress>`
 	if j.Percent >= 0 {
@@ -27,7 +31,7 @@ func (j Job) HTML() HTML {
 	why := ""
 	if j.Pace != "" {
 		tone := "ok"
-		if j.Pace != "Running" {
+		if j.Yielding {
 			tone = "warn"
 		}
 		why = `<div class="ui-job__why"><span class="ui-job__pace"><span class="sa-dot sa-dot--` + tone + `"></span>` +

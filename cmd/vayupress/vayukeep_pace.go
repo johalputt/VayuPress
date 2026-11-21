@@ -86,7 +86,7 @@ type keepRun struct {
 	copying bool
 	job     *pace.Job
 	copied  sqlitecopy.Progress
-	work    string    // what the running button is doing; "" when none runs
+	work    sentence  // what the running button is doing; nil when none runs
 	started time.Time // when it was pressed
 	paced   *pace.Job // the pacer the button's work last started
 	result  *keepResult
@@ -106,8 +106,10 @@ func (k *keepRun) show(p pacedio.Pacer) pacedio.Pacer {
 
 // keepResult is how the last button's work ended, in the words the page shows.
 type keepResult struct {
-	OK         bool
-	Detail     string
+	OK bool
+	// Say is what it came to. The work ran with no reader, so it is said in
+	// the language of whoever next opens the page.
+	Say        sentence
 	Generation string
 	Older      int
 	OlderBytes int64
@@ -139,10 +141,10 @@ func (k *keepRun) snapshot(ctx context.Context, dbPath, dest string) error {
 
 // startManual claims the one slot for a button's work, described as what the
 // page shows while it runs; false while other work holds it.
-func (k *keepRun) startManual(work string, now time.Time) bool {
+func (k *keepRun) startManual(work sentence, now time.Time) bool {
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	if k.work != "" {
+	if k.work != nil {
 		return false
 	}
 	if k.result != nil && k.result.Download != "" {
@@ -164,7 +166,7 @@ func (k *keepRun) download() string {
 
 func (k *keepRun) finishManual(r keepResult) {
 	k.mu.Lock()
-	k.work, k.result = "", &r
+	k.work, k.result = nil, &r
 	k.mu.Unlock()
 }
 
@@ -175,20 +177,25 @@ func (a *App) keepResultFor(res vayukeep.DrillResult, actor string, now time.Tim
 	switch {
 	case res.Err == vayukeep.DrillBusy:
 		newest, _ := a.vayuKeep.Newest()
-		return keepResult{Detail: newest.Name + " was saved, but a test restore was already running, so it is not tested yet. Press Test restore now in a minute.", At: now}
+		return keepResult{At: now, Say: func(l string) string {
+			return i18n.T(l, "{point} was saved, but a test restore was already running, so it is not tested yet. Press Test restore now in a minute.", "point", newest.Name)
+		}}
 	case !res.OK && res.Generation == "":
-		return keepResult{Detail: "No backup was made: " + res.Err, At: now}
+		return keepResult{At: now, Say: func(l string) string { return i18n.T(l, "No backup was made: {why}", "why", res.Err) }}
 	case !res.OK:
 		dbpkg.AuditLog("vayukeep.backup", actor, res.Generation, "FAILED its test restore")
-		return keepResult{Generation: res.Generation, At: now,
-			Detail: res.Generation + " was saved but did NOT pass its test restore: " + res.Err + ". Your older restore points are untouched and nothing will be deleted on its strength."}
+		return keepResult{Generation: res.Generation, At: now, Say: func(l string) string {
+			return i18n.T(l, "{point} was saved but did NOT pass its test restore: {why}. Your older restore points are untouched and nothing will be deleted on its strength.", "point", res.Generation, "why", res.Err)
+		}}
 	}
 	dbpkg.AuditLog("vayukeep.backup", actor, res.Generation, "passed its test restore")
-	out := keepResult{OK: true, Generation: res.Generation, At: now,
-		Detail: res.Generation + " saved and tested: it restores, and the database inside checks out clean."}
-	if res.Rows > 0 {
-		out.Detail += " " + strconv.FormatInt(res.Rows, 10) + " post" + plural(int(res.Rows)) + " read back."
-	}
+	out := keepResult{OK: true, Generation: res.Generation, At: now, Say: func(l string) string {
+		said := i18n.T(l, "{point} saved and tested: it restores, and the database inside checks out clean.", "point", res.Generation)
+		if res.Rows > 0 {
+			said += " " + i18n.T(l, "{n, plural, one {# post} other {# posts}} read back.", "n", res.Rows)
+		}
+		return said
+	}}
 	gens, _ := a.vayuKeep.List()
 	for _, g := range gens {
 		if g.Name < res.Generation {
@@ -199,29 +206,34 @@ func (a *App) keepResultFor(res vayukeep.DrillResult, actor string, now time.Tim
 	return out
 }
 
-// keepRunHTML is the Backups page's "Running now" block. While anything runs
-// it polls itself; once the last Back up now has ended it shows the outcome and
-// stops polling.
-func keepRunHTML(k *keepRun) string {
+// keepRunHTML is the Backups page's "Running now" block, in lang. While
+// anything runs it polls itself; once the last Back up now has ended it shows
+// the outcome and stops polling.
+func keepRunHTML(lang string, k *keepRun) string {
 	k.mu.Lock()
 	copying, work, started, res := k.copying, k.work, k.started, k.result
 	p, job, paced := k.copied, k.job, k.paced
 	k.mu.Unlock()
 
 	const id = `id="vk-run" role="status" aria-live="polite"`
-	if !copying && work == "" {
+	if !copying && work == nil {
 		if res == nil {
 			return `<section ` + id + `></section>`
 		}
 		cls := "settings-callout"
-		out := `<section ` + id + ` class="` + cls + `"><strong>` + html.EscapeString(res.Detail) + `</strong>`
+		said := ""
+		if res.Say != nil {
+			said = res.Say(lang)
+		}
+		out := `<section ` + id + ` class="` + cls + `"><strong>` + html.EscapeString(said) + `</strong>`
 		if res.Download != "" {
-			out += ` <a class="btn btn--primary btn--sm" href="/os/api/backup/export/file" download>Download (` + html.EscapeString(humanBytes(res.DownloadBytes)) + `)</a>`
+			out += ` <a class="btn btn--primary btn--sm" href="/os/api/backup/export/file" download>` +
+				esc(i18n.T(lang, "Download ({size})", "size", humanBytes(res.DownloadBytes))) + `</a>`
 		}
 		if res.OK && res.Older > 0 {
 			out += ` <button type="button" class="btn btn--danger btn--sm" data-vk-clear-older data-vk-older="` + strconv.Itoa(res.Older) +
-				`" data-vk-generation="` + html.EscapeString(res.Generation) + `">Remove ` + strconv.Itoa(res.Older) + ` older restore point` +
-				plural(res.Older) + ` (` + html.EscapeString(humanBytes(res.OlderBytes)) + `)</button>`
+				`" data-vk-generation="` + html.EscapeString(res.Generation) + `">` +
+				esc(i18n.T(lang, "{n, plural, one {Remove # older restore point} other {Remove # older restore points}} ({size})", "n", res.Older, "size", humanBytes(res.OlderBytes))) + `</button>`
 		}
 		return out + `</section>`
 	}
@@ -229,26 +241,40 @@ func keepRunHTML(k *keepRun) string {
 	var j ui.Job
 	switch {
 	case copying:
-		j = ui.Job{Title: "Copying the database", Percent: -1}
+		j = ui.Job{Title: i18n.T(lang, "Copying the database"), Percent: -1}
 		if p.Total > 0 {
 			j.Percent = p.Copied * 100 / p.Total
-			j.Progress = strconv.Itoa(j.Percent) + "% · " + humanBytes(int64(p.Copied)*int64(p.PageSize)) + " of " + humanBytes(int64(p.Total)*int64(p.PageSize))
+			j.Progress = i18n.T(lang, "{percent}% · {done} of {total}", "percent", j.Percent,
+				"done", humanBytes(int64(p.Copied)*int64(p.PageSize)), "total", humanBytes(int64(p.Total)*int64(p.PageSize)))
 		}
 		if job != nil {
-			st := job.Status()
-			j.Pace, j.Why = st.Verdict.Level.String(), st.Verdict.Reason
+			paceIn(lang, &j, job.Status().Verdict)
 		}
 	default:
 		// Sealing, test-restoring and preparing a download report no length
 		// yet, but their pace and its reason.
-		j = ui.Job{Title: work, Percent: -1, Progress: "started " + started.UTC().Format("15:04") + " UTC"}
+		j = ui.Job{Title: work(lang), Percent: -1, Progress: i18n.T(lang, "started {time} UTC", "time", started.UTC().Format("15:04"))}
 		if paced != nil {
-			st := paced.Status()
-			j.Pace, j.Why = st.Verdict.Level.String(), st.Verdict.Reason
+			paceIn(lang, &j, paced.Status().Verdict)
 		}
 	}
 	return `<section ` + id + ` hx-get="/os/vayukeep/run" hx-trigger="every 2s" hx-swap="outerHTML">` +
-		`<div class="section-head"><h2 class="section-head__title">Running now</h2></div>` + string(j.HTML()) + `</section>`
+		`<div class="section-head"><h2 class="section-head__title">` + esc(i18n.T(lang, "Running now")) + `</h2></div>` + string(j.HTML()) + `</section>`
+}
+
+// paceIn puts the pacer's verdict on j in lang: its level in the page's
+// words, and its reason as the pacer gives it, in the terms of what it
+// measures (the disk, the processor).
+func paceIn(lang string, j *ui.Job, v pace.Verdict) {
+	switch v.Level {
+	case pace.Ease:
+		j.Pace, j.Yielding = i18n.T(lang, "Easing"), true
+	case pace.Wait:
+		j.Pace, j.Yielding = i18n.T(lang, "Waiting"), true
+	default:
+		j.Pace = i18n.T(lang, "Running")
+	}
+	j.Why = v.Reason
 }
 
 // held reports since when the running copy has been waiting on the server,
@@ -295,7 +321,7 @@ func (a *App) handleOSVayuKeepRun(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrator access required", "")
 		return
 	}
-	out := keepRunHTML(&a.keepRun)
+	out := keepRunHTML(i18n.Lang(r.Context()), &a.keepRun)
 	if !strings.Contains(out, "hx-trigger") {
 		w.Header().Set("HX-Refresh", "true")
 	}
