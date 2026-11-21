@@ -70,6 +70,7 @@ var i18nMoved = map[string][]string{
 	"admin_os_vayukeep.go":         nil,
 	"admin_os_apikeys.go":          nil,
 	"admin_os_newsletter.go":       nil,
+	"admin_os_youtube.go":          nil,
 	"api_usage_middleware.go":      {"rateLabelIn"},
 	"backup_coverage.go":           {"keepHoldsSection"},
 	"vayuos_mail_drive_upload.go":  nil,

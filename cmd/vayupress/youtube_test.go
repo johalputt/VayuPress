@@ -258,7 +258,7 @@ func TestTheYouTubePageShowsEachChannel(t *testing.T) {
 	_ = a.youtube.Checked(ctx, youtube.Followed{ID: f.ID, Failures: 2}, 0, errors.New("YouTube answered 500"))
 	body := a.youtubeBody(ctx)
 	for _, want := range []string{"1 channel followed", "Vayu &lt;Videos&gt;", "Fetch now", "Waiting for Post", "Held one", "Post all",
-		`/os/api/youtube/` + f.ID + `/set?f=auto`, "YouTube answered 500", "Cannot be read", "Add a key"} {
+		`/os/api/youtube/` + f.ID + `/set?f=auto`, "YouTube answered 500", "Cannot be read", "Add a YouTube API key"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the page lacks %s", want)
 		}

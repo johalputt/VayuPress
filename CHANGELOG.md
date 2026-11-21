@@ -34,6 +34,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   The restore commands and environment variables it shows stay as they are
   typed, and what the engine records (a pause's reason, a test restore's
   error and the counts it read back) as written.
+- **YouTube in thirteen languages.** Content › YouTube, its follow sheet
+  and what its actions answer follow the language chosen in the account
+  menu. A video's title and a channel's name are shown as YouTube gives
+  them, and the reason a check failed as the check recorded it.
 - **The Newsletter in thirteen languages.** The Newsletter page, its
   composer and what it answers follow the language chosen in the account
   menu; a subscriber's address and a broadcast's subject are shown as they

@@ -250,7 +250,7 @@ async function pseudoPageAndSheets(page, path, withSheets) {
 
 // The spec install has no mail relay, so the Newsletter is its setup page,
 // with no composer to open; the composer's words are checked in Go.
-for (const [name, path, withSheets] of [["Backups", "/os/vayukeep", true], ["API keys", "/os/apikeys", true], ["Newsletter", "/os/newsletter", false]]) {
+for (const [name, path, withSheets] of [["Backups", "/os/vayukeep", true], ["API keys", "/os/apikeys", true], ["Newsletter", "/os/newsletter", false], ["YouTube", "/os/youtube", true]]) {
   test(name + " in another language has no English left on it", async ({ page }) => {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));

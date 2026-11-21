@@ -148,7 +148,7 @@ const pageLangHeader = "X-VP-Lang"
 // every other page of it is English. A section joins when the last of its
 // sentences has moved into i18n.T, so no release shows a page half in one
 // language and half in another while a section is being moved.
-var consoleSpeaks = []string{"/os/vayumail", "/os/settings", "/os/vayukeep", "/os/apikeys", "/os/newsletter"}
+var consoleSpeaks = []string{"/os/vayumail", "/os/settings", "/os/vayukeep", "/os/apikeys", "/os/newsletter", "/os/youtube"}
 
 // consoleLanguage puts the language a console page is written in on its
 // request: the person's (their choice from ?lang=, kept, then their
