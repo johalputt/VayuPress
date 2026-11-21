@@ -119,11 +119,11 @@ func TestTheTestRestoreChecksTheRealSchema(t *testing.T) {
 // bell; less than that is ordinary pacing and says nothing.
 func TestTheBellSpeaksUpForABackupHeldAnHour(t *testing.T) {
 	now := time.Date(2026, 9, 26, 15, 0, 0, 0, time.UTC)
-	if _, ok := keepHeldNotice(now.Add(-59*time.Minute), "disk stalled 41% of the last 10 s", now); ok {
+	if _, ok := keepHeldNotice("en", now.Add(-59*time.Minute), "disk stalled 41% of the last 10 s", now); ok {
 		t.Error("the bell spoke up for a copy held under an hour")
 	}
-	n, ok := keepHeldNotice(now.Add(-61*time.Minute), "disk stalled 41% of the last 10 s", now)
-	if !ok || n.Severity != "warn" || !strings.Contains(n.Detail, "since 13:59 UTC: disk stalled 41%") {
+	n, ok := keepHeldNotice("en", now.Add(-61*time.Minute), "disk stalled 41% of the last 10 s", now)
+	if !ok || n.Severity != "warn" || !strings.Contains(n.line(), "since 13:59 UTC: disk stalled 41%") {
 		t.Errorf("a copy held 61 minutes gave %+v, %v", n, ok)
 	}
 }

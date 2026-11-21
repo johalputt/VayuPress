@@ -1119,11 +1119,14 @@ func notifCap(n int) string {
 	return strconv.Itoa(n)
 }
 
-// line is what a notification says under its title. A tally reads "<count>
-// <detail>" (e.g. "3 unread in your inbox"); a state's detail stands alone;
-// storage is a percentage.
+// line is what a notification says under its title: its Line when it was
+// said in a language; else a tally reads "<count> <detail>" (e.g. "3 unread
+// in your inbox"), a state's detail stands alone, and storage is a
+// percentage.
 func (n osNotification) line() string {
 	switch {
+	case n.Line != "":
+		return n.Line
 	case n.State:
 		return n.Detail
 	case n.Kind == "storage":
@@ -1742,6 +1745,22 @@ type osNotification struct {
 	// recovery request, a device to approve) are not messages, and counted
 	// there they showed a message waiting in an empty mailbox.
 	Unread bool
+	// Line is the whole line under the title, its count in place, in the
+	// language the page is drawn in; key is the title and that line in
+	// English. Clear all keeps the key (fingerprint), so an item hidden while
+	// the console spoke one language stays hidden in another.
+	Line string
+	key  string
+}
+
+// notifText is one of a notification's sentences in a given language.
+type notifText func(lang string) string
+
+// said is n with its title and line in lang, and its key in English.
+func said(lang string, n osNotification, title, line notifText) osNotification {
+	n.Title, n.Line = title(lang), line(lang)
+	n.key = title("en") + "\x1f" + line("en")
+	return n
 }
 
 // getOSSettings loads settings needed for layout rendering.
@@ -1815,7 +1834,7 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 	if h := mode.Global.History(); len(h) > 0 {
 		s.ModeSince = h[len(h)-1].OccurredAt
 	}
-	_, s.MailDNSAttention = a.mailDNSNeedsAttention()
+	_, s.MailDNSAttention = a.mailDNSNeedsAttention("en")
 	return s
 }
 
@@ -1827,7 +1846,10 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 // the viewer cannot open.
 func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotification {
 	var out []osNotification
-	add := func(href, title, detail, kind string, count int, severity ...string) {
+	lang := i18n.Lang(ctx)
+	// add is a tally: line says the count itself, as {n}, so each language
+	// puts it where it belongs.
+	add := func(href string, title, line notifText, kind string, count int, severity ...string) {
 		if count <= 0 || s.AccessLevel < osPathMinLevel(href) {
 			return
 		}
@@ -1835,27 +1857,37 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 		if len(severity) > 0 {
 			sev = severity[0]
 		}
-		out = append(out, osNotification{Title: title, Detail: detail, Href: href, Count: count, Kind: kind, Severity: sev})
+		out = append(out, said(lang, osNotification{Href: href, Count: count, Kind: kind, Severity: sev}, title, line))
 	}
-	state := func(href, title, detail, kind, severity string) {
+	state := func(href string, title, line notifText, kind, severity string) {
 		n := len(out)
-		add(href, title, detail, kind, 1, severity)
+		add(href, title, line, kind, 1, severity)
 		if len(out) > n {
 			out[n].State = true
+		}
+	}
+	// keep adds a notification another part of the console said already.
+	keep := func(n osNotification) {
+		if s.AccessLevel >= osPathMinLevel(n.Href) {
+			out = append(out, n)
 		}
 	}
 	// A mail domain whose DNS is not finished, from the last stored check —
 	// never a lookup here (vayuos_mail_dns_watch.go). The DNS tab is
 	// administrator-only while /os/vayumail is open to authors, so the path gate
 	// in add() is not enough on its own.
-	if next, bad := a.mailDNSNeedsAttention(); bad && s.AccessLevel >= accessAdmin {
-		state("/os/vayumail/dns", "Mail domain needs attention", next, "mail", "warn")
+	if _, bad := a.mailDNSNeedsAttention(lang); bad && s.AccessLevel >= accessAdmin {
+		state("/os/vayumail/dns", func(l string) string { return i18n.T(l, "Mail domain needs attention") },
+			func(l string) string { next, _ := a.mailDNSNeedsAttention(l); return next }, "mail", "warn")
 	}
 	// A followed YouTube channel that has failed three checks in a row: one
 	// notice for all of them, gone when they read again (the store counts).
 	if a.youtube != nil {
 		if n := a.youtube.Failing(ctx); n > 0 {
-			state(youtubePage, "YouTube channel cannot be read", countOf(n, "channel")+" failing; the page says why", "alert", "warn")
+			state(youtubePage, func(l string) string { return i18n.T(l, "YouTube channel cannot be read") },
+				func(l string) string {
+					return i18n.T(l, "{n, plural, one {# channel} other {# channels}} failing; the page says why", "n", n)
+				}, "alert", "warn")
 		}
 	}
 	// Someone locked out of their mailbox asked for help. The public page tells
@@ -1864,35 +1896,36 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 	// is open to authors, so the path gate is not enough here either.
 	if s.AccessLevel >= accessAdmin && a.vayuMail != nil && a.vayuMail.Accounts() != nil {
 		if n := a.vayuMail.Accounts().PendingRecoveryCount(ctx); n > 0 {
-			add("/os/vayumail/accounts#recovery", "Locked out of their mailbox", strconv.Itoa(n)+" waiting for you", "mail", n, "warn")
+			add("/os/vayumail/accounts#recovery", func(l string) string { return i18n.T(l, "Locked out of their mailbox") },
+				func(l string) string { return i18n.T(l, "{n} waiting for you", "n", notifCap(n)) }, "mail", n, "warn")
 		}
 	}
 	// Backups that are not proven. This verdict used to sit on the Operations
 	// hub; Home and the bell are where an operator looks without being sent, and
 	// a broken recovery path is otherwise silent until the day it is needed.
-	if n, ok := backupNotification(a.vayuKeepStatus(), a.vayuKeepErr, time.Now().UTC(), leftOut(backupPlaces(filepath.Dir(config.Cfg.DBPath)))); ok {
-		state(n.Href, n.Title, n.Detail, n.Kind, n.Severity)
+	if n, ok := backupNotification(lang, a.vayuKeepStatus(), a.vayuKeepErr, time.Now().UTC(), leftOut(backupPlaces(filepath.Dir(config.Cfg.DBPath)))); ok {
+		keep(n)
 	}
 	if since, why := a.keepRun.held(); !since.IsZero() {
-		if n, ok := keepHeldNotice(since, why, time.Now()); ok {
-			state(n.Href, n.Title, n.Detail, n.Kind, n.Severity)
+		if n, ok := keepHeldNotice(lang, since, why, time.Now()); ok {
+			keep(n)
 		}
 	}
 	// A site in report-only blocks nothing; it is a trial, and a trial nobody
 	// remembers is an open door, so it stays in front of the operator.
 	for _, n := range a.cspReportOnlyNotices(ctx) {
-		state(n.Href, n.Title, n.Detail, n.Kind, n.Severity)
+		keep(n)
 	}
 	// New mail waiting in the viewer's mailboxes — the count that also raises the
 	// live desktop notification (admin-os.js). Cheap readdir-only counts, so
 	// ahead of the database's sources: it needs none.
 	if unseen, href := a.mailUnseenForViewer(ctx, s); unseen > 0 {
-		noun := "unread in your mailbox"
+		line := func(l string) string { return i18n.T(l, "{n} unread in your mailbox", "n", notifCap(unseen)) }
 		if href == "/os/vayumail/inbox" {
-			noun = "unread across your mailboxes"
+			line = func(l string) string { return i18n.T(l, "{n} unread across your mailboxes", "n", notifCap(unseen)) }
 		}
 		n := len(out)
-		add(href, "New mail", noun, "mail", unseen)
+		add(href, func(l string) string { return i18n.T(l, "New mail") }, line, "mail", unseen)
 		if len(out) > n {
 			out[n].Unread = true
 		}
@@ -1902,20 +1935,23 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 	}
 	// Alerts that fired and are not yet marked seen, a line per site.
 	for _, n := range a.alertNotices(ctx) {
-		add(n.Href, n.Title, n.Detail, n.Kind, n.Count, n.Severity)
+		keep(n)
 	}
 	rdb := dbpkg.AdminReader()
 	// Unread contact-form mail (already counted for the sidebar badge).
-	add("/os/messages", "New messages", "unread in your inbox", "message", s.UnreadMessages)
+	add("/os/messages", func(l string) string { return i18n.T(l, "New messages") },
+		func(l string) string { return i18n.T(l, "{n} unread in your inbox", "n", notifCap(s.UnreadMessages)) }, "message", s.UnreadMessages)
 	// Comments awaiting moderation.
 	pendingComments := 0
 	_ = rdb.QueryRowContext(ctx, `SELECT COUNT(1) FROM comments WHERE status='pending'`).Scan(&pendingComments)
-	add("/os/comments", "Comments to review", "awaiting moderation", "comment", pendingComments)
+	add("/os/comments", func(l string) string { return i18n.T(l, "Comments to review") },
+		func(l string) string { return i18n.T(l, "{n} awaiting moderation", "n", notifCap(pendingComments)) }, "comment", pendingComments)
 	// Mail devices waiting for approval to sync a mailbox (VayuMail direct-connect).
 	if a.vayuMail != nil {
 		pendingDevices := 0
 		_ = rdb.QueryRowContext(ctx, `SELECT COUNT(1) FROM vayumail_app_passwords WHERE device_id IS NOT NULL AND device_id <> '' AND status='pending'`).Scan(&pendingDevices)
-		add("/os/vayumail", "Mail devices", "waiting for approval", "mail", pendingDevices)
+		add("/os/vayumail", func(l string) string { return i18n.T(l, "Mail devices") },
+			func(l string) string { return i18n.T(l, "{n} waiting for approval", "n", notifCap(pendingDevices)) }, "mail", pendingDevices)
 	}
 	// Secondary domains registered but still on manual hold (not yet approved to
 	// provision). Pending Tor sites (placeholder host, minting their .onion) are
@@ -1928,24 +1964,31 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 					held++
 				}
 			}
-			add("/os/domains", "Domains to sync", "waiting for approval", "domain", held)
+			add("/os/domains", func(l string) string { return i18n.T(l, "Domains to sync") },
+				func(l string) string { return i18n.T(l, "{n} waiting for approval", "n", notifCap(held)) }, "domain", held)
 			// Sites publishing a template's sample content as if it were the
 			// real business (vayupress.johal.in served Bistro's "Maison Olive").
 			// A site marked as a demo on its Website page is not counted.
-			sample, href, detail := 0, "/os/domains", ""
+			sample, href, host := 0, "/os/domains", ""
 			for _, d := range list {
 				if d.IsPrimary || d.Status != domain.StatusActive {
 					continue
 				}
 				if _, warn := a.sampleWarned(ctx, d); warn {
 					sample++
-					href, detail = "/os/d/"+d.ID+"/website", d.Host+" shows a design's sample business — replace it, or mark it a demo"
+					href, host = "/os/d/"+d.ID+"/website", d.Host
 				}
 			}
-			if sample > 1 {
-				href, detail = "/os/domains", "sites show a design's sample business as if it were real"
+			line := func(l string) string {
+				return i18n.T(l, "{host} shows a design's sample business: replace it, or mark it a demo", "host", host)
 			}
-			add(href, "Sample content is live", detail, "domain", sample, "warn")
+			if sample > 1 {
+				href = "/os/domains"
+				line = func(l string) string {
+					return i18n.T(l, "{n} sites show a design's sample business as if it were real", "n", notifCap(sample))
+				}
+			}
+			add(href, func(l string) string { return i18n.T(l, "Sample content is live") }, line, "domain", sample, "warn")
 			// Sites whose live pages now have a dead end in them: a picture
 			// deleted from Media, a post a button linked to taken down.
 			broken, bhref := 0, "/os/domains"
@@ -1962,14 +2005,17 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 			if broken > 1 {
 				bhref = "/os/domains"
 			}
-			add(bhref, "Website problems", "a live site has a dead link or a missing picture", "domain", broken, "danger")
+			add(bhref, func(l string) string { return i18n.T(l, "Website problems") }, func(l string) string {
+				return i18n.T(l, "{n, plural, one {# live site has} other {# live sites have}} a dead link or a missing picture", "n", broken)
+			}, "domain", broken, "danger")
 		}
 	}
 	// A newer signed VayuPress release is ready to install (read from the cached
 	// update-check history, refreshed by the background watcher). Admin-only via
 	// the /os/update gate in add(); silent in a Tor Space.
 	if v, ok := a.latestUpdateNotice(ctx); ok {
-		state("/os/update", "VayuOS update ready", "Install "+v+" in one click", "update", "")
+		state("/os/update", func(l string) string { return i18n.T(l, "VayuOS update ready") },
+			func(l string) string { return i18n.T(l, "Install {version} in one click", "version", v) }, "update", "")
 	}
 	// Wave 2.2 — the operational signals the bell used to ignore. All three come
 	// from the metrics snapshot (an atomic load; collectAdminMetrics is already
@@ -1982,7 +2028,9 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 			if snap.FailedJobs >= 10 {
 				sev = "danger"
 			}
-			add("/os/monitoring", "Failed jobs", "render/write jobs failed — the site may be serving stale content", "jobs", snap.FailedJobs, sev)
+			add("/os/monitoring", func(l string) string { return i18n.T(l, "Failed jobs") }, func(l string) string {
+				return i18n.T(l, "{n} render or write jobs failed; the site may be serving stale content", "n", notifCap(snap.FailedJobs))
+			}, "jobs", snap.FailedJobs, sev)
 		}
 		// Disk pressure: quota consumption from the same snapshot. At 90% the
 		// next upload or backup can start failing — that is danger, not todo.
@@ -1991,12 +2039,16 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 			if snap.StoragePct >= 90 {
 				sev = "danger"
 			}
-			add("/os/storage", "Storage filling up", "of your storage quota is in use", "storage", int(snap.StoragePct), sev)
+			pct := int(snap.StoragePct)
+			add("/os/storage", func(l string) string { return i18n.T(l, "Storage filling up") }, func(l string) string {
+				return i18n.T(l, "{n}% of your storage quota is in use", "n", notifCap(pct))
+			}, "storage", pct, sev)
 		}
 		// Maintenance mode on: deliberate, but visible — an install parked in
 		// maintenance "for a moment" three days ago deserves a bell entry.
 		if config.Cfg.MaintenanceMode {
-			state("/os/modes", "Maintenance mode on", "The public site is offline behind a maintenance page", "mode", "info")
+			state("/os/modes", func(l string) string { return i18n.T(l, "Maintenance mode on") },
+				func(l string) string { return i18n.T(l, "The public site is offline behind a maintenance page") }, "mode", "info")
 		}
 	}
 	return out

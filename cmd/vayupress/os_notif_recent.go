@@ -10,6 +10,7 @@ import (
 	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/mode"
 )
 
@@ -36,6 +37,10 @@ const osRecentLimit = 8
 // its query: one check per source, so each is seen to hold on its own.
 func (a *App) osRecentEvents(ctx context.Context, s *osSettings, now time.Time) []osRecentEvent {
 	since := now.Add(-osRecentWindow)
+	// Events leave the bell by their time, not their words (notifClearedAt),
+	// so they are said in the page's language as they are made. A mode's
+	// reason and a failed update's detail are the engine's own record.
+	lang := i18n.Lang(ctx)
 	var out []osRecentEvent
 	add := func(e osRecentEvent) {
 		if s.AccessLevel >= osPathMinLevel(e.Href) {
@@ -45,11 +50,11 @@ func (a *App) osRecentEvents(ctx context.Context, s *osSettings, now time.Time) 
 
 	for _, t := range mode.Global.History() {
 		if t.OccurredAt.After(since) {
-			add(osRecentEvent{Title: "Mode changed to " + saModeLabel(t.To), Detail: t.Reason, Href: "/os/modes", Kind: "mode", At: t.OccurredAt})
+			add(osRecentEvent{Title: i18n.T(lang, "Mode changed to {mode}", "mode", saModeLabelIn(lang, t.To)), Detail: t.Reason, Href: "/os/modes", Kind: "mode", At: t.OccurredAt})
 		}
 	}
 	if st := a.vayuKeepStatus(); st.LastSuccess.After(since) {
-		add(osRecentEvent{Title: "Backup copied to the replica", Href: "/os/vayukeep", Kind: "backup", At: st.LastSuccess})
+		add(osRecentEvent{Title: i18n.T(lang, "Backup copied to the replica"), Href: "/os/vayukeep", Kind: "backup", At: st.LastSuccess})
 	}
 
 	if dbpkg.DB != nil {
@@ -77,16 +82,16 @@ func (a *App) osRecentEvents(ctx context.Context, s *osSettings, now time.Time) 
 				var name string
 				var at time.Time
 				err := r.Scan(&name, &at)
-				return osRecentEvent{Title: "Message from " + name, Href: "/os/messages", Kind: "message", At: at}, err
+				return osRecentEvent{Title: i18n.T(lang, "Message from {name}", "name", name), Href: "/os/messages", Kind: "message", At: at}, err
 			})
 		query(`SELECT author, status, created_at FROM comments WHERE datetime(created_at) >= datetime(?) ORDER BY created_at DESC LIMIT 8`,
 			func(r *sql.Rows) (osRecentEvent, error) {
 				var author, status string
 				var at time.Time
 				err := r.Scan(&author, &status, &at)
-				e := osRecentEvent{Title: "Comment from " + author, Href: "/os/comments", Kind: "comment", At: at}
+				e := osRecentEvent{Title: i18n.T(lang, "Comment from {name}", "name", author), Href: "/os/comments", Kind: "comment", At: at}
 				if status == "pending" {
-					e.Detail = "Held for review"
+					e.Detail = i18n.T(lang, "Held for review")
 				}
 				return e, err
 			})
@@ -95,23 +100,23 @@ func (a *App) osRecentEvents(ctx context.Context, s *osSettings, now time.Time) 
 				var email string
 				var at time.Time
 				err := r.Scan(&email, &at)
-				return osRecentEvent{Title: email + " joined", Href: "/os/members", Kind: "member", At: at}, err
+				return osRecentEvent{Title: i18n.T(lang, "{email} joined", "email", email), Href: "/os/members", Kind: "member", At: at}, err
 			})
 		query(recentPostsSQL,
 			func(r *sql.Rows) (osRecentEvent, error) {
 				var slug, title string
 				var at time.Time
 				err := r.Scan(&slug, &title, &at)
-				return osRecentEvent{Title: "Published “" + title + "”", Href: "/os/editor/" + slug, Kind: "post", At: at}, err
+				return osRecentEvent{Title: i18n.T(lang, "Published “{title}”", "title", title), Href: "/os/editor/" + slug, Kind: "post", At: at}, err
 			}, recentPostsFloor(since), cut)
 		query(`SELECT COALESCE(to_version,''), status, COALESCE(detail,''), completed_at FROM update_history WHERE completed_at IS NOT NULL AND datetime(completed_at) >= datetime(?) ORDER BY completed_at DESC LIMIT 3`,
 			func(r *sql.Rows) (osRecentEvent, error) {
 				var to, status, detail string
 				var at time.Time
 				err := r.Scan(&to, &status, &detail, &at)
-				e := osRecentEvent{Title: "Updated to " + to, Href: "/os/update", Kind: "update", At: at}
+				e := osRecentEvent{Title: i18n.T(lang, "Updated to {version}", "version", to), Href: "/os/update", Kind: "update", At: at}
 				if status != "success" {
-					e.Title, e.Detail = "Update to "+to+" did not complete", detail
+					e.Title, e.Detail = i18n.T(lang, "Update to {version} did not complete", "version", to), detail
 				}
 				return e, err
 			})
@@ -175,6 +180,9 @@ const notifDismissFor = 24 * time.Hour
 // this stays the same; a new count or a new detail is new information, and the
 // item comes back.
 func (n osNotification) fingerprint() string {
+	if n.key != "" {
+		return n.Kind + "\x1f" + n.key
+	}
 	return n.Kind + "\x1f" + n.Title + "\x1f" + n.line()
 }
 

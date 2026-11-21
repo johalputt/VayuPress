@@ -22,7 +22,7 @@ import (
 // mailDNSVerdict is the last completed mail-domain check.
 type mailDNSVerdict struct {
 	AllOK   bool
-	Next    string // the first unfinished item, as the checklist names it
+	Health  dnsHealth // the check itself, so its next step is said in the reader's language
 	Checked time.Time
 }
 
@@ -33,19 +33,19 @@ const mailDNSWatchInterval = 6 * time.Hour
 
 // recordMailDNS stores a completed check.
 func (a *App) recordMailDNS(h dnsHealth) {
-	next, _ := firstDNSUnfinished("", h)
-	a.mailDNS.Store(&mailDNSVerdict{AllOK: h.AllOK, Next: next, Checked: time.Now()})
+	a.mailDNS.Store(&mailDNSVerdict{AllOK: h.AllOK, Health: h, Checked: time.Now()})
 }
 
-// mailDNSNeedsAttention reports a stored failing verdict and its next step. An
-// install that has never completed a check reports nothing: "unknown" is not a
-// problem to raise.
-func (a *App) mailDNSNeedsAttention() (string, bool) {
+// mailDNSNeedsAttention reports a stored failing verdict and its next step,
+// in lang, as the checklist names it. An install that has never completed a
+// check reports nothing: "unknown" is not a problem to raise.
+func (a *App) mailDNSNeedsAttention(lang string) (string, bool) {
 	v := a.mailDNS.Load()
 	if v == nil || v.AllOK {
 		return "", false
 	}
-	return v.Next, true
+	next, _ := firstDNSUnfinished(lang, v.Health)
+	return next, true
 }
 
 // startMailDNSWatch runs the background check. It waits before the first one so

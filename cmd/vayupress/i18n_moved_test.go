@@ -22,7 +22,7 @@ import (
 // sentence written beside T fails TestAMovedPageHasNoEnglishOutsideT.
 var i18nMoved = map[string][]string{
 	"handlers_mail_recovery_pages.go": nil,
-	"admin_os_ui.go":                  {"osLoginPage", "spaceSwitch"},
+	"admin_os_ui.go":                  {"osLoginPage", "spaceSwitch", "osNotifications", "osNotifBellSig"},
 	"vayuos.go":                       nil,
 	"vayuos_shell.go":                 nil,
 	"vayuos_mail_blocked.go":          nil,
@@ -63,6 +63,11 @@ var i18nMoved = map[string][]string{
 	"handlers_team.go":             {"teamRoleName", "teamRoster"},
 	"handlers_console.go":          {"modeDescription"},
 	"vayuos_modes.go":              {"saModeStripText"},
+	"os_notif_recent.go":           {"osRecentEvents"},
+	"analytics_alerts.go":          {"alertWhereIn", "alertNotices"},
+	"vayukeep_pace.go":             {"keepHeldNotice"},
+	"admin_os_services.go":         {"cspReportOnlyNotices"},
+	"admin_os_vayukeep.go":         {"backupNotification"},
 	"vayuos_mail_drive_upload.go":  nil,
 	"vayuos_mail_export_api.go":    nil,
 	"vayuos_mail_privatekey.go":    nil,
@@ -123,7 +128,15 @@ var (
 // i18nEnglishIn is the English a person would read in a string literal, or
 // "": the text between tags of an HTML fragment, or a literal that is a
 // sentence on its own.
+// i18nSQL is a statement given to the database: code, whatever words it
+// holds. Its comparisons (>=) otherwise read as the end of a tag, and what
+// follows them as a sentence.
+var i18nSQL = regexp.MustCompile(`^\s*(?:SELECT|INSERT|UPDATE|DELETE|WITH)\s`)
+
 func i18nEnglishIn(lit string) string {
+	if i18nSQL.MatchString(lit) {
+		return ""
+	}
 	// What a person reads inside a tag: a confirmation, a placeholder, a
 	// tooltip, a label for a screen reader. A value may run past the end of
 	// the literal, cut off by a value spliced in.

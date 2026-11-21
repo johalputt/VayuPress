@@ -30,6 +30,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/secrets"
 	"github.com/johalputt/vayupress/internal/settings"
@@ -107,14 +108,37 @@ func keepStatusVerdict(st vayukeep.Status, bootErr string, now time.Time, left [
 		ui.HTML("Encrypted, to " + at(st.Target) + ". You would lose at most " + html.EscapeString(loss) + " of work.")}
 }
 
-// backupNotification is the verdict as a notification: none while backups are
-// proven, otherwise at the verdict's own tone.
-func backupNotification(st vayukeep.Status, bootErr string, now time.Time, left []string) (osNotification, bool) {
+// backupNotification is the verdict as a notification, in lang: none while
+// backups are proven, otherwise at the verdict's own tone.
+func backupNotification(lang string, st vayukeep.Status, bootErr string, now time.Time, left []string) (osNotification, bool) {
 	v := keepStatusVerdict(st, bootErr, now, left)
 	if v.Tone == "ok" {
 		return osNotification{}, false
 	}
-	return osNotification{Title: "Backups", Detail: v.Chip, Href: "/os/vayukeep", Count: 1, Kind: "backup", Severity: v.Tone}, true
+	return said(lang, osNotification{Href: "/os/vayukeep", Count: 1, Kind: "backup", Severity: v.Tone, State: true},
+		func(l string) string { return i18n.T(l, "Backups") }, func(l string) string { return backupChipWord(l, v.Chip) }), true
+}
+
+// backupChipWord is a verdict's word for the bell in lang. The verdict keeps
+// its English word, which the Backups page's tests and the bell's key read.
+func backupChipWord(lang, chip string) string {
+	switch chip {
+	case "Refused to start":
+		return i18n.T(lang, "Refused to start")
+	case "Not set up":
+		return i18n.T(lang, "Not set up")
+	case "Paused":
+		return i18n.T(lang, "Paused")
+	case "Test restore FAILED":
+		return i18n.T(lang, "Test restore FAILED")
+	case "Unverified":
+		return i18n.T(lang, "Unverified")
+	case "Stale":
+		return i18n.T(lang, "Stale")
+	case "Partial":
+		return i18n.T(lang, "Partial")
+	}
+	return chip
 }
 
 // detailRow is one label/value line, reusing the connector panel's markup.

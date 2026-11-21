@@ -27,6 +27,7 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/email"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/ui"
 )
@@ -93,14 +94,17 @@ func (a *App) checkAlerts(ctx context.Context) {
 }
 
 // alertWhere names an alert's scope in a sentence.
-func alertWhere(site string, hosts map[string]string) string {
+func alertWhere(site string, hosts map[string]string) string { return alertWhereIn("en", site, hosts) }
+
+// alertWhereIn is alertWhere in lang.
+func alertWhereIn(lang, site string, hosts map[string]string) string {
 	if site == alerts.Install {
-		return "this install"
+		return i18n.T(lang, "this install")
 	}
 	if h, ok := hosts[site]; ok {
 		return h
 	}
-	return "a removed site"
+	return i18n.T(lang, "a removed site")
 }
 
 // alertPage is the console page that lists site's alerts.
@@ -149,8 +153,12 @@ func (a *App) alertNotices(ctx context.Context) []osNotification {
 		if _, ok := hosts[u.Site]; !ok && u.Site != alerts.Install {
 			continue
 		}
-		detail := "alert" + plural(u.Count) + " fired on " + alertWhere(u.Site, hosts)
-		out = append(out, osNotification{Title: "Alerts", Detail: detail, Href: alertPage(u.Site), Count: u.Count, Kind: "alert", Severity: u.Severity})
+		site, count := u.Site, u.Count
+		out = append(out, said(i18n.Lang(ctx), osNotification{Href: alertPage(u.Site), Count: u.Count, Kind: "alert", Severity: u.Severity},
+			func(l string) string { return i18n.T(l, "Alerts") },
+			func(l string) string {
+				return i18n.T(l, "{n, plural, one {# alert} other {# alerts}} fired on {where}", "n", count, "where", alertWhereIn(l, site, hosts))
+			}))
 	}
 	return out
 }

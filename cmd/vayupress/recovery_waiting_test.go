@@ -38,7 +38,9 @@ func TestALockedOutMailboxReachesTheAdministrator(t *testing.T) {
 	if !ok {
 		t.Fatal("someone is locked out and asked for help, and the bell says nothing")
 	}
-	if n.Detail != "1 waiting for you" || n.Href != "/os/vayumail/accounts#recovery" || n.Severity != "warn" {
+	// The count is said once: "1 1 waiting for you" was the count put in front
+	// of a line that already held it.
+	if n.line() != "1 waiting for you" || n.Href != "/os/vayumail/accounts#recovery" || n.Severity != "warn" {
 		t.Errorf("the notice reads %+v", n)
 	}
 	if _, ok := waitingNotice(a, accessEditor); ok {

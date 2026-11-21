@@ -1202,7 +1202,8 @@ func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
 		if v.AllOK {
 			dnsState, dnsHint = ui.State("ok", i18n.T(lang, "All records found")), i18n.T(lang, "Checked {when}.", "when", i18n.Date(lang, config.InSite(v.Checked), i18n.WeekdayDayMonthAt))
 		} else {
-			dnsState, dnsHint = ui.State("warn", i18n.T(lang, "Needs attention")), i18n.T(lang, "Next: {step}.", "step", v.Next)
+			next, _ := firstDNSUnfinished(lang, v.Health)
+			dnsState, dnsHint = ui.State("warn", i18n.T(lang, "Needs attention")), i18n.T(lang, "Next: {step}.", "step", next)
 		}
 	}
 	dnsRows := ui.Rows(ui.Row{Label: "DNS", Hint: dnsHint, Control: dnsState + ui.HTML(` <a class="btn btn--sm" href="/os/vayumail/dns">`+esc(i18n.T(lang, "Open DNS"))+`</a>`)})

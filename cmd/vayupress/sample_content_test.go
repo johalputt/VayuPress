@@ -113,7 +113,7 @@ func TestASiteMarkedAsADemoIsNotWarnedAbout(t *testing.T) {
 	strip := func() string {
 		for _, n := range a.osNotifications(context.Background(), &osSettings{AccessLevel: accessAdmin}) {
 			if strings.Contains(n.Title, "Sample content") {
-				return n.Detail
+				return n.line()
 			}
 		}
 		return ""

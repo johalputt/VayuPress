@@ -168,6 +168,12 @@ test("Settings in another language has no English left on it", async ({ page }) 
   for (const slug of ["general", "appearance", "navigation", "footer", "design", "writing", "members", "team", "email", "advanced"]) {
     await page.goto("/os/settings/" + slug + "?lang=en-XA");
     await expect(page.locator("html")).toHaveAttribute("lang", "en-XA");
+    // The bell is the shell's, and its items are said in the page's
+    // language too: open on one page, so its panel is read with the rest.
+    if (slug === "general") {
+      await page.locator("[data-notif-toggle]").click();
+      await expect(page.locator("[data-notif-panel]")).toBeVisible();
+    }
     const english = await page.evaluate(() => {
       // What the install holds (a field's value, a person's name or address)
       // and what is a name rather than a sentence.

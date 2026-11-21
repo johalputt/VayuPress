@@ -107,7 +107,7 @@ func TestUnprovenBackupsReachTheBell(t *testing.T) {
 		}
 		return nil
 	}
-	if n := find(accessAdmin); n == nil || n.Detail != "Not set up" {
+	if n := find(accessAdmin); n == nil || n.line() != "Not set up" {
 		t.Errorf("an administrator of an install with no backups got %+v, want a Not set up notice", n)
 	} else if got := n.line(); got != "Not set up" {
 		t.Errorf("a state reads %q; a count in front of a statement is noise", got)

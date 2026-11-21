@@ -251,9 +251,9 @@ func TestConsoleIsReachableAndOperable(t *testing.T) {
 		{"failed restore", "", "Test restore FAILED", "danger", vayukeep.Status{Enabled: true, NewestGen: vkNow, LastDrill: vkNow}},
 		{"refused", "bad passphrase", "Refused to start", "danger", vayukeep.Status{}},
 	} {
-		n, ok := backupNotification(c.st, c.bootErr, vkNow, nil)
-		if ok != (c.want != "") || n.Detail != c.want || n.Severity != c.sev {
-			t.Errorf("%s: notification = %v %q %q, want %q %q", c.name, ok, n.Detail, n.Severity, c.want, c.sev)
+		n, ok := backupNotification("en", c.st, c.bootErr, vkNow, nil)
+		if ok != (c.want != "") || (ok && n.line() != c.want) || n.Severity != c.sev {
+			t.Errorf("%s: notification = %v %q %q, want %q %q", c.name, ok, n.line(), n.Severity, c.want, c.sev)
 		}
 		if ok && n.Href != "/os/vayukeep" {
 			t.Errorf("%s: the notification opens %s, not the backups page", c.name, n.Href)

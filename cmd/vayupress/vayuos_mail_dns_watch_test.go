@@ -20,7 +20,7 @@ func TestAnUnfinishedMailDomainIsRaisedFromTheStoredVerdict(t *testing.T) {
 	bell := func(level int) string {
 		var out []string
 		for _, n := range a.osNotifications(ctx, &osSettings{AccessLevel: level}) {
-			out = append(out, n.Title+" | "+n.Detail+" | "+n.Href)
+			out = append(out, n.Title+" | "+n.line()+" | "+n.Href)
 		}
 		return strings.Join(out, "\n")
 	}
@@ -77,7 +77,7 @@ func TestALiveCheckStoresItsVerdict(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	a.vayuDNSHealth(ctx)
-	if _, bad := a.mailDNSNeedsAttention(); !bad {
+	if _, bad := a.mailDNSNeedsAttention("en"); !bad {
 		t.Fatal("a check whose every lookup failed did not leave a failing verdict behind")
 	}
 }

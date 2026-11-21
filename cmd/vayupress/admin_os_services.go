@@ -18,6 +18,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/ui"
@@ -329,8 +330,12 @@ func (a *App) cspReportOnlyNotices(ctx context.Context) []osNotification {
 	check := func(sc settings.Scope, host, href string) {
 		p := a.sitePolicyIn(ctx, sc)
 		if p.Enforced(now) == render.PolicyReport {
-			out = append(out, osNotification{Title: "Outside services: report only", Href: href, Count: 1, Kind: "security", Severity: "warn",
-				Detail: "Nothing is blocked on " + host + " until " + p.ReportUntil.Format("2 Jan, 15:04 UTC")})
+			until := p.ReportUntil.Format("2 Jan, 15:04 UTC")
+			out = append(out, said(i18n.Lang(ctx), osNotification{Href: href, Count: 1, Kind: "security", Severity: "warn", State: true},
+				func(l string) string { return i18n.T(l, "Outside services: report only") },
+				func(l string) string {
+					return i18n.T(l, "Nothing is blocked on {host} until {time}", "host", host, "time", until)
+				}))
 		}
 	}
 	check(settings.ForPrimary(), strings.ToLower(config.Cfg.Domain), "/os/website/services")

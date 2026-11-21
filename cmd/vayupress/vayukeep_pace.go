@@ -23,6 +23,7 @@ import (
 	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/pace"
 	"github.com/johalputt/vayupress/internal/pacedio"
 	"github.com/johalputt/vayupress/internal/sqlitecopy"
@@ -269,13 +270,19 @@ func (k *keepRun) held() (since time.Time, why string) {
 // room for it all that time, which the operator should hear about.
 const keepHeldHour = time.Hour
 
-// keepHeldNotice is the bell's entry for a copy held that long.
-func keepHeldNotice(since time.Time, why string, now time.Time) (osNotification, bool) {
+// keepHeldNotice is the bell's entry for a copy held that long, in lang. The
+// reason is the pacer's own, in English: it names what the host is short of,
+// in the words its measurements use.
+func keepHeldNotice(lang string, since time.Time, why string, now time.Time) (osNotification, bool) {
 	if since.IsZero() || now.Sub(since) < keepHeldHour {
 		return osNotification{}, false
 	}
-	return osNotification{Title: "A backup is waiting for the server", Href: "/os/vayukeep", Count: 1, Kind: "backup", Severity: "warn",
-		Detail: "Copying at its slowest since " + since.UTC().Format("15:04") + " UTC: " + why}, true
+	at := since.UTC().Format("15:04")
+	return said(lang, osNotification{Href: "/os/vayukeep", Count: 1, Kind: "backup", Severity: "warn", State: true},
+		func(l string) string { return i18n.T(l, "A backup is waiting for the server") },
+		func(l string) string {
+			return i18n.T(l, "Copying at its slowest since {time} UTC: {why}", "time", at, "why", why)
+		}), true
 }
 
 // handleOSVayuKeepRun is the "Running now" block, polled by the Backups page.

@@ -219,7 +219,7 @@ func TestABackupThatLeavesDataOutIsPartial(t *testing.T) {
 	if v := keepStatusVerdict(st, "", vkNow, leftOut(places)); v.Chip != "Partial" || !strings.Contains(string(v.Detail), "Not in it: media.") {
 		t.Errorf("the verdict with media left out is %q: %s", v.Chip, v.Detail)
 	}
-	if n, ok := backupNotification(st, "", vkNow, leftOut(places)); !ok || n.Detail != "Partial" {
+	if n, ok := backupNotification("en", st, "", vkNow, leftOut(places)); !ok || n.line() != "Partial" {
 		t.Errorf("the bell says nothing of media left out: %v %+v", ok, n)
 	}
 	page := osVayuKeepBody("n", st, "", nil, "", vkNow, "", false, keepPrefs{}, "", places)
@@ -288,7 +288,7 @@ func TestTheInstallSaysWhenABackupLeavesMediaOut(t *testing.T) {
 
 	found := false
 	for _, n := range a.osNotifications(context.Background(), &osSettings{AccessLevel: accessAdmin}) {
-		found = found || (n.Href == "/os/vayukeep" && n.Detail == "Partial")
+		found = found || (n.Href == "/os/vayukeep" && n.line() == "Partial")
 	}
 	if !found {
 		t.Error("the bell does not say the backups leave media out")
