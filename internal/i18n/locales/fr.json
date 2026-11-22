@@ -1245,6 +1245,7 @@
  "Labels": "Libellés",
  "Label…": "Libellé…",
  "Language": "Langue",
+ "Language: {name}": "Langue : {name}",
  "Large": "Grand",
  "Large radius": "Grand rayon",
  "Larger than (MB)": "Plus grand que (Mo)",

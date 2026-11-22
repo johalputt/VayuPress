@@ -1187,6 +1187,21 @@
 
 .vp-os .theme-opt[aria-pressed="true"] { background: var(--brand-dim); color: var(--brand); }
 
+/* The language button on the sign-in, recovery and booking pages: the theme
+   switch's twin, in the opposite corner, so the page itself stays the form.
+   Its list opens upward from it; the rows are the console menu's. The
+   selectors name sa-pop too: its own rules come later in this file and would
+   otherwise put the button back in the page's flow and the list below it. */
+.vp-os[data-ui="still-air"] .sa-pop.lang-pick { position: fixed; left: 1rem; bottom: 1rem; z-index: 80; }
+.vp-os[data-ui="still-air"] .lang-pick__btn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px 0 10px; cursor: pointer; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 999px; box-shadow: var(--shadow-3); color: var(--text-2); font: 600 12px/1 var(--font-ui); letter-spacing: 0.04em; transition: color var(--duration-micro) var(--ease-move); }
+.vp-os[data-ui="still-air"] .lang-pick__btn .sa-ico { width: 15px; height: 15px; }
+.vp-os[data-ui="still-air"] .lang-pick__code { min-width: 2ch; text-align: center; }
+.vp-os[data-ui="still-air"] .lang-pick__btn:hover,
+.vp-os[data-ui="still-air"] .lang-pick[open] .lang-pick__btn { color: var(--text); }
+.vp-os[data-ui="still-air"] .sa-pop__panel.lang-pick__menu { top: auto; right: auto; bottom: calc(100% + 8px); left: 0; width: 220px; max-height: min(60vh, 480px); overflow-y: auto; transform-origin: bottom left; }
+.vp-os[data-ui="still-air"] .lang-pick__menu .sa-menu__item { border: 0; background: transparent; cursor: pointer; }
+.vp-os[data-ui="still-air"] .lang-pick__menu .sa-menu__item[aria-current="true"] { color: var(--brand); background: var(--brand-dim); }
+
 /* ── Notification bell badge ─────────────────────────────────── */
 /* A badge that rose while the page was open pops once (the live bell). */
 @keyframes vp-notif-pop { 0% { transform: scale(0.6); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }

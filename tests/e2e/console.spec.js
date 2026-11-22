@@ -368,3 +368,31 @@ test("a flow is saved from its form and run once from the page", async ({ page, 
     await ctx.close();
   }
 });
+
+// The sign-in page's language is a small button in its corner, not a form
+// under the box: it opens a list upward, Escape closes it, and a language
+// chosen from it gives the page in that language.
+test("the sign-in page's language button gives the page in the language chosen", async ({ browser }) => {
+  const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+  try {
+    const page = await ctx.newPage();
+    await page.goto("/os/login");
+    const pick = page.locator(".lang-pick");
+    await expect(pick.locator("summary")).toHaveText("EN");
+    const box = await pick.boundingBox();
+    const vp = page.viewportSize();
+    expect(box.x).toBeLessThan(40);
+    expect(box.y + box.height).toBeGreaterThan(vp.height - 40);
+    await pick.locator("summary").click();
+    await expect(pick.locator(".lang-pick__menu")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(pick.locator(".lang-pick__menu")).toBeHidden();
+    await pick.locator("summary").click();
+    await Promise.all([page.waitForURL(/lang=de/), pick.getByRole("button", { name: "Deutsch" }).click()]);
+    await expect(page.locator("html")).toHaveAttribute("lang", "de");
+    await expect(page.locator("main")).toContainText("Willkommen zurück");
+    await expect(page.locator(".lang-pick summary")).toHaveText("DE");
+  } finally {
+    await ctx.close();
+  }
+});

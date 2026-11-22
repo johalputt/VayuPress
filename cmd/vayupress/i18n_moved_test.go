@@ -322,15 +322,15 @@ func TestSignInIsInThePersonsLanguage(t *testing.T) {
 	}
 }
 
-// The sign-in page offers its language: a menu under the page, as mailbox
-// recovery has, which asks for the page again with ?lang= and keeps the
-// choice. It followed the browser and a ?lang= that no page showed.
+// The sign-in page offers its language: the language button in its corner,
+// as mailbox recovery has, whose list asks for the page again with ?lang= and
+// keeps the choice. It followed the browser and a ?lang= that no page showed.
 func TestSignInOffersItsLanguage(t *testing.T) {
 	a := &App{}
 	w := httptest.NewRecorder()
 	a.handleOSLogin(w, httptest.NewRequest("GET", "/os/login?next=/os/vayumail", nil))
 	page := w.Body.String()
-	for _, want := range []string{`<select class="input" name="lang">`, `<option value="de" lang="de">Deutsch</option>`, `<input type="hidden" name="next" value="/os/vayumail">`} {
+	for _, want := range []string{`<details class="sa-pop lang-pick">`, `name="lang" value="de" lang="de">Deutsch</button>`, `<input type="hidden" name="next" value="/os/vayumail">`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the sign-in page has no %s", want)
 		}
@@ -338,7 +338,7 @@ func TestSignInOffersItsLanguage(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	a.handleOSLogin(w, httptest.NewRequest("GET", "/os/login?lang=de", nil))
-	if page := w.Body.String(); !strings.Contains(page, "Willkommen zurück") || !strings.Contains(page, `<option value="de" lang="de" selected>`) {
+	if page := w.Body.String(); !strings.Contains(page, "Willkommen zurück") || !strings.Contains(page, `name="lang" value="de" lang="de" aria-current="true">`) {
 		t.Error("choosing Deutsch on the sign-in page did not give it in German, with Deutsch chosen")
 	}
 	if c := w.Result().Cookies(); len(c) == 0 || c[0].Name != langCookie || c[0].Value != "de" {

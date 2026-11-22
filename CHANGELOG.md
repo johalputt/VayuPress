@@ -84,6 +84,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   section that speaks another language does not turn to English in its
   messages.
 
+### Changed
+
+- **The language button on the sign-in page.** Sign-in, mailbox recovery and
+  the booking page offer their language as a small button in the bottom
+  left corner, with the language's code beside a globe, instead of a form
+  under the page. It opens the list of languages upward; Escape or a click
+  elsewhere closes it, and the page's own address values are kept when a
+  language is chosen.
+
 ### Fixed
 
 - **VayuFlow's buttons work.** Saving a flow, running it once, switching it

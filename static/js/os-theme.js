@@ -40,6 +40,18 @@
       b[i].addEventListener('click', function () { apply(this.getAttribute('data-set-theme')); });
     }
   }
+  // The language button's list closes on Escape and on a click outside it,
+  // as the console's menus do; vayuos.js, which closes those, is not on
+  // these pages.
+  document.addEventListener('keydown', function (e) {
+    var open = document.querySelector('.lang-pick[open]');
+    if (e.key === 'Escape' && open) { open.removeAttribute('open'); open.querySelector('summary').focus(); }
+  });
+  document.addEventListener('click', function (e) {
+    var open = document.querySelector('.lang-pick[open]');
+    if (open && !open.contains(e.target)) { open.removeAttribute('open'); }
+  });
+
   if (document.readyState !== 'loading') { wire(); }
   else { document.addEventListener('DOMContentLoaded', wire); }
 })();

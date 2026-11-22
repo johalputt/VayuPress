@@ -112,14 +112,26 @@ func consoleBack(back string) string {
 	return out
 }
 
-// languageMenu is the form that shows the page in another language.
+// languageMenu is the page's language button: a small globe at the foot of
+// the page's corner, its code beside it, that opens the list of languages.
+// Each language is a submit button of one GET form, so choosing one asks for
+// the page again with ?lang= and needs no script.
 //
 // The form sends the page's own query values with it: a reset link's token,
 // a booking's time zone and a sign-in's next page outlive the change, which a
 // form of lang alone would drop.
 func languageMenu(lang string, r *http.Request) string {
+	name := lang
+	for _, l := range i18n.Languages {
+		if l.Tag == lang {
+			name = l.Name
+		}
+	}
+	code, _, _ := strings.Cut(lang, "-")
 	var b strings.Builder
-	b.WriteString(`<form class="login-form" method="GET">`)
+	b.WriteString(`<details class="sa-pop lang-pick"><summary class="lang-pick__btn" aria-label="` + esc(i18n.T(lang, "Language: {name}", "name", name)) +
+		`" title="` + esc(i18n.T(lang, "Language")) + `">` + saIcon("globe") + `<span class="lang-pick__code" aria-hidden="true">` + esc(strings.ToUpper(code)) + `</span></summary>`)
+	b.WriteString(`<form class="sa-pop__panel sa-menu lang-pick__menu" method="GET">`)
 	for k, vs := range r.URL.Query() {
 		if k == "lang" {
 			continue
@@ -128,15 +140,14 @@ func languageMenu(lang string, r *http.Request) string {
 			b.WriteString(`<input type="hidden" name="` + esc(k) + `" value="` + esc(v) + `">`)
 		}
 	}
-	b.WriteString(`<label class="field"><span class="field-label">` + esc(i18n.T(lang, "Language")) + `</span><select class="input" name="lang">`)
 	for _, l := range i18n.Languages {
-		sel := ""
+		cur := ""
 		if l.Tag == lang {
-			sel = " selected"
+			cur = ` aria-current="true"`
 		}
-		b.WriteString(`<option value="` + esc(l.Tag) + `" lang="` + esc(l.Tag) + `"` + sel + `>` + esc(l.Name) + `</option>`)
+		b.WriteString(`<button type="submit" class="sa-menu__item" name="lang" value="` + esc(l.Tag) + `" lang="` + esc(l.Tag) + `"` + cur + `>` + esc(l.Name) + `</button>`)
 	}
-	b.WriteString(`</select></label><button class="btn btn--sm" type="submit">` + esc(i18n.T(lang, "Change")) + `</button></form>`)
+	b.WriteString(`</form></details>`)
 	return b.String()
 }
 
