@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.51] — 2026-11-22
+
+Shield grows seven defences, each off until switched on: two abuse feeds of
+addresses that attack other servers, refused sign-in everywhere; a switch
+for AI crawlers alone; a web application firewall running the OWASP Core
+Rule Set; SSH protection on the server, as fail2ban would; refusing
+passwords from known breaches; refused scripts on every site in Shield and
+the bell; and a signed, opt-in attacker list shared between VayuPress
+installs. A list no longer refuses an account where it has signed in
+before. Migration 136 adds the shared list's hub tables. The binary is
+about 8 MB larger for the Core Rule Set. SSH protection needs this
+release's Shield agent.
+
 ### Added
 
 - **A shared attacker list between VayuPress installs, opt-in on every
