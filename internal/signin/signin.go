@@ -490,9 +490,18 @@ func (s *Store) NoteLinkStranger(account, addr string) bool {
 	if !ok || src.private {
 		return false
 	}
+	// An IPv6 sender holds a /64 or more of its own, and each of its
+	// addresses would be a fresh source here, so for IPv6 the count and
+	// the ban are of the address's network (a /48, as a network block is
+	// everywhere else). An IPv4 /24 is shared by strangers too often for
+	// that: its sender is counted, and banned, by its one address.
+	kind, key, label := "address", src.fp, src.masked
+	if strings.Contains(src.masked, ":") {
+		kind, key, label = "network", src.net, NetworkLabel(src.masked)
+	}
 	now := s.Now()
 	s.mu.Lock()
-	st := s.linkAsks[src.fp]
+	st := s.linkAsks[key]
 	if st == nil {
 		if len(s.linkAsks) >= sprayCap {
 			for fp, old := range s.linkAsks {
@@ -513,7 +522,7 @@ func (s *Store) NoteLinkStranger(account, addr string) bool {
 			}
 		}
 		st = &sprayState{accounts: map[string]time.Time{}}
-		s.linkAsks[src.fp] = st
+		s.linkAsks[key] = st
 	}
 	for acct, t := range st.accounts {
 		if now.Sub(t) >= LinkWindow {
@@ -524,18 +533,18 @@ func (s *Store) NoteLinkStranger(account, addr string) bool {
 	ban := len(st.accounts) >= LinkStrangers
 	if ban {
 		for _, b := range s.blocks {
-			if b.Kind == "address" && b.Key == src.fp && b.Account == "" && b.Until.IsZero() {
+			if b.Kind == kind && b.Key == key && b.Account == "" && b.Until.IsZero() {
 				ban = false
 				break
 			}
 		}
-		delete(s.linkAsks, src.fp)
+		delete(s.linkAsks, key)
 	}
 	s.mu.Unlock()
 	if !ban {
 		return false
 	}
-	_, err := s.add(context.Background(), &Block{Kind: "address", Key: src.fp, Label: src.masked, Reason: "link-spraying", Created: now})
+	_, err := s.add(context.Background(), &Block{Kind: kind, Key: key, Label: label, Reason: "link-spraying", Created: now})
 	return err == nil
 }
 

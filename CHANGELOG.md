@@ -22,8 +22,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   addresses that are not members asked for from one source within a day
   block it from sign-in always, shown on Shield › Sign-in attempts as
   "Blocked automatically for asking sign-in links for strangers" until it
-  is lifted there. An address on the install's own network is never banned
-  this way.
+  is lifted there. An IPv6 sender is counted and banned by its network (a
+  /48), since it can ask from a new address of its own range each time. An
+  address on the install's own network is never banned this way.
 - **No second link to an address that refused the install's mail.** A
   stranger's link is not sent to an address whose server refused this
   install's mail for good (a 5.x status); a server that said try later

@@ -177,7 +177,7 @@ func (a *App) signinsBody(ctx context.Context, days int, source, self string, ta
 			strconv.Itoa(int(signin.Retention.Hours()/24))+` days. A holder whose password was right and whose code was not is told at once.</p>`+
 			`<p><strong>Sign-in links to strangers are guarded.</strong> A link to an address that is not a member is sent only after the page's proof of work, which a browser does in under a second and a script posting the form never does; at most `+
 			strconv.Itoa(strangerLinksPerHour)+` an hour for the whole install, and never to an address whose server refused this install's mail for good. A source that asks for links to `+
-			strconv.Itoa(signin.LinkStrangers)+` such addresses within a day is refused sign-in always, until it is lifted here. A link that bounces is recorded, not delivered to anyone's Inbox.</p>`)),
+			strconv.Itoa(signin.LinkStrangers)+` such addresses within a day is refused sign-in always, until it is lifted here; an IPv6 source is counted and refused by its network, since one sender holds many addresses. A link that bounces is recorded, not delivered to anyone's Inbox.</p>`)),
 	)
 	return string(ui.Overview(page, band, sections...))
 }

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -688,5 +689,35 @@ func TestSignInLinksAreCountedApartFromFailures(t *testing.T) {
 	}
 	if r, _ := s.Report(ctx, since, "", 10); r.Failures != 1 {
 		t.Fatalf("the links were counted as failures: %d", r.Failures)
+	}
+}
+
+// A sender on IPv6 holds a range of its own and can ask from a new address
+// each time, so its link spraying is counted, and banned, by its network: the
+// fifth stranger from five addresses in one /48 bans the /48, and an address
+// in it it never used is refused. A neighbour outside the /48 is not.
+func TestLinkSprayingOverIPv6IsBannedByItsNetwork(t *testing.T) {
+	s, _ := openStore(t)
+	banned := false
+	for i := 1; i <= LinkStrangers; i++ {
+		banned = s.NoteLinkStranger(fmt.Sprintf("s%d@x.test", i), fmt.Sprintf("2001:db8:7:%x::1", i))
+	}
+	if !banned {
+		t.Fatal("five strangers from one /48 did not ban it")
+	}
+	if _, refused := s.Refuse("member@x.test", "2001:db8:7:ffff::9"); !refused {
+		t.Fatal("an unused address in the banned /48 was let in")
+	}
+	if _, refused := s.Refuse("member@x.test", "2001:db8:8::1"); refused {
+		t.Fatal("an address outside the /48 was refused")
+	}
+	var ban *Block
+	for _, b := range s.Blocks("") {
+		if b.Reason == "link-spraying" {
+			ban = &b
+		}
+	}
+	if ban == nil || ban.Kind != "network" || ban.Label != "2001:db8:x::/48" || !ban.Until.IsZero() {
+		t.Fatalf("the ban is %+v", ban)
 	}
 }
