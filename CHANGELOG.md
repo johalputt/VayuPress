@@ -8,6 +8,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.50] — 2026-11-22
+
+Shield's observe-only mode asks before it is saved on, is shown across the
+console while it is on, and ends by itself after 24 hours; and a table's
+Block menu opens whole on a phone.
+
+### Changed
+
+- **Observe-only cannot be left on by mistake.** Saving Shield's
+  observe-only on, which turns every gate into a counter, is asked about
+  first; while it is on, an administrator sees a red strip across the
+  console saying when it ends; and it ends by itself 24 hours after it was
+  switched on, every gate enforcing again without a save. A mode switched
+  on before this release gets its 24 hours from the upgrade.
+
+### Fixed
+
+- **A table's Block menu opens whole on a phone.** On a phone a table
+  folds into cards, and the console's table box clipped a menu in one, and
+  the menu opened leftwards off the screen from a button the card puts at
+  its left. A folded table no longer clips, and its menus open rightwards
+  inside the screen.
+
 ## [3.18.49] — 2026-11-22
 
 A source that mails strangers is banned for good on its next request, its
