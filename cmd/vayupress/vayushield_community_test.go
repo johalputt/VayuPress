@@ -192,3 +192,12 @@ func TestAnSSHBanIsQueuedForTheHub(t *testing.T) {
 		t.Fatalf("an SSH ban was not queued: %v", a.community.addrs)
 	}
 }
+
+// The form shows the hub it reports to, in a box that takes an address.
+func TestTheFormShowsTheHubAsAnAddress(t *testing.T) {
+	a := communityApp(t, false)
+	band := a.communityBand(context.Background())
+	if !strings.Contains(band, `type="url" id="sh_comm_hub_url"`) || !strings.Contains(band, `value="https://johal.in"`) {
+		t.Fatalf("the hub is not shown as an address: %s", band)
+	}
+}

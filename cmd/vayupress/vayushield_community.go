@@ -348,7 +348,9 @@ func (a *App) communityBand(ctx context.Context) string {
 	b.WriteString(`<p class="muted text-sm">VayuPress installs can tell each other who attacked them. An install that reports sends the addresses it banned on its own, for sign-in spraying, sign-in-link spraying or SSH, signed by a key of its own; addresses only, never an account or a page. The hub lists an address once three installs on three different networks reported it within a day, for a week. Reading the list is its own switch, under Published network lists.</p>`)
 	b.WriteString(`<div class="vs-feat">`)
 	b.WriteString(vsRow("sh_comm_report", "Report attackers to the hub", "Every 15 minutes, the addresses banned since the last report are sent to the hub below. Your own addresses are never banned, so never sent.", a.communitySetting(ctx, settings.KeyShieldCommunityReport) == "on", false))
-	b.WriteString(`<div class="vs-adv vs-adv--open">` + vsField("sh_comm_hub_url", "Hub", a.communityHubURL(ctx)) + `</div></div>`)
+	// Not vsField: that is a number box, which cannot show or take an address.
+	b.WriteString(`<div class="vs-adv vs-adv--open"><div class="vs-field"><label for="sh_comm_hub_url">Hub</label><input class="input" type="url" id="sh_comm_hub_url" name="sh_comm_hub_url" value="` +
+		html.EscapeString(a.communityHubURL(ctx)) + `" placeholder="https://johal.in" inputmode="url" autocomplete="off" spellcheck="false"></div></div></div>`)
 	b.WriteString(`<div class="vs-feat">`)
 	b.WriteString(vsRow("sh_comm_hub", "Run a hub for other installs", "This install takes signed reports at /api/v1/community/report and serves the list it signs at /api/v1/community/list. Reporters show on the Shield page, where any of them can be removed with everything it reported.", a.communitySetting(ctx, settings.KeyShieldCommunityHub) == "on", false))
 	b.WriteString(`</div>`)
