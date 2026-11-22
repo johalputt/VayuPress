@@ -72,7 +72,8 @@ func (a *App) scriptsSectionBody(ctx context.Context) string {
 			ui.HTML(`<a href="` + s.Services + `">Outside services</a>`),
 		})
 	}
-	return `<p class="muted text-sm">Each site runs only the scripts its policy names, and a browser that refuses another one says so. A script you did not add is how injected code first shows: a card skimmer in a theme, a tag slipped into a site's own code, an outside service that was taken over. Allow one on its site's Outside services page only if you recognise it. Anyone can send a report, so a source shows here once more than one visitor has reported it.</p>` +
+	return `<p class="muted text-sm">Scripts a site's policy refused, as its visitors' browsers reported them. Allow one only if you recognise it.` +
+		string(ui.Tip("A script you did not add is how injected code first shows: a card skimmer in a theme, a tag slipped into a site's own code, an outside service that was taken over. Anyone can send a report, so a source shows here once more than one visitor has reported it.")) + `</p>` +
 		string(ui.Table([]string{"Last", "Site", "Script from", "Refused", ""}, rows, "No script has been refused on any site since the server started."))
 }
 
