@@ -5302,6 +5302,10 @@
    its left, and stays inside the screen. */
 @media (max-width: 640px) {
   .vp-os[data-ui="still-air"] .table-wrap.vp-stackable { overflow: visible; }
+  /* With nothing clipping the card, an unbroken value (a long path on
+     Storage) would widen the page instead: it breaks where it must. */
+  .vp-os[data-ui="still-air"] .table-wrap.vp-stackable > table > tbody > tr > td,
+  .vp-os[data-ui="still-air"] .table-wrap.vp-stackable > table > tbody > tr > td > * { min-width: 0; overflow-wrap: anywhere; }
   .vp-os[data-ui="still-air"] .table-wrap.vp-stackable .sa-pop__panel { left: 0; right: auto; max-width: calc(100vw - 32px); transform-origin: top left; }
 }
 .vp-os[data-ui="still-air"] .table { width: 100%; border-collapse: collapse; }
