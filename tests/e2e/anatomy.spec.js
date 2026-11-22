@@ -34,10 +34,18 @@ const NOT_YET_CONVERTED = [];
 function anatomy() {
   const main = document.querySelector("main#main-content");
   if (!main) return null;
+  // What a closed <details> holds, past its summary, is not on the page.
+  // Chromium can still give it a size when asked, as it did for Mail's
+  // account cards once the list was long, so it is left out by the rule
+  // rather than by the measurement.
+  const folded = (e) => {
+    const d = e.parentElement && e.parentElement.closest("details:not([open])");
+    return !!d && !d.querySelector(":scope > summary")?.contains(e);
+  };
   const visible = (e) => {
     const b = e.getBoundingClientRect();
     const s = getComputedStyle(e);
-    return b.width > 0 && b.height > 0 && s.visibility !== "hidden" && s.display !== "none";
+    return b.width > 0 && b.height > 0 && s.visibility !== "hidden" && s.display !== "none" && !folded(e);
   };
   const all = [...main.querySelectorAll("*")].filter(visible);
   // A box: bordered on every side, rounded, and big enough to hold content.

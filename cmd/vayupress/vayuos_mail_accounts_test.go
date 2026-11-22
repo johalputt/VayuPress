@@ -129,9 +129,9 @@ func TestDevicesFragmentBacksPoller(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		`hx-get="/os/vayumail/devices/fragment"`, // the self-refresh poller
-		`badge--pending`,                         // the pending device chip
-		"awaiting approval",                      // the attention banner
+		`hx-get="/os/vayumail/devices/fragment"`,                                       // the self-refresh poller
+		`<span class="sa-dot sa-dot--warn" aria-hidden="true"></span>Pending approval`, // the pending device's state
+		"awaiting approval", // the attention banner
 		"Dana&#39;s phone",
 	} {
 		if !strings.Contains(body, want) {

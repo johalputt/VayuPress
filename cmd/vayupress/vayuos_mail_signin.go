@@ -102,9 +102,6 @@ func (a *App) signinNameBlock(ctx context.Context, ac vmail.Account) string {
 		`<span class="text-xs muted">` + esc(i18n.T(lang, "The address people write to is public, so it is guessed at. With a sign-in name it no longer signs in, and a guesser who has it has nothing.")) + ` ` +
 		html.EscapeString(nameNote) + `</span></div>`)
 	mailApps := i18n.T(lang, "Mail apps sign in with app passwords only; this mailbox's own password is refused over IMAP, POP3 and SMTP.")
-	if !ac.RequireDeviceApproval {
-		mailApps = i18n.T(lang, "Mail apps may sign in with this mailbox's own password. An administrator can require app passwords only.")
-	}
 	b.WriteString(`<div class="vm-acct__sub"><span class="field-label">` + esc(i18n.T(lang, "Mail apps")) + `</span><span class="text-sm">` + html.EscapeString(mailApps) + `</span></div>`)
 
 	return b.String()

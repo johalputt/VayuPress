@@ -199,9 +199,7 @@ func TestAProtocolSignInWithThePasswordOpensSealedMail(t *testing.T) {
 	a, _, dana := sealedMailApp(t)
 	makeDanaPrivate(t, a, dana)
 	ctx := context.Background()
-	if err := a.vayuMail.Accounts().SetRequireDeviceApproval(ctx, "dana@example.com", false); err != nil {
-		t.Fatal(err)
-	}
+	allowMailboxPassword(t, a, "dana@example.com")
 	hash, _ := auth.HashSecretArgon2id("devicesecret1234")
 	if _, err := a.vayuMail.Accounts().CreateAppPassword(ctx, "dana@example.com", "Phone", hash); err != nil {
 		t.Fatal(err)

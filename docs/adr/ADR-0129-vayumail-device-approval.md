@@ -133,3 +133,24 @@ the attacker may hold.
   already-connected devices survive the upgrade without interruption.
 - The private-key endpoint (ADR-0128) is strictly hardened: with approval
   required, only an approved device credential unlocks the key.
+
+## Amendment 2026-11-22 — approval is required of every mailbox
+
+The per-mailbox toggle is withdrawn. The operator made device approval
+mandatory: it is the control that makes a stolen mailbox password worth
+nothing to another device, and a switch that turns it off is the first thing
+an attacker who reaches the console would use.
+
+- The console no longer offers the toggle, and the devices action refuses
+  `require-set` as an unknown operation.
+- `AccountStore` has no setter. At every start the store sets
+  `require_device_approval = 1` on any mailbox an earlier release switched
+  off (`internal/vayuos/mail/accounts.go`), so the upgrade switches them all
+  on; `TestAMailboxSwitchedOffIsSwitchedOnAtStart` holds it.
+- A newly registered device is always `pending`; none is approved on arrival
+  (`handlers_portal.go`, `TestDeviceApprovalCannotBeSwitchedOff`).
+- The lockout argument above still holds without the toggle: the password
+  still signs in to the web console and registers a device, and app
+  passwords minted in the console keep working, so a holder always has a
+  path back to syncing mail. A mail app that signed in with the raw password
+  stops syncing until its device is approved on Mail › Accounts.

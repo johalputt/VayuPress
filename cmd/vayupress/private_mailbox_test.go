@@ -68,7 +68,7 @@ func TestAnAdministratorCannotChangeAPrivateMailbox(t *testing.T) {
 		"vacation reply": postAppPwForm(a.handleVayuOSAutoreplyAction, "/", url.Values{"email": {mbox}, "enabled": {"0"}}, admin),
 		"filter":         postAppPwForm(a.handleVayuOSFilterAction, "/", url.Values{"op": {"create"}, "email": {mbox}, "field": {"subject"}, "contains": {"x"}, "action": {"read"}}, admin),
 		"name":           postAppPwForm(a.handleVayuOSAliasAction, "/", url.Values{"op": {"name-set"}, "email": {mbox}, "name": {"Not Dana"}}, admin),
-		"devices":        postAppPwForm(a.handleVayuOSDeviceAction, "/", url.Values{"op": {"require-set"}, "email": {mbox}, "on": {"1"}}, admin),
+		"devices":        postAppPwForm(a.handleVayuOSDeviceAction, "/", url.Values{"op": {"approve"}, "email": {mbox}, "id": {"1"}}, admin),
 		"signature":      postJSONAs(a.handleVayuOSAccountUpdate, `{"email":"`+mbox+`","signature":"from the admin"}`, admin),
 		"two-step":       postJSONAs(a.handleVayuOSAccountTOTP, `{"email":"`+mbox+`","action":"begin"}`, admin),
 	} {

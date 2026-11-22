@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/auth"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/email"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
@@ -56,6 +57,21 @@ func signInDoors() []signInDoor {
 	}
 }
 
+// allowMailboxPassword puts a mailbox in the state earlier releases let an
+// administrator choose, its own password syncing mail, as only a database
+// edited by hand can now. The door tests are about the doors, not about the
+// device rule, which TestDeviceApprovalCannotBeSwitchedOff holds.
+func allowMailboxPassword(t *testing.T, a *App, email string) {
+	t.Helper()
+	db := dbpkg.DB
+	if own, ok := mailDBOf[a]; ok {
+		db = own
+	}
+	if _, err := db.Exec(`UPDATE vayumail_accounts SET require_device_approval = 0 WHERE email = ?`, email); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // Each door counts its failures toward the account's one counter: five
 // wrong passwords at any one door, from five addresses, lock the account.
 func TestEachDoorCountsTowardTheAccount(t *testing.T) {
@@ -81,9 +97,7 @@ func TestEachDoorRefusesALockedAccount(t *testing.T) {
 			// The mail servers and VayuTalk take the raw password only from a
 			// mailbox that does not require approved devices; the device rule
 			// is not what this test is about.
-			if err := a.vayuMail.Accounts().SetRequireDeviceApproval(context.Background(), lockedMailbox, false); err != nil {
-				t.Fatal(err)
-			}
+			allowMailboxPassword(t, a, lockedMailbox)
 			if !d.try(t, a, 0, lockedRight) {
 				t.Fatalf("the right password did not sign in at %s before any lockout", d.name)
 			}

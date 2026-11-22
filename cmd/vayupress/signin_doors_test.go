@@ -67,9 +67,7 @@ func TestEachDoorRefusesABlockedSource(t *testing.T) {
 			a := credentialFloodApp(t)
 			st := withSignins(t, a)
 			ctx := context.Background()
-			if err := a.vayuMail.Accounts().SetRequireDeviceApproval(ctx, lockedMailbox, false); err != nil {
-				t.Fatal(err)
-			}
+			allowMailboxPassword(t, a, lockedMailbox)
 			d.try(t, a, 2, "wrong")
 			_ = st.Flush(ctx)
 			rows, _ := st.Attempts(ctx, "", lockedMailbox, 1)

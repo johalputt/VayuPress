@@ -2346,16 +2346,17 @@ func (a *App) handleVayuOSAppPasswordDelete(w http.ResponseWriter, r *http.Reque
 // administrator approves it here — the web console's 2FA is the approval
 // anchor IMAP can never have. Blocked devices stay listed as evidence.
 
-// deviceStatusChip renders a device's approval state. Pending is the state
-// that needs operator action, so it gets its own prominent chip style.
+// deviceStatusChip renders a device's approval state as the console draws a
+// state, a dot and a word. Pending is the one that needs the operator, so it
+// takes the warning tone.
 func deviceStatusChip(lang, status string) string {
 	switch status {
 	case vmail.DeviceStatusApproved:
-		return `<span class="badge badge--ok">` + esc(i18n.T(lang, "Approved")) + `</span>`
+		return string(ui.State("ok", i18n.T(lang, "Approved")))
 	case vmail.DeviceStatusBlocked:
-		return `<span class="badge badge--danger">` + esc(i18n.T(lang, "Blocked")) + `</span>`
+		return string(ui.State("danger", i18n.T(lang, "Blocked")))
 	default:
-		return `<span class="badge badge--pending">` + esc(i18n.T(lang, "Pending approval")) + `</span>`
+		return string(ui.State("warn", i18n.T(lang, "Pending approval")))
 	}
 }
 
@@ -2366,7 +2367,6 @@ func deviceStatusChip(lang, status string) string {
 func (a *App) vayuDevicesCard(ctx context.Context) string {
 	lang := i18n.Lang(ctx)
 	accts := a.vayuMail.Accounts()
-	accs, _ := accts.List(ctx)
 	devices := accts.ListDevices(ctx)
 
 	post := ` hx-post="/os/vayumail/devices/action" hx-target="#vm-device-card" hx-swap="innerHTML"`
@@ -2387,7 +2387,7 @@ func (a *App) vayuDevicesCard(ctx context.Context) string {
 		b.WriteString(`<div class="vm-attention" role="status">` + esc(i18n.T(lang, "{n, plural, one {# device is awaiting approval — review and Approve or Block below.} other {# devices are awaiting approval — review and Approve or Block below.}}", "n", pending)) + `</div>`)
 	}
 	b.WriteString(`<p class="text-sm">` + esc(i18n.T(lang, "A new device waits here for your approval before it syncs any mail.")) +
-		string(ui.Tip(i18n.T(lang, "It cannot sync mail even with the correct password until you approve it. With approval required, the mailbox password alone never syncs mail over IMAP, POP3 or SMTP, so a stolen password is useless to an attacker's device."))) + `</p>`)
+		string(ui.Tip(i18n.T(lang, "It cannot sync mail even with the correct password until you approve it. Approval is required of every mailbox: the mailbox password alone never syncs mail over IMAP, POP3 or SMTP, so a stolen password is useless to an attacker's device."))) + `</p>`)
 
 	// Registered devices — pending first (they need action).
 	b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>` + esc(i18n.T(lang, "Mailbox")) + `</th><th>` + esc(i18n.T(lang, "Device")) + `</th><th>` + esc(i18n.T(lang, "Platform")) + `</th><th>` + esc(i18n.T(lang, "Status")) + `</th><th>` + esc(i18n.T(lang, "Registered")) + `</th><th>` + esc(i18n.T(lang, "Last used")) + `</th><th></th></tr></thead><tbody>`)
@@ -2409,32 +2409,12 @@ func (a *App) vayuDevicesCard(ctx context.Context) string {
 		actions += `<button type="button" class="btn btn--sm btn--danger"` + post + hxVals("op", "remove", "email", d.Email, "id", strconv.FormatInt(d.ID, 10)) + ` hx-confirm="` + esc(i18n.T(lang, "Remove this device? It stops syncing immediately and must register again.")) + `">` + esc(i18n.T(lang, "Remove")) + `</button>`
 		b.WriteString(`<tr><td class="mono">` + html.EscapeString(d.Email) + `</td><td>` + html.EscapeString(d.Label) + `</td><td class="muted text-sm">` + html.EscapeString(d.Platform) + `</td><td>` + deviceStatusChip(lang, d.Status) + `</td><td class="muted text-sm">` + esc(i18n.Date(lang, config.InSite(d.CreatedAt), i18n.DayMonthYearShort)) + `</td><td class="muted text-sm">` + lastUsed + `</td><td class="vm-row">` + actions + `</td></tr>`)
 	}
-	b.WriteString(`</tbody></table></div>`)
-
-	// Per-mailbox enforcement toggle. Turning it OFF restores password sign-in
-	// on the mail protocols for that mailbox (devices are auto-approved).
-	b.WriteString(`<h3 class="vm-devices__sub">` + esc(i18n.T(lang, "Require device approval")) + `</h3>`)
-	b.WriteString(`<p class="muted text-sm">` + esc(i18n.T(lang, "Recommended on.")) +
-		string(ui.Tip(i18n.T(lang, "When required, only approved devices sync mail; the mailbox password still signs into the web console and registers new devices. Turning it off lets the mailbox password sign in from any mail app, unapproved."))) + `</p>`)
-	b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>` + esc(i18n.T(lang, "Mailbox")) + `</th><th>` + esc(i18n.T(lang, "Device approval")) + `</th><th></th></tr></thead><tbody>`)
-	if len(accs) == 0 {
-		b.WriteString(`<tr><td colspan="3" class="muted">` + esc(i18n.T(lang, "No mail accounts yet.")) + `</td></tr>`)
-	}
-	for _, ac := range accs {
-		state := `<span class="badge badge--ok">` + esc(i18n.T(lang, "Required")) + `</span>`
-		btn := `<button type="button" class="btn btn--sm"` + post + hxVals("op", "require-set", "email", ac.Email, "on", "0") + ` hx-confirm="` + esc(i18n.T(lang, "Allow the mailbox password to sync mail from ANY device without approval?")) + `">` + esc(i18n.T(lang, "Turn off")) + `</button>`
-		if !ac.RequireDeviceApproval {
-			state = `<span class="badge badge--warn">` + esc(i18n.T(lang, "off — password syncs anywhere")) + `</span>`
-			btn = `<button type="button" class="btn btn--primary btn--sm"` + post + hxVals("op", "require-set", "email", ac.Email, "on", "1") + `>` + esc(i18n.T(lang, "Require approval")) + `</button>`
-		}
-		b.WriteString(`<tr><td class="mono">` + html.EscapeString(ac.Email) + `</td><td>` + state + `</td><td>` + btn + `</td></tr>`)
-	}
 	b.WriteString(`</tbody></table></div></section>`)
 	return b.String()
 }
 
 // handleVayuOSDeviceAction applies a device-approval action (approve / block /
-// remove / require-set) and returns the refreshed card (HTMX swap). Admin-only
+// remove) and returns the refreshed card (HTMX swap). Admin-only
 // — approval from the 2FA-protected console is the whole security model, so
 // mailbox holders cannot approve their own devices.
 func (a *App) handleVayuOSDeviceAction(w http.ResponseWriter, r *http.Request) {
@@ -2457,17 +2437,7 @@ func (a *App) handleVayuOSDeviceAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var opErr error
-	if op == "require-set" {
-		on := r.FormValue("on") == "1"
-		opErr = accts.SetRequireDeviceApproval(r.Context(), email, on)
-		if opErr == nil {
-			onOff := "off"
-			if on {
-				onOff = "on"
-			}
-			dbpkg.AuditLog("vayumail.device.require", dbpkg.AuditActor(r), email, onOff)
-		}
-	} else {
+	{
 		id, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
 		switch {
 		case err != nil:

@@ -355,9 +355,7 @@ func postOnly(a *App, u *users.User, on string) *httptest.ResponseRecorder {
 func TestPasskeyOnlyRefusesTheMailboxsOwnPassword(t *testing.T) {
 	a := passkeyApp(t)
 	ctx := context.Background()
-	if err := a.vayuMail.Accounts().SetRequireDeviceApproval(ctx, lockedMailbox, false); err != nil {
-		t.Fatal(err)
-	}
+	allowMailboxPassword(t, a, lockedMailbox)
 	boss := holderOf(lockedMailbox)
 	k := newSoftKey(t)
 	handle := addPasskey(t, a, boss, k)

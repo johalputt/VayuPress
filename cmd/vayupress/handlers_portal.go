@@ -502,12 +502,9 @@ func (a *App) handleMemberVayuMailDeviceRegister(w http.ResponseWriter, r *http.
 		writeAPIError(w, r, http.StatusInternalServerError, "device-error", "Could not register the device", "")
 		return
 	}
-	// New devices are pending until approved from the 2FA-protected console —
-	// unless the operator switched approval off for this mailbox.
+	// New devices are pending until approved from the 2FA-protected console.
+	// Approval is required of every mailbox, so none is approved on arrival.
 	status := vmail.DeviceStatusPending
-	if !accts.RequireDeviceApproval(r.Context(), emailAddr) {
-		status = vmail.DeviceStatusApproved
-	}
 	if _, err := accts.CreateDevice(r.Context(), emailAddr, label, platform, deviceID, hash, status); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "device-error", "Could not register the device", "")
 		return

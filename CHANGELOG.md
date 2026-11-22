@@ -30,6 +30,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   does not count.
 - **An install-wide ceiling on links to strangers:** forty an hour,
   whatever number of sources ask.
+- **Device approval is required of every mailbox.** The per-mailbox switch
+  that let a mailbox's own password sync mail from any app is gone from
+  Mail › Accounts and refused by the server, a mailbox an earlier release
+  switched off is switched on when the install starts, and a new device
+  always waits for approval. A stolen mailbox password syncs nothing.
 
 ### Changed
 
@@ -44,6 +49,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   asked most with the block each is under, and a source's attempts say of
   each request "Asked for a sign-in link" or "Asked for a sign-in link,
   not sent".
+- **A device's state on Mail › Accounts is a dot and a word**, approved,
+  pending or blocked, as every other state in the console is drawn.
+
+### Upgrade Notes
+
+- A mail app that signed in with a mailbox's own password, on a mailbox
+  where device approval had been switched off, stops syncing after the
+  upgrade until its device is approved on Mail › Accounts, or until it is
+  given an app password from there. Web sign-in and the VayuMail app's
+  registration are unchanged.
 
 ## [3.18.46] — 2026-11-22
 

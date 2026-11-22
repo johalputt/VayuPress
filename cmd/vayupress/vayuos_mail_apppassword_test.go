@@ -76,8 +76,13 @@ func appWithMailDB(t *testing.T, keys *vpgp.Engine) (*App, *sql.DB) {
 	// As boot gives it one, from the secrets store.
 	e.UseDriveKey(bytes.Repeat([]byte{9}, 32))
 	a.vayuMail = e
+	mailDBOf[a] = db
+	t.Cleanup(func() { delete(mailDBOf, a) })
 	return a, db
 }
+
+// mailDBOf is each test app's mail database, for allowMailboxPassword.
+var mailDBOf = map[*App]*sql.DB{}
 
 // applyMailHandoverSchema runs the SHIPPED migration 081 against a test database.
 //
@@ -140,9 +145,7 @@ func TestAppPasswordCreateVerifyRevoke(t *testing.T) {
 	// Device approval (on by default, ADR-0129) retires the raw mailbox
 	// password on the mail path; this test is about app-password lifecycle, so
 	// switch it off to keep exercising the password fast path too.
-	if err := a.vayuMail.Accounts().SetRequireDeviceApproval(ctx, email, false); err != nil {
-		t.Fatalf("disable device approval: %v", err)
-	}
+	allowMailboxPassword(t, a, email)
 
 	rec := postAppPwForm(a.handleVayuOSAppPasswordCreate, "/os/vayumail/accounts/apppassword",
 		url.Values{"email": {email}, "label": {"Test Phone"}}, admin)

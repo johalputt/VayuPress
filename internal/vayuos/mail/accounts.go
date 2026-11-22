@@ -200,6 +200,12 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 		// registration) still accepts the password, so this can never lock the
 		// holder out of registering a device.
 		`ALTER TABLE vayumail_accounts ADD COLUMN require_device_approval INTEGER NOT NULL DEFAULT 1`,
+		// Device approval is required of every mailbox: the operator made it
+		// mandatory in November 2026, so the per-mailbox off switch is gone,
+		// and a mailbox an earlier release let switch it off is switched on
+		// at start. Its mail apps sync again once their device is approved;
+		// app passwords keep working.
+		`UPDATE vayumail_accounts SET require_device_approval = 1 WHERE require_device_approval <> 1`,
 		// Retention (ADR-0130): read mail the holder hasn't deliberately saved
 		// is permanently deleted this many days after it was read. 0 (the
 		// default) disables the sweep, so the migration changes no behaviour.
@@ -772,27 +778,6 @@ func (s *AccountStore) CountsByHost(ctx context.Context) (map[string]int, error)
 		}
 	}
 	return out, rows.Err()
-}
-
-// SetRequireDeviceApproval flips the per-mailbox device-approval enforcement
-// (ADR-0129). Turning it OFF restores the pre-device behaviour: the raw
-// mailbox password authenticates the mail protocols again.
-func (s *AccountStore) SetRequireDeviceApproval(ctx context.Context, email string, on bool) error {
-	if s.db == nil {
-		return errors.New("vayumail: no storage")
-	}
-	v := 0
-	if on {
-		v = 1
-	}
-	res, err := s.db.ExecContext(ctx, `UPDATE vayumail_accounts SET require_device_approval=? WHERE email=?`, v, normEmail(email))
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return errors.New("no such account")
-	}
-	return nil
 }
 
 // RequireDeviceApproval reports whether device approval is enforced for a

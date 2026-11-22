@@ -168,41 +168,29 @@ func TestDeviceRegisterPendingLifecycle(t *testing.T) {
 	}
 }
 
-// TestDeviceApprovalToggleOff pins the opt-out: with require_device_approval
-// switched off, registration approves immediately and the raw mailbox
-// password syncs mail again.
-func TestDeviceApprovalToggleOff(t *testing.T) {
+// TestDeviceApprovalCannotBeSwitchedOff pins approval as required of every
+// mailbox: the action that once switched it off is refused, the card offers
+// no switch, the raw mailbox password still syncs nothing, and a device
+// registered after the attempt waits for approval.
+func TestDeviceApprovalCannotBeSwitchedOff(t *testing.T) {
 	a := appWithMailAccounts(t)
 	admin := &users.User{ID: "admin1", Email: "boss@example.com", Role: users.RoleAdmin}
 	ctx := context.Background()
 	const email = "dana@example.com"
 
 	rec := deviceAction(a, url.Values{"op": {"require-set"}, "email": {email}, "on": {"0"}}, admin)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("require-set status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "callout--danger") {
+		t.Fatalf("switching approval off was not refused: %d %s", rec.Code, rec.Body.String())
 	}
-	if a.vayuMail.Accounts().RequireDeviceApproval(ctx, email) {
-		t.Fatal("require-set off did not stick")
+	if strings.Contains(rec.Body.String(), "require-set") {
+		t.Error("the devices card still offers a switch for approval")
 	}
-
 	bridge := &vayuMailBridge{app: a}
-	if !bridge.verifyCredential(ctx, email, "main-mailbox-pass") {
-		t.Error("raw mailbox password should sync when approval is not required")
-	}
-	rrec, _, devicePw, status := registerDevice(t, a, email, "main-mailbox-pass", "Laptop", "linux")
-	if rrec.Code != http.StatusOK || status != vmail.DeviceStatusApproved {
-		t.Fatalf("register with approval off = %d/%q, want 200/approved", rrec.Code, status)
-	}
-	if !bridge.verifyCredential(ctx, email, devicePw) {
-		t.Error("auto-approved device credential rejected on the mail path")
-	}
-
-	// Flip it back on: the password is retired from the mail path again.
-	if rec = deviceAction(a, url.Values{"op": {"require-set"}, "email": {email}, "on": {"1"}}, admin); rec.Code != http.StatusOK {
-		t.Fatalf("require-set on status = %d, want 200", rec.Code)
-	}
 	if bridge.verifyCredential(ctx, email, "main-mailbox-pass") {
-		t.Error("raw mailbox password authenticated on the mail path after re-enabling approval")
+		t.Error("the raw mailbox password synced mail")
+	}
+	if rrec, _, _, status := registerDevice(t, a, email, "main-mailbox-pass", "Laptop", "linux"); rrec.Code != http.StatusOK || status != vmail.DeviceStatusPending {
+		t.Fatalf("a new device registered as %d/%q, want 200/pending", rrec.Code, status)
 	}
 }
 
@@ -330,9 +318,8 @@ func TestAccountsPageShowsDevicesCard(t *testing.T) {
 	for _, want := range []string{
 		`id="vm-device-card"`,
 		"/os/vayumail/devices/action",
-		`badge--pending`,
+		`<span class="sa-dot sa-dot--warn" aria-hidden="true"></span>Pending approval`,
 		"Dana&#39;s phone",
-		"Require device approval",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("Accounts page missing %q", want)

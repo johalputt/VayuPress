@@ -60,9 +60,7 @@ func TestAMailboxWithASigninNameSignsInByTheNameAlone(t *testing.T) {
 		t.Run(d.name, func(t *testing.T) {
 			a := credentialFloodApp(t)
 			ctx := context.Background()
-			if err := a.vayuMail.Accounts().SetRequireDeviceApproval(ctx, lockedMailbox, false); err != nil {
-				t.Fatal(err)
-			}
+			allowMailboxPassword(t, a, lockedMailbox)
 			if !d.try(t, a, lockedMailbox) {
 				t.Fatalf("the address and its right password did not sign in at %s before a name was set", d.name)
 			}
