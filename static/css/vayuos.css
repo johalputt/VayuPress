@@ -5296,6 +5296,14 @@
 
 /* Tables: sentence-case heads, hairlines, quiet hover. */
 .vp-os[data-ui="still-air"] .table-wrap { border: 1px solid var(--border-1); border-radius: var(--radius-surface); background: var(--surface-2); overflow: auto; box-shadow: none; }
+/* A table folded into cards on a phone holds menus (Shield's Block): its box
+   must not clip them, as the folding rule meant before this one re-set
+   overflow, and a menu opens rightwards from its button, which a card puts at
+   its left, and stays inside the screen. */
+@media (max-width: 640px) {
+  .vp-os[data-ui="still-air"] .table-wrap.vp-stackable { overflow: visible; }
+  .vp-os[data-ui="still-air"] .table-wrap.vp-stackable .sa-pop__panel { left: 0; right: auto; max-width: calc(100vw - 32px); transform-origin: top left; }
+}
 .vp-os[data-ui="still-air"] .table { width: 100%; border-collapse: collapse; }
 .vp-os[data-ui="still-air"] .table th,
 .vp-os[data-ui="still-air"] table th {

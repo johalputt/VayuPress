@@ -128,3 +128,34 @@ test("a stranger's sign-in link is sent for the form's proof of work, and not fo
   await expect(page.locator("tr", { hasText: reader })).not.toContainText("not sent");
   await expect(page.locator("tr", { hasText: bot })).toContainText("Asked for a sign-in link, not sent");
 });
+
+// On a phone the Sign-in links table folds into cards, and a card puts its
+// Block button at the left: the menu opens from it inside the screen, whole,
+// and over the cards below rather than under or beside them.
+test("a source's Block menu opens whole on a phone", async ({ page, browser }) => {
+  const stranger = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+  await stranger.request.post("/members/login", { form: { email: `phone-${Date.now()}@example.com` }, maxRedirects: 0 });
+  await stranger.close();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const links = page.locator("section", { has: page.locator("h2", { hasText: "Sign-in links" }) });
+  await expect(async () => {
+    await page.goto("/os/shield/sign-ins?days=1");
+    await expect(links.locator("details.sa-pop").first()).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 30000 });
+  const menu = links.locator("details.sa-pop").first();
+  await menu.locator("summary").click();
+  const panel = menu.locator(".sa-pop__panel");
+  await expect(panel).toBeVisible();
+  const box = await panel.boundingBox();
+  expect(box.x, "the menu starts inside the screen").toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width, "the menu ends inside the screen").toBeLessThanOrEqual(390);
+  // The menu is what a tap at its first choice lands on: nothing clips it
+  // and no card is drawn over it.
+  const item = panel.locator(".sa-menu__item").first();
+  const at = await item.boundingBox();
+  const hit = await page.evaluate(([x, y]) => {
+    const el = document.elementFromPoint(x, y);
+    return !!(el && el.closest(".sa-pop__panel"));
+  }, [at.x + at.width / 2, at.y + at.height / 2]);
+  expect(hit, "a tap on the first choice lands on the menu").toBe(true);
+});
