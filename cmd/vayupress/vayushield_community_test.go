@@ -161,7 +161,6 @@ func TestThisInstallsBansAreReportedSigned(t *testing.T) {
 
 // The form saves a hub only as an https origin.
 func TestTheHubIsSavedOnlyAsAnHTTPSOrigin(t *testing.T) {
-	bs := func(string) string { return "off" }
 	for in, want := range map[string]string{
 		"https://hub.example/":          "https://hub.example",
 		"http://hub.example":            "",
@@ -172,7 +171,7 @@ func TestTheHubIsSavedOnlyAsAnHTTPSOrigin(t *testing.T) {
 	} {
 		r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(url.Values{"sh_comm_hub_url": {in}}.Encode()))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		if got := postedCommunity(r, bs)[settings.KeyShieldCommunityHubURL]; got != want {
+		if got := postedCommunity(r)[settings.KeyShieldCommunityHubURL]; got != want {
 			t.Errorf("%q was saved as %q, want %q", in, got, want)
 		}
 	}

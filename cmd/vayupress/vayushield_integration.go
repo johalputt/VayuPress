@@ -1398,7 +1398,7 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		settings.KeyShieldSSH:             bs("sh_ssh"),
 		settings.KeyShieldLeakedPasswords: bs("sh_leaked"),
 	}
-	for k, v := range postedCommunity(r, bs) {
+	for k, v := range postedCommunity(r) {
 		kv[k] = v
 	}
 	// Diff BEFORE the write, so the audit record says what actually changed

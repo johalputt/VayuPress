@@ -357,10 +357,16 @@ func (a *App) communityBand(ctx context.Context) string {
 
 // postedCommunity reads the band's fields from a Shield settings save. A hub
 // URL that is not an https origin keeps the one stored.
-func postedCommunity(r *http.Request, bs func(string) string) map[string]string {
+func postedCommunity(r *http.Request) map[string]string {
+	on := func(field string) string {
+		if r.PostFormValue(field) != "" {
+			return "on"
+		}
+		return "off"
+	}
 	out := map[string]string{
-		settings.KeyShieldCommunityReport: bs("sh_comm_report"),
-		settings.KeyShieldCommunityHub:    bs("sh_comm_hub"),
+		settings.KeyShieldCommunityReport: on("sh_comm_report"),
+		settings.KeyShieldCommunityHub:    on("sh_comm_hub"),
 	}
 	if u := strings.TrimRight(strings.TrimSpace(r.PostFormValue("sh_comm_hub_url")), "/"); u != "" {
 		if p, err := url.Parse(u); err == nil && p.Scheme == "https" && p.Host != "" && (p.Path == "" || p.Path == "/") && p.RawQuery == "" {
