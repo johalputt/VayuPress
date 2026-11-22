@@ -233,6 +233,8 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 			ui.Section("Review queue", "Clients it learned, waiting for your word", ui.HTML(
 				`<div id="vs-body-queue" hx-get="/os/shield/section/queue" hx-trigger="vs-refresh-sig from:body" hx-swap="innerHTML">`+a.shieldQueueBody(ctx)+`</div>`)))
 	}
+	sections = append(sections, ui.Section("Web application firewall", "The OWASP Core Rule Set, since the last restart", ui.HTML(
+		`<div id="vs-body-waf">`+a.wafSectionBody()+`</div>`)))
 	sections = append(sections, ui.Section("History", "Blocks and challenges over time", ui.HTML(
 		`<div id="vs-body-trail" hx-get="/os/shield/section/trail" hx-trigger="vs-refresh from:body" hx-swap="innerHTML">`+a.shieldTrailBody(r)+`</div>`)))
 	if a.vaEngagement != nil {

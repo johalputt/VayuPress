@@ -271,6 +271,10 @@ type Inputs struct {
 	// the operator has switched on. Empty on the installs that enabled none,
 	// which is the default.
 	IntelFeeds []IntelFeed
+	// WAF is the web application firewall's mode: "off", "detect" or
+	// "block"; WAFParanoia its OWASP Core Rule Set paranoia level.
+	WAF         string
+	WAFParanoia int
 
 	// --- What the agent observed ---------------------------------------------
 
@@ -517,6 +521,7 @@ func Run(in Inputs) []Check {
 	}
 
 	checks = append(checks, intelChecks(in)...)
+	checks = append(checks, wafCheck(in))
 
 	checks = append(checks, tierChecks(in, stale)...)
 
@@ -562,6 +567,20 @@ func Run(in Inputs) []Check {
 		"Not provided by this or any single-origin product, and no setting on this page changes that. Every defence here runs after packets have already crossed your uplink, so a flood large enough to fill the link is decided by your provider's network, not by software on this machine. Absorbing that requires capacity in more places than one — an anycast network, or several origins in front of this one. Adding nodes raises the ceiling in proportion to the nodes; it does not remove it.")
 
 	return checks
+}
+
+// wafCheck is the web application firewall's row: the OWASP Core Rule Set
+// read over the public site's requests, recording or refusing.
+func wafCheck(in Inputs) Check {
+	switch in.WAF {
+	case "block":
+		return Check{Title: "Web application firewall", Status: Pass, Detail: fmt.Sprintf(
+			"The OWASP Core Rule Set (paranoia level %d) reads every public request that carries something to read, a query, a form, an unusual path or header, and refuses one whose anomaly score passes the threshold: SQL and code injection, cross-site scripting, path traversal, protocol abuse. The console and API-key requests are not read.", in.WAFParanoia)}
+	case "detect":
+		return Check{Title: "Web application firewall", Status: Info, Detail: fmt.Sprintf(
+			"The OWASP Core Rule Set (paranoia level %d) records what it matches on the public site and refuses nothing. Read its matches on Shield before setting it to refuse: a rule that fires on your own forms is an exclusion to make first.", in.WAFParanoia)}
+	}
+	return Check{Title: "Web application firewall", Status: Info, Detail: "Off. Injection on this product's own pages is met by parameterised queries, sanitised output and a strict CSP; the OWASP Core Rule Set adds a layer for code it did not write, a hosted site's own forms. Turn it on to record first, under Shield › Settings."}
 }
 
 // tierChecks reports Tier 2 and Tier 3 from what the agent OBSERVED, and

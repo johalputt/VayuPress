@@ -10,6 +10,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **A web application firewall: the OWASP Core Rule Set, run by Coraza.**
+  Shield › Settings › Web application firewall: off (the default), record
+  only, or refuse, at paranoia level 1 to 4. It reads each public request
+  that carries something to read, a query, a form or JSON body (up to
+  128 KB), an unusual path, or a header with an injection's marker, for SQL
+  and code injection, cross-site scripting, path traversal, Log4Shell,
+  Shellshock and protocol abuse; refusing, it answers 403 when the
+  request's anomaly score passes the rule set's threshold. A plain page
+  view is not read, so a reader's page costs a few microseconds more, not
+  the full rule set's 0.8 ms. The console, API-key requests, Shield's own
+  endpoints, health and static files are never read. Shield shows what it
+  matched since the last restart, the rules that matched most, and the
+  posture report and the connector say its mode. Record first, read the
+  matches, then refuse. The binary grows by about 8 MB with the rule set.
+
 - **Refuse AI crawlers, keep search engines.** A second switch under
   Operations › Power & Maintenance, "AI crawlers only": robots.txt keeps the
   site's own rules and names each AI crawler after them, disallowed;

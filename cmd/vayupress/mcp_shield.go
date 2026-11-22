@@ -241,7 +241,8 @@ func (a *App) registerShieldTools(srv *mcp.Server) {
 				// list" is not answerable without knowing whose list it is — and
 				// unlike the allow list, a published feed's address has no offensive
 				// value: it is a public endpoint anyone can already read.
-				"network_intelligence": a.shieldIntelStatus(),
+				"network_intelligence":     a.shieldIntelStatus(),
+				"web_application_firewall": a.wafStatus(),
 			}), nil
 		},
 	})

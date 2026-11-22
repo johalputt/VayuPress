@@ -632,3 +632,17 @@ func TestAnUnmeasuredRealIPIsNotAFailure(t *testing.T) {
 		t.Errorf("before any visitor the row reads %v: %q; want Info, not measured yet", row.Status, row.Detail)
 	}
 }
+
+// The firewall's row says what each mode does: refusing passes, recording
+// and off are information, and each names the paranoia level when on.
+func TestTheFirewallRowSaysWhatItsModeDoes(t *testing.T) {
+	for mode, want := range map[string]Status{"block": Pass, "detect": Info, "off": Info, "": Info} {
+		c := wafCheck(Inputs{WAF: mode, WAFParanoia: 2})
+		if c.Status != want || c.Title != "Web application firewall" {
+			t.Errorf("mode %q: %v %q", mode, c.Status, c.Title)
+		}
+		if (mode == "block" || mode == "detect") && !strings.Contains(c.Detail, "paranoia level 2") {
+			t.Errorf("mode %q does not name its paranoia level: %s", mode, c.Detail)
+		}
+	}
+}

@@ -74,8 +74,23 @@ into the binary:
 * golang-jwt/jwt v5, tinylib/msgp and philhofer/fwd (metadata and its encoding)
   Licensed under the MIT License.
 
+VayuShield's web application firewall runs the OWASP Core Rule Set through
+the following Go modules, compiled into the binary:
+
+* Coraza, github.com/corazawaf/coraza/v3 (Apache-2.0)
+* Coraza Coreruleset, github.com/corazawaf/coraza-coreruleset/v4: the OWASP
+  Core Rule Set v4 and Coraza's recommended configuration, embedded
+  (Apache-2.0)
+* libinjection-go, github.com/corazawaf/libinjection-go (BSD-3-Clause)
+* and their dependencies: goccy/go-json, goccy/go-yaml, kaptinlin/go-i18n,
+  kaptinlin/jsonschema, petar-dambovaliev/aho-corasick, tidwall/gjson,
+  tidwall/match, tidwall/pretty (MIT); magefile/mage,
+  valllabh/ocsf-schema-golang (Apache-2.0); gotnospirit/makeplural,
+  gotnospirit/messageformat (BSD-2-Clause); rsc.io/binaryregexp
+  (BSD-3-Clause)
+
 Go module dependencies retain their respective upstream licenses (MIT,
-Apache-2.0, and BSD-3-Clause) as declared in go.mod / go.sum; each module's
+Apache-2.0, BSD-2-Clause and BSD-3-Clause) as declared in go.mod / go.sum; each module's
 own LICENSE file, in the module source, is its full text.
 
 

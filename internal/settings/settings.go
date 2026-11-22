@@ -389,6 +389,12 @@ const (
 	// readers on a VPN too, which is the operator's call.
 	KeyShieldLinkDatacenter = "shield.link_datacenter"
 
+	// KeyShieldWAF is the web application firewall's mode: "off" (the
+	// default), "detect" (record matches, refuse nothing) or "block";
+	// KeyShieldWAFParanoia its OWASP Core Rule Set paranoia level, 1 to 4.
+	KeyShieldWAF         = "shield.waf"
+	KeyShieldWAFParanoia = "shield.waf_paranoia"
+
 	// KeyShieldRules is the operator's own request rules, one per line
 	// (vayushield/oprules): "block path^=/wp-", "test challenge country=CN".
 	// Empty by default, for the same reason as the lists above.
@@ -682,6 +688,8 @@ var NotPortable = map[string]bool{
 	KeyShieldClusterNode:          true,
 	KeyShieldIntelFeeds:           true,
 	KeyShieldLinkDatacenter:       true,
+	KeyShieldWAF:                  true,
+	KeyShieldWAFParanoia:          true,
 	KeyShieldRules:                true,
 	// A site's own shield settings are network policy, like the install's.
 	KeyShieldSitePoW:                true,
@@ -865,6 +873,8 @@ var AllKeys = map[string]bool{
 	KeyShieldClusterNode:          true,
 	KeyShieldIntelFeeds:           true,
 	KeyShieldLinkDatacenter:       true,
+	KeyShieldWAF:                  true,
+	KeyShieldWAFParanoia:          true,
 	KeyShieldRules:                true,
 	KeyAnalyticsBeacon:            true,
 	KeyTorEnabled:                 true,
@@ -972,6 +982,8 @@ var Defaults = map[string]string{
 	KeyShieldBehindCDN:            "off",
 	KeyShieldGroupIPv4:            "off",
 	KeyShieldObserve:              "off",
+	KeyShieldWAF:                  "off",
+	KeyShieldWAFParanoia:          "1",
 	KeyShieldAllowCIDRs:           "",
 	KeyShieldDenyCIDRs:            "",
 	KeyShieldAllowCountries:       "",

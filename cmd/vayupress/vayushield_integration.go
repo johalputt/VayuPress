@@ -202,6 +202,7 @@ func (a *App) bootVayuShield() {
 	// intelligence until the first refresh lands — which on a slow or firewalled
 	// network could be never.
 	a.bootShieldIntel(context.Background())
+	a.bootWAF(context.Background())
 
 	bots := botdb.New(dbpkg.DB)
 	// The per-request signature Lookup runs on the hot classification path for
@@ -795,6 +796,7 @@ func (a *App) shieldProtectionBody(ctx context.Context, geoBlind bool) string {
 	b.WriteString(`</div>`)
 	b.WriteString(a.shieldPolicyBand(ctx, geoBlind))
 	b.WriteString(a.shieldIntelBand(ctx))
+	b.WriteString(a.wafBand())
 	b.WriteString(`<div class="card-title vs-section">Analytics</div>`)
 	b.WriteString(`<div class="vs-feat">`)
 	b.WriteString(vsRow("sh_beacon", "Engagement analytics", "Measure time-on-page and scroll depth on public pages. Cookieless, no PII.", beaconOn, false))
@@ -1333,6 +1335,7 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		return "off"
 	}
 	num := func(field string) string { return strings.TrimSpace(r.PostFormValue(field)) }
+	wafMode, wafPL := postedWAF(r)
 	area := func(field string) string { return clipPolicyField(r.PostFormValue(field)) }
 	// shieldSettings parses the numeric strings with safe fallbacks and
 	// ApplySettings clamps thresholds to (0,1].
@@ -1379,6 +1382,8 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		// discover that somebody typed something.
 		settings.KeyShieldIntelFeeds:     strings.Join(postedIntelFeeds(r), ","),
 		settings.KeyShieldLinkDatacenter: bs("sh_link_datacenter"),
+		settings.KeyShieldWAF:            wafMode,
+		settings.KeyShieldWAFParanoia:    wafPL,
 	}
 	// Diff BEFORE the write, so the audit record says what actually changed
 	// rather than what was submitted. Nineteen keys went in here with no actor,
@@ -1413,6 +1418,7 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 	// "off" means the data is gone and not just unrendered.
 	a.applyShieldIntelSettings(r.Context())
 	a.kickShieldIntelRefresh()
+	a.applyWAFSettings(r.Context())
 	// "Behind Cloudflare/CDN" trust applies live (no restart): from now on the
 	// real visitor IP is read from CF-Connecting-IP so per-visitor gates work.
 	config.SetTrustCloudflare(bs("sh_behind_cdn") == "on")

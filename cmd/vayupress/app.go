@@ -77,6 +77,7 @@ import (
 	"github.com/johalputt/vayupress/internal/vayushield/offload"
 	"github.com/johalputt/vayupress/internal/vayushield/sovereign"
 	"github.com/johalputt/vayupress/internal/vayushield/verifiedbot"
+	"github.com/johalputt/vayupress/internal/vayushield/waf"
 	"github.com/johalputt/vayupress/internal/versions"
 	"github.com/johalputt/vayupress/internal/webhooks"
 	"github.com/johalputt/vayupress/internal/webmention"
@@ -304,6 +305,9 @@ type App struct {
 	// bootVayuShield runs, and empty — costing one length check per request —
 	// until a feed is enabled.
 	shieldIntel *intel.Fetcher
+	// waf is the web application firewall (vayushield_waf.go); never nil
+	// once Shield has booted.
+	waf *waf.Engine
 
 	// trustedSessions caches operator-session validation (TTL) so the shield's
 	// operator-immunity check stays off the SQLite read path under load.

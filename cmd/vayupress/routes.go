@@ -113,6 +113,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	if a.vayuShield != nil {
 		r.Use(a.vayuShield.Middleware)
 	}
+	// The web application firewall reads what Shield let through, on the
+	// public site only (vayushield_waf.go); off, it is a pass-through.
+	r.Use(a.wafMiddleware)
 	// The release mirror answers its three paths on the domain it is switched
 	// on for, ahead of routing — /download/… would otherwise fall through to a
 	// post-slug lookup or the uploaded bundle. After the shield, so the
