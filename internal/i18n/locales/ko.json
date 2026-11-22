@@ -288,6 +288,7 @@
  "Ask search engines not to follow links to other sites": "검색 엔진에 다른 사이트 링크를 따라가지 말라고 요청",
  "Ask your administrator": "관리자에게 요청",
  "Asked for a sign-in link": "로그인 링크 요청",
+ "Asked for a sign-in link, not sent": "로그인 링크 요청, 보내지 않음",
  "Asking…": "요청하는 중…",
  "Assign email": "이메일 지정",
  "At each domain's DNS host": "각 도메인의 DNS 호스트에서",

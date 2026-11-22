@@ -92,3 +92,39 @@ test("a block that worked redraws the page in place and says nothing went wrong"
   expect(await page.evaluate(() => window.vpKept === true)).toBe(true);
   expect(await page.evaluate(() => window.vpToasts)).toEqual([]);
 });
+
+// A sign-in link for an address that is not a member yet is mailed only for
+// a proof of work, which the site's own form does in the browser. Sign-in
+// attempts says which request was sent and which was not: the browser's, and
+// a script's posting the same form without the proof.
+test("a stranger's sign-in link is sent for the form's proof of work, and not for a bare post", async ({ page, browser }) => {
+  const reader = `new-${Date.now()}@example.com`;
+  const bot = `bot-${Date.now()}@example.com`;
+  const stranger = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+  const visit = await stranger.newPage();
+  await visit.goto("/signup");
+  await visit.fill("#su-email", reader);
+  const [sent] = await Promise.all([
+    visit.waitForRequest((r) => r.method() === "POST" && new URL(r.url()).pathname === "/members/login"),
+    visit.click(".su-btn"),
+  ]);
+  const form = new URLSearchParams(sent.postData() || "");
+  expect(form.get("email")).toBe(reader);
+  expect(form.get("nonce"), "the form was sent with its proof").toMatch(/^\d+$/);
+  expect(JSON.parse(form.get("proof") || "{}").sig, "the proof is the challenge the install signed").toBeTruthy();
+  const bare = await stranger.request.post("/members/login", { form: { email: bot }, maxRedirects: 0 });
+  expect(bare.status(), "a refused post is answered as a sent one").toBe(303);
+  await stranger.close();
+
+  // Links are not failures: they have a section of their own, and the
+  // source's attempts name each address with what became of it.
+  const links = page.locator("section", { has: page.locator("h2", { hasText: "Sign-in links" }) });
+  await expect(async () => {
+    await page.goto("/os/shield/sign-ins?days=1");
+    await expect(links.locator(".section-head__hint")).toContainText("not sent", { timeout: 1000 });
+  }).toPass({ timeout: 30000 });
+  await Promise.all([page.waitForURL(/source=/), links.locator("tbody a").first().click()]);
+  await expect(page.locator("tr", { hasText: reader })).toContainText("Asked for a sign-in link");
+  await expect(page.locator("tr", { hasText: reader })).not.toContainText("not sent");
+  await expect(page.locator("tr", { hasText: bot })).toContainText("Asked for a sign-in link, not sent");
+});

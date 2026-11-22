@@ -64,6 +64,10 @@ const (
 	// reach together. It is recorded so the sources asking can be seen and
 	// blocked.
 	StageLink = "link"
+	// StageLinkRefused: a sign-in link was asked for and not sent, by a
+	// block, a budget, or a gate on a link to an address that is not a
+	// member. Not a failure either, for the same reason.
+	StageLinkRefused = "link-refused"
 )
 
 // The automatic block of password spraying: a source failing on SprayAccounts
@@ -76,6 +80,19 @@ const (
 	SprayFirst    = 6 * time.Hour
 	SprayMax      = 24 * time.Hour
 	SprayRepeat   = 24 * time.Hour
+)
+
+// The automatic ban of sign-in-link spraying: a source that asks for sign-in
+// links to LinkStrangers or more addresses that are not members, within
+// LinkWindow, is refused sign-in for good, until the operator lifts it on
+// Sign-in attempts. A member asking for their own link never counts, so the
+// readers of a busy site behind one proxy are not caught by each other: it
+// takes a source mailing strangers, which is what the form was abused for
+// in November 2026, hundreds of links to parliament addresses that bounced
+// back into the operator's Inbox.
+const (
+	LinkStrangers = 5
+	LinkWindow    = 24 * time.Hour
 )
 
 // Retention is how long attempts are kept.
@@ -124,6 +141,9 @@ type Source struct {
 	Country  string
 	Failures int
 	Accounts int
+	// LinksAsked and LinksRefused are the sign-in links it asked for, and
+	// those not sent (Store.Links); Accounts is then the addresses asked for.
+	LinksAsked, LinksRefused int
 	// Tried is the accounts it failed on, those it failed on most first.
 	Tried       []string
 	Doors       []string
@@ -197,6 +217,7 @@ type Store struct {
 	fences   map[string]map[string]bool
 	known    map[string]map[string]bool // account → fingerprints
 	spray    map[string]*sprayState
+	linkAsks map[string]*sprayState // source → strangers it asked links for
 	alarmed  map[alarmKey]time.Time
 	lastTrim time.Time
 	// site is the whole-site blocks, copied for the request path
@@ -214,7 +235,7 @@ func Open(ctx context.Context, db *sql.DB, key []byte) (*Store, error) {
 		db: db, key: append([]byte(nil), key...), Now: time.Now,
 		pending: map[pendKey]*pendVal{}, hits: map[int64]int{},
 		fences: map[string]map[string]bool{}, known: map[string]map[string]bool{},
-		spray: map[string]*sprayState{}, alarmed: map[alarmKey]time.Time{},
+		spray: map[string]*sprayState{}, linkAsks: map[string]*sprayState{}, alarmed: map[alarmKey]time.Time{},
 	}
 	if err := s.reload(ctx); err != nil {
 		return nil, err
@@ -455,6 +476,67 @@ func (s *Store) Record(a Attempt) {
 	if spraying {
 		s.blockSpraying(src, now)
 	}
+}
+
+// NoteLinkStranger counts a sign-in link asked for account, an address that
+// is not a member, from addr, and bans the source for good once it has asked
+// for LinkStrangers of them within LinkWindow. It reports whether this request
+// made the ban. An address on the install's own network is never banned.
+func (s *Store) NoteLinkStranger(account, addr string) bool {
+	if s == nil || account == "" {
+		return false
+	}
+	src, ok := s.source(addr, false)
+	if !ok || src.private {
+		return false
+	}
+	now := s.Now()
+	s.mu.Lock()
+	st := s.linkAsks[src.fp]
+	if st == nil {
+		if len(s.linkAsks) >= sprayCap {
+			for fp, old := range s.linkAsks {
+				fresh := false
+				for _, t := range old.accounts {
+					if now.Sub(t) < LinkWindow {
+						fresh = true
+						break
+					}
+				}
+				if !fresh {
+					delete(s.linkAsks, fp)
+				}
+			}
+			if len(s.linkAsks) >= sprayCap {
+				s.mu.Unlock()
+				return false
+			}
+		}
+		st = &sprayState{accounts: map[string]time.Time{}}
+		s.linkAsks[src.fp] = st
+	}
+	for acct, t := range st.accounts {
+		if now.Sub(t) >= LinkWindow {
+			delete(st.accounts, acct)
+		}
+	}
+	st.accounts[account] = now
+	ban := len(st.accounts) >= LinkStrangers
+	if ban {
+		for _, b := range s.blocks {
+			if b.Kind == "address" && b.Key == src.fp && b.Account == "" && b.Until.IsZero() {
+				ban = false
+				break
+			}
+		}
+		delete(s.linkAsks, src.fp)
+	}
+	s.mu.Unlock()
+	if !ban {
+		return false
+	}
+	_, err := s.add(context.Background(), &Block{Kind: "address", Key: src.fp, Label: src.masked, Reason: "link-spraying", Created: now})
+	return err == nil
 }
 
 // noteFailureLocked follows a source's failures across accounts and reports

@@ -177,6 +177,38 @@ func (s *Store) decorate(list []Source, account string) {
 	}
 }
 
+// Links is what the sign-in links asked for since since came to: how many
+// were asked for, how many were not sent, and at most limit sources, those
+// that asked most first. A link is not a failure, so the report above leaves
+// them out; this is where a source mailing strangers is seen.
+func (s *Store) Links(ctx context.Context, since time.Time, limit int) (asked, refused int, top []Source, err error) {
+	const links = `stage IN ('link', 'link-refused') AND minute >= ?`
+	from := since.Unix() / 60
+	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(n), 0), COALESCE(SUM(CASE WHEN stage = 'link-refused' THEN n END), 0) FROM signin_attempts WHERE `+links, from).
+		Scan(&asked, &refused); err != nil {
+		return 0, 0, nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT ip_fp, MAX(ip_masked), MAX(country), SUM(n), COALESCE(SUM(CASE WHEN stage = 'link-refused' THEN n END), 0), COUNT(DISTINCT account)
+		FROM signin_attempts WHERE `+links+` GROUP BY ip_fp ORDER BY SUM(n) DESC, MAX(minute) DESC LIMIT ?`, from, limit)
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var x Source
+		if err := rows.Scan(&x.FP, &x.Masked, &x.Country, &x.LinksAsked, &x.LinksRefused, &x.Accounts); err != nil {
+			return 0, 0, nil, err
+		}
+		x.Private = maskedPrivate(x.Masked)
+		top = append(top, x)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, 0, nil, err
+	}
+	s.decorate(top, "")
+	return asked, refused, top, nil
+}
+
 // Row is one count of attempts.
 type Row struct {
 	At                                    time.Time

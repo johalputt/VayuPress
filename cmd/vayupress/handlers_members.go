@@ -134,18 +134,20 @@ func (a *App) handleMemberLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	// Accept both JSON (API clients) and HTML form posts (the paywall CTA).
 	formPost := strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-www-form-urlencoded")
-	var emailRaw string
+	var emailRaw, proof, nonce string
 	if formPost {
-		emailRaw = r.PostFormValue("email")
+		emailRaw, proof, nonce = r.PostFormValue("email"), r.PostFormValue("proof"), r.PostFormValue("nonce")
 	} else {
 		var body struct {
 			Email string `json:"email"`
+			Proof string `json:"proof"`
+			Nonce string `json:"nonce"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
 			return
 		}
-		emailRaw = body.Email
+		emailRaw, proof, nonce = body.Email, body.Proof, body.Nonce
 	}
 	email := strings.TrimSpace(strings.ToLower(emailRaw))
 
@@ -183,13 +185,26 @@ func (a *App) handleMemberLogin(w http.ResponseWriter, r *http.Request) {
 	// sender used this form to mail sign-in links to outside addresses until
 	// their servers refused the install's mail as abusive. Each request is
 	// recorded there, so the sources asking can be seen and blocked.
+	//
+	// An address that is not a member yet passes the gates of
+	// strangerLinkRefused as well (member_link_proof.go): a proof of work,
+	// a ban for good on a source that asks for many, no second link to an
+	// address that refused this install's mail, and an install-wide ceiling.
 	ip := auth.ClientIP(r)
-	_, blocked := a.signin.Refuse(auth.AccountKey(email), ip)
-	if email != "" {
-		a.signinRecord(email, signin.DoorLink, signin.StageLink, ip)
+	account := auth.AccountKey(email)
+	_, refused := a.signin.Refuse(account, ip)
+	refused = refused || !memberLoginByIP.allow(ip) || !memberLoginByAddress.allow(email)
+	if !refused && email != "" && !a.members.Exists(r.Context(), email) {
+		refused = a.strangerLinkRefused(account, ip, email, proof, nonce)
 	}
-	overBudget := blocked || !memberLoginByIP.allow(ip) || !memberLoginByAddress.allow(email)
-	if !overBudget {
+	if email != "" {
+		stage := signin.StageLink
+		if refused {
+			stage = signin.StageLinkRefused
+		}
+		a.signinRecord(email, signin.DoorLink, stage, ip)
+	}
+	if !refused {
 		if token, err := a.members.CreateLoginToken(r.Context(), email); err == nil {
 			go a.sendMemberMagicLink(email, token)
 		}

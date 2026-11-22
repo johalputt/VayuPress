@@ -110,6 +110,7 @@ func (a *App) memberSigninPage(r *http.Request) string {
       <input class="su-input" id="su-email" type="email" name="email" required autocomplete="email" placeholder="you@example.com" aria-label="Email address">
       <button class="su-btn" type="submit">Email me a sign-in link →</button>
     </form>
+    ` + string(render.LinkProofJSLink()) + `
     ` + mailIDBlock + `
     <p class="su-foot">New here? <a href="/signup" class="su-link">Create a free account</a> · <a href="/pricing" class="su-link">View plans</a></p>
   </section>

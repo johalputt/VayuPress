@@ -220,3 +220,50 @@ func TestBouncesGoWithTheirMailbox(t *testing.T) {
 		t.Fatalf("outlived its mailbox: %+v", got)
 	}
 }
+
+// The install's own mail that is refused for good is kept against the
+// address, so it is not mailed again on a stranger's say-so, and is not
+// reported to the sending mailbox's Inbox: nobody there wrote it. A refusal
+// that says try later (4.x) does not count as refused for good.
+func TestTheInstallsOwnRefusedMailIsKeptButNotReported(t *testing.T) {
+	refusal := &RecipientRefusedError{Rcpt: "ghost@far.test", Err: &textproto.Error{Code: 550, Msg: "5.1.1 <ghost@far.test>: no such user"}}
+	e := bounceEngine(t, refusal)
+	ctx := context.Background()
+	if _, err := e.SendSystemMail(ctx, "alice@example.com", []string{"ghost@far.test"}, "Your sign-in link", "", "link"); err != nil {
+		t.Fatal(err)
+	}
+	if _, failed, _ := e.queue.ProcessDue(ctx, time.Now().Add(time.Hour)); failed != 1 {
+		t.Fatalf("failed %d", failed)
+	}
+	if inbox, _ := e.ListFolder(ReadAsOwner("alice"), "Inbox"); len(inbox) != 0 {
+		t.Fatalf("the install's own mail was reported to the Inbox (%d)", len(inbox))
+	}
+	if !e.HardBounced("Ghost@Far.test") {
+		t.Fatal("the refusal was not kept against the address")
+	}
+	_ = e.accounts.recordBounce("alice@example.com", "m2@example.com", "later@far.test", "4.2.2", "full")
+	if e.HardBounced("later@far.test") || e.HardBounced("bob@far.test") {
+		t.Fatal("an address never refused for good reads as refused")
+	}
+}
+
+// Another server's report about the install's own mail is read, and filed in
+// Trash rather than the Inbox; a report about a person's mail stays in the
+// Inbox.
+func TestAReportAboutTheInstallsOwnMailIsFiledInTrash(t *testing.T) {
+	e := bounceEngine(t, nil)
+	own := strings.Replace(string(report("s1@example.com", "7bit", reportStatus)), "Subject: Hi\r\n", "Subject: Hi\r\nAuto-Submitted: auto-generated\r\n", 1)
+	for _, raw := range [][]byte{[]byte(own), report("p1@example.com", "7bit", reportStatus)} {
+		if _, err := e.DeliverInbound("MAILER-DAEMON@far.test", "alice@example.com", raw); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !e.HardBounced("bob@far.test") {
+		t.Fatal("the report was not read")
+	}
+	inbox, _ := e.ListFolder(ReadAsOwner("alice"), "Inbox")
+	trash, _ := e.ListFolder(ReadAsOwner("alice"), "Trash")
+	if len(inbox) != 1 || len(trash) != 1 {
+		t.Fatalf("Inbox holds %d reports and Trash %d, want one each", len(inbox), len(trash))
+	}
+}

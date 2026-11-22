@@ -48,6 +48,7 @@ var halcyonIcons = map[string]string{
 }
 
 var halcyonFuncs = template.FuncMap{
+	"linkProofJS": LinkProofJSLink,
 	"icon": func(name string) template.HTML {
 		return template.HTML(`<svg class="h-i" viewBox="0 0 20 20" aria-hidden="true" focusable="false">` + halcyonIcons[name] + `</svg>`) //nolint:gosec // G203: constant markup
 	},
@@ -176,7 +177,7 @@ const halcyonShared = `
 
 {{define "avatar"}}{{if .AuthorAvatar}}<img class="h-av" src="{{.AuthorAvatar}}" alt="" width="40" height="40" loading="lazy" decoding="async" itemprop="image">{{else}}<span class="h-av h-av--i" aria-hidden="true">{{initial .Author}}</span>{{end}}{{end}}
 
-{{define "subscribe"}}{{if and .Cfg.Subscribe .ShowMembership}}<section class="h-letter" aria-label="Subscribe" data-vp-signup><p>One email when there is something new worth reading.</p><form method="POST" action="/members/login" class="h-letter-form"><label class="h-vh" for="h-letter-email">Email address</label><input class="h-field" id="h-letter-email" type="email" name="email" required autocomplete="email" placeholder="you@example.com"><button class="h-btn h-btn-ink" type="submit">Subscribe</button></form></section>{{end}}{{end}}
+{{define "subscribe"}}{{if and .Cfg.Subscribe .ShowMembership}}<section class="h-letter" aria-label="Subscribe" data-vp-signup><p>One email when there is something new worth reading.</p><form method="POST" action="/members/login" class="h-letter-form"><label class="h-vh" for="h-letter-email">Email address</label><input class="h-field" id="h-letter-email" type="email" name="email" required autocomplete="email" placeholder="you@example.com"><button class="h-btn h-btn-ink" type="submit">Subscribe</button></form>{{linkProofJS}}</section>{{end}}{{end}}
 `
 
 const halcyonHomeTmpl = `{{template "start" .}}<div class="h-page"><main id="main-content" class="h-wrap">

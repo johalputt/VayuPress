@@ -288,6 +288,7 @@
  "Ask search engines not to follow links to other sites": "Arama motorlarından başka sitelere giden bağlantıları izlememelerini iste",
  "Ask your administrator": "Yöneticinize sorun",
  "Asked for a sign-in link": "Giriş bağlantısı istedi",
+ "Asked for a sign-in link, not sent": "Giriş bağlantısı istedi, gönderilmedi",
  "Asking…": "İsteniyor…",
  "Assign email": "E-posta ata",
  "At each domain's DNS host": "Her alan adının DNS sağlayıcısında",

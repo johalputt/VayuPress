@@ -986,7 +986,7 @@ func (a *App) renderPaywall(r *http.Request, art dbpkg.Article, level string) st
 		`<form class="pw-form" method="POST" action="/members/login">`+
 		`<input type="email" name="email" required placeholder="you@example.com">`+
 		`<button type="submit">Email me a sign-in link</button>`+
-		`</form>`+
+		`</form>`+string(render.LinkProofJSLink())+
 		`<p class="pw-hint">Already a member? Enter your email above to sign in.</p>`+
 		`</div></main></body></html>`, render.MemberTask)
 }

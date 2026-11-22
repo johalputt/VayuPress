@@ -1396,7 +1396,7 @@ func (e *Engine) QueueStatus(ctx context.Context) (*QueueStatus, *SMTPStats, err
 // key is known), DKIM-signs it, and enqueues it for delivery. senderUserID is
 // used for PGP signing/encryption context; pass "" to skip PGP.
 func (e *Engine) SendMail(ctx context.Context, from string, to []string, subject, htmlBody, textBody, senderUserID string) (int64, error) {
-	return e.sendMail(ctx, from, to, subject, htmlBody, textBody, senderUserID, true, nil)
+	return e.sendMail(ctx, from, to, subject, htmlBody, textBody, senderUserID, true, false, nil)
 }
 
 // SendSystemMail sends transactional / system mail — sign-in (magic) links,
@@ -1406,7 +1406,7 @@ func (e *Engine) SendMail(ctx context.Context, from string, to []string, subject
 // as an unreadable "-----BEGIN PGP MESSAGE-----" blob). It is still DKIM-signed,
 // queued for durable delivery, and local-loopback aware.
 func (e *Engine) SendSystemMail(ctx context.Context, from string, to []string, subject, htmlBody, textBody string) (int64, error) {
-	return e.sendMail(ctx, from, to, subject, htmlBody, textBody, "", false, nil)
+	return e.sendMail(ctx, from, to, subject, htmlBody, textBody, "", false, true, nil)
 }
 
 // calendarPart is an invitation's iCalendar object and its iTIP method, sent
@@ -1416,7 +1416,10 @@ type calendarPart struct {
 	data   []byte
 }
 
-func (e *Engine) sendMail(ctx context.Context, from string, to []string, subject, htmlBody, textBody, senderUserID string, allowPGP bool, cal *calendarPart) (int64, error) {
+// system marks the install's own mail (SendSystemMail): it says so in an
+// Auto-Submitted header, so a failure to deliver it is not reported to a
+// person's Inbox as if they had written it.
+func (e *Engine) sendMail(ctx context.Context, from string, to []string, subject, htmlBody, textBody, senderUserID string, allowPGP, system bool, cal *calendarPart) (int64, error) {
 	_ = senderUserID // reserved for PGP signing context
 	if e.queue == nil || e.dkim == nil {
 		return 0, errors.New("vayumail: not started")
@@ -1449,6 +1452,9 @@ func (e *Engine) sendMail(ctx context.Context, from string, to []string, subject
 		{Key: "Date", Value: time.Now().UTC().Format(time.RFC1123Z)},
 		{Key: "Message-ID", Value: e.messageID(e.senderDomain(from))},
 		{Key: "MIME-Version", Value: "1.0"},
+	}
+	if system {
+		headers = append(headers, HeaderField{Key: "Auto-Submitted", Value: "auto-generated"})
 	}
 
 	var bodyBuf bytes.Buffer

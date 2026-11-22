@@ -190,6 +190,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/static/js/video-facade.js", a.handleVideoFacadeJS)
 	r.Get("/static/js/comments.js", a.handleCommentsJS)
 	r.Get("/static/js/contact.js", a.handleContactJS)
+	r.Get("/static/js/link-proof.js", a.handleMemberLinkProofJS)
 	r.Get(sitedoc.GalleryJSPath, handleSiteGalleryJS)
 	r.Get("/static/js/post-card-media.js", a.handlePostCardMediaJS)
 	// Trending & pinned posts widget (hydrates [data-vayu-trending] from
@@ -393,6 +394,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/signup", a.handleMemberSignup)
 	r.Post("/api/v1/members/login", a.handleMemberLogin)
 	r.Post("/members/login", a.handleMemberLogin) // HTML form variant from the paywall
+	r.Get("/members/link-proof", a.handleMemberLinkProof)
 	r.Get("/members/verify", a.handleMemberVerify)
 	// A sealed message's page: public, for the person outside it was sealed
 	// for (vayuos_mail_sealed.go). No session and nothing ambient to forge,

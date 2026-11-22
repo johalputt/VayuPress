@@ -70,6 +70,22 @@ func (s *AccountStore) recordBounce(mailbox, msgID, rcpt, status, reason string)
 	return err
 }
 
+// HardBounced reports whether a message from this install to addr was ever
+// refused for good (an RFC 3463 5.x status), by the queue or by a report from
+// the receiving server. The install does not mail such an address again on a
+// stranger's say-so: a sign-in link asked for it is not sent.
+func (e *Engine) HardBounced(addr string) bool {
+	if e == nil || e.accounts == nil || e.accounts.db == nil || strings.TrimSpace(addr) == "" {
+		return false
+	}
+	if e.accounts.ensureBouncesTable() != nil {
+		return false
+	}
+	var one int
+	err := e.accounts.db.QueryRow(`SELECT 1 FROM vayumail_bounces WHERE recipient = ? AND status LIKE '5.%' LIMIT 1`, normEmail(addr)).Scan(&one)
+	return err == nil
+}
+
 // Bounces lists the recipients the message messageID from rd's mailbox did
 // not reach.
 func (e *Engine) Bounces(rd Reader, messageID string) ([]Bounce, error) {
@@ -129,6 +145,13 @@ func (e *Engine) deliveryFailed(from string, to []string, raw []byte, cause erro
 	msgID, status := msg.Header.Get("Message-ID"), failureStatus(cause)
 	for _, rcpt := range to {
 		_ = e.accounts.recordBounce(mbox, msgID, rcpt, status, cause.Error())
+	}
+	// The install's own mail (a sign-in link, a confirmation) is recorded
+	// above, which is what keeps the address from being mailed again, but
+	// not reported: nobody wrote it, and in November 2026 hundreds of links
+	// that strangers asked for bounced back into the operator's Inbox.
+	if autoSubmitted(msg.Header) {
+		return
 	}
 	local, domain := splitAddress(mbox)
 	if local == "" {
@@ -191,18 +214,20 @@ func (e *Engine) failureReport(sender string, to []string, status, reason string
 // readDeliveryReport keeps what a delivery report delivered to mailbox says
 // failed. Only a report about a message from a domain this install serves is
 // believed: a report is easy to forge, and this one can only ever annotate
-// mail this server sent.
-func (e *Engine) readDeliveryReport(mailbox string, raw []byte) {
+// mail this server sent. It reports whether the message that failed was the
+// install's own automatic mail (Auto-Submitted, as SendSystemMail writes it):
+// that report is kept out of the Inbox, as deliveryFailed keeps its own.
+func (e *Engine) readDeliveryReport(mailbox string, raw []byte) (automatic bool) {
 	if e.accounts == nil {
-		return
+		return false
 	}
 	msg, err := mail.ReadMessage(bytes.NewReader(raw))
 	if err != nil {
-		return
+		return false
 	}
 	media, params, err := mime.ParseMediaType(msg.Header.Get("Content-Type"))
 	if err != nil || media != "multipart/report" || !strings.HasSuffix(strings.ToLower(params["report-type"]), "delivery-status") || params["boundary"] == "" {
-		return
+		return false
 	}
 	var failed []Bounce
 	var msgID string
@@ -220,16 +245,25 @@ func (e *Engine) readDeliveryReport(mailbox string, raw []byte) {
 		case "text/rfc822-headers", "message/rfc822", "message/rfc822-headers", "message/global", "message/global-headers":
 			if orig, err := mail.ReadMessage(io.MultiReader(bytes.NewReader(body), strings.NewReader("\r\n\r\n"))); err == nil {
 				msgID = orig.Header.Get("Message-ID")
+				automatic = autoSubmitted(orig.Header)
 			}
 		}
 	}
 	id := cleanMessageID(msgID)
 	if at := strings.LastIndex(id, "@"); at < 0 || !e.cfg.AcceptsMailDomain(id[at+1:]) {
-		return
+		return false
 	}
 	for _, b := range failed {
 		_ = e.accounts.recordBounce(mailbox, id, b.Recipient, b.Status, b.Reason)
 	}
+	return automatic && len(failed) > 0
+}
+
+// autoSubmitted reads RFC 3834's Auto-Submitted: any value but "no" says no
+// person wrote the message.
+func autoSubmitted(h mail.Header) bool {
+	v := strings.ToLower(strings.TrimSpace(h.Get("Auto-Submitted")))
+	return v != "" && v != "no"
 }
 
 // partBody reads a report part, undoing a base64 transfer encoding; the

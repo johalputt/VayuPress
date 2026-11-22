@@ -648,3 +648,45 @@ func TestAMaskedAddressTellsItsOwnNetwork(t *testing.T) {
 		}
 	}
 }
+
+// Sign-in links are counted apart from failures: how many were asked for,
+// how many were not sent, and the sources that asked most first, each with
+// the addresses it asked for and the block it is under. A failure is not a
+// link, and a link is not a failure.
+func TestSignInLinksAreCountedApartFromFailures(t *testing.T) {
+	s, c := openStore(t)
+	ctx := context.Background()
+	since := c.now()
+	link := func(account, stage, ip string) {
+		s.Record(Attempt{Account: account, Door: DoorLink, Stage: stage, IP: ip})
+	}
+	for i, a := range []string{"a@x.test", "b@x.test", "c@x.test"} {
+		stage := StageLinkRefused
+		if i == 0 {
+			stage = StageLink
+		}
+		link(a, stage, "198.51.100.70")
+	}
+	link("d@x.test", StageLink, "203.0.113.71")
+	fail(s, "e@x.test", "203.0.113.72")
+	src, _ := s.source("198.51.100.70", false)
+	if _, err := s.add(ctx, &Block{Kind: "address", Key: src.fp, Label: "198.51.x.x", Reason: "link-spraying", Created: c.now()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Flush(ctx); err != nil {
+		t.Fatal(err)
+	}
+	asked, refused, top, err := s.Links(ctx, since, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if asked != 4 || refused != 2 || len(top) != 2 {
+		t.Fatalf("asked %d, not sent %d, sources %+v; want 4, 2 and 2 sources", asked, refused, top)
+	}
+	if x := top[0]; x.Masked != "198.51.x.x" || x.LinksAsked != 3 || x.LinksRefused != 2 || x.Accounts != 3 || x.Block == nil || x.Block.Reason != "link-spraying" {
+		t.Fatalf("the source that asked most is %+v", x)
+	}
+	if r, _ := s.Report(ctx, since, "", 10); r.Failures != 1 {
+		t.Fatalf("the links were counted as failures: %d", r.Failures)
+	}
+}

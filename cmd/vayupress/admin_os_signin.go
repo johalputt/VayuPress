@@ -53,6 +53,8 @@ func signinStageWord(lang, stage string) string {
 		return i18n.T(lang, "Signed in")
 	case signin.StageLink:
 		return i18n.T(lang, "Asked for a sign-in link")
+	case signin.StageLinkRefused:
+		return i18n.T(lang, "Asked for a sign-in link, not sent")
 	}
 	return ""
 }
@@ -149,7 +151,17 @@ func (a *App) signinsBody(ctx context.Context, days int, source, self string, ta
 			ui.HTML(signinAttemptsTable(rows, true))))
 	}
 	sections = append(sections,
-		ui.Section("Sources", "Those that failed most first; an address is shown with its last part hidden", ui.HTML(signinSourcesTable(rep.Top, days, func(x signin.Source) (bool, bool, bool) { return a.signin.WouldStop(x, self) }))),
+		ui.Section("Sources", "Those that failed most first; an address is shown with its last part hidden", ui.HTML(signinSourcesTable(rep.Top, days, func(x signin.Source) (bool, bool, bool) { return a.signin.WouldStop(x, self) }))))
+	// Links are not failures, so the sources above leave them out; a source
+	// mailing strangers is seen here, and its own attempts name each address.
+	if asked, notSent, top, err := a.signin.Links(ctx, time.Now().Add(-time.Duration(days)*24*time.Hour), 20); err == nil && asked > 0 {
+		hint := countOf(asked, "link") + " asked for"
+		if notSent > 0 {
+			hint += ", " + strconv.Itoa(notSent) + " not sent"
+		}
+		sections = append(sections, ui.Section("Sign-in links", hint, ui.HTML(signinLinksTable(top, days))))
+	}
+	sections = append(sections,
 		ui.HTML(analyticsCols(
 			string(ui.Fold("Accounts most tried", "Failed attempts", true, ui.HTML(osBarList(signinBars(rep.ByAccount, false), osShareOf(rep.Failures), "No account was tried.")))),
 			string(ui.Fold("Doors", "Where the attempts came in", true, ui.HTML(osBarList(signinBars(rep.ByDoor, true), osShareOf(rep.Failures), "No attempt."))))),
@@ -162,7 +174,10 @@ func (a *App) signinsBody(ctx context.Context, days int, source, self string, ta
 			` hours; caught again within a day of that ending, for twice as long, up to `+strconv.Itoa(int(signin.SprayMax.Hours()))+
 			` hours. An address on this install's own network is never blocked by itself. Sessions already signed in are not touched by any block.</p>`+
 			`<p>An address is never kept whole: it is kept with its last part hidden, and as a fingerprint made with a key that is not in the database. A block holds exactly, though nobody can read the address back. Attempts are kept `+
-			strconv.Itoa(int(signin.Retention.Hours()/24))+` days. A holder whose password was right and whose code was not is told at once.</p>`)),
+			strconv.Itoa(int(signin.Retention.Hours()/24))+` days. A holder whose password was right and whose code was not is told at once.</p>`+
+			`<p><strong>Sign-in links to strangers are guarded.</strong> A link to an address that is not a member is sent only after the page's proof of work, which a browser does in under a second and a script posting the form never does; at most `+
+			strconv.Itoa(strangerLinksPerHour)+` an hour for the whole install, and never to an address whose server refused this install's mail for good. A source that asks for links to `+
+			strconv.Itoa(signin.LinkStrangers)+` such addresses within a day is refused sign-in always, until it is lifted here. A link that bounces is recorded, not delivered to anyone's Inbox.</p>`)),
 	)
 	return string(ui.Overview(page, band, sections...))
 }
@@ -269,6 +284,32 @@ func signinSourcesTable(list []signin.Source, days int, stops func(signin.Source
 	return string(ui.Table([]string{"Source", "What it did", "", ""}, rows, "No failed sign-in in this window."))
 }
 
+// signinLinksTable lists the sources that asked for sign-in links, each with
+// how many it asked for, to how many addresses, and how many were not sent.
+func signinLinksTable(list []signin.Source, days int) string {
+	rows := make([][]ui.HTML, 0, len(list))
+	for _, s := range list {
+		attempts := signinPage + `?days=` + strconv.Itoa(days) + `&amp;source=` + html.EscapeString(s.FP)
+		addresses := strconv.Itoa(s.Accounts) + " addresses"
+		if s.Accounts == 1 {
+			addresses = "1 address"
+		}
+		what := countOf(s.LinksAsked, "link") + " for " + addresses
+		if s.LinksRefused > 0 {
+			what += ", " + strconv.Itoa(s.LinksRefused) + " not sent"
+		}
+		state := ""
+		if s.Block != nil {
+			state = `<span class="badge badge--danger">` + html.EscapeString(signinBlockState(*s.Block)) + `</span>`
+		}
+		rows = append(rows, []ui.HTML{
+			ui.HTML(`<a href="` + attempts + `"><strong>` + html.EscapeString(signinWhere(s.Masked, s.Country)) + `</strong></a>`),
+			ui.Text(what), ui.HTML(state),
+		})
+	}
+	return string(ui.Table([]string{"Source", "What it asked for", ""}, rows, "No sign-in link was asked for in this window."))
+}
+
 // signinTriedShown is how many accounts a source's row names; the rest are
 // counted, and its own list of attempts names every one.
 const signinTriedShown = 3
@@ -309,8 +350,11 @@ func signinSeen(first, last time.Time) string {
 // signinBlockState says a block's reason and how long it has left.
 func signinBlockState(b signin.Block) string {
 	who := "Blocked"
-	if b.Reason == "spraying" {
+	switch b.Reason {
+	case "spraying":
 		who = "Blocked automatically"
+	case "link-spraying":
+		who = "Blocked automatically for asking sign-in links for strangers"
 	}
 	if b.Until.IsZero() {
 		return who + ", always"

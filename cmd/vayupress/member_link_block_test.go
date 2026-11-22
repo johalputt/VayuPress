@@ -17,6 +17,9 @@ func TestABlockedSourceIsMailedNoSignInLink(t *testing.T) {
 	a := credentialFloodApp(t)
 	st := withSignins(t, a)
 	const abuser, reader = "198.51.100.7", "203.0.113.9"
+	for _, m := range []string{"someone@elsewhere.test", "another@elsewhere.test", "reader@elsewhere.test"} {
+		joinMember(t, a, m)
+	}
 
 	first := postMemberLogin(t, a, abuser, "someone@elsewhere.test")
 	if err := st.Flush(context.Background()); err != nil {
@@ -33,6 +36,12 @@ func TestABlockedSourceIsMailedNoSignInLink(t *testing.T) {
 	again := postMemberLogin(t, a, abuser, "another@elsewhere.test")
 	if n := countLoginTokens(t, a, "another@elsewhere.test"); n != 0 {
 		t.Errorf("a blocked source was made %d link(s)", n)
+	}
+	if err := st.Flush(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if rows, _ := st.Attempts(context.Background(), "", "another@elsewhere.test", 10); len(rows) != 1 || rows[0].Stage != signin.StageLinkRefused {
+		t.Errorf("the refused request was recorded as %+v", rows)
 	}
 	if again.Code != first.Code || again.Body.String() != first.Body.String() {
 		t.Errorf("a blocked source was answered differently: %d %q, then %d %q", first.Code, first.Body, again.Code, again.Body)

@@ -288,6 +288,7 @@
  "Ask search engines not to follow links to other sites": "他サイトへのリンクをたどらないよう検索エンジンに伝える",
  "Ask your administrator": "管理者に依頼する",
  "Asked for a sign-in link": "サインインリンクを要求",
+ "Asked for a sign-in link, not sent": "サインインリンクを要求、送信せず",
  "Asking…": "依頼しています…",
  "Assign email": "メールを割り当て",
  "At each domain's DNS host": "各ドメインの DNS ホストで",

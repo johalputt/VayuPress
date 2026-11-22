@@ -8,6 +8,43 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+
+- **A sign-in link to a stranger costs a proof of work.** The site's
+  sign-in, sign-up, paywall, portal and subscribe forms do a short proof of
+  work in the browser before they ask for a link; an address that is not a
+  member is mailed one only with a solved proof, and each proof buys one
+  link. A script that posts the form, as the senders did that mailed
+  hundreds of links to parliament addresses over two weeks in November,
+  gets the same answer and no mail. A member's own link needs no proof, so
+  a page cached before this release still signs its members in.
+- **A source that asks links for strangers is banned for good.** Five
+  addresses that are not members asked for from one source within a day
+  block it from sign-in always, shown on Shield › Sign-in attempts as
+  "Blocked automatically for asking sign-in links for strangers" until it
+  is lifted there. An address on the install's own network is never banned
+  this way.
+- **No second link to an address that refused the install's mail.** A
+  stranger's link is not sent to an address whose server refused this
+  install's mail for good (a 5.x status); a server that said try later
+  does not count.
+- **An install-wide ceiling on links to strangers:** forty an hour,
+  whatever number of sources ask.
+
+### Changed
+
+- **The install's own mail that bounces stays out of the Inbox.** A
+  sign-in link, a receipt or any mail the install sends by itself carries
+  `Auto-Submitted: auto-generated`; when it is refused, the failure is
+  recorded against the address and not delivered as a report to the
+  sending mailbox, and another server's report about it is filed in Trash.
+  A message a person wrote is reported as before.
+- **Shield › Sign-in attempts shows sign-in links.** A section of its own
+  counts the links asked for and those not sent, lists the sources that
+  asked most with the block each is under, and a source's attempts say of
+  each request "Asked for a sign-in link" or "Asked for a sign-in link,
+  not sent".
+
 ## [3.18.46] — 2026-11-22
 
 The console speaks thirteen languages across Settings, Backups, API keys,

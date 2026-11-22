@@ -288,6 +288,7 @@
  "Ask search engines not to follow links to other sites": "要求搜索引擎不要跟随指向其他网站的链接",
  "Ask your administrator": "联系你的管理员",
  "Asked for a sign-in link": "请求了登录链接",
+ "Asked for a sign-in link, not sent": "请求了登录链接，未发送",
  "Asking…": "正在请求…",
  "Assign email": "分配邮箱",
  "At each domain's DNS host": "在每个域的 DNS 服务商处",

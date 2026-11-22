@@ -91,6 +91,7 @@ func (a *App) handleMemberSignup(w http.ResponseWriter, r *http.Request) {
       <input class="su-input" id="su-email" type="email" name="email" required autocomplete="email" placeholder="you@example.com" aria-label="Email address">
       <button class="su-btn" type="submit">Sign up free →</button>
     </form>
+    ` + string(render.LinkProofJSLink()) + `
     <ul class="su-perks">
       <li><span class="su-perk-dot"></span>Full access to members-only posts</li>
       <li><span class="su-perk-dot"></span>New stories delivered to your inbox</li>

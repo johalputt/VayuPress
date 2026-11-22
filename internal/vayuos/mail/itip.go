@@ -381,7 +381,7 @@ func (e *Engine) sendInvitations(ctx context.Context, mbox string, before, after
 			return
 		}
 		subject, text := inviteWords(cal, kind, mbox)
-		if _, err := e.sendMail(ctx, mbox, to, subject, "", text, "", false, &calendarPart{method: method, data: data}); err != nil {
+		if _, err := e.sendMail(ctx, mbox, to, subject, "", text, "", false, false, &calendarPart{method: method, data: data}); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -721,7 +721,7 @@ func (e *Engine) AnswerInvitation(rd Reader, folder, id, answer string) error {
 	word := map[string]string{"ACCEPTED": "Accepted", "TENTATIVE": "Maybe", "DECLINED": "Declined"}[answer]
 	title := oneLine(nonEmptyText(textOf(first, ical.PropSummary), "your event"))
 	text := mbox + " " + map[string]string{"ACCEPTED": "is going to", "TENTATIVE": "may go to", "DECLINED": "is not going to"}[answer] + " " + title + ".\n"
-	_, err = e.sendMail(ctx, mbox, []string{mailtoOf(first.Props.Get(ical.PropOrganizer).Value)}, word+": "+title, "", text, "", false, &calendarPart{method: "REPLY", data: obj})
+	_, err = e.sendMail(ctx, mbox, []string{mailtoOf(first.Props.Get(ical.PropOrganizer).Value)}, word+": "+title, "", text, "", false, false, &calendarPart{method: "REPLY", data: obj})
 	return err
 }
 

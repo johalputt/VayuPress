@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
@@ -180,6 +181,7 @@ func TestMagicLinkFloodIsBoundedPerAddress(t *testing.T) {
 	// Twenty requests aimed at one victim, each from a DIFFERENT source, which is
 	// what a botnet or a rotating proxy looks like and what the installer's
 	// per-IP nginx limit cannot see.
+	joinMember(t, a, "victim@elsewhere.test")
 	for i := 0; i < 20; i++ {
 		postMemberLogin(t, a, "192.0.2."+strconv.Itoa(i+1), "victim@elsewhere.test")
 	}
@@ -211,6 +213,7 @@ func TestMagicLinkFloodIsBoundedPerSource(t *testing.T) {
 	issued := 0
 	for i := 0; i < walk; i++ {
 		addr := "target" + strconv.Itoa(i) + "@elsewhere.test"
+		joinMember(t, a, addr)
 		postMemberLogin(t, a, ip, addr)
 		issued += countLoginTokens(t, a, addr)
 	}
@@ -224,6 +227,7 @@ func TestMagicLinkFloodIsBoundedPerSource(t *testing.T) {
 // The control: an ordinary person asking for a sign-in link must get one.
 func TestMagicLinkStillWorksForAnHonestRequest(t *testing.T) {
 	a := credentialFloodApp(t)
+	joinMember(t, a, "reader@elsewhere.test")
 
 	rec := postMemberLogin(t, a, "203.0.113.5", "reader@elsewhere.test")
 	if rec.Code != http.StatusOK {
@@ -264,6 +268,8 @@ func credentialFloodApp(t *testing.T) *App {
 	t.Helper()
 	auth.LiftAllAccountLockouts()
 	t.Cleanup(auth.LiftAllAccountLockouts)
+	// The install-wide ceiling has one key, so every test gets its own.
+	memberLinkStrangers = newIngestLimiter(strangerLinksPerHour, time.Hour)
 	dir := t.TempDir()
 	t.Setenv("DB_PATH", filepath.Join(dir, "flood.db"))
 	t.Setenv("API_KEY", "test-key")

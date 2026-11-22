@@ -63,6 +63,20 @@ const PortalJS = `(function () {
     return t || 'Membership';
   }
 
+  // linkProof loads the sign-in link's proof of work (render.LinkProofJS)
+  // the first time a link is asked for, and answers null when it cannot be
+  // done: a member's own link is sent without one.
+  function linkProof() {
+    if (window.vpLinkProof) { return window.vpLinkProof(); }
+    return new Promise(function (done) {
+      var s = document.createElement('script');
+      s.src = '__LINK_PROOF_JS_HREF__';
+      s.onload = function () { (window.vpLinkProof ? window.vpLinkProof() : Promise.resolve(null)).then(done); };
+      s.onerror = function () { done(null); };
+      document.head.appendChild(s);
+    });
+  }
+
   function postJSON(url, data) {
     return fetch(url, {
       method: 'POST',
@@ -566,7 +580,9 @@ const PortalJS = `(function () {
         if (!email) { msg('Please enter your email address.', 'err'); return; }
         var btn = magic.querySelector('.vp-portal-btn');
         btn.disabled = true; btn.textContent = 'Sending your link...';
-        postJSON('/api/v1/members/login', { email: email }).then(function (res) {
+        linkProof().then(function (p) {
+          return postJSON('/api/v1/members/login', { email: email, proof: p ? p.proof : '', nonce: p ? p.nonce : '' });
+        }).then(function (res) {
           if (res.ok) { msg('Check your inbox — we just emailed you a secure sign-in link. It is valid for 30 minutes.', 'ok'); magic.reset(); }
           else { msg((res.body && (res.body.detail || res.body.title)) || (res.status === 429 ? 'Too many attempts. Wait a minute, then try again.' : 'Your sign-in link could not be sent. Check the email address and try again in a minute.'), 'err'); }
           btn.disabled = false; btn.textContent = view === 'signin' ? 'Email me a sign-in link' : 'Sign up free';
@@ -805,13 +821,22 @@ const PortalJS = `(function () {
 // stylesheet URL, so the URL can be content-versioned at boot.
 const portalCSSToken = "__PORTAL_CSS_HREF__"
 
+// linkProofToken is where the script names the sign-in link's proof script,
+// with that script's content version, for the same reason.
+const linkProofToken = "__LINK_PROOF_JS_HREF__"
+
+// portalBody is the served script around the stylesheet's URL.
+func portalBody(cssHref string) string {
+	return strings.Replace(strings.Replace(PortalJS, portalCSSToken, cssHref, 1), linkProofToken, "/static/js/link-proof.js?v="+linkProofJSHash, 1)
+}
+
 // portal.css is served with a one-year immutable cache lifetime, which is only
 // safe if its URL changes whenever its bytes do. The widget injects the
 // stylesheet from script rather than from page HTML, so the version has to reach
 // it through the script — hence the placeholder above, resolved here.
 var (
 	portalAssetMu  sync.RWMutex
-	portalJSBody   = strings.Replace(PortalJS, portalCSSToken, "/static/css/portal.css", 1)
+	portalJSBody   = portalBody("/static/css/portal.css")
 	portalJSVerStr = shortSum(portalJSBody)
 )
 
@@ -824,7 +849,7 @@ func SetPortalCSSVersion(ver string) {
 	if ver != "" {
 		href += "?v=" + ver
 	}
-	body := strings.Replace(PortalJS, portalCSSToken, href, 1)
+	body := portalBody(href)
 	portalAssetMu.Lock()
 	portalJSBody, portalJSVerStr = body, shortSum(body)
 	portalAssetMu.Unlock()
