@@ -10,6 +10,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Passwords from known breaches can be refused.** Shield › Settings ›
+  Passwords: switched on, a new password for the console, a staff account, a
+  client, a mailbox (made, changed, reset by an administrator, recovered by
+  link, code or approved device) is checked against Have I Been Pwned's list
+  of breached passwords and refused, with the reason, if it is there. The
+  check is k-anonymous: only the first five characters of the password's
+  SHA-1 leave the server, never the password. It fails open: when the list
+  cannot be reached (or the install is onion-only) the password is allowed
+  and the log says so, so a sign-up never waits on a third party.
+
 - **The server's own SSH is protected, as fail2ban would.** Shield ›
   Settings › The server's SSH: switched on, the Shield agent reads sshd's
   failed sign-ins from the system journal, and an address that fails five

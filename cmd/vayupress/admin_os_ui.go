@@ -2374,6 +2374,10 @@ func (a *App) handleOSChangePasswordSubmit(w http.ResponseWriter, r *http.Reques
 		render("The two passwords do not match.")
 		return
 	}
+	if msg := a.leakedPassword(r.Context(), pass); msg != "" {
+		render(msg)
+		return
+	}
 	if err := a.userStore.SetPassword(r.Context(), u.Email, pass); err != nil {
 		render("Could not update the password: " + err.Error())
 		return

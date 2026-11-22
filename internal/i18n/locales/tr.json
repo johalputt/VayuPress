@@ -2846,6 +2846,7 @@
  "This page": "Bu sayfa",
  "This page is busy. Try again in a moment.": "Bu sayfa şu anda meşgul. Birazdan yeniden deneyin.",
  "This page is taking no more bookings for now. Try again later.": "Bu sayfa şimdilik yeni randevu almıyor. Daha sonra yeniden deneyin.",
+ "This password is in known data breaches, so it is among the first an attacker tries. Choose another.": "Bu parola bilinen veri sızıntılarında yer alıyor; bir saldırganın ilk deneyeceklerinden biri. Başka bir parola seçin.",
  "This password is shown only once — store it somewhere safe and revoke it if it leaks.": "Bu parola yalnızca bir kez gösterilir — güvenli bir yerde saklayın, sızarsa iptal edin.",
  "This puts your site back to {point} and restarts. Your current database is copied aside first, so it is reversible.": "Bu, sitenizi {point} anına döndürür ve yeniden başlatır. Geçerli veritabanınız önce kenara kopyalanır, yani geri alınabilir.",
  "This replaces all current content and settings.": "Bu, tüm geçerli içeriği ve ayarları değiştirir.",

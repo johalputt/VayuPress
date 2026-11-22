@@ -400,6 +400,10 @@ const (
 	// (cmd/vayupress/vayushield_ssh.go).
 	KeyShieldSSH = "shield.ssh"
 
+	// KeyShieldLeakedPasswords, "on", refuses a new password that Have I Been
+	// Pwned lists as breached (cmd/vayupress/leaked_passwords.go).
+	KeyShieldLeakedPasswords = "shield.leaked_passwords"
+
 	// KeyShieldRules is the operator's own request rules, one per line
 	// (vayushield/oprules): "block path^=/wp-", "test challenge country=CN".
 	// Empty by default, for the same reason as the lists above.
@@ -696,6 +700,7 @@ var NotPortable = map[string]bool{
 	KeyShieldWAF:                  true,
 	KeyShieldWAFParanoia:          true,
 	KeyShieldSSH:                  true,
+	KeyShieldLeakedPasswords:      true,
 	KeyShieldRules:                true,
 	// A site's own shield settings are network policy, like the install's.
 	KeyShieldSitePoW:                true,
@@ -882,6 +887,7 @@ var AllKeys = map[string]bool{
 	KeyShieldWAF:                  true,
 	KeyShieldWAFParanoia:          true,
 	KeyShieldSSH:                  true,
+	KeyShieldLeakedPasswords:      true,
 	KeyShieldRules:                true,
 	KeyAnalyticsBeacon:            true,
 	KeyTorEnabled:                 true,
@@ -992,6 +998,7 @@ var Defaults = map[string]string{
 	KeyShieldWAF:                  "off",
 	KeyShieldWAFParanoia:          "1",
 	KeyShieldSSH:                  "off",
+	KeyShieldLeakedPasswords:      "off",
 	KeyShieldAllowCIDRs:           "",
 	KeyShieldDenyCIDRs:            "",
 	KeyShieldAllowCountries:       "",

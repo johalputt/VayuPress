@@ -2846,6 +2846,7 @@
  "This page": "このページ",
  "This page is busy. Try again in a moment.": "このページは混み合っています。しばらくしてからもう一度お試しください。",
  "This page is taking no more bookings for now. Try again later.": "このページは現在、新しい予約を受け付けていません。後でもう一度お試しください。",
+ "This password is in known data breaches, so it is among the first an attacker tries. Choose another.": "このパスワードは既知のデータ漏えいに含まれているため、攻撃者が最初に試すものの一つです。別のパスワードを選んでください。",
  "This password is shown only once — store it somewhere safe and revoke it if it leaks.": "このパスワードは一度しか表示されません。安全な場所に保管し、漏れた場合は取り消してください。",
  "This puts your site back to {point} and restarts. Your current database is copied aside first, so it is reversible.": "サイトを {point} の時点に戻して再起動します。現在のデータベースは先に別の場所へコピーされるので、元に戻せます。",
  "This replaces all current content and settings.": "現在のコンテンツと設定はすべて置き換わります。",

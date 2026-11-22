@@ -2846,6 +2846,7 @@
  "This page": "Diese Seite",
  "This page is busy. Try again in a moment.": "Diese Seite ist ausgelastet. Versuchen Sie es gleich noch einmal.",
  "This page is taking no more bookings for now. Try again later.": "Diese Seite nimmt gerade keine Buchungen mehr an. Versuchen Sie es später.",
+ "This password is in known data breaches, so it is among the first an attacker tries. Choose another.": "Dieses Passwort taucht in bekannten Datenlecks auf und gehört damit zu den ersten, die ein Angreifer ausprobiert. Wählen Sie ein anderes.",
  "This password is shown only once — store it somewhere safe and revoke it if it leaks.": "Dieses Passwort wird nur einmal angezeigt – bewahren Sie es sicher auf und widerrufen Sie es, falls es bekannt wird.",
  "This puts your site back to {point} and restarts. Your current database is copied aside first, so it is reversible.": "Damit wird Ihre Website auf {point} zurückgesetzt und neu gestartet. Ihre aktuelle Datenbank wird zuerst beiseitekopiert, es ist also umkehrbar.",
  "This replaces all current content and settings.": "Dadurch werden alle aktuellen Inhalte und Einstellungen ersetzt.",

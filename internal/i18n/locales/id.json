@@ -2846,6 +2846,7 @@
  "This page": "Halaman ini",
  "This page is busy. Try again in a moment.": "Halaman ini sedang sibuk. Coba lagi sebentar lagi.",
  "This page is taking no more bookings for now. Try again later.": "Halaman ini sedang tidak menerima pemesanan. Coba lagi nanti.",
+ "This password is in known data breaches, so it is among the first an attacker tries. Choose another.": "Kata sandi ini ada dalam kebocoran data yang diketahui, jadi termasuk yang pertama dicoba penyerang. Pilih yang lain.",
  "This password is shown only once — store it somewhere safe and revoke it if it leaks.": "Kata sandi ini hanya ditampilkan sekali — simpan di tempat aman dan cabut jika bocor.",
  "This puts your site back to {point} and restarts. Your current database is copied aside first, so it is reversible.": "Ini mengembalikan situs Anda ke {point} lalu memulai ulang. Basis data Anda saat ini disalin terpisah dulu, jadi bisa dibatalkan.",
  "This replaces all current content and settings.": "Ini mengganti semua konten dan pengaturan saat ini.",

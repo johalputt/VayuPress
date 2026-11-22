@@ -1050,6 +1050,10 @@ func (a *App) handleOSDomainClient(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "invalid JSON", "")
 		return
 	}
+	if msg := a.leakedPassword(r.Context(), body.Password); msg != "" {
+		writeAPIError(w, r, http.StatusBadRequest, "breached-password", msg, "")
+		return
+	}
 	u, err := a.userStore.CreateClient(r.Context(), body.Email, body.Name, body.Password, id)
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "client-failed", err.Error(), "")

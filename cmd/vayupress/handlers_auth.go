@@ -872,6 +872,10 @@ func (a *App) handleUserCreate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
 		return
 	}
+	if msg := a.leakedPassword(r.Context(), body.Password); msg != "" {
+		writeAPIError(w, r, http.StatusBadRequest, "breached-password", msg, "")
+		return
+	}
 	u, err := a.userStore.Create(r.Context(), body.Email, body.Name, body.Password, body.Role)
 	if err == nil {
 		// Neither create nor role-change wrote an audit entry, so an account

@@ -2846,6 +2846,7 @@
  "This page": "Эта страница",
  "This page is busy. Try again in a moment.": "Эта страница сейчас занята. Попробуйте ещё раз через минуту.",
  "This page is taking no more bookings for now. Try again later.": "Эта страница пока не принимает новые записи. Попробуйте позже.",
+ "This password is in known data breaches, so it is among the first an attacker tries. Choose another.": "Этот пароль есть в известных утечках данных, поэтому злоумышленник попробует его одним из первых. Выберите другой.",
  "This password is shown only once — store it somewhere safe and revoke it if it leaks.": "Этот пароль показывается только один раз — сохраните его в надёжном месте и отзовите, если он утечёт.",
  "This puts your site back to {point} and restarts. Your current database is copied aside first, so it is reversible.": "Сайт вернётся к {point} и перезапустится. Текущая база данных сначала копируется в сторону, так что это обратимо.",
  "This replaces all current content and settings.": "Это заменит всё текущее содержимое и настройки.",

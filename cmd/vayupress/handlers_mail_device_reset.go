@@ -92,6 +92,10 @@ func (a *App) handleMailDeviceReset(w http.ResponseWriter, r *http.Request) {
 			"Choose a password of at least 8 characters.", "")
 		return
 	}
+	if msg := a.leakedPassword(r.Context(), in.NewPassword); msg != "" {
+		writeAPIError(w, r, http.StatusBadRequest, "breached-password", msg, "")
+		return
+	}
 
 	accts := a.vayuMail.Accounts()
 	credID, ok := accts.VerifyApprovedDevice(r.Context(), addr, in.AppPassword)

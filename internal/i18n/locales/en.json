@@ -2846,6 +2846,7 @@
  "This page": "This page",
  "This page is busy. Try again in a moment.": "This page is busy. Try again in a moment.",
  "This page is taking no more bookings for now. Try again later.": "This page is taking no more bookings for now. Try again later.",
+ "This password is in known data breaches, so it is among the first an attacker tries. Choose another.": "This password is in known data breaches, so it is among the first an attacker tries. Choose another.",
  "This password is shown only once — store it somewhere safe and revoke it if it leaks.": "This password is shown only once — store it somewhere safe and revoke it if it leaks.",
  "This puts your site back to {point} and restarts. Your current database is copied aside first, so it is reversible.": "This puts your site back to {point} and restarts. Your current database is copied aside first, so it is reversible.",
  "This replaces all current content and settings.": "This replaces all current content and settings.",

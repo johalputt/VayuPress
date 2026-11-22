@@ -1706,6 +1706,10 @@ func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, 400, "validation_error", i18n.T(i18n.Lang(r.Context()), "password must be at least 8 characters"), "")
 		return
 	}
+	if msg := a.leakedPassword(r.Context(), in.Pass); msg != "" {
+		writeAPIError(w, r, 400, "breached-password", msg, "")
+		return
+	}
 	hash, err := auth.HashSecretArgon2id(in.Pass)
 	if err != nil {
 		writeAPIError(w, r, 500, "hash-failed", i18n.T(i18n.Lang(r.Context()), "could not hash password"), "")
@@ -1919,6 +1923,10 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 		// (ADR-0144). Setting the hash alone used to leave every app password,
 		// webmail session and queued message intact — so an operator resetting a
 		// compromised mailbox believed they had cut the attacker off, and had not.
+		if msg := a.leakedPassword(r.Context(), in.Pass); msg != "" {
+			writeAPIError(w, r, 400, "breached-password", msg, "")
+			return
+		}
 		deps, ok := a.mailResetDepsFor()
 		if !ok {
 			writeAPIError(w, r, 503, "unavailable", i18n.T(i18n.Lang(r.Context()), "VayuMail is not running"), "")

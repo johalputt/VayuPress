@@ -343,6 +343,10 @@ func (a *App) handleVayuOSMyPassword(w http.ResponseWriter, r *http.Request) {
 		answer("danger", i18n.T(lang, "The two new passwords differ."))
 		return
 	}
+	if msg := a.leakedPassword(r.Context(), r.FormValue("new")); msg != "" {
+		answer("danger", msg)
+		return
+	}
 	// The current password is a guess like any sign-in's: the same per-mailbox
 	// throttle, so a session left open is not an unmetered oracle for it.
 	if d := mailAuthThrottle.Delay(own); d > 0 {

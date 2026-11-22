@@ -2846,6 +2846,7 @@
  "This page": "本页",
  "This page is busy. Try again in a moment.": "此页面正忙，请稍后再试。",
  "This page is taking no more bookings for now. Try again later.": "此页面暂时不再接受预约，请稍后再试。",
+ "This password is in known data breaches, so it is among the first an attacker tries. Choose another.": "此密码出现在已知的数据泄露中，是攻击者最先尝试的密码之一。请换一个。",
  "This password is shown only once — store it somewhere safe and revoke it if it leaks.": "此密码只显示一次，请妥善保存；如有泄露，请将其撤销。",
  "This puts your site back to {point} and restarts. Your current database is copied aside first, so it is reversible.": "这会把网站恢复到 {point} 并重启。当前数据库会先另存一份，因此可以撤销。",
  "This replaces all current content and settings.": "这将替换当前所有内容和设置。",

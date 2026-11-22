@@ -250,6 +250,10 @@ func (a *App) handleAssignMailbox(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "Password must be at least 8 characters", "")
 		return
 	}
+	if msg := a.leakedPassword(r.Context(), body.Pass); msg != "" {
+		writeAPIError(w, r, http.StatusBadRequest, "breached-password", msg, "")
+		return
+	}
 	hash, err := auth.HashSecretArgon2id(body.Pass)
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "hash-failed", "Could not hash password", "")

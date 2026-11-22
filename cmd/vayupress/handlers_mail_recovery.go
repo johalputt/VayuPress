@@ -169,6 +169,10 @@ func (a *App) handleMailRecoverReset(w http.ResponseWriter, r *http.Request) {
 			i18n.T(lang, "Choose a password of at least 8 characters.")))
 		return
 	}
+	if msg := a.leakedPassword(r.Context(), pass); msg != "" {
+		a.renderRecoveryPage(w, r, lang, recoveryPasswordFormPage(lang, token, msg))
+		return
+	}
 	// Consume first: an invalid or replayed token must cost the caller their
 	// attempt whether or not the password was acceptable.
 	addr, err := a.vayuMail.Accounts().ConsumeRecoveryToken(r.Context(), token)
@@ -239,6 +243,10 @@ func (a *App) handleMailRecoverCode(w http.ResponseWriter, r *http.Request) {
 	if len([]rune(pass)) < minMailPasswordLen {
 		a.renderRecoveryPage(w, r, lang, recoveryCodeFormPage(lang, addr,
 			i18n.T(lang, "Choose a password of at least 8 characters.")))
+		return
+	}
+	if msg := a.leakedPassword(r.Context(), pass); msg != "" {
+		a.renderRecoveryPage(w, r, lang, recoveryCodeFormPage(lang, addr, msg))
 		return
 	}
 

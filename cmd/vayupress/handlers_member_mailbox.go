@@ -304,6 +304,10 @@ func (a *App) handleMemberMailIDActivate(w http.ResponseWriter, r *http.Request)
 		writeAPIError(w, r, http.StatusBadRequest, "weak-password", "Password must be at least 8 characters.", "")
 		return
 	}
+	if msg := a.leakedPassword(r.Context(), in.Password); msg != "" {
+		writeAPIError(w, r, http.StatusBadRequest, "breached-password", msg, "")
+		return
+	}
 	host := grant.Domain
 	if host == "" {
 		host = a.mailHost()
@@ -405,6 +409,10 @@ func (a *App) handleMemberMailboxClaim(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(in.Password) < 8 {
 		writeAPIError(w, r, http.StatusBadRequest, "weak-password", "Password must be at least 8 characters.", "")
+		return
+	}
+	if msg := a.leakedPassword(r.Context(), in.Password); msg != "" {
+		writeAPIError(w, r, http.StatusBadRequest, "breached-password", msg, "")
 		return
 	}
 	hash, err := auth.HashSecretArgon2id(in.Password)
