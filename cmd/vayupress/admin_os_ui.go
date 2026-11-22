@@ -1938,6 +1938,11 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 	for _, n := range a.cspReportOnlyNotices(ctx) {
 		keep(n)
 	}
+	// A script source no site here names, newly reported by its visitors'
+	// browsers: the first sign of injected code (vayushield_scripts.go).
+	for _, n := range a.scriptNotices(ctx, time.Now()) {
+		keep(n)
+	}
 	// New mail waiting in the viewer's mailboxes — the count that also raises the
 	// live desktop notification (admin-os.js). Cheap readdir-only counts, so
 	// ahead of the database's sources: it needs none.

@@ -10,6 +10,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Scripts the browser refused, on every site, in Shield and the bell.**
+  Each site runs only the scripts its policy names, and a browser that
+  refuses another reports it. Shield now lists every script source refused
+  on any site here (once per source, with how often and the site's Outside
+  services page to allow it from), and the bell says when a source was first
+  reported in the last day: an injected script, a card skimmer in a theme, a
+  tag slipped into a site's own code or a taken-over outside service shows
+  there before anyone goes to look. As on Outside services, a source is
+  listed only once more than one visitor has reported it, since anyone can
+  send a report.
+
 - **Passwords from known breaches can be refused.** Shield › Settings ›
   Passwords: switched on, a new password for the console, a staff account, a
   client, a mailbox (made, changed, reset by an administrator, recovered by

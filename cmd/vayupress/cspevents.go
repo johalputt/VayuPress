@@ -67,7 +67,7 @@ func cspEnforcementMode() string {
 type cspBlock struct {
 	Host, Directive, Origin string
 	Count                   int
-	Last                    time.Time
+	First, Last             time.Time
 	visitors                map[string]bool // hashed client addresses, capped
 }
 
@@ -131,6 +131,7 @@ func recordCSPBlock(documentURI, directive, blocked, client string, now time.Tim
 			delete(cspBlocks, oldest)
 		}
 		b.visitors = map[string]bool{}
+		b.First = now
 		cur = &b
 		cspBlocks[key] = cur
 	}
