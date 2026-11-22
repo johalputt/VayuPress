@@ -60,7 +60,7 @@ func (a *App) applyWAFSettings(ctx context.Context) {
 // wafExempt is a request the firewall does not read.
 func wafExempt(r *http.Request) bool {
 	p := r.URL.Path
-	for _, pre := range []string{"/os", "/static", "/assets", "/__vayushield", "/health", "/metrics", "/.well-known", "/mcp", "/oauth"} {
+	for _, pre := range []string{"/os", "/static", "/assets", "/__vayushield", "/health", "/metrics", "/.well-known", "/mcp", "/oauth", "/api/v1/community"} {
 		if p == pre || strings.HasPrefix(p, pre+"/") {
 			return true
 		}

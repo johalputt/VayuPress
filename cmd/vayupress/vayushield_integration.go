@@ -358,6 +358,7 @@ func (a *App) bootVayuShield() {
 	// SSH on the host, read by the agent and banned here.
 	a.sshWatch = newSSHWatch()
 	a.watchSSH()
+	a.watchCommunity()
 	// Each hosted site's own settings, on top of the install's.
 	a.applyShieldSiteSettings(context.Background())
 	// "Behind Cloudflare/CDN" real-visitor-IP trust: enable if EITHER the env
@@ -806,6 +807,7 @@ func (a *App) shieldProtectionBody(ctx context.Context, geoBlind bool) string {
 	b.WriteString(`<div class="card-title vs-section">Passwords</div><div class="vs-feat">`)
 	b.WriteString(vsRow("sh_leaked", "Refuse passwords from known breaches", "A new password for the console, a mailbox or a client is checked against Have I Been Pwned's list of breached passwords and refused if it is there. Only the first five characters of the password's SHA-1 hash leave this server, never the password. If the list cannot be reached the password is allowed, so a sign-up never waits on it.", a.leakedPasswordsOn(ctx), false))
 	b.WriteString(`</div>`)
+	b.WriteString(a.communityBand(ctx))
 	b.WriteString(`<div class="card-title vs-section">Analytics</div>`)
 	b.WriteString(`<div class="vs-feat">`)
 	b.WriteString(vsRow("sh_beacon", "Engagement analytics", "Measure time-on-page and scroll depth on public pages. Cookieless, no PII.", beaconOn, false))
@@ -1389,12 +1391,15 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		// ID posted into the form is dropped rather than stored: the value is
 		// re-read on every request path, and a settings row is a poor place to
 		// discover that somebody typed something.
-		settings.KeyShieldIntelFeeds:      strings.Join(postedIntelFeeds(r), ","),
+		settings.KeyShieldIntelFeeds:      strings.Join(a.postedIntelFeeds(r), ","),
 		settings.KeyShieldLinkDatacenter:  bs("sh_link_datacenter"),
 		settings.KeyShieldWAF:             wafMode,
 		settings.KeyShieldWAFParanoia:     wafPL,
 		settings.KeyShieldSSH:             bs("sh_ssh"),
 		settings.KeyShieldLeakedPasswords: bs("sh_leaked"),
+	}
+	for k, v := range postedCommunity(r, bs) {
+		kv[k] = v
 	}
 	// Diff BEFORE the write, so the audit record says what actually changed
 	// rather than what was submitted. Nineteen keys went in here with no actor,

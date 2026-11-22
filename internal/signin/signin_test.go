@@ -810,3 +810,25 @@ func TestAListedSourceIsRefusedSignIn(t *testing.T) {
 		t.Fatal("an address on the install's own network was asked about or refused")
 	}
 }
+
+// Each source the store bans on its own is passed to OnBan, once, by the
+// address it came from: spraying and sign-in-link spraying alike. A failure
+// that bans nothing passes nothing.
+func TestEachAutomaticBanIsPassedOn(t *testing.T) {
+	s, _ := openStore(t)
+	var got []string
+	s.OnBan = func(addr string) { got = append(got, addr) }
+	fail(s, "a@x.test", "198.51.100.23")
+	if len(got) != 0 {
+		t.Fatalf("one failure passed on %v", got)
+	}
+	for _, a := range []string{"b@x.test", "c@x.test"} {
+		fail(s, a, "198.51.100.23")
+	}
+	for i := 1; i <= LinkStrangers; i++ {
+		linkAsk(s, fmt.Sprintf("a%d@x.test", i), "198.51.100.71")
+	}
+	if len(got) != 2 || got[0] != "198.51.100.23" || got[1] != "198.51.100.71" {
+		t.Fatalf("passed on %v, want the sprayer and the link sprayer", got)
+	}
+}

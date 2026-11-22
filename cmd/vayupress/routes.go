@@ -304,6 +304,10 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/api/v1/newsletter/confirm", a.handleNewsletterConfirm)
 	r.Get("/api/v1/newsletter/unsubscribe", a.handleNewsletterUnsubscribe)
 	r.Get("/api/v1/openapi.json", a.handleOpenAPISpec)
+	// The shared attacker list's hub: signed by each reporter, so public.
+	r.Post("/api/v1/community/report", a.handleCommunityReport)
+	r.Get("/api/v1/community/list", a.handleCommunityList)
+	r.Get("/api/v1/community/key", a.handleCommunityKey)
 
 	// VayuAnalytics — public ingest + tracking script (no auth; body-capped and per-IP rate-limited).
 	r.Post("/api/v1/analytics/collect", a.handleAnalyticsCollect)

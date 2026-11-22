@@ -10,6 +10,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **A shared attacker list between VayuPress installs, opt-in on every
+  side.** Shield › Settings › Shared attacker list. An install that reports
+  sends, every 15 minutes, the addresses it banned on its own (sign-in
+  spraying, sign-in-link spraying, SSH), signed by an Ed25519 key of its own
+  kept beside the database; addresses only, never an account or a page. A
+  hub (johal.in by default; any install can be one) lists an address only
+  once three installs on three different networks, as the hub saw them,
+  reported it within a day, and for a week after the last such report. A
+  report is refused when its signature does not verify, it is more than 15
+  minutes from the hub's clock, it carries more than 500 addresses, or its
+  key reported within 5 minutes; one network registers at most four new
+  keys a day; private, shared and documentation addresses are dropped. The
+  hub's operator sees every reporter on the Shield page and can remove one,
+  which deletes what it reported and ends each listing that leaned on it.
+  Reading the list is its own switch among the published network lists,
+  where it is read like the others (cache, delta bound, status) as an
+  abusive list: refused at every sign-in door, a weight on a page, never a
+  page refused. The list is signed by the hub, and its key is pinned on the
+  first read; a list signed by another key is refused until the hub's
+  address is changed.
+
 - **Scripts the browser refused, on every site, in Shield and the bell.**
   Each site runs only the scripts its policy names, and a browser that
   refuses another reports it. Shield now lists every script source refused

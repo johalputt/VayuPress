@@ -627,6 +627,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/verify", a.handleOSShieldVerify)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/dismiss", a.handleOSShieldDismiss)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/release", a.handleOSShieldRelease)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/community/remove", a.handleCommunityRemove)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/accounts/unlock", a.handleOSAccountUnlock)
 		// The session's own passkeys (passkey.go).
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/passkeys/begin", a.handlePasskeyAddBegin)

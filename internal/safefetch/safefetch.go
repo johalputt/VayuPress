@@ -356,9 +356,19 @@ func (c *Client) Get(ctx context.Context, rawURL string) (*Result, error) {
 // after 301/302/303, the same POST after 307/308), and every hop is dialled
 // through the same guarded transport.
 func (c *Client) Post(ctx context.Context, rawURL, contentType string, body []byte) (*Result, error) {
+	return c.PostWith(ctx, rawURL, contentType, body, nil)
+}
+
+// PostWith is Post with extra request headers (a signature over the body).
+func (c *Client) PostWith(ctx context.Context, rawURL, contentType string, body []byte, header http.Header) (*Result, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
+	}
+	for k, vs := range header {
+		for _, v := range vs {
+			req.Header.Add(k, v)
+		}
 	}
 	req.Header.Set("Content-Type", contentType)
 	return c.do(req)

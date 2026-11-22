@@ -176,5 +176,6 @@ func (a *App) noteSSHFailureLocked(line string, now time.Time) {
 	if a.shieldOffload != nil {
 		a.shieldOffload.Ban(ip, ttl)
 	}
+	a.noteCommunityBan(ip)
 	logging.LogWarn("vayushield", "SSH: "+ip+" failed "+strconv.Itoa(sshFailures)+" sign-ins within "+sshWindow.String()+"; dropped for "+ttl.String())
 }

@@ -133,7 +133,7 @@ func (a *App) applyShieldIntelSettings(ctx context.Context) {
 	for _, id := range a.enabledIntelFeeds(ctx) {
 		on[id] = true
 	}
-	for _, def := range intel.DefaultFeeds() {
+	for _, def := range a.shieldFeeds() {
 		a.shieldIntel.Add(def, on[def.ID])
 	}
 }
@@ -141,9 +141,9 @@ func (a *App) applyShieldIntelSettings(ctx context.Context) {
 // postedIntelFeeds reads the feed checkboxes out of a settings save, keeping
 // only IDs this build ships and preserving the shipped order so the stored value
 // does not churn on every save.
-func postedIntelFeeds(r *http.Request) []string {
+func (a *App) postedIntelFeeds(r *http.Request) []string {
 	var out []string
-	for _, def := range intel.DefaultFeeds() {
+	for _, def := range a.shieldFeeds() {
 		if strings.TrimSpace(r.PostFormValue("sh_intel_"+def.ID)) != "" {
 			out = append(out, def.ID)
 		}
@@ -212,7 +212,7 @@ func (a *App) shieldIntelStatus() []map[string]any {
 		return out
 	}
 	byID := map[string]intel.Feed{}
-	for _, def := range intel.DefaultFeeds() {
+	for _, def := range a.shieldFeeds() {
 		byID[def.ID] = def
 	}
 	for _, s := range a.shieldIntel.Statuses() {
@@ -284,7 +284,7 @@ func (a *App) shieldIntelBand(ctx context.Context) string {
 		b.WriteString(`<p class="muted text-sm"><strong>This Space makes no outbound requests</strong>, so nothing here will refresh. A list you enable serves whatever was last cached on this machine, or nothing at all.</p>`)
 	}
 
-	for _, def := range intel.DefaultFeeds() {
+	for _, def := range a.shieldFeeds() {
 		s := status[def.ID]
 		b.WriteString(`<div class="vs-feat">`)
 		b.WriteString(vsRow("sh_intel_"+def.ID, def.Name, def.Note, on[def.ID], false))
@@ -367,7 +367,7 @@ func (a *App) datacenterListOn(ctx context.Context) bool {
 	for _, id := range a.enabledIntelFeeds(ctx) {
 		on[id] = true
 	}
-	for _, def := range intel.DefaultFeeds() {
+	for _, def := range a.shieldFeeds() {
 		if on[def.ID] && def.Kind == intel.KindDatacenter {
 			return true
 		}
@@ -380,7 +380,7 @@ func (a *App) enabledIntelFeeds(ctx context.Context) []string {
 		return nil
 	}
 	known := map[string]bool{}
-	for _, def := range intel.DefaultFeeds() {
+	for _, def := range a.shieldFeeds() {
 		known[def.ID] = true
 	}
 	var out []string

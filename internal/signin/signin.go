@@ -212,6 +212,10 @@ type Store struct {
 	// OnAlarm is called, off the caller's goroutine, on a right password with
 	// a wrong second factor.
 	OnAlarm func(Alarm)
+	// OnBan is told the address of each source the store banned on its own
+	// (spraying, sign-in-link spraying), for the attacker list installs
+	// share. Called on the caller's goroutine: it must only queue.
+	OnBan func(addr string)
 
 	mu sync.Mutex
 	// Listed reports whether addr is on a list that refuses sign-in: an
@@ -487,6 +491,9 @@ func (s *Store) Record(a Attempt) {
 	}
 	if spraying {
 		s.blockSpraying(src, now)
+		if s.OnBan != nil {
+			s.OnBan(a.IP)
+		}
 	}
 }
 
@@ -574,6 +581,9 @@ func (s *Store) NoteLinkStranger(account, addr string, member func(account strin
 	}
 	if kind == "address" {
 		s.banNetworkOfTwo(src, now)
+	}
+	if s.OnBan != nil {
+		s.OnBan(addr)
 	}
 	return true
 }

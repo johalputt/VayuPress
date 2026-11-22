@@ -404,6 +404,18 @@ const (
 	// Pwned lists as breached (cmd/vayupress/leaked_passwords.go).
 	KeyShieldLeakedPasswords = "shield.leaked_passwords"
 
+	// The attacker list installs share (cmd/vayupress/vayushield_community.go):
+	// KeyShieldCommunityReport, "on", sends the addresses this install banned
+	// to the hub; KeyShieldCommunityHub, "on", makes this install a hub;
+	// KeyShieldCommunityHubURL is the hub read and reported to, and
+	// KeyShieldCommunityHubKey the hub's signing key pinned on the first read
+	// ("<hub URL> <key>", so a new hub URL pins afresh). Receiving is the
+	// "community" feed of KeyShieldIntelFeeds.
+	KeyShieldCommunityReport = "shield.community_report"
+	KeyShieldCommunityHub    = "shield.community_hub"
+	KeyShieldCommunityHubURL = "shield.community_hub_url"
+	KeyShieldCommunityHubKey = "shield.community_hub_key"
+
 	// KeyShieldRules is the operator's own request rules, one per line
 	// (vayushield/oprules): "block path^=/wp-", "test challenge country=CN".
 	// Empty by default, for the same reason as the lists above.
@@ -701,6 +713,10 @@ var NotPortable = map[string]bool{
 	KeyShieldWAFParanoia:          true,
 	KeyShieldSSH:                  true,
 	KeyShieldLeakedPasswords:      true,
+	KeyShieldCommunityReport:      true,
+	KeyShieldCommunityHub:         true,
+	KeyShieldCommunityHubURL:      true,
+	KeyShieldCommunityHubKey:      true,
 	KeyShieldRules:                true,
 	// A site's own shield settings are network policy, like the install's.
 	KeyShieldSitePoW:                true,
@@ -888,6 +904,10 @@ var AllKeys = map[string]bool{
 	KeyShieldWAFParanoia:          true,
 	KeyShieldSSH:                  true,
 	KeyShieldLeakedPasswords:      true,
+	KeyShieldCommunityReport:      true,
+	KeyShieldCommunityHub:         true,
+	KeyShieldCommunityHubURL:      true,
+	KeyShieldCommunityHubKey:      true,
 	KeyShieldRules:                true,
 	KeyAnalyticsBeacon:            true,
 	KeyTorEnabled:                 true,
@@ -999,6 +1019,10 @@ var Defaults = map[string]string{
 	KeyShieldWAFParanoia:          "1",
 	KeyShieldSSH:                  "off",
 	KeyShieldLeakedPasswords:      "off",
+	KeyShieldCommunityReport:      "off",
+	KeyShieldCommunityHub:         "off",
+	KeyShieldCommunityHubURL:      "https://johal.in",
+	KeyShieldCommunityHubKey:      "",
 	KeyShieldAllowCIDRs:           "",
 	KeyShieldDenyCIDRs:            "",
 	KeyShieldAllowCountries:       "",

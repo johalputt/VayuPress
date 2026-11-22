@@ -310,6 +310,8 @@ type App struct {
 	waf *waf.Engine
 	// sshWatch reads the agent's SSH failures (vayushield_ssh.go).
 	sshWatch *sshWatch
+	// community queues this install's own bans for the shared attacker list.
+	community *communityQueue
 
 	// trustedSessions caches operator-session validation (TTL) so the shield's
 	// operator-immunity check stays off the SQLite read path under load.

@@ -235,6 +235,10 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	}
 	sections = append(sections, ui.Section("Web application firewall", "The OWASP Core Rule Set, since the last restart", ui.HTML(
 		`<div id="vs-body-waf">`+a.wafSectionBody()+`</div>`)))
+	if a.communityHub(ctx) != nil {
+		sections = append(sections, ui.Section("Shared attacker list", "This install is a hub; the installs that report to it", ui.HTML(
+			`<div id="vs-body-community">`+a.communityHubBody(ctx)+`</div>`)))
+	}
 	sections = append(sections, ui.Section("Scripts the browser refused", "On every site, since the last restart", ui.HTML(
 		`<div id="vs-body-scripts">`+a.scriptsSectionBody(ctx)+`</div>`)))
 	sections = append(sections, ui.Section("History", "Blocks and challenges over time", ui.HTML(

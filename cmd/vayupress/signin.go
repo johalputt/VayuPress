@@ -52,6 +52,7 @@ func (a *App) openSignins() {
 	signin.Country = geoip.Country
 	st.OnAlarm = a.notifySigninAlarm
 	st.Listed = a.signinListed
+	st.OnBan = a.noteCommunityBan
 	a.signin = st
 	go func() {
 		t := time.NewTicker(signinFlushEvery)
