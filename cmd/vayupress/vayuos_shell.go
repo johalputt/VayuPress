@@ -372,6 +372,18 @@ func saModeStrip(lang string, m mode.Mode, since time.Time, admin bool) string {
 		`<span class="sa-strip__text"><b>` + html.EscapeString(saModeLabelIn(lang, m)+when) + `.</b> ` + html.EscapeString(what) + `</span>` + details + `</div>`
 }
 
+// saObserveStrip is the red strip an administrator sees across the console
+// while Shield only watches: nothing is enforced, and it says when that ends.
+func saObserveStrip(lang string, until time.Time, admin bool) string {
+	if !admin || until.IsZero() {
+		return ""
+	}
+	return `<div class="sa-strip sa-strip--danger" role="status">` + saIcon("warn") +
+		`<span class="sa-strip__text"><b>` + esc(i18n.T(lang, "Shield is only watching.")) + `</b> ` +
+		esc(i18n.T(lang, "Nothing is blocked, limited or challenged until observe-only ends by itself at {time}.", "time", i18n.Date(lang, config.InSite(until), i18n.DayMonthYearShortAt))) +
+		`</span><a class="sa-strip__link" href="/os/shield">` + esc(i18n.T(lang, "Shield")) + `</a></div>`
+}
+
 // saInitials is the avatar fallback: up to two initials of the display name.
 func saInitials(name string) string {
 	var out []rune
@@ -693,7 +705,7 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 			`<div class="sa-pop__panel sa-world__panel">` + spaceSwitch(s.AccessLevel, s) + `</div></details>`
 	}
 
-	strip := saModeStrip(lang, m, s.ModeSince, admin)
+	strip := saModeStrip(lang, m, s.ModeSince, admin) + saObserveStrip(lang, s.ObserveUntil, admin)
 
 	// ── Account menu ──
 	// An API-key or legacy session has no person behind it, so no initials:

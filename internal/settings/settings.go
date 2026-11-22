@@ -335,6 +335,9 @@ const (
 	KeyShieldBehindCDN      = "shield.behind_cdn"      // trust Cloudflare/CDN CF-Connecting-IP for the real visitor IP
 	KeyShieldGroupIPv4      = "shield.group_ipv4"      // extend prefix-keyed enforcement to IPv4 /24 (IPv6 /64 is unconditional)
 	KeyShieldObserve        = "shield.observe"         // observe-only: count what every gate WOULD do, enforce nothing
+	// KeyShieldObserveSince is when observe-only was switched on (Unix
+	// seconds): it ends by itself a day later (vayushield_observe.go).
+	KeyShieldObserveSince = "shield.observe_since"
 
 	// The operator's own rules, as opposed to everything the shield infers. All
 	// four are newline-separated free text so they can be pasted from a firewall
@@ -662,6 +665,7 @@ var NotPortable = map[string]bool{
 	KeyShieldSurge:                true,
 	KeyShieldBehindCDN:            true,
 	KeyShieldObserve:              true,
+	KeyShieldObserveSince:         true,
 	KeyShieldAllowCIDRs:           true,
 	KeyShieldDenyCIDRs:            true,
 	KeyShieldAllowCountries:       true,
@@ -843,6 +847,7 @@ var AllKeys = map[string]bool{
 	KeyShieldBehindCDN:            true,
 	KeyShieldGroupIPv4:            true,
 	KeyShieldObserve:              true,
+	KeyShieldObserveSince:         true,
 	KeyShieldAllowCIDRs:           true,
 	KeyShieldDenyCIDRs:            true,
 	KeyShieldAllowCountries:       true,

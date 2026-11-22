@@ -1638,6 +1638,9 @@ type osSettings struct {
 	// Mode and ModeSince drive the Still Air status area and state strip.
 	Mode      mode.Mode
 	ModeSince time.Time
+	// ObserveUntil is when Shield's observe-only mode ends; zero when it is
+	// off. The shell shows it across the console (vayushield_observe.go).
+	ObserveUntil time.Time
 	// UnreadMail is the unread mail already counted for the bell (its Unread
 	// notice); the Still Air rail shows it on Mail rather than counting again.
 	UnreadMail int
@@ -1851,6 +1854,9 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 		s.ModeSince = h[len(h)-1].OccurredAt
 	}
 	_, s.MailDNSAttention = a.mailDNSNeedsAttention("en")
+	if until, on := a.observeUntil(ctx); on {
+		s.ObserveUntil = until
+	}
 	return s
 }
 

@@ -271,6 +271,17 @@ document.body.addEventListener('vs-refresh',function(){
   document.body.appendChild(t);requestAnimationFrame(function(){t.classList.add('is-in');});
   setTimeout(function(){t.classList.remove('is-in');setTimeout(function(){t.remove();},400);},2200);
 });
+// Observe-only switched on is asked about first: it turns every gate into a
+// counter. The console's htmx:confirm answer shows the question in its own
+// dialog; it is asked only when the switch goes from off to on.
+var observeAsk='Turn on observe-only? Nothing will be blocked, limited or challenged until it ends by itself in 24 hours, or until you turn it off.';
+document.addEventListener('change',function(e){
+  var t=e.target;if(!t||t.id!=='sh_observe'||!t.form)return;
+  if(t.checked&&!t.defaultChecked){t.form.setAttribute('hx-confirm',observeAsk);}else{t.form.removeAttribute('hx-confirm');}
+});
+document.body.addEventListener('vs-refresh',function(){
+  var f=document.querySelector('form[hx-post="/os/api/shield/settings"]');if(f)f.removeAttribute('hx-confirm');
+});
 document.addEventListener('click',function(e){
   var btn=e.target&&e.target.closest?e.target.closest('.vs-copy-btn'):null;if(!btn)return;
   var el=document.getElementById(btn.getAttribute('data-copy'));if(!el)return;

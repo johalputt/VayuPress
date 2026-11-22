@@ -159,3 +159,26 @@ test("a source's Block menu opens whole on a phone", async ({ page, browser }) =
   }, [at.x + at.width / 2, at.y + at.height / 2]);
   expect(hit, "a tap on the first choice lands on the menu").toBe(true);
 });
+
+// Observe-only turns every gate into a counter, so saving it on is asked
+// about first, in the console's dialog; answered no, nothing is saved and it
+// stays off. (It is never answered yes here: the install is shared with the
+// specs running beside this one.)
+test("saving observe-only on asks first, and no leaves it off", async ({ page }) => {
+  await page.goto("/os/shield");
+  await page.getByRole("button", { name: "Settings" }).click();
+  const observe = page.locator("#sh_observe");
+  await expect(observe).not.toBeChecked();
+  let saved = false;
+  page.on("request", (r) => { if (r.method() === "POST" && r.url().includes("/os/api/shield/settings")) saved = true; });
+  await observe.check({ force: true });
+  await page.getByRole("button", { name: "Save & apply" }).click();
+  const ask = page.locator(".vp-confirm");
+  await expect(ask).toContainText("Turn on observe-only?");
+  await ask.getByRole("button", { name: "Cancel" }).click();
+  await expect(ask).toHaveCount(0);
+  expect(saved, "answered no, nothing was saved").toBe(false);
+  await page.reload();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.locator("#sh_observe")).not.toBeChecked();
+});

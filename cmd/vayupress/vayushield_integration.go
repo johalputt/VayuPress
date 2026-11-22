@@ -352,6 +352,8 @@ func (a *App) bootVayuShield() {
 	// toggles). All default OFF; the panel writes these and applies them live, so
 	// nothing here throttles or challenges a real visitor until opted in.
 	a.vayuShield.ApplySettings(a.shieldSettings(context.Background()))
+	// Observe-only ends by itself a day after it was switched on.
+	a.watchObserve()
 	// Each hosted site's own settings, on top of the install's.
 	a.applyShieldSiteSettings(context.Background())
 	// "Behind Cloudflare/CDN" real-visitor-IP trust: enable if EITHER the env
@@ -744,7 +746,7 @@ func (a *App) shieldProtectionBody(ctx context.Context, geoBlind bool) string {
 	b.WriteString(`<div class="card-title vs-section">Availability &amp; anti-DDoS</div>`)
 	b.WriteString(`<div class="vs-feat">`)
 	b.WriteString(vsRow("sh_observe", "Observe only — measure, do not enforce",
-		"Every gate below counts what it WOULD have done and then lets the request through. Use it to see what a threshold change does to your real traffic before it does it. While this is on, the site is undefended: no blocks, no rate limits, no challenges and no kernel bans. The counts appear in the posture report and on /metrics.",
+		"Every gate below counts what it WOULD have done and then lets the request through. Use it to see what a threshold change does to your real traffic before it does it. While this is on, the site is undefended: no blocks, no rate limits, no challenges and no kernel bans. It is asked about before it is saved on, shown across the console while it is on, and ends by itself 24 hours after it was switched on. The counts appear in the posture report and on /metrics.",
 		cur.ObserveOnly, false))
 	b.WriteString(`</div>`)
 	b.WriteString(`<div class="vs-feat">`)
@@ -1353,6 +1355,7 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		settings.KeyShieldBehindCDN:      bs("sh_behind_cdn"),
 		settings.KeyShieldGroupIPv4:      bs("sh_group_ipv4"),
 		settings.KeyShieldObserve:        bs("sh_observe"),
+		settings.KeyShieldObserveSince:   a.observeSince(r.Context(), bs("sh_observe")),
 		settings.KeyAnalyticsBeacon:      bs("sh_beacon"),
 
 		// The operator's own rules. Stored as typed, minus a size cap: these are
