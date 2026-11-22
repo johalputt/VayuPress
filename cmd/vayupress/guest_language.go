@@ -148,7 +148,7 @@ const pageLangHeader = "X-VP-Lang"
 // every other page of it is English. A section joins when the last of its
 // sentences has moved into i18n.T, so no release shows a page half in one
 // language and half in another while a section is being moved.
-var consoleSpeaks = []string{"/os/vayumail", "/os/settings", "/os/vayukeep", "/os/apikeys", "/os/newsletter", "/os/youtube", "/os/ads", "/os/tor", "/os/update", "/os/tools", "/os/theme"}
+var consoleSpeaks = []string{"/os/vayumail", "/os/settings", "/os/vayukeep", "/os/apikeys", "/os/newsletter", "/os/youtube", "/os/ads", "/os/tor", "/os/update", "/os/tools", "/os/theme", "/os/vayuflow"}
 
 // consoleSpeaksPerSite is the same for a hosted site's own console
 // (/os/d/{id}/…), by the path after the site. It is a list of its own because

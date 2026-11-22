@@ -109,7 +109,7 @@ func TestTheVayuFlowSentence(t *testing.T) {
 		{"armed", true, 0, 0, 3, "ok", "3 flows armed live"},
 		{"quiet", true, 0, 0, 0, "ok", "No flow is armed live"},
 	} {
-		if tone, state := vayuFlowState(c.wired, c.fail, c.warn, c.armed); tone != c.tone || !strings.HasPrefix(state, c.state) {
+		if tone, state := vayuFlowState("en", c.wired, c.fail, c.warn, c.armed); tone != c.tone || !strings.HasPrefix(state, c.state) {
 			t.Errorf("%s: got (%s) %q, want (%s) %q…", c.name, tone, state, c.tone, c.state)
 		}
 	}

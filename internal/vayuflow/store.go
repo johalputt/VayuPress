@@ -257,32 +257,6 @@ func (s *Store) LoadableFlows(ctx context.Context) (ok []Flow, rejected map[stri
 	return ok, rejected, nil
 }
 
-// DescribeMode is used by the panel and the audit trail so both name the modes
-// identically; a panel that says "test mode" while the trail says "dry-run"
-// makes an operator reconcile two vocabularies for one state.
-func DescribeMode(m RunMode) string {
-	switch m {
-	case RunDryRun:
-		return "dry-run — effects are captured and refused at the capability boundary"
-	case RunLive:
-		return "live — effects reach the world, bounded by the declared budget"
-	}
-	return "unset — this flow cannot run"
-}
-
-// TriggerSummary renders a trigger for display in one short phrase.
-func TriggerSummary(t Trigger) string {
-	switch t.Kind {
-	case TriggerSchedule:
-		return "schedule · " + t.Cron
-	case TriggerEvent:
-		return "event · " + t.Event
-	case TriggerManual:
-		return "manual"
-	}
-	return "unset"
-}
-
 // ActionSummary renders a step list as a short, stable phrase for the panel.
 func ActionSummary(steps []Step) string {
 	names := make([]string, 0, len(steps))

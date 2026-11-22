@@ -14,10 +14,10 @@
 package flowaudit
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/vayuflow"
 )
 
@@ -74,17 +74,19 @@ type Inputs struct {
 	ModelLocal bool
 	// ModelConfigured reports whether any provider is configured at all.
 	ModelConfigured bool
+	// Lang is the language the report is written in; empty is English.
+	Lang string
 }
 
 // Run computes the report.
 func Run(in Inputs) []Check {
 	var out []Check
+	lang := in.Lang
 
 	if !in.Wired {
 		out = append(out, Check{
-			Title: "Engine", Status: Fail,
-			Detail: "The automation engine is not running in this build. Nothing on this page can " +
-				"fire, and any flow listed is stored rather than armed.",
+			Title: i18n.T(lang, "Engine"), Status: Fail,
+			Detail: i18n.T(lang, "The automation engine is not running in this build. Nothing on this page can fire, and any flow listed is stored rather than armed."),
 		})
 		return out
 	}
@@ -101,11 +103,10 @@ func Run(in Inputs) []Check {
 		}
 	}
 	out = append(out, Check{
-		Title:  "Armed",
+		Title:  i18n.T(lang, "Armed"),
 		Status: statusFor(armedLive == 0, Pass, Warn),
-		Detail: fmt.Sprintf("%s armed live, %d in dry-run, %d disabled. A live flow acts "+
-			"without being asked; a dry-run flow executes fully and refuses its effects.",
-			flows(armedLive, "", "is", "are"), armedDry, disabled),
+		Detail: i18n.T(lang, "{live, plural, one {# flow is armed live} other {# flows are armed live}}, {dry} in dry-run, {off} disabled. A live flow acts without being asked; a dry-run flow executes fully and refuses its effects.",
+			"live", armedLive, "dry", armedDry, "off", disabled),
 	})
 
 	// Authority that has outlived its grant. This is the check the ADR calls
@@ -119,15 +120,15 @@ func Run(in Inputs) []Check {
 		have, known := in.OwnerRoles[f.Owner]
 		need := f.MinOwnerRole()
 		if !known || !vayuflow.OwnerSatisfies(have, need) {
-			stale = append(stale, fmt.Sprintf("%s (owner %s holds %q, needs %q)",
-				f.Name, f.Owner, displayRole(have), need))
+			stale = append(stale, i18n.T(lang, `{flow} (owner {owner} holds "{have}", needs "{need}")`,
+				"flow", f.Name, "owner", f.Owner, "have", displayRole(lang, have), "need", need))
 		}
 	}
 	sort.Strings(stale)
 	out = append(out, Check{
-		Title:  "Owner authority",
+		Title:  i18n.T(lang, "Owner authority"),
 		Status: statusFor(len(stale) == 0, Pass, Fail),
-		Detail: authorityDetail(stale),
+		Detail: authorityDetail(lang, stale),
 	})
 
 	// A flow the engine will not fire.
@@ -137,19 +138,17 @@ func Run(in Inputs) []Check {
 	}
 	sort.Strings(broken)
 	out = append(out, Check{
-		Title:  "Definitions",
+		Title:  i18n.T(lang, "Definitions"),
 		Status: statusFor(len(broken) == 0, Pass, Fail),
-		Detail: brokenDetail(broken),
+		Detail: brokenDetail(lang, broken),
 	})
 
 	// A ceiling reached is a ceiling doing its job OR a ceiling set wrong.
 	out = append(out, Check{
-		Title:  "Budgets",
+		Title:  i18n.T(lang, "Budgets"),
 		Status: statusFor(in.Stats.BudgetCapped == 0, Pass, Warn),
-		Detail: fmt.Sprintf("Runs in the window that finished at one of their ceilings: %d of %d. "+
-			"A ceiling reached is either the limit working or the limit set wrong — only a person "+
-			"can tell which, which is why this is not reported as a success.",
-			in.Stats.BudgetCapped, in.Stats.Runs),
+		Detail: i18n.T(lang, "Runs in the window that finished at one of their ceilings: {capped} of {runs}. A ceiling reached is either the limit working or the limit set wrong — only a person can tell which, which is why this is not reported as a success.",
+			"capped", in.Stats.BudgetCapped, "runs", in.Stats.Runs),
 	})
 
 	// Reach. Egress-capable flows under OnionMode, and the confirmation that
@@ -172,9 +171,9 @@ func Run(in Inputs) []Check {
 	}
 	sort.Strings(reaching)
 	out = append(out, Check{
-		Title:  "Outbound reach",
+		Title:  i18n.T(lang, "Outbound reach"),
 		Status: reachStatus(len(reaching), in.OnionMode),
-		Detail: reachDetail(reaching, in.OnionMode),
+		Detail: reachDetail(lang, reaching, in.OnionMode),
 	})
 
 	// Model steps, split by provider locality. "AI: enabled" would be the
@@ -193,7 +192,7 @@ func Run(in Inputs) []Check {
 		}
 	}
 	out = append(out, Check{
-		Title:  "Model steps",
+		Title:  i18n.T(lang, "Model steps"),
 		Status: modelStatus(modelFlows, in),
 		Detail: modelDetail(modelFlows, in),
 	})
@@ -214,11 +213,9 @@ func Run(in Inputs) []Check {
 	sort.Strings(irreversible)
 	if len(irreversible) > 0 {
 		out = append(out, Check{
-			Title: "Model output reaching an irreversible action", Status: Warn,
-			Detail: "These flows are armed live, generate with a model, and carry a step that cannot " +
-				"be undone: " + strings.Join(irreversible, ", ") + ". Nothing here is wrong, and " +
-				"nothing about it is bounded by the draft ceiling — a delivered message has no draft " +
-				"form. Worth knowing you armed it.",
+			Title: i18n.T(lang, "Model output reaching an irreversible action"), Status: Warn,
+			Detail: i18n.T(lang, "These flows are armed live, generate with a model, and carry a step that cannot be undone: {flows}. Nothing here is wrong, and nothing about it is bounded by the draft ceiling — a delivered message has no draft form. Worth knowing you armed it.",
+				"flows", strings.Join(irreversible, ", ")),
 		})
 	}
 
@@ -226,20 +223,16 @@ func Run(in Inputs) []Check {
 	// stopped, and an event flow that has silently stopped firing is the exact
 	// failure this subsystem is built to make visible.
 	out = append(out, Check{
-		Title:  "Event backlog",
+		Title:  i18n.T(lang, "Event backlog"),
 		Status: statusFor(in.PendingInbox < 50, Pass, Warn),
-		Detail: fmt.Sprintf("Event triggers waiting to be considered: %d. A backlog that does not "+
-			"shrink between readings means the drainer has stopped, and event flows are no longer "+
-			"firing.", in.PendingInbox),
+		Detail: i18n.T(lang, "Event triggers waiting to be considered: {n}. A backlog that does not shrink between readings means the drainer has stopped, and event flows are no longer firing.",
+			"n", in.PendingInbox),
 	})
 
 	// The honest ceiling. Last, and never a Pass.
 	out = append(out, Check{
-		Title: "What this report does not cover", Status: Context,
-		Detail: "VayuFlow bounds what an AUTHORISED automation can do. It is not a defence against " +
-			"an operator account that has been taken over: someone holding admin can arm a flow, and " +
-			"every ceiling on this page is one they chose. It also says nothing about whether a " +
-			"flow's output is any good — only about what it was permitted to touch.",
+		Title: i18n.T(lang, "What this report does not cover"), Status: Context,
+		Detail: i18n.T(lang, "VayuFlow bounds what an AUTHORISED automation can do. It is not a defence against an operator account that has been taken over: someone holding admin can arm a flow, and every ceiling on this page is one they chose. It also says nothing about whether a flow's output is any good — only about what it was permitted to touch."),
 	})
 
 	return out
@@ -270,41 +263,31 @@ func statusFor(good bool, yes, no Status) Status {
 	return no
 }
 
-func displayRole(r string) string {
+func displayRole(lang, r string) string {
 	if strings.TrimSpace(r) == "" {
-		return "no resolvable role"
+		return i18n.T(lang, "no resolvable role")
 	}
 	return r
 }
 
-func authorityDetail(stale []string) string {
+// Each sentence that counts flows is one plural sentence, its verb agreeing
+// with the count ("1 armed flow calls", "3 armed flows call"): the panel
+// shows them, and "flow(s)" is the hedge its wording rules forbid.
+
+func authorityDetail(lang string, stale []string) string {
 	if len(stale) == 0 {
-		return "Every armed flow's owner still holds the authority its actions require. This is " +
-			"re-checked on every run against the live account, not stored on the flow."
+		return i18n.T(lang, "Every armed flow's owner still holds the authority its actions require. This is re-checked on every run against the live account, not stored on the flow.")
 	}
-	return fmt.Sprintf("%s because the owner no longer holds the required authority: %s. "+
-		"This is the grant expiring as it should — but the flow is not doing what its author expected.",
-		flows(len(stale), "armed ", "will refuse", "will refuse"), strings.Join(stale, "; "))
+	return i18n.T(lang, "{n, plural, one {# armed flow will refuse} other {# armed flows will refuse}} because the owner no longer holds the required authority: {flows}. This is the grant expiring as it should — but the flow is not doing what its author expected.",
+		"n", len(stale), "flows", strings.Join(stale, "; "))
 }
 
-func brokenDetail(broken []string) string {
+func brokenDetail(lang string, broken []string) string {
 	if len(broken) == 0 {
-		return "Every stored flow still validates against the current build."
+		return i18n.T(lang, "Every stored flow still validates against the current build.")
 	}
-	return fmt.Sprintf("%s and will NOT fire: %s. An automation "+
-		"an operator believes is armed and which silently never runs is the worst state this engine "+
-		"can be in.", flows(len(broken), "enabled ", "no longer validates", "no longer validate"), strings.Join(broken, "; "))
-}
-
-// flows counts flows with the verb that follows agreeing: flows(1, "armed ",
-// "calls", "call") is "1 armed flow calls" and flows(3, …) "3 armed flows
-// call". Written out because the panel shows these sentences, and "flow(s)"
-// is the hedge its wording rules forbid.
-func flows(n int, kind, verbOne, verbMany string) string {
-	if n == 1 {
-		return "1 " + kind + "flow " + verbOne
-	}
-	return fmt.Sprintf("%d %sflows %s", n, kind, verbMany)
+	return i18n.T(lang, "{n, plural, one {# enabled flow no longer validates} other {# enabled flows no longer validate}} and will NOT fire: {flows}. An automation an operator believes is armed and which silently never runs is the worst state this engine can be in.",
+		"n", len(broken), "flows", strings.Join(broken, "; "))
 }
 
 func reachStatus(n int, onion bool) Status {
@@ -320,19 +303,17 @@ func reachStatus(n int, onion bool) Status {
 	}
 }
 
-func reachDetail(reaching []string, onion bool) string {
+func reachDetail(lang string, reaching []string, onion bool) string {
 	if len(reaching) == 0 {
-		return "No armed flow reaches a remote host."
+		return i18n.T(lang, "No armed flow reaches a remote host.")
 	}
 	list := strings.Join(reaching, ", ")
 	if onion {
-		return fmt.Sprintf("%s an outbound step (%s), which is INERT: this install "+
-			"is running as a Tor Space, and every such step is refused in the effect path by "+
-			"the same kill-switch that closes the rest of the binary. It would reach out if the mode "+
-			"changed.", flows(len(reaching), "armed ", "carries", "carry"), list)
+		return i18n.T(lang, "{n, plural, one {# armed flow carries} other {# armed flows carry}} an outbound step ({flows}), which is INERT: this install is running as a Tor Space, and every such step is refused in the effect path by the same kill-switch that closes the rest of the binary. It would reach out if the mode changed.",
+			"n", len(reaching), "flows", list)
 	}
-	return fmt.Sprintf("%s a remote host: %s. Each fetch spends the flow's egress "+
-		"ceiling and goes through the guarded client.", flows(len(reaching), "armed ", "reaches", "reach"), list)
+	return i18n.T(lang, "{n, plural, one {# armed flow reaches} other {# armed flows reach}} a remote host: {flows}. Each fetch spends the flow's egress ceiling and goes through the guarded client.",
+		"n", len(reaching), "flows", list)
 }
 
 func modelStatus(n int, in Inputs) Status {
@@ -352,23 +333,19 @@ func modelStatus(n int, in Inputs) Status {
 }
 
 func modelDetail(n int, in Inputs) string {
+	lang := in.Lang
 	if n == 0 {
-		return "No armed flow calls a model."
+		return i18n.T(lang, "No armed flow calls a model.")
 	}
 	switch {
 	case !in.ModelConfigured:
-		return fmt.Sprintf("%s a model and NO provider is configured. Such a run "+
-			"will fail at the model step.", flows(n, "armed ", "calls", "call"))
+		return i18n.T(lang, "{n, plural, one {# armed flow calls} other {# armed flows call}} a model and NO provider is configured. Such a run will fail at the model step.", "n", n)
 	case in.OnionMode && !in.ModelLocal:
-		return fmt.Sprintf("%s a REMOTE model provider while this install runs as "+
-			"a Tor Space. That step is refused — a remote generation is an outbound call — so the "+
-			"run fails rather than leaks. Point the provider at a local model to run it here.", flows(n, "armed ", "calls", "call"))
+		return i18n.T(lang, "{n, plural, one {# armed flow calls} other {# armed flows call}} a REMOTE model provider while this install runs as a Tor Space. That step is refused — a remote generation is an outbound call — so the run fails rather than leaks. Point the provider at a local model to run it here.", "n", n)
 	case !in.ModelLocal:
-		return fmt.Sprintf("%s a REMOTE model provider. Each generation is an "+
-			"outbound request and spends the flow's egress ceiling.", flows(n, "armed ", "calls", "call"))
+		return i18n.T(lang, "{n, plural, one {# armed flow calls} other {# armed flows call}} a REMOTE model provider. Each generation is an outbound request and spends the flow's egress ceiling.", "n", n)
 	default:
-		return fmt.Sprintf("%s a LOCAL model provider. No generation leaves this "+
-			"host, so a Tor Space runs it too.", flows(n, "armed ", "calls", "call"))
+		return i18n.T(lang, "{n, plural, one {# armed flow calls} other {# armed flows call}} a LOCAL model provider. No generation leaves this host, so a Tor Space runs it too.", "n", n)
 	}
 }
 

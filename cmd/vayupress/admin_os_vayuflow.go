@@ -24,6 +24,7 @@ import (
 	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/safefetch"
 	"github.com/johalputt/vayupress/internal/ui"
@@ -35,6 +36,7 @@ import (
 func (a *App) handleOSVayuFlow(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
+	lang := i18n.Lang(r.Context())
 	csrfTokenFor(w, r)
 
 	var (
@@ -84,11 +86,13 @@ func (a *App) handleOSVayuFlow(w http.ResponseWriter, r *http.Request) {
 		OnionMode:       safefetch.ClearnetBlocked(),
 		ModelConfigured: a.aiAssist != nil && a.aiAssist.Enabled(),
 		ModelLocal:      flowModel{c: a.aiAssist}.Local(),
+		Lang:            lang,
 	})
 
-	body := vayuFlowPage(flows, rejected, stats, runs, checks, a.flowStore != nil, flowModel{c: a.aiAssist}.Local())
+	body := vayuFlowPage(lang, flows, rejected, stats, runs, checks, a.flowStore != nil, flowModel{c: a.aiAssist}.Local()) +
+		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-vayuflow.js?v=` + assetVer("js/admin-os-vayuflow.js") + `"></script>`
 	full := adminOSShellHead(nonce, "VayuFlow", "vayuflow", cfg) + body +
-		adminOSShellFoot(nonce, vayuFlowScript, pageUsesAlpine(body))
+		adminOSShellFoot(nonce, "", pageUsesAlpine(body))
 	writeOSHTML(w, r, full)
 }
 
@@ -101,16 +105,16 @@ func (a *App) handleOSVayuFlow(w http.ResponseWriter, r *http.Request) {
 // matters when reading back why something started happening.
 func (a *App) handleOSVayuFlowArm(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Only an administrator can do this."), "")
 		return
 	}
 	if a.flowStore == nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "no-store", "automation store unavailable", "")
+		writeAPIError(w, r, http.StatusInternalServerError, "no-store", i18n.T(i18n.Lang(r.Context()), "The automation store is not available on this install."), "")
 		return
 	}
 	id := strings.TrimSpace(r.URL.Query().Get("id"))
 	if id == "" {
-		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "no flow id", "")
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", i18n.T(i18n.Lang(r.Context()), "The request names no flow."), "")
 		return
 	}
 	mode, ok := armModeFor(r.URL.Query().Get("mode"))
@@ -119,7 +123,7 @@ func (a *App) handleOSVayuFlowArm(w http.ResponseWriter, r *http.Request) {
 		// dry-run would be the safe-looking choice and would still be the
 		// endpoint answering a question the operator asked.
 		writeAPIError(w, r, http.StatusBadRequest, "bad-request",
-			`expected mode=live or mode=dry; nothing was changed`, "")
+			i18n.T(i18n.Lang(r.Context()), "Nothing was changed: the mode must be {live} or {dry}.", "live", "mode=live", "dry", "mode=dry"), "")
 		return
 	}
 	prior, err := a.flowStore.SetMode(r.Context(), id, mode)
@@ -149,11 +153,11 @@ func armModeFor(v string) (vayuflow.RunMode, bool) {
 // handleOSVayuFlowRun executes a flow once, now, on the operator's press.
 func (a *App) handleOSVayuFlowRun(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Only an administrator can do this."), "")
 		return
 	}
 	if a.flowStore == nil || a.flowRunner == nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "no-store", "automation engine unavailable", "")
+		writeAPIError(w, r, http.StatusInternalServerError, "no-store", i18n.T(i18n.Lang(r.Context()), "The automation engine is not available on this install."), "")
 		return
 	}
 	id := strings.TrimSpace(r.URL.Query().Get("id"))
@@ -179,43 +183,130 @@ func (a *App) handleOSVayuFlowRun(w http.ResponseWriter, r *http.Request) {
 // flowCheckChip renders a posture verdict. Only Pass gets the "on" tone — a
 // Context row is a fact, not a success, and toning it green would let the
 // honest-ceiling row read as reassurance.
-func flowCheckChip(s flowaudit.Status) string {
+func flowCheckChip(lang string, s flowaudit.Status) string {
 	switch s {
 	case flowaudit.Pass:
-		return string(ui.State("ok", "Ok"))
+		return string(ui.State("ok", i18n.T(lang, "Ok")))
 	case flowaudit.Warn:
-		return string(ui.State("warn", "Look"))
+		return string(ui.State("warn", i18n.T(lang, "Look")))
 	case flowaudit.Fail:
-		return string(ui.State("danger", "Act"))
+		return string(ui.State("danger", i18n.T(lang, "Act")))
 	}
-	return string(ui.State("neutral", "Note"))
+	return string(ui.State("neutral", i18n.T(lang, "Note")))
 }
 
 // flowModeChip renders a flow's arming state so it reads while collapsed.
 // Only a live flow takes the accent: a dry-run one must never read as armed.
-func flowModeChip(f vayuflow.Flow) string {
+func flowModeChip(lang string, f vayuflow.Flow) string {
 	if !f.Enabled {
-		return string(ui.State("neutral", "Disabled"))
+		return string(ui.State("neutral", i18n.T(lang, "Disabled")))
 	}
 	if f.Mode == vayuflow.RunLive {
-		return string(ui.State("accent", "Live"))
+		return string(ui.State("accent", i18n.T(lang, "Live")))
 	}
-	return string(ui.State("neutral", "Dry-run"))
+	return string(ui.State("neutral", i18n.T(lang, "Dry-run")))
 }
 
 // runStatusChip renders one run's outcome.
-func runStatusChip(s vayuflow.RunStatus) string {
+func runStatusChip(lang string, s vayuflow.RunStatus) string {
 	switch s {
 	case vayuflow.StatusSucceeded:
-		return string(ui.State("ok", "Succeeded"))
+		return string(ui.State("ok", i18n.T(lang, "Succeeded")))
 	case vayuflow.StatusRefused:
-		return string(ui.State("warn", "Refused"))
+		return string(ui.State("warn", i18n.T(lang, "Refused")))
 	case vayuflow.StatusInterrupted:
-		return string(ui.State("warn", "Interrupted"))
+		return string(ui.State("warn", i18n.T(lang, "Interrupted")))
 	case vayuflow.StatusFailed:
-		return string(ui.State("danger", "Failed"))
+		return string(ui.State("danger", i18n.T(lang, "Failed")))
+	case vayuflow.StatusRunning:
+		return string(ui.State("neutral", i18n.T(lang, "Running")))
 	}
 	return string(ui.State("neutral", titleFirst(string(s))))
+}
+
+// The engine's words for a flow are its own, in English, for the audit trail
+// and the JSON the page's script reads; the page names them in lang. Each
+// returns the engine's word for a value it does not know.
+
+// flowModeName is a run mode's one word.
+func flowModeName(lang string, m vayuflow.RunMode) string {
+	switch m {
+	case vayuflow.RunDryRun:
+		return i18n.T(lang, "dry-run")
+	case vayuflow.RunLive:
+		return i18n.T(lang, "live")
+	}
+	return m.String()
+}
+
+// flowModeSentence says what a mode means, in the engine's own word for it
+// ("dry-run", as the trail records it): a panel that said "test mode" while
+// the trail says "dry-run" would make an operator reconcile two
+// vocabularies for one state.
+func flowModeSentence(lang string, m vayuflow.RunMode) string {
+	switch m {
+	case vayuflow.RunDryRun:
+		return i18n.T(lang, "dry-run — effects are captured and refused at the capability boundary")
+	case vayuflow.RunLive:
+		return i18n.T(lang, "live — effects reach the world, bounded by the declared budget")
+	}
+	return i18n.T(lang, "unset — this flow cannot run")
+}
+
+// flowTriggerSummary renders a trigger in one short phrase; a cron
+// expression and an event's name are written as they are.
+func flowTriggerSummary(lang string, t vayuflow.Trigger) string {
+	switch t.Kind {
+	case vayuflow.TriggerSchedule:
+		return i18n.T(lang, "schedule · {cron}", "cron", t.Cron)
+	case vayuflow.TriggerEvent:
+		return i18n.T(lang, "event · {event}", "event", t.Event)
+	case vayuflow.TriggerManual:
+		return i18n.T(lang, "manual")
+	}
+	return t.Kind.String()
+}
+
+// flowWriteWord names the strongest write an action may perform.
+func flowWriteWord(lang string, w vayuflow.WritePolicy) string {
+	switch w {
+	case vayuflow.WriteNone:
+		return i18n.T(lang, "none")
+	case vayuflow.WriteDraft:
+		return i18n.T(lang, "draft")
+	case vayuflow.WriteLive:
+		return i18n.T(lang, "live")
+	}
+	return w.String()
+}
+
+// flowOnionWord names what an action does in a Tor Space.
+func flowOnionWord(lang string, o vayuflow.OnionPolicy) string {
+	switch o {
+	case vayuflow.OnionInert:
+		return i18n.T(lang, "inert")
+	case vayuflow.OnionActive:
+		return i18n.T(lang, "active")
+	}
+	return o.String()
+}
+
+// flowUndoWord names whether an action can be undone.
+func flowUndoWord(lang string, r vayuflow.Reversible) string {
+	switch r {
+	case vayuflow.ReversibleByOperator:
+		return i18n.T(lang, "reversible")
+	case vayuflow.Irreversible:
+		return i18n.T(lang, "irreversible")
+	}
+	return r.String()
+}
+
+// recorded is what the engine wrote down, shown as written: an error, what a
+// step did or would have done, its output. It is in the language it was
+// recorded in, so the page's language does not claim it.
+func recorded(tag, class, text string) string {
+	return `<` + tag + ` class="` + class + `" translate="no">` + esc(text) + `</` + tag + `>`
 }
 
 // vayuFlowPage builds the console body. Pure, so it can be rendered and
@@ -224,10 +315,11 @@ func runStatusChip(s vayuflow.RunStatus) string {
 // know it: a model step is outbound only when the configured provider is
 // remote, and only the install can say which it has. The banner below used to
 // answer without asking, and got it wrong for every local provider.
-func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
+func vayuFlowPage(lang string, flows []vayuflow.Flow, rejected map[string]error,
 	stats vayuflow.Stats, runs []vayuflow.Run, checks []flowaudit.Check,
 	wired, modelLocal bool) string {
 	var b strings.Builder
+	t := func(s string) string { return esc(s) }
 
 	armed := 0
 	for _, f := range flows {
@@ -236,68 +328,63 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 		}
 	}
 	pass, warn, fail, ctxRows := flowaudit.Summary(checks)
-	tone, state := vayuFlowState(wired, fail, warn, armed)
+	tone, state := vayuFlowState(lang, wired, fail, warn, armed)
 	head := ui.StatusPage{
 		Title: "VayuFlow",
-		Actions: `<span id="flow-status" class="text-sm muted" role="status" aria-live="polite"></span>` +
-			`<a class="btn btn--ghost btn--sm" href="/os/adr">ADR-0151</a>` +
-			`<button type="button" class="btn btn--primary btn--sm" data-sheet="flow-create">Create a flow</button>`,
+		Actions: ui.HTML(`<span id="flow-status" class="text-sm muted" role="status" aria-live="polite"></span>` +
+			`<a class="btn btn--ghost btn--sm" href="/os/adr">` + flowADR + `</a>` +
+			`<button type="button" class="btn btn--primary btn--sm" data-sheet="flow-create">` + t(i18n.T(lang, "Create a flow")) + `</button>`),
 		Tone:  tone,
 		State: state,
-		Detail: ui.Text(strconv.Itoa(stats.Runs) + " run" + plural(stats.Runs) + ", " + strconv.Itoa(stats.Refused) + " refused and " +
-			strconv.Itoa(stats.BudgetCapped) + " at a ceiling in the last day"),
+		Detail: ui.Text(i18n.T(lang, "{runs, plural, one {# run} other {# runs}}, {refused} refused and {capped} at a ceiling in the last day",
+			"runs", stats.Runs, "refused", stats.Refused, "capped", stats.BudgetCapped)),
 	}
-	b.WriteString(string(ui.Explain(`<p>Every flow is armed by a named operator, spends against ceilings it ` +
-		`declared before it could be saved, and records what it did. <b>A new flow starts in ` +
-		`dry-run</b>: the whole flow executes and every effect is captured and refused at the ` +
-		`capability boundary, so what you read is what a live run would do.</p>`)))
+	b.WriteString(string(ui.ExplainTitled(i18n.T(lang, "How this works"), ui.HTML(`<p>`+escFill(i18n.T(lang, "Every flow is armed by a named operator, spends against ceilings it declared before it could be saved, and records what it did. {lead}: the whole flow executes and every effect is captured and refused at the capability boundary, so what you read is what a live run would do.",
+		"lead", htmlMark(0)), `<b>`+t(i18n.T(lang, "A new flow starts in dry-run"))+`</b>`)+`</p>`))))
 
 	// ── Posture ──────────────────────────────────────────────────────────────
 	posture := make([]ui.Row, 0, len(checks))
 	for _, c := range checks {
-		posture = append(posture, ui.Row{Label: c.Title, Hint: c.Detail, Control: ui.HTML(flowCheckChip(c.Status))})
+		posture = append(posture, ui.Row{Label: c.Title, Hint: c.Detail, Control: ui.HTML(flowCheckChip(lang, c.Status))})
 	}
-	b.WriteString(string(ui.Section("Posture", "computed now: "+strconv.Itoa(fail)+" to act on, "+strconv.Itoa(warn)+
-		" to look at, "+strconv.Itoa(pass)+" ok, "+strconv.Itoa(ctxRows)+" noted", ui.Rows(posture...))))
+	b.WriteString(string(ui.Section(i18n.T(lang, "Posture"),
+		i18n.T(lang, "computed now: {fail} to act on, {warn} to look at, {pass} ok, {noted} noted", "fail", fail, "warn", warn, "pass", pass, "noted", ctxRows),
+		ui.Rows(posture...))))
 
 	// ── What can be automated ────────────────────────────────────────────────
 	var caps [][]ui.HTML
 	for _, c := range vayuflow.Capabilities() {
-		caps = append(caps, []ui.HTML{`<span class="mono">` + ui.Text(c.Action) + `</span>`, ui.Text(c.Writes.String()),
-			ui.Text(c.Onion.String()), ui.Text(c.Undo.String()), ui.Text(c.MinRole)})
+		caps = append(caps, []ui.HTML{`<span class="mono">` + ui.Text(c.Action) + `</span>`, ui.Text(flowWriteWord(lang, c.Writes)),
+			ui.Text(flowOnionWord(lang, c.Onion)), ui.Text(flowUndoWord(lang, c.Undo)), ui.Text(teamRoleName(lang, c.MinRole))})
 	}
-	b.WriteString(string(ui.Section("What a flow may do", "an action not listed cannot be invoked", ui.Join(
-		ui.Table([]string{"Action", "Writes", "Tor", "Undo", "Owner must be"}, caps, ""),
-		`<p class="text-sm muted">Settings, users, keys, domains, protection and payments cannot be automated.`+
-			ui.Tip("Every action an automation can take is registered with what it touches, the strongest write it may perform, what it does in a Tor Space, whether it can be undone, and the role its owner must still hold.")+`</p>`,
+	b.WriteString(string(ui.Section(i18n.T(lang, "What a flow may do"), i18n.T(lang, "an action not listed cannot be invoked"), ui.Join(
+		ui.Table([]string{i18n.T(lang, "Action"), i18n.T(lang, "Writes"), "Tor", i18n.T(lang, "Undo"), i18n.T(lang, "Owner must be")}, caps, ""),
+		ui.HTML(`<p class="text-sm muted">`+t(i18n.T(lang, "Settings, users, keys, domains, protection and payments cannot be automated."))+
+			string(ui.Tip(i18n.T(lang, "Every action an automation can take is registered with what it touches, the strongest write it may perform, what it does in a Tor Space, whether it can be undone, and the role its owner must still hold.")))+`</p>`),
 	))))
 
 	// ── Flows ────────────────────────────────────────────────────────────────
-	b.WriteString(`<section><div class="section-head"><h2 class="section-head__title">Flows</h2>` +
-		`<span class="section-head__hint">` + strconv.Itoa(len(flows)) + ` · ` + strconv.Itoa(armed) + ` live</span></div>`)
+	b.WriteString(`<section><div class="section-head"><h2 class="section-head__title">` + t(i18n.T(lang, "Flows")) + `</h2>` +
+		`<span class="section-head__hint">` + t(i18n.T(lang, "{n} · {live} live", "n", len(flows), "live", armed)) + `</span></div>`)
 	if len(flows) == 0 {
-		b.WriteString(string(ui.Empty("flow", "No automations yet", "One you create starts switched off, in dry-run.",
-			`<button type="button" class="btn btn--sm" data-sheet="flow-create">Create a flow</button>`)))
+		b.WriteString(string(ui.Empty("flow", i18n.T(lang, "No automations yet"), i18n.T(lang, "One you create starts switched off, in dry-run."),
+			ui.HTML(`<button type="button" class="btn btn--sm" data-sheet="flow-create">`+t(i18n.T(lang, "Create a flow"))+`</button>`))))
 	}
 	b.WriteString(`<div class="mon-stack">`)
 	for i, f := range flows {
 		var body strings.Builder
-		body.WriteString(`<div class="settings-block-title">Blast radius</div>`)
-		body.WriteString(`<p class="text-sm muted">Highest write <b>` + esc(f.HighestWrite().String()) +
-			`</b> · owner <span class="mono">` + esc(f.Owner) + `</span> must hold <b>` +
-			esc(f.MinOwnerRole()) + `</b> when it runs · ceilings: ` +
-			strconv.Itoa(f.Budget.MaxStepsPerRun) + ` steps, ` +
-			strconv.Itoa(f.Budget.MaxWritesPerRun) + ` writes, ` +
-			strconv.Itoa(f.Budget.MaxEgressPerRun) + ` fetches, ` +
-			strconv.Itoa(f.Budget.MaxRunsPerHour) + `/hour, ` +
-			esc(f.Budget.Timeout.String()) + ` wall clock.</p>`)
-		body.WriteString(`<div class="settings-block-title">Mode</div>`)
-		body.WriteString(`<p class="text-sm muted">` + esc(vayuflow.DescribeMode(f.Mode)) + `</p>`)
-		body.WriteString(`<div class="settings-block-title">Steps</div>`)
+		body.WriteString(`<div class="settings-block-title">` + t(i18n.T(lang, "Blast radius")) + `</div>`)
+		body.WriteString(`<p class="text-sm muted">` + escFill(i18n.T(lang, "Highest write {write} · owner {owner} must hold {role} when it runs · ceilings: {steps} steps, {writes} writes, {fetches} fetches, {hourly}/hour, {timeout} wall clock.",
+			"write", htmlMark(0), "owner", htmlMark(1), "role", htmlMark(2), "steps", f.Budget.MaxStepsPerRun, "writes", f.Budget.MaxWritesPerRun,
+			"fetches", f.Budget.MaxEgressPerRun, "hourly", f.Budget.MaxRunsPerHour, "timeout", f.Budget.Timeout.String()),
+			`<b>`+t(flowWriteWord(lang, f.HighestWrite()))+`</b>`, `<span class="mono">`+t(f.Owner)+`</span>`, `<b>`+t(teamRoleName(lang, f.MinOwnerRole()))+`</b>`) + `</p>`)
+		body.WriteString(`<div class="settings-block-title">` + t(i18n.T(lang, "Mode")) + `</div>`)
+		body.WriteString(`<p class="text-sm muted">` + t(flowModeSentence(lang, f.Mode)) + `</p>`)
+		body.WriteString(`<div class="settings-block-title">` + t(i18n.T(lang, "Steps")) + `</div>`)
 		body.WriteString(`<p class="text-sm"><span class="mono">` + esc(vayuflow.ActionSummary(f.Steps)) + `</span></p>`)
 		if f.NeedsEgress() {
-			body.WriteString(`<p class="text-sm">` + string(ui.State("warn", "This flow reaches a remote host.")) +
-				` It is inert while the install runs as a Tor Space.</p>`)
+			body.WriteString(`<p class="text-sm">` + string(ui.State("warn", i18n.T(lang, "This flow reaches a remote host."))) +
+				` ` + t(i18n.T(lang, "It is inert while the install runs as a Tor Space.")) + `</p>`)
 		}
 		// Said separately, and only about what is true. A model step reaches out
 		// when the provider is remote and does not when it runs here, so the
@@ -305,63 +392,65 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 		// dangerous one and calling every local generation an outbound call.
 		if f.NeedsModel() {
 			if modelLocal {
-				body.WriteString(`<div class="text-sm muted">This flow calls a model. The configured ` +
-					`provider runs on this host, so the step is not an outbound call and stays ` +
-					`active in a Tor Space.</div>`)
+				body.WriteString(`<div class="text-sm muted">` + t(i18n.T(lang, "This flow calls a model. The configured provider runs on this host, so the step is not an outbound call and stays active in a Tor Space.")) + `</div>`)
 			} else {
-				body.WriteString(`<p class="text-sm">` + string(ui.State("warn", "This flow calls a model, and the configured provider is remote.")) +
-					` That makes the step an outbound call, so it is inert while the install runs as a Tor Space.</p>`)
+				body.WriteString(`<p class="text-sm">` + string(ui.State("warn", i18n.T(lang, "This flow calls a model, and the configured provider is remote."))) +
+					` ` + t(i18n.T(lang, "That makes the step an outbound call, so it is inert while the install runs as a Tor Space.")) + `</p>`)
 			}
 		}
-		enableLabel, enableTo := "Switch on", "true"
+		enableLabel, enableTo := i18n.T(lang, "Switch on"), "true"
 		if f.Enabled {
-			enableLabel, enableTo = "Switch off", "false"
+			enableLabel, enableTo = i18n.T(lang, "Switch off"), "false"
 		}
 		body.WriteString(`<div class="flex-between">` +
-			`<button type="button" class="btn btn--primary btn--sm" data-flow-run="` + esc(f.ID) + `">Run once now</button>` +
-			`<button type="button" class="btn btn--sm" data-flow-enable="` + esc(f.ID) + `" data-flow-on="` + enableTo + `">` + enableLabel + `</button>` +
-			`<button type="button" class="btn btn--sm" data-flow-arm="` + esc(f.ID) + `" data-flow-mode="live">Arm live</button>` +
-			`<button type="button" class="btn btn--ghost btn--sm" data-flow-arm="` + esc(f.ID) + `" data-flow-mode="dry">Return to dry-run</button>` +
-			`<button type="button" class="btn btn--ghost btn--sm" data-flow-delete="` + esc(f.ID) + `" data-flow-name="` + esc(f.Name) + `">Delete</button>` +
+			`<button type="button" class="btn btn--primary btn--sm" data-flow-run="` + esc(f.ID) + `">` + t(i18n.T(lang, "Run once now")) + `</button>` +
+			`<button type="button" class="btn btn--sm" data-flow-enable="` + esc(f.ID) + `" data-flow-on="` + enableTo + `">` + t(enableLabel) + `</button>` +
+			`<button type="button" class="btn btn--sm" data-flow-arm="` + esc(f.ID) + `" data-flow-mode="live">` + t(i18n.T(lang, "Arm live")) + `</button>` +
+			`<button type="button" class="btn btn--ghost btn--sm" data-flow-arm="` + esc(f.ID) + `" data-flow-mode="dry">` + t(i18n.T(lang, "Return to dry-run")) + `</button>` +
+			`<button type="button" class="btn btn--ghost btn--sm" data-flow-delete="` + esc(f.ID) + `" data-flow-name="` + esc(f.Name) + `">` + t(i18n.T(lang, "Delete")) + `</button>` +
 			`</div>`)
 
-		sub := vayuflow.TriggerSummary(f.Trigger) + " · v" + strconv.Itoa(f.Version)
-		b.WriteString(monAcc(saIcon("settings"), f.Name, sub, flowModeChip(f), i == 0, body.String()))
+		sub := flowTriggerSummary(lang, f.Trigger) + " · v" + strconv.Itoa(f.Version)
+		// A flow's name is its operator's words, in their language, so the
+		// page's language does not claim it.
+		b.WriteString(strings.Replace(monAcc(saIcon("settings"), f.Name, sub, flowModeChip(lang, f), i == 0, body.String()),
+			`<span class="mon-acc__title">`, `<span class="mon-acc__title" translate="no">`, 1))
 	}
 	b.WriteString(`</div></section>`)
 
 	if len(rejected) > 0 {
 		// Listed rather than skipped: an automation an operator believes is
 		// armed and which silently never runs is the worst state this page can
-		// hide.
+		// hide. The reason is the engine's, as it recorded it.
 		var rows []ui.Row
 		for id, err := range rejected {
-			rows = append(rows, ui.Row{Label: id, Hint: err.Error(), Control: ui.State("danger", "Will not fire")})
+			rows = append(rows, ui.Row{Label: id, Hint: err.Error(), Control: ui.State("danger", i18n.T(lang, "Will not fire"))})
 		}
-		b.WriteString(string(ui.Section("Flows that cannot run", "enabled, but no longer valid", ui.Rows(rows...))))
+		b.WriteString(string(ui.Section(i18n.T(lang, "Flows that cannot run"), i18n.T(lang, "enabled, but no longer valid"), ui.Rows(rows...))))
 	}
 
 	// ── The trail ────────────────────────────────────────────────────────────
-	b.WriteString(`<section><div class="section-head"><h2 class="section-head__title">Recent runs</h2>` +
-		`<span class="section-head__hint">what happened, and what it spent</span></div>`)
+	b.WriteString(`<section><div class="section-head"><h2 class="section-head__title">` + t(i18n.T(lang, "Recent runs")) + `</h2>` +
+		`<span class="section-head__hint">` + t(i18n.T(lang, "what happened, and what it spent")) + `</span></div>`)
 	if len(runs) == 0 {
-		b.WriteString(`<p class="text-sm muted">Nothing has run yet.</p>`)
+		b.WriteString(`<p class="text-sm muted">` + t(i18n.T(lang, "Nothing has run yet.")) + `</p>`)
 	}
 	b.WriteString(`<div class="mon-stack">`)
 	for _, run := range runs {
 		var body strings.Builder
-		body.WriteString(`<p class="text-sm muted">` +
-			`Flow version <b>v` + strconv.Itoa(run.FlowVersion) + `</b> · cause <span class="mono">` +
-			esc(run.Cause) + `</span> · mode <b>` + esc(run.Mode.String()) + `</b> · owner ` +
-			`<span class="mono">` + esc(run.Owner) + `</span> ran as <b>` + esc(run.OwnerRole) + `</b></p>`)
+		body.WriteString(`<p class="text-sm muted">` + escFill(i18n.T(lang, "Flow version {version} · cause {cause} · mode {mode} · owner {owner} ran as {role}",
+			"version", htmlMark(0), "cause", htmlMark(1), "mode", htmlMark(2), "owner", htmlMark(3), "role", htmlMark(4)),
+			`<b>v`+strconv.Itoa(run.FlowVersion)+`</b>`, `<span class="mono" translate="no">`+esc(run.Cause)+`</span>`,
+			`<b>`+t(flowModeName(lang, run.Mode))+`</b>`, `<span class="mono">`+esc(run.Owner)+`</span>`, `<b>`+t(teamRoleName(lang, run.OwnerRole))+`</b>`) + `</p>`)
 		// Spend beside its ceiling. A count without its limit means nothing, and
 		// a limit without its count hides the flow living at the edge of it.
-		body.WriteString(`<p class="text-sm">Spent — steps <b>` +
-			strconv.Itoa(run.Spend.Steps) + ` / ` + strconv.Itoa(run.Budget.MaxStepsPerRun) + `</b>, writes <b>` +
-			strconv.Itoa(run.Spend.Writes) + ` / ` + strconv.Itoa(run.Budget.MaxWritesPerRun) + `</b>, fetches <b>` +
-			strconv.Itoa(run.Spend.Egress) + ` / ` + strconv.Itoa(run.Budget.MaxEgressPerRun) + `</b></p>`)
+		body.WriteString(`<p class="text-sm">` + escFill(i18n.T(lang, "Spent — steps {steps}, writes {writes}, fetches {fetches}",
+			"steps", htmlMark(0), "writes", htmlMark(1), "fetches", htmlMark(2)),
+			`<b>`+strconv.Itoa(run.Spend.Steps)+` / `+strconv.Itoa(run.Budget.MaxStepsPerRun)+`</b>`,
+			`<b>`+strconv.Itoa(run.Spend.Writes)+` / `+strconv.Itoa(run.Budget.MaxWritesPerRun)+`</b>`,
+			`<b>`+strconv.Itoa(run.Spend.Egress)+` / `+strconv.Itoa(run.Budget.MaxEgressPerRun)+`</b>`) + `</p>`)
 		if run.Error != "" {
-			body.WriteString(`<p class="text-sm">` + string(ui.State("danger", run.Error)) + `</p>`)
+			body.WriteString(recorded("p", "text-sm status--danger", run.Error))
 		}
 		for _, st := range run.Steps {
 			body.WriteString(`<div class="settings-block-title"><span class="mono">` + esc(st.Action) + `</span></div>`)
@@ -369,147 +458,30 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 				// What the step actually performed. A model call belongs here
 				// even in a dry run: §8 requires the generation to be real, and
 				// a reader must be able to tell that it was.
-				body.WriteString(`<p class="text-sm muted">` + esc(st.Did) + `</p>`)
+				body.WriteString(recorded("p", "text-sm muted", st.Did))
 			}
 			if st.Refused != "" {
 				// The dry-run diff: what this step WOULD have done.
-				body.WriteString(`<pre class="code-block">` + esc(st.Refused) + `</pre>`)
+				body.WriteString(recorded("pre", "code-block", st.Refused))
 			}
 			if st.Output != "" {
-				body.WriteString(`<p class="text-sm">` + esc(st.Output) + `</p>`)
+				body.WriteString(recorded("p", "text-sm", st.Output))
 			}
 			if st.Error != "" {
-				body.WriteString(`<p class="text-sm"><span class="mono">` + esc(st.Error) + `</span></p>`)
+				body.WriteString(`<p class="text-sm">` + recorded("span", "mono", st.Error) + `</p>`)
 			}
 		}
 		when := run.StartedAt.Format("2006-01-02 15:04")
-		b.WriteString(monAcc(saIcon("play"), when, run.FlowID, runStatusChip(run.Status), false, body.String()))
+		b.WriteString(monAcc(saIcon("play"), when, run.FlowID, runStatusChip(lang, run.Status), false, body.String()))
 	}
 	b.WriteString(`</div></section>`)
 
-	return string(ui.Status(head, ui.HTML(b.String()))) + string(ui.Sheet("flow-create", "Create a flow", ui.HTML(flowEditorCard())))
+	return string(ui.Status(head, ui.HTML(b.String()))) + string(ui.SheetClosing("flow-create", i18n.T(lang, "Create a flow"), i18n.T(lang, "Close"), ui.HTML(flowEditorCard(lang))))
 }
 
-// vayuFlowScript wires the arm and run buttons. One nonce'd script, no inline
-// handlers, no Alpine.
-const vayuFlowScript = `
-(function(){'use strict';
-var status=document.getElementById('flow-status');
-function say(t){ if(status){ status.textContent=t; } }
-function post(url,done){
-  fetch(url,{method:'POST',headers:{'X-CSRF-Token':(document.cookie.match(/(?:^|; )vayu_csrf=([^;]*)/)||[])[1]||''}})
-    .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
-    .then(function(res){ done(res); })
-    .catch(function(){ say('Request failed.'); });
-}
-document.addEventListener('click',function(ev){
-  var arm=ev.target.closest('[data-flow-arm]');
-  if(arm){
-    var id=arm.getAttribute('data-flow-arm'), mode=arm.getAttribute('data-flow-mode');
-    say('Working…');
-    post('/os/api/vayuflow/arm?id='+encodeURIComponent(id)+'&mode='+encodeURIComponent(mode),function(res){
-      if(res.ok){ say('Mode: '+res.d.prior+' → '+res.d.mode+'. Reload to refresh.'); }
-      else { say((res.d&&res.d.error&&(res.d.error.message||res.d.error))||'Could not change mode.'); }
-    });
-    return;
-  }
-  var run=ev.target.closest('[data-flow-run]');
-  if(run){
-    say('Running…');
-    post('/os/api/vayuflow/run?id='+encodeURIComponent(run.getAttribute('data-flow-run')),function(res){
-      if(res.ok){ say('Run '+res.d.outcome+' — writes '+res.d.writes+'. Reload to see the trail.'); }
-      else { say((res.d&&res.d.error&&(res.d.error.message||res.d.error))||'Run failed.'); }
-    });
-    return;
-  }
-  var en=ev.target.closest('[data-flow-enable]');
-  if(en){
-    var eid=en.getAttribute('data-flow-enable'), on=en.getAttribute('data-flow-on');
-    say('Working…');
-    post('/os/api/vayuflow/enable?id='+encodeURIComponent(eid)+'&on='+encodeURIComponent(on),function(res){
-      if(res.ok){ say(res.d.enabled?'Switched on. Reload to refresh.':'Switched off. Reload to refresh.'); }
-      else { say((res.d&&res.d.error&&(res.d.error.message||res.d.error))||'Could not change it.'); }
-    });
-    return;
-  }
-  var del=ev.target.closest('[data-flow-delete]');
-  if(del){
-    var did=del.getAttribute('data-flow-delete');
-    // Confirmed by NAME, not by id. An operator asked to confirm an opaque hex
-    // string is being asked to agree to something they cannot read.
-    vpConfirm({title:'Delete flow',message:'Delete "'+del.getAttribute('data-flow-name')+'"? Its runs stay in the trail.',confirm:'Delete'},function(){
-    say('Deleting…');
-    post('/os/api/vayuflow/delete?id='+encodeURIComponent(did),function(res){
-      if(res.ok){ say('Deleted. Reload to refresh.'); }
-      else { say((res.d&&res.d.error&&(res.d.error.message||res.d.error))||'Could not delete it.'); }
-    });
-    });
-  }
-});
-
-function val(id){ var el=document.getElementById(id); return el?el.value.trim():''; }
-function num(id){ var n=parseInt(val(id),10); return isNaN(n)?0:n; }
-// Parameters are key=value per line. Split on the FIRST '=' only, so a value
-// containing one — a URL with a query string, a prompt with an equation —
-// survives intact.
-function params(id){
-  var out={}, lines=val(id).split('\n');
-  for(var i=0;i<lines.length;i++){
-    var line=lines[i].trim(); if(!line){ continue; }
-    var at=line.indexOf('='); if(at<1){ continue; }
-    out[line.slice(0,at).trim()]=line.slice(at+1).trim();
-  }
-  return out;
-}
-var saveBtn=document.getElementById('ff-save');
-if(saveBtn){ saveBtn.addEventListener('click',function(){
-  var steps=[];
-  for(var i=1;i<=4;i++){
-    var a=val('ff-act'+i); if(!a){ continue; }
-    steps.push({action:a,params:params('ff-par'+i)});
-  }
-  var doc={
-    id:val('ff-id'), name:val('ff-name'),
-    trigger:{kind:val('ff-trigger'),cron:val('ff-cron'),event:val('ff-event')},
-    condition:{kind:val('ff-cond'),value:val('ff-condval')},
-    steps:steps,
-    budget:{max_steps_per_run:num('ff-bsteps'),max_runs_per_hour:num('ff-bruns'),
-      max_writes_per_run:num('ff-bwrites'),max_egress_per_run:num('ff-begress'),
-      timeout_seconds:num('ff-btimeout')}
-  };
-  say('Saving…');
-  fetch('/os/api/vayuflow/save',{method:'POST',
-    headers:{'Content-Type':'application/json','X-CSRF-Token':(document.cookie.match(/(?:^|; )vayu_csrf=([^;]*)/)||[])[1]||''},
-    body:JSON.stringify(doc)})
-   .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
-   .then(function(res){
-     if(res.ok){
-       // The store is the authority on what was accepted, so the confirmation
-       // quotes what came BACK rather than what was sent.
-       say((res.d.created?'Created':'Saved')+' — v'+res.d.version+', writes at most '+res.d.highest_write+
-           ', owner must hold '+res.d.min_owner+'. It is '+(res.d.enabled?'on':'off')+
-           ' and in '+res.d.mode+'. Reload to see it listed.');
-     } else {
-       // The store's refusal is shown verbatim. It is written to be read by the
-       // person who filled the form, and paraphrasing it here would lose the
-       // one sentence that says which field is wrong.
-       say((res.d&&res.d.error&&(res.d.error.message||res.d.error))||'Could not save it.');
-     }
-   })
-   .catch(function(){ say('Request failed.'); });
-}); }
-var resetBtn=document.getElementById('ff-reset');
-if(resetBtn){ resetBtn.addEventListener('click',function(){
-  ['ff-id','ff-name','ff-cron','ff-condval','ff-par1','ff-par2','ff-par3','ff-par4'].forEach(function(id){
-    var el=document.getElementById(id); if(el){ el.value=''; }
-  });
-  ['ff-act1','ff-act2','ff-act3','ff-act4','ff-event'].forEach(function(id){
-    var el=document.getElementById(id); if(el){ el.selectedIndex=0; }
-  });
-  say('Form cleared.');
-}); }
-})();
-`
+// flowADR is the decision VayuFlow is built to, named as the Decisions page
+// names it.
+const flowADR = "ADR-0151"
 
 // flowRoleResolver reads an owner's CURRENT role from the user store. It is the
 // function that makes a demotion take effect: nothing about authority is cached
@@ -538,92 +510,100 @@ func (a *App) flowRoleResolver() vayuflow.RoleResolver {
 // The budget fields have no "unlimited" and no blank default. ADR-0151 §3 makes
 // unlimited inexpressible on purpose; a form that let the field stay empty would
 // reintroduce it as a shrug.
-func flowEditorCard() string {
+func flowEditorCard(lang string) string {
 	var b strings.Builder
-	b.WriteString(`<div class="settings-block-title">What it is</div>`)
-	b.WriteString(`<div class="field"><label class="field-label" for="ff-name">Name</label>` +
-		`<input class="input" id="ff-name" type="text" placeholder="Monday digest"></div>`)
+	t := func(s string) string { return esc(s) }
+	b.WriteString(`<div class="settings-block-title">` + t(i18n.T(lang, "What it is")) + `</div>`)
+	b.WriteString(`<div class="field"><label class="field-label" for="ff-name">` + t(i18n.T(lang, "Name")) + `</label>` +
+		`<input class="input" id="ff-name" type="text" placeholder="` + t(i18n.T(lang, "Monday digest")) + `"></div>`)
 	b.WriteString(`<input id="ff-id" type="hidden" value="">`)
 
-	b.WriteString(`<div class="settings-block-title">What starts it</div>`)
-	b.WriteString(`<div class="field"><label class="field-label" for="ff-trigger">Trigger</label>` +
+	b.WriteString(`<div class="settings-block-title">` + t(i18n.T(lang, "What starts it")) + `</div>`)
+	b.WriteString(`<div class="field"><label class="field-label" for="ff-trigger">` + t(i18n.T(lang, "Trigger")) + `</label>` +
 		`<select class="input" id="ff-trigger">` +
-		`<option value="manual">manual — only when you press Run</option>` +
-		`<option value="schedule">schedule — on a cron expression</option>` +
-		`<option value="event">event — when something happens here</option>` +
+		`<option value="manual">` + t(i18n.T(lang, "manual — only when you press Run")) + `</option>` +
+		`<option value="schedule">` + t(i18n.T(lang, "schedule — on a cron expression")) + `</option>` +
+		`<option value="event">` + t(i18n.T(lang, "event — when something happens here")) + `</option>` +
 		`</select></div>`)
-	b.WriteString(`<div class="field"><label class="field-label" for="ff-cron">Cron (schedule only)</label>` +
-		`<input class="input" id="ff-cron" type="text" placeholder="0 9 * * 1">` +
-		`<div class="field-hint">Five fields, install timezone. Parsed when you save, not when it ` +
-		`first fires — an expression that only fails at 9am on Monday is one you find out about on Tuesday.</div></div>`)
-	b.WriteString(`<div class="field"><label class="field-label" for="ff-event">Event (event only)</label>` +
+	b.WriteString(`<div class="field"><label class="field-label" for="ff-cron">` + t(i18n.T(lang, "Cron (schedule only)")) + `</label>` +
+		`<input class="input" id="ff-cron" type="text" placeholder="` + flowCronExample + `">` +
+		`<div class="field-hint">` + t(i18n.T(lang, "Five fields, install timezone. Parsed when you save, not when it first fires — an expression that only fails at 9am on Monday is one you find out about on Tuesday.")) + `</div></div>`)
+	b.WriteString(`<div class="field"><label class="field-label" for="ff-event">` + t(i18n.T(lang, "Event (event only)")) + `</label>` +
 		`<select class="input" id="ff-event"><option value="">—</option>`)
 	for _, e := range vayuflow.KnownEvents() {
-		b.WriteString(`<option value="` + esc(e) + `">` + esc(e) + `</option>`)
+		b.WriteString(`<option value="` + esc(e) + `" translate="no">` + esc(e) + `</option>`)
 	}
 	b.WriteString(`</select></div>`)
 
-	b.WriteString(`<div class="settings-block-title">Which subjects</div>`)
-	b.WriteString(`<div class="field"><label class="field-label" for="ff-cond">Condition</label>` +
+	b.WriteString(`<div class="settings-block-title">` + t(i18n.T(lang, "Which subjects")) + `</div>`)
+	b.WriteString(`<div class="field"><label class="field-label" for="ff-cond">` + t(i18n.T(lang, "Condition")) + `</label>` +
 		`<select class="input" id="ff-cond">`)
 	for _, n := range vayuflow.LeafConditionNames() {
-		b.WriteString(`<option value="` + esc(n) + `">` + esc(n) + `</option>`)
+		b.WriteString(`<option value="` + esc(n) + `" translate="no">` + esc(n) + `</option>`)
 	}
-	b.WriteString(`</select><div class="field-hint">"always" is a real answer, not a missing one. ` +
-		`Combining conditions with all/any/not is not expressible here yet.</div></div>`)
-	b.WriteString(`<div class="field"><label class="field-label" for="ff-condval">Compare against</label>` +
-		`<input class="input" id="ff-condval" type="text" placeholder="release-notes"></div>`)
+	b.WriteString(`</select><div class="field-hint">` + escFill(i18n.T(lang, "{always} is a real answer, not a missing one. Combining conditions with {combine} is not expressible here yet.",
+		"always", htmlMark(0), "combine", htmlMark(1)), `<code>`+flowCondAlways+`</code>`, `<code>`+flowCondCombine+`</code>`) + `</div></div>`)
+	b.WriteString(`<div class="field"><label class="field-label" for="ff-condval">` + t(i18n.T(lang, "Compare against")) + `</label>` +
+		`<input class="input" id="ff-condval" type="text" translate="no" placeholder="release-notes"></div>`)
 
-	b.WriteString(`<div class="settings-block-title">What it does</div>`)
-	b.WriteString(`<p class="text-sm muted">Up to four steps, in order; a blank row stops there.` +
-		string(ui.Tip("Each step names an action from the registry above. Parameters are key=value, one per line. A parameter whose whole value is $prev receives the previous step's output.")) + `</p>`)
+	b.WriteString(`<div class="settings-block-title">` + t(i18n.T(lang, "What it does")) + `</div>`)
+	b.WriteString(`<p class="text-sm muted">` + t(i18n.T(lang, "Up to four steps, in order; a blank row stops there.")) +
+		string(ui.Tip(i18n.T(lang, "Each step names an action from the registry above. Parameters are {form}, one per line. A parameter whose whole value is {prev} receives the previous step's output.",
+			"form", "key=value", "prev", "$prev"))) + `</p>`)
 	for i := 1; i <= 4; i++ {
 		n := strconv.Itoa(i)
-		b.WriteString(`<div class="field"><label class="field-label" for="ff-act` + n + `">Step ` + n + `</label>` +
+		b.WriteString(`<div class="field"><label class="field-label" for="ff-act` + n + `">` + t(i18n.T(lang, "Step {n}", "n", i)) + `</label>` +
 			`<select class="input" id="ff-act` + n + `"><option value="">—</option>`)
 		for _, c := range vayuflow.Capabilities() {
-			b.WriteString(`<option value="` + esc(c.Action) + `">` + esc(c.Action) +
-				` — writes ` + esc(c.Writes.String()) + `, needs ` + esc(c.MinRole) + `</option>`)
+			b.WriteString(`<option value="` + esc(c.Action) + `">` + t(i18n.T(lang, "{action} — writes {write}, needs {role}",
+				"action", c.Action, "write", flowWriteWord(lang, c.Writes), "role", teamRoleName(lang, c.MinRole))) + `</option>`)
 		}
 		b.WriteString(`</select>` +
-			`<textarea class="input" id="ff-par` + n + `" rows="2" placeholder="title=Weekly digest"></textarea></div>`)
+			`<textarea class="input" id="ff-par` + n + `" rows="2" placeholder="` + t(i18n.T(lang, "title=Weekly digest")) + `"></textarea></div>`)
 	}
 
-	b.WriteString(`<div class="settings-block-title">What it may spend</div>`)
-	b.WriteString(`<p class="text-sm muted">Every ceiling is required; nothing is unlimited.` +
-		string(ui.Tip("The run trail shows what was spent against what was allowed.")) + `</p>`)
+	b.WriteString(`<div class="settings-block-title">` + t(i18n.T(lang, "What it may spend")) + `</div>`)
+	b.WriteString(`<p class="text-sm muted">` + t(i18n.T(lang, "Every ceiling is required; nothing is unlimited.")) +
+		string(ui.Tip(i18n.T(lang, "The run trail shows what was spent against what was allowed."))) + `</p>`)
 	for _, f := range []struct{ id, label, def string }{
-		{"ff-bsteps", "Steps per run", "4"},
-		{"ff-bruns", "Runs per hour", "2"},
-		{"ff-bwrites", "Writes per run", "1"},
-		{"ff-begress", "Fetches per run", "1"},
-		{"ff-btimeout", "Wall clock (seconds)", "60"},
+		{"ff-bsteps", i18n.T(lang, "Steps per run"), "4"},
+		{"ff-bruns", i18n.T(lang, "Runs per hour"), "2"},
+		{"ff-bwrites", i18n.T(lang, "Writes per run"), "1"},
+		{"ff-begress", i18n.T(lang, "Fetches per run"), "1"},
+		{"ff-btimeout", i18n.T(lang, "Wall clock (seconds)"), "60"},
 	} {
-		b.WriteString(`<div class="field"><label class="field-label" for="` + f.id + `">` + f.label + `</label>` +
+		b.WriteString(`<div class="field"><label class="field-label" for="` + f.id + `">` + t(f.label) + `</label>` +
 			`<input class="input" id="` + f.id + `" type="number" min="1" value="` + f.def + `"></div>`)
 	}
 
 	b.WriteString(`<div class="flex-between">` +
-		`<button type="button" class="btn btn--primary btn--sm" id="ff-save">Save flow</button>` +
-		`<button type="button" class="btn btn--ghost btn--sm" id="ff-reset">Clear the form</button>` +
+		`<button type="button" class="btn btn--primary btn--sm" id="ff-save">` + t(i18n.T(lang, "Save flow")) + `</button>` +
+		`<button type="button" class="btn btn--ghost btn--sm" id="ff-reset">` + t(i18n.T(lang, "Clear the form")) + `</button>` +
 		`</div>`)
-	b.WriteString(`<p class="text-sm muted">Saved off and in dry-run; arming is its own button.` +
-		string(ui.Tip("Neither this form nor an edit ever changes those. Arming has its own entry in the audit trail.")) + `</p>`)
+	b.WriteString(`<p class="text-sm muted">` + t(i18n.T(lang, "Saved off and in dry-run; arming is its own button.")) +
+		string(ui.Tip(i18n.T(lang, "Neither this form nor an edit ever changes those. Arming has its own entry in the audit trail."))) + `</p>`)
 	return b.String()
 }
 
+// A cron expression and the condition language's own words, shown as written.
+const (
+	flowCronExample = "0 9 * * 1"
+	flowCondAlways  = "always"
+	flowCondCombine = "all/any/not"
+)
+
 // vayuFlowState is the sentence VayuFlow opens on. An engine that is not
 // running comes first, because then nothing below can fire, whatever it says.
-func vayuFlowState(wired bool, fail, warn, armed int) (tone, state string) {
+func vayuFlowState(lang string, wired bool, fail, warn, armed int) (tone, state string) {
 	switch {
 	case !wired:
-		return "danger", "The automation engine is not running in this build, so no flow can fire"
+		return "danger", i18n.T(lang, "The automation engine is not running in this build, so no flow can fire")
 	case fail > 0:
-		return "danger", strconv.Itoa(fail) + " posture check" + plural(fail) + " to act on"
+		return "danger", i18n.T(lang, "{n, plural, one {# posture check} other {# posture checks}} to act on", "n", fail)
 	case warn > 0:
-		return "warn", strconv.Itoa(warn) + " posture check" + plural(warn) + " to look at"
+		return "warn", i18n.T(lang, "{n, plural, one {# posture check} other {# posture checks}} to look at", "n", warn)
 	case armed > 0:
-		return "ok", strconv.Itoa(armed) + " flow" + plural(armed) + " armed live, within their ceilings"
+		return "ok", i18n.T(lang, "{n, plural, one {# flow armed live, within its ceilings} other {# flows armed live, within their ceilings}}", "n", armed)
 	}
-	return "ok", "No flow is armed live; a new one starts in dry-run"
+	return "ok", i18n.T(lang, "No flow is armed live; a new one starts in dry-run")
 }

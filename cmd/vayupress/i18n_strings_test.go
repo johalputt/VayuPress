@@ -7,6 +7,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -39,7 +40,16 @@ func TestEverySentenceGivenToTIsInTheCatalogue(t *testing.T) {
 	}
 	used := map[string]bool{}
 	fset := token.NewFileSet()
+	// This package's files, and every package under internal/ that says a
+	// sentence itself: a sentence said only there (a setup page's "(done)",
+	// VayuFlow's posture report) is checked like one said here.
 	files, _ := filepath.Glob("*.go")
+	_ = filepath.WalkDir("../../internal", func(p string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.HasSuffix(p, ".go") && !strings.HasPrefix(p, "../../internal/i18n/") {
+			files = append(files, p)
+		}
+		return nil
+	})
 	for _, name := range files {
 		if strings.HasSuffix(name, "_test.go") {
 			continue

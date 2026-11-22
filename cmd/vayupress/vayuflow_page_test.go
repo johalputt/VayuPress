@@ -41,7 +41,7 @@ func renderPage(t *testing.T, flows []vayuflow.Flow, rejected map[string]error,
 func renderPageWithModel(t *testing.T, flows []vayuflow.Flow, rejected map[string]error,
 	stats vayuflow.Stats, runs []vayuflow.Run, wired, modelLocal bool) string {
 	t.Helper()
-	return vayuFlowPage(flows, rejected, stats, runs,
+	return vayuFlowPage("en", flows, rejected, stats, runs,
 		flowaudit.Run(flowaudit.Inputs{Wired: wired, Flows: flows, Rejected: rejected}),
 		wired, modelLocal)
 }
@@ -74,17 +74,17 @@ func TestAFlowsBlastRadiusIsVisibleOnThePage(t *testing.T) {
 // A dry-run flow must not read as armed, and a live one must not read as safe.
 func TestTheModeChipDistinguishesDryRunFromLive(t *testing.T) {
 	dry := samplePageFlow()
-	if got := flowModeChip(dry); !strings.Contains(got, ">Dry-run<") || strings.Contains(got, "sa-dot--accent") || strings.Contains(got, "sa-dot--ok") {
+	if got := flowModeChip("en", dry); !strings.Contains(got, ">Dry-run<") || strings.Contains(got, "sa-dot--accent") || strings.Contains(got, "sa-dot--ok") {
 		t.Errorf("a dry-run flow rendered as %q; it must not read as armed", got)
 	}
 	live := samplePageFlow()
 	live.Mode = vayuflow.RunLive
-	if got := flowModeChip(live); !strings.Contains(got, "sa-dot--accent") || !strings.Contains(got, ">Live<") {
+	if got := flowModeChip("en", live); !strings.Contains(got, "sa-dot--accent") || !strings.Contains(got, ">Live<") {
 		t.Errorf("a live flow rendered as %q", got)
 	}
 	off := samplePageFlow()
 	off.Enabled = false
-	if got := flowModeChip(off); !strings.Contains(got, ">Disabled<") {
+	if got := flowModeChip("en", off); !strings.Contains(got, ">Disabled<") {
 		t.Errorf("a disabled flow rendered as %q", got)
 	}
 }
@@ -320,7 +320,7 @@ func flowAccordion(t *testing.T, page, flowName string) string {
 		if end := strings.Index(chunk, "</details>"); end >= 0 {
 			chunk = chunk[:end]
 		}
-		if strings.Contains(chunk, `<span class="mon-acc__title">`+flowName+`</span>`) {
+		if strings.Contains(chunk, `<span class="mon-acc__title" translate="no">`+flowName+`</span>`) {
 			found = append(found, chunk)
 		}
 	}

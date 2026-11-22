@@ -34,6 +34,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   The restore commands and environment variables it shows stay as they are
   typed, and what the engine records (a pause's reason, a test restore's
   error and the counts it read back) as written.
+- **VayuFlow in thirteen languages.** The automation page, its posture
+  report, the actions a flow may take, the flow form and every answer its
+  buttons give follow the language chosen in the account menu. What a run
+  recorded (its errors, what a step did or would have done) and a flow's
+  name are shown as written.
 - **Theme Studio and the theme store in thirteen languages.** The Studio,
   its options and their choices, its readability panel, the menu, code and
   brand panels and every status its script writes, and the store with each
@@ -81,6 +86,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **VayuFlow's buttons work.** Saving a flow, running it once, switching it
+  on or off, arming it and deleting it were all refused with "CSRF token
+  missing or invalid": the page's script read a cookie the console does not
+  set. A browser test now saves a flow from the form and runs it.
 - On Backups, a control the server refused with an error showed "Done" in
   the error colour, on API keys only "Error", and in the Newsletter's
   composer "[object Object]", and on Advertising "Error"; each now says the

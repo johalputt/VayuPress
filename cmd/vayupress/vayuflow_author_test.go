@@ -211,7 +211,7 @@ func TestBlankParametersAreDroppedNotStoredEmpty(t *testing.T) {
 // the operator finds out by saving something the store refuses for a reason the
 // page never mentioned.
 func TestTheFormOffersExactlyTheRegisteredActions(t *testing.T) {
-	card := flowEditorCard()
+	card := flowEditorCard("en")
 	for _, c := range vayuflow.Capabilities() {
 		if !strings.Contains(card, `value="`+c.Action+`"`) {
 			t.Errorf("the form does not offer the registered action %q", c.Action)
@@ -229,7 +229,7 @@ func TestTheFormOffersExactlyTheRegisteredActions(t *testing.T) {
 }
 
 func TestTheFormOffersExactlyTheEnginesConditionsAndEvents(t *testing.T) {
-	card := flowEditorCard()
+	card := flowEditorCard("en")
 	condSel := flowFormSlice(t, card, `<select class="input" id="ff-cond">`, `</select>`)
 	for _, n := range vayuflow.LeafConditionNames() {
 		if !strings.Contains(condSel, `value="`+n+`"`) {
@@ -252,7 +252,7 @@ func TestTheFormOffersExactlyTheEnginesConditionsAndEvents(t *testing.T) {
 // inexpressible; a form defaulting a ceiling to empty would put it back as a
 // shrug, and the first save would fail on a field the operator never saw.
 func TestEveryBudgetFieldShipsWithARealNumber(t *testing.T) {
-	card := flowEditorCard()
+	card := flowEditorCard("en")
 	for _, id := range []string{"ff-bsteps", "ff-bruns", "ff-bwrites", "ff-begress", "ff-btimeout"} {
 		field := flowFormSlice(t, card, `id="`+id+`"`, `>`)
 		if !strings.Contains(field, `value="`) {

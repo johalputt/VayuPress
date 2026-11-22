@@ -190,7 +190,8 @@ async function englishLeft(page) {
       // A {placeholder} or <placeholder> a sentence shows as it is, an
       // address, a path and a section:action token.
       for (const part of text.replace(/\{[a-z]+\}|<[a-z]+>/g, " ").split(/\s+/)) {
-        if (part.includes("@") || part.includes("/") || part.includes(":") || /\w\.\w/.test(part)) continue;
+        // A key=value pair and a $variable are code too.
+        if (part.includes("@") || part.includes("/") || part.includes(":") || part.includes("=") || part.includes("$") || /\w\.\w/.test(part)) continue;
         // A header's name (X-API-Key) is code.
         if (/^[A-Z][A-Za-z]*(-[A-Z][A-Za-z]*)+\W*$/.test(part)) continue;
         for (const w of part.match(/\p{L}+/gu) || []) {
@@ -272,7 +273,7 @@ const adsIsOn = async (page) => (await page.locator("main [data-page-kind]").fir
 const studioReady = (page) => expect(page.locator("[data-theme-status]")).not.toBeEmpty();
 for (const [name, path, withSheets, ready] of [["Backups", "/os/vayukeep", true], ["API keys", "/os/apikeys", true], ["Newsletter", "/os/newsletter", false],
   ["YouTube", "/os/youtube", true], ["Advertising", "/os/ads", adsIsOn], ["VayuTor", "/os/tor", false], ["Tools and plugins", "/os/tools", false],
-  ["Theme Studio", "/os/theme", false, studioReady], ["The theme store", "/os/theme/store", false]]) {
+  ["Theme Studio", "/os/theme", false, studioReady], ["The theme store", "/os/theme/store", false], ["VayuFlow", "/os/vayuflow", true]]) {
   test(name + " in another language has no English left on it", async ({ page }) => {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
@@ -298,4 +299,72 @@ test("Updates in another language has no English left on it", async ({ page }) =
   const ready = (p) => expect(p.locator("[data-update-notes] .upd-notes__more")).toBeVisible();
   expect(await pseudoPageAndSheets(page, "/os/update", false, ready)).toEqual({});
   expect(errors).toEqual([]);
+});
+
+// VayuFlow's buttons post through its own script. It read a CSRF cookie
+// nothing sets, so every save, run, switch and arm was refused, and no test
+// pressed one: the Go tests call the handlers directly. This one saves a flow
+// from the form and runs it from the page, as an operator does: a person, signed
+// in at the server's own address, because a flow borrows its owner's role and
+// the spec's key has none. A new flow is in dry-run, so its draft is captured
+// and refused, never written.
+test("a flow is saved from its form and run once from the page", async ({ page, browser }) => {
+  const email = `flows-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@example.com`;
+  const password = "Flow-Test-Passw0rd!";
+  const made = await page.request.post("/api/v1/admin/users", { data: { email, name: "Flow owner", password, role: "admin" } });
+  expect(made.status(), await made.text()).toBeLessThan(300);
+  // The server's own address: through the proxy every request carries the
+  // API key, which the console takes ahead of a session.
+  const direct = process.env.UPSTREAM;
+  if (!direct) throw new Error("UPSTREAM is not set: the server's own address, which the e2e workflow sets");
+  const ctx = await browser.newContext({ baseURL: direct });
+  try {
+    const op = await ctx.newPage();
+    await op.goto("/os/login");
+    await op.fill("input[name=email]", email);
+    await op.fill("input[name=password]", password);
+    await Promise.all([op.waitForURL(/\/os/), op.click("form.login-form button[type=submit]")]);
+
+    await op.goto("/os/vayuflow");
+    await op.locator('button[data-sheet="flow-create"]').first().click();
+    const name = "e2e flow " + Date.now();
+    await op.fill("#ff-name", name);
+    await op.selectOption("#ff-act1", "content.draft.create");
+    await op.fill("#ff-par1", "title=A flow's draft\nslug=e2e-flow-draft\ncontent=Written by the e2e run.");
+    const saved = op.waitForResponse((r) => r.url().endsWith("/os/api/vayuflow/save"));
+    await op.click("#ff-save");
+    const savedRes = await saved;
+    expect(savedRes.status(), await savedRes.text()).toBe(200);
+    await expect(op.locator("#flow-status")).toContainText("Saved as v1");
+
+    await op.reload();
+    const del = op.locator(`[data-flow-delete][data-flow-name="${name}"]`);
+    const id = await del.getAttribute("data-flow-delete");
+    const flow = op.locator("details.mon-acc", { has: del });
+    if (!(await flow.evaluate((d) => d.open))) await flow.locator("summary").click();
+    // A new flow is saved switched off; it is switched on before it can run.
+    const on = op.waitForResponse((r) => r.url().includes("/os/api/vayuflow/enable?id=" + id));
+    await flow.locator(`[data-flow-enable="${id}"]`).click();
+    const onRes = await on;
+    expect(onRes.status(), await onRes.text()).toBe(200);
+    await expect(op.locator("#flow-status")).toContainText("Switched on");
+    const ran = op.waitForResponse((r) => r.url().includes("/os/api/vayuflow/run?id=" + id));
+    await flow.locator(`[data-flow-run="${id}"]`).click();
+    const ranRes = await ran;
+    expect(ranRes.status(), await ranRes.text()).toBe(200);
+    await expect(op.locator("#flow-status")).toContainText(/^Run (Succeeded|Refused)/);
+
+    // Its own piece is gone at the end. A flow in dry-run may be deleted
+    // while it is on; delete asks by name, in a sheet.
+    await op.reload();
+    const flow2 = op.locator("details.mon-acc", { has: op.locator(`[data-flow-delete="${id}"]`) });
+    if (!(await flow2.evaluate((d) => d.open))) await flow2.locator("summary").click();
+    await flow2.locator(`[data-flow-delete="${id}"]`).click();
+    const gone = op.waitForResponse((r) => r.url().includes("/os/api/vayuflow/delete?id=" + id));
+    await op.locator(".vp-confirm").getByRole("button", { name: "Delete" }).click();
+    const goneRes = await gone;
+    expect(goneRes.status(), await goneRes.text()).toBe(200);
+  } finally {
+    await ctx.close();
+  }
 });

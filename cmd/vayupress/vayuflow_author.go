@@ -42,6 +42,7 @@ import (
 	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/vayuflow"
 )
 
@@ -84,11 +85,11 @@ const maxFlowBody = 64 << 10
 // handleOSVayuFlowSave creates or updates a flow.
 func (a *App) handleOSVayuFlowSave(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Only an administrator can do this."), "")
 		return
 	}
 	if a.flowStore == nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "no-store", "automation store unavailable", "")
+		writeAPIError(w, r, http.StatusInternalServerError, "no-store", i18n.T(i18n.Lang(r.Context()), "The automation store is not available on this install."), "")
 		return
 	}
 
@@ -100,7 +101,7 @@ func (a *App) handleOSVayuFlowSave(w http.ResponseWriter, r *http.Request) {
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&in); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-request",
-			"could not read the flow document: "+err.Error(), "")
+			i18n.T(i18n.Lang(r.Context()), "The flow could not be read: {error}", "error", err.Error()), "")
 		return
 	}
 
@@ -241,16 +242,16 @@ func osActorID(r *http.Request) string {
 // handleOSVayuFlowEnable switches a flow on or off.
 func (a *App) handleOSVayuFlowEnable(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Only an administrator can do this."), "")
 		return
 	}
 	if a.flowStore == nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "no-store", "automation store unavailable", "")
+		writeAPIError(w, r, http.StatusInternalServerError, "no-store", i18n.T(i18n.Lang(r.Context()), "The automation store is not available on this install."), "")
 		return
 	}
 	id := strings.TrimSpace(r.URL.Query().Get("id"))
 	if id == "" {
-		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "no flow id", "")
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", i18n.T(i18n.Lang(r.Context()), "The request names no flow."), "")
 		return
 	}
 	on, ok := flowEnableFor(r.URL.Query().Get("on"))
@@ -259,7 +260,7 @@ func (a *App) handleOSVayuFlowEnable(w http.ResponseWriter, r *http.Request) {
 		// state on the operator's behalf, and off is not a "safe default" when
 		// the operator may have meant on.
 		writeAPIError(w, r, http.StatusBadRequest, "bad-request",
-			"expected on=true or on=false; nothing was changed", "")
+			i18n.T(i18n.Lang(r.Context()), "Nothing was changed: the switch must be {on} or {off}.", "on", "on=true", "off", "on=false"), "")
 		return
 	}
 	prior, err := a.flowStore.SetEnabled(r.Context(), id, on)
@@ -299,16 +300,16 @@ func flowEnabledWord(on bool) string {
 // The runs age out on their own retention window instead.
 func (a *App) handleOSVayuFlowDelete(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", i18n.T(i18n.Lang(r.Context()), "Only an administrator can do this."), "")
 		return
 	}
 	if a.flowStore == nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "no-store", "automation store unavailable", "")
+		writeAPIError(w, r, http.StatusInternalServerError, "no-store", i18n.T(i18n.Lang(r.Context()), "The automation store is not available on this install."), "")
 		return
 	}
 	id := strings.TrimSpace(r.URL.Query().Get("id"))
 	if id == "" {
-		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "no flow id", "")
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", i18n.T(i18n.Lang(r.Context()), "The request names no flow."), "")
 		return
 	}
 	// Read it first, so the audit entry can say WHAT was deleted. An entry
@@ -325,8 +326,7 @@ func (a *App) handleOSVayuFlowDelete(w http.ResponseWriter, r *http.Request) {
 	// first one turned off.
 	if f.Enabled && f.Mode == vayuflow.RunLive {
 		writeAPIError(w, r, http.StatusConflict, "still-live",
-			"this flow is enabled and armed live. Return it to dry-run or switch it off first, "+
-				"so that turning off something that can write to the world is its own decision.", "")
+			i18n.T(i18n.Lang(r.Context()), "This flow is on and armed live. Return it to dry-run or switch it off first, so that turning off something that can write to the world is its own decision."), "")
 		return
 	}
 	if err := a.flowStore.Delete(r.Context(), id); err != nil {

@@ -28,7 +28,7 @@ func TestFlowCountsAgreeWithTheirVerb(t *testing.T) {
 			t.Errorf("%d flows: a hedged plural in %q", c.n, got)
 		}
 	}
-	if got := brokenDetail([]string{"nightly"}); !strings.HasPrefix(got, "1 enabled flow no longer validates and will NOT fire") {
+	if got := brokenDetail("en", []string{"nightly"}); !strings.HasPrefix(got, "1 enabled flow no longer validates and will NOT fire") {
 		t.Errorf("one broken flow: %q", got)
 	}
 }

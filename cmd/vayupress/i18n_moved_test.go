@@ -81,6 +81,7 @@ var i18nMoved = map[string][]string{
 	"admin_os_theme_a11y.go":       {"themeA11yPanel", "a11ySummary"},
 	"admin_os_theme_store.go":      {"handleOSThemeStore", "themeStoreFilterChips", "themeStoreCard"},
 	"admin_os_tools.go":            nil,
+	"admin_os_vayuflow.go":         nil,
 	"api_usage_middleware.go":      {"rateLabelIn"},
 	"backup_coverage.go":           {"keepHoldsSection"},
 	"vayuos_mail_drive_upload.go":  nil,
