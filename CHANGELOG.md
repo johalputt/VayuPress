@@ -8,6 +8,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.48] — 2026-11-22
+
+Bounces of sign-in links queued before 3.18.47 stay out of the Inbox too,
+and a member row nobody ever confirmed no longer lets a link past the
+proof of work.
+
+### Fixed
+
+- **Bounces of mail queued before the upgrade no longer reach the Inbox.**
+  The outbound queue retries a message for about four days, so sign-in
+  links queued by earlier releases, which carry no `Auto-Submitted`
+  header, kept failing into the Inbox after 3.18.47. Mail from the
+  address the install sends its own mail as is now treated as the
+  install's own whether or not it says so: its failure is recorded
+  against the recipient and not reported, and another server's report
+  about it is filed in Trash.
+
+### Security
+
+- **An unconfirmed member is a stranger to the sign-in link's gates.** A
+  member row from before every sign-up path recorded a confirmation was
+  typed into a form by someone nobody knows; a link to it now needs the
+  proof of work and counts toward the automatic ban, like any address
+  that is not a member.
+
 ## [3.18.47] — 2026-11-22
 
 Sign-in links to strangers are guarded end to end: a proof of work in the
