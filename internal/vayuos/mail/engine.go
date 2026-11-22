@@ -99,6 +99,10 @@ type Engine struct {
 	// driveKey wraps each Drive file's own key (drivekeys.go); without it
 	// Drive keeps no file.
 	driveKey []byte
+	// systemSender is the address the install's own mail is sent from
+	// (UseSystemSender). A failure of mail from it is recorded, not
+	// reported: no person sent it.
+	systemSender string
 	// driveCaring and driveCareAt pace Drive's upkeep (drivecare.go).
 	driveCaring atomic.Bool
 	driveCareAt atomic.Int64

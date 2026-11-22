@@ -617,6 +617,9 @@ func (a *App) bootVayuOS() {
 	// The key that wraps each Drive file's own key, so the files on the disk
 	// (and in backups of it) read as noise without the secrets store.
 	// Without it Drive keeps no file rather than keep one in the clear.
+	// The address sign-in links and receipts go out from: their failures are
+	// recorded against the recipient, not reported to the Inbox it routes to.
+	a.vayuMail.UseSystemSender(a.transactionalFrom())
 	if key, err := a.secrets.Derive("vayumail-drive-v1"); err == nil {
 		a.vayuMail.UseDriveKey(key)
 	} else {

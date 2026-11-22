@@ -194,7 +194,7 @@ func (a *App) handleMemberLogin(w http.ResponseWriter, r *http.Request) {
 	account := auth.AccountKey(email)
 	_, refused := a.signin.Refuse(account, ip)
 	refused = refused || !memberLoginByIP.allow(ip) || !memberLoginByAddress.allow(email)
-	if !refused && email != "" && !a.members.Exists(r.Context(), email) {
+	if !refused && email != "" && !a.confirmedMember(r.Context(), email) {
 		refused = a.strangerLinkRefused(account, ip, email, proof, nonce)
 	}
 	if email != "" {

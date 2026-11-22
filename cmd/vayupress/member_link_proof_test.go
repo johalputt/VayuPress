@@ -182,3 +182,22 @@ func TestTheInstallMailsStrangersUpToItsCeiling(t *testing.T) {
 		t.Errorf("%d of %d strangers were mailed, want the ceiling of %d", sent, asked, strangerLinksPerHour)
 	}
 }
+
+// A member row nobody ever confirmed, from before every path stamped one,
+// is a stranger to the link's gates: no link without a proof.
+func TestAnUnconfirmedMemberIsAStrangerToTheGates(t *testing.T) {
+	a := credentialFloodApp(t)
+	joinMember(t, a, "typed@elsewhere.test")
+	if _, err := dbpkg.DB.Exec(`UPDATE members SET verified_at = NULL WHERE email = ?`, "typed@elsewhere.test"); err != nil {
+		t.Fatal(err)
+	}
+	postMemberLogin(t, a, "203.0.113.50", "typed@elsewhere.test")
+	if n := countLoginTokens(t, a, "typed@elsewhere.test"); n != 0 {
+		t.Errorf("an unconfirmed member was made %d link(s) with no proof", n)
+	}
+	proof, nonce := solvedLinkProof(t, a)
+	postProvedLink(t, a, "203.0.113.51", "typed@elsewhere.test", proof, nonce)
+	if n := countLoginTokens(t, a, "typed@elsewhere.test"); n != 1 {
+		t.Errorf("an unconfirmed member with a proof was made %d links, want 1", n)
+	}
+}

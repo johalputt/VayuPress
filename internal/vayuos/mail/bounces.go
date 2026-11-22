@@ -130,6 +130,22 @@ func failureStatus(err error) string {
 	return "4.4.7"
 }
 
+// UseSystemSender names the address the install's own mail is sent from.
+// Its failures are recorded and never reported to an Inbox, whether or not
+// the message says Auto-Submitted: mail queued by a release before that
+// header was written keeps retrying for days, and failed into the
+// operator's Inbox after the upgrade until this was set.
+func (e *Engine) UseSystemSender(addr string) { e.systemSender = normEmail(envelopeAddress(addr)) }
+
+// fromTheInstall reports whether a message is the install's own: it says so
+// (Auto-Submitted), or it is from the address the install sends as.
+func (e *Engine) fromTheInstall(h mail.Header) bool {
+	if autoSubmitted(h) {
+		return true
+	}
+	return e.systemSender != "" && normEmail(envelopeAddress(h.Get("From"))) == e.systemSender
+}
+
 // deliveryFailed is the queue's word that a message will not be delivered.
 // Only a message from a mailbox here is reported, and only once per
 // failure: the queue calls this when the message is marked failed.
@@ -150,7 +166,7 @@ func (e *Engine) deliveryFailed(from string, to []string, raw []byte, cause erro
 	// above, which is what keeps the address from being mailed again, but
 	// not reported: nobody wrote it, and in November 2026 hundreds of links
 	// that strangers asked for bounced back into the operator's Inbox.
-	if autoSubmitted(msg.Header) {
+	if e.fromTheInstall(msg.Header) {
 		return
 	}
 	local, domain := splitAddress(mbox)
@@ -215,8 +231,8 @@ func (e *Engine) failureReport(sender string, to []string, status, reason string
 // failed. Only a report about a message from a domain this install serves is
 // believed: a report is easy to forge, and this one can only ever annotate
 // mail this server sent. It reports whether the message that failed was the
-// install's own automatic mail (Auto-Submitted, as SendSystemMail writes it):
-// that report is kept out of the Inbox, as deliveryFailed keeps its own.
+// install's own mail (fromTheInstall): that report is kept out of the Inbox,
+// as deliveryFailed keeps its own.
 func (e *Engine) readDeliveryReport(mailbox string, raw []byte) (automatic bool) {
 	if e.accounts == nil {
 		return false
@@ -245,7 +261,7 @@ func (e *Engine) readDeliveryReport(mailbox string, raw []byte) (automatic bool)
 		case "text/rfc822-headers", "message/rfc822", "message/rfc822-headers", "message/global", "message/global-headers":
 			if orig, err := mail.ReadMessage(io.MultiReader(bytes.NewReader(body), strings.NewReader("\r\n\r\n"))); err == nil {
 				msgID = orig.Header.Get("Message-ID")
-				automatic = autoSubmitted(orig.Header)
+				automatic = e.fromTheInstall(orig.Header)
 			}
 		}
 	}

@@ -267,3 +267,44 @@ func TestAReportAboutTheInstallsOwnMailIsFiledInTrash(t *testing.T) {
 		t.Fatalf("Inbox holds %d reports and Trash %d, want one each", len(inbox), len(trash))
 	}
 }
+
+// Mail from the address the install sends as is its own even when it does
+// not say so: mail queued by a release before Auto-Submitted was written
+// fails days later, and is recorded but not reported to the Inbox the
+// address routes to, nor is another server's report about it. Mail from
+// any other mailbox is reported as before.
+func TestMailFromTheInstallsSenderIsNotReportedWithoutTheHeader(t *testing.T) {
+	refusal := &RecipientRefusedError{Rcpt: "ghost@far.test", Err: &textproto.Error{Code: 550, Msg: "5.1.1 <ghost@far.test>: no such user"}}
+	e := bounceEngine(t, refusal)
+	e.UseSystemSender("The Site <Alice@Example.com>")
+	ctx := context.Background()
+	if _, err := e.ComposeRich(ctx, ComposeMessage{From: "alice@example.com", To: []string{"ghost@far.test"}, Subject: "Your sign-in link", Body: "link"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, failed, _ := e.queue.ProcessDue(ctx, time.Now().Add(time.Hour)); failed != 1 {
+		t.Fatalf("failed %d", failed)
+	}
+	if inbox, _ := e.ListFolder(ReadAsOwner("alice"), "Inbox"); len(inbox) != 0 {
+		t.Fatalf("the install's own mail was reported to the Inbox (%d)", len(inbox))
+	}
+	if !e.HardBounced("ghost@far.test") {
+		t.Fatal("the refusal was not recorded")
+	}
+	remote := strings.Replace(string(report("s2@example.com", "7bit", reportStatus)), "Subject: Hi\r\n", "Subject: Hi\r\nFrom: The Site <alice@example.com>\r\n", 1)
+	if _, err := e.DeliverInbound("MAILER-DAEMON@far.test", "alice@example.com", []byte(remote)); err != nil {
+		t.Fatal(err)
+	}
+	if trash, _ := e.ListFolder(ReadAsOwner("alice"), "Trash"); len(trash) != 1 {
+		t.Fatalf("another server's report about the install's mail went to Trash %d times, want 1", len(trash))
+	}
+
+	if _, err := e.ComposeRich(ctx, ComposeMessage{From: "bob@example.com", To: []string{"ghost@far.test"}, Subject: "From a person", Body: "hello"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, failed, _ := e.queue.ProcessDue(ctx, time.Now().Add(time.Hour)); failed != 1 {
+		t.Fatalf("failed %d", failed)
+	}
+	if inbox, _ := e.ListFolder(ReadAsOwner("bob"), "Inbox"); len(inbox) != 1 {
+		t.Fatalf("a person's failed mail was reported %d times, want 1", len(inbox))
+	}
+}

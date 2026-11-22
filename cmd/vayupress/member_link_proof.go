@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -90,6 +91,14 @@ func linkProofSpent(proof, nonce string) bool {
 		return false
 	}
 	return linkProofsSpent.Claim(challenge.ProofID(p), p.Expires)
+}
+
+// confirmedMember reports whether email is a member who once proved the
+// address is theirs. A row from before every path stamped that (Unverified)
+// is a stranger here: it was typed into a form, and nothing says by whom.
+func (a *App) confirmedMember(ctx context.Context, email string) bool {
+	m, err := a.members.Get(ctx, email)
+	return err == nil && m != nil && m.VerifiedAt != nil
 }
 
 // strangerLinkRefused is the gates a link to an address that is not a member
