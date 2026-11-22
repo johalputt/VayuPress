@@ -8,6 +8,52 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.49] — 2026-11-22
+
+A source that mails strangers is banned for good on its next request, its
+range once a second of its addresses is, and every source that asked for
+sign-in links can be blocked from its row or its own page. A switch refuses
+strangers' sign-in links from datacenter and hosting networks, with a wider
+list of those networks to choose.
+
+### Security
+
+- **The automatic ban counts what was recorded, so a restart forgets
+  nothing.** The count of strangers a source asked sign-in links for was
+  kept in memory, so each upgrade or restart started it again, and a
+  sender whose day of requests came before the upgrade was not banned. It
+  now starts from the attempts already recorded for the last day, links
+  to confirmed members left out: such a sender is banned on its next
+  request.
+- **A second banned address bans its range.** When a second address of
+  one /24 is banned for asking sign-in links for strangers, the /24 is
+  banned from sign-in for good: a sender moving within its range is
+  stopped there.
+
+### Added
+
+- **Refuse strangers' sign-in links from datacenter networks.** A switch
+  under Shield › Published network lists: when it is on, a sign-in link to
+  an address that is not a member is not sent when it is asked for from an
+  address on an enabled datacenter or hostile list, answered as a sent one.
+  Members still get theirs from anywhere. Off by default, since a new
+  reader on a VPN is refused too; the band says when no datacenter list is
+  on for it to use.
+- **X4BNet datacenter ranges**, a published list of hosting and VPN
+  networks well beyond the big clouds (MIT, built on IPLocate's data under
+  CC BY-SA 4.0), joins the network lists. Off until it is turned on, like
+  every list there.
+- **Block a source from where its links are read.** Each row of Shield ›
+  Sign-in attempts › Sign-in links, and a source's own page, carries the
+  Block menu: the address for a day, 30 days or always, its network for 30
+  days or always (new), the whole site, or its country.
+
+### Changed
+
+- **A source in a blocked network says so.** Its row and its own page
+  show the network's block, as a dot and a word, where before only a block
+  of its own address was shown.
+
 ## [3.18.48] — 2026-11-22
 
 Bounces of sign-in links queued before 3.18.47 stay out of the Inbox too,
