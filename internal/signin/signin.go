@@ -180,6 +180,9 @@ func (b *Block) Active(now time.Time) bool {
 type Refusal struct {
 	Block *Block // nil when the account's fence refused it
 	Fence bool
+	// Listed: the source is on a list the operator turned on that refuses
+	// sign-in (Store.Listed).
+	Listed bool
 }
 
 type pendKey struct {
@@ -209,7 +212,12 @@ type Store struct {
 	// a wrong second factor.
 	OnAlarm func(Alarm)
 
-	mu       sync.Mutex
+	mu sync.Mutex
+	// Listed reports whether addr is on a list that refuses sign-in: an
+	// enabled abusive or hostile network list (the app sets it). Asked at
+	// every door through Refuse, never of an address on the install's own
+	// network, which may be the proxy every reader comes through.
+	Listed   func(addr string) bool
 	pending  map[pendKey]*pendVal
 	dropped  int
 	blocks   []*Block
@@ -424,6 +432,9 @@ func (s *Store) Refuse(account, addr string) (Refusal, bool) {
 	// their own network.
 	if set := s.fences[account]; len(set) > 0 && src.country != "" && !set[src.country] {
 		return Refusal{Fence: true}, true
+	}
+	if s.Listed != nil && !src.private && s.Listed(addr) {
+		return Refusal{Listed: true}, true
 	}
 	return Refusal{}, false
 }

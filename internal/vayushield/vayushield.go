@@ -1244,9 +1244,15 @@ func (m *Manager) ClassifyWithIntel(r *http.Request, knownIntel intel.Kind) Verd
 	if m.cfg.IntelFn != nil && !m.cfg.OnionMode && intelKind == intel.Kind(0) {
 		intelKind, _ = m.cfg.IntelFn(ipOnly(m.cfg.ClientIP(r)))
 	}
-	if intelKind == intel.KindDatacenter {
+	switch intelKind {
+	case intel.KindDatacenter:
 		in.NetworkDelta = intel.DatacenterDelta
 		in.NetworkReasons = []string{"datacenter or hosting network"}
+	case intel.KindAbusive:
+		// Refused at the sign-in doors (signin.Store.Listed); on a page it is
+		// weighed as a datacenter address is, never refused by itself.
+		in.NetworkDelta = intel.DatacenterDelta
+		in.NetworkReasons = []string{"address reported for attacks"}
 	}
 	if m.cfg.Static != nil {
 		if s, ok := m.cfg.Static.MatchUA(sig.UserAgent); ok {

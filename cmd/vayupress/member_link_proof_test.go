@@ -208,12 +208,11 @@ func TestAnUnconfirmedMemberIsAStrangerToTheGates(t *testing.T) {
 	}
 }
 
-// withDatacenterList gives the app the X4BNet datacenter list, switched on
+// withNetworkList gives the app the shipped network list id, switched on
 // and holding cidr, as boot would from its cached copy.
-func withDatacenterList(t *testing.T, a *App, cidr string) {
+func withNetworkList(t *testing.T, a *App, id, cidr string) {
 	t.Helper()
 	dir := t.TempDir()
-	const id = "x4bnet-datacenter"
 	sum := sha256.Sum256([]byte(id))
 	if err := os.WriteFile(filepath.Join(dir, "intel-"+hex.EncodeToString(sum[:8])+".json"), []byte(cidr+"\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -232,7 +231,7 @@ func withDatacenterList(t *testing.T, a *App, cidr string) {
 // the range is only a weight elsewhere and the link goes.
 func TestStrangersLinksFromDatacenterRangesAreRefusedWhenSwitchedOn(t *testing.T) {
 	a := credentialFloodApp(t)
-	withDatacenterList(t, a, "185.65.10.0/24")
+	withNetworkList(t, a, "x4bnet-datacenter", "185.65.10.0/24")
 	joinMember(t, a, "member@elsewhere.test")
 	ask := func(ip, email string) *httptest.ResponseRecorder {
 		proof, nonce := solvedLinkProof(t, a)
@@ -260,5 +259,26 @@ func TestStrangersLinksFromDatacenterRangesAreRefusedWhenSwitchedOn(t *testing.T
 	postMemberLogin(t, a, "185.65.10.22", "member@elsewhere.test")
 	if n := countLoginTokens(t, a, "member@elsewhere.test"); n != 1 {
 		t.Errorf("a member asking from a datacenter range was made %d links, want 1", n)
+	}
+}
+
+// An address on an abusive list is refused at every sign-in door and asked
+// no sign-in link, a member's own included, while an address off the list
+// signs in as before.
+func TestAReportedAttackerIsRefusedAtEverySignInDoor(t *testing.T) {
+	a := credentialFloodApp(t)
+	withNetworkList(t, a, "ipsum", "45.148.10.61")
+	withSignins(t, a)
+	a.signin.Listed = a.signinListed
+	joinMember(t, a, "member@elsewhere.test")
+	if !a.signinRefused("boss@example.com", "45.148.10.61") || !a.signinRefused("boss@example.com", "45.148.10.61:993") {
+		t.Fatal("a reported attacker was not refused at the sign-in door")
+	}
+	if a.signinRefused("boss@example.com", "203.0.113.80") {
+		t.Fatal("an address off the list was refused")
+	}
+	postMemberLogin(t, a, "45.148.10.61", "member@elsewhere.test")
+	if n := countLoginTokens(t, a, "member@elsewhere.test"); n != 0 {
+		t.Errorf("a reported attacker was made %d sign-in link(s) for a member", n)
 	}
 }

@@ -792,3 +792,21 @@ func TestASecondBannedAddressBansItsNetwork(t *testing.T) {
 		t.Fatalf("the network ban is %+v", net)
 	}
 }
+
+// An address on a list that refuses sign-in is refused at the door, before
+// its password, with nothing else needed; an address on the install's own
+// network is never asked about, and an address off the list is let through.
+func TestAListedSourceIsRefusedSignIn(t *testing.T) {
+	s, _ := openStore(t)
+	asked := map[string]bool{}
+	s.Listed = func(addr string) bool { asked[addr] = true; return strings.HasPrefix(addr, "45.148.10.61") }
+	if r, refused := s.Refuse("a@x.test", "45.148.10.61:993"); !refused || !r.Listed {
+		t.Fatalf("a listed source was not refused: %+v %v", r, refused)
+	}
+	if _, refused := s.Refuse("a@x.test", "203.0.113.9"); refused {
+		t.Fatal("a source off the list was refused")
+	}
+	if _, refused := s.Refuse("a@x.test", "10.0.0.5"); refused || asked["10.0.0.5"] {
+		t.Fatal("an address on the install's own network was asked about or refused")
+	}
+}

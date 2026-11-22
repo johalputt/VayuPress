@@ -45,9 +45,12 @@ func TestThereIsNoWayForAFeedToGrantAccess(t *testing.T) {
 		if !k.Valid() {
 			continue
 		}
-		if k != KindDatacenter && k != KindHostile {
-			t.Errorf("Kind(%d) reports itself valid but is neither datacenter nor hostile — a "+
-				"third meaning exists and nothing here says what it grants", i)
+		// Each meaning that exists is decided here, and each only adds
+		// suspicion or denial: datacenter weighs a score, hostile refuses,
+		// abusive refuses sign-in and weighs a score.
+		if k != KindDatacenter && k != KindHostile && k != KindAbusive {
+			t.Errorf("Kind(%d) reports itself valid but is none of datacenter, hostile or abusive — "+
+				"another meaning exists and nothing here says what it grants", i)
 		}
 	}
 	// And the zero value must not be constructible into a set: a set built
@@ -548,5 +551,65 @@ func BenchmarkMatchThreeFeeds(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = f.Match("203.0.113.7") // a miss: the worst case, every feed searched
+	}
+}
+
+// A reported-attacker list names hosts: a bare address is its own /32 or
+// /128, a prefix is a prefix, comments and blank lines are skipped, and a
+// document with no address in it is refused.
+func TestTheAddressListParserReadsHostsAndPrefixes(t *testing.T) {
+	got, err := parseAddrLines([]byte("# IPsum\n45.148.10.61\n2001:db8::7  # v6\n\n203.0.113.0/24\n::ffff:198.51.100.9\nnot an address\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"45.148.10.61/32", "2001:db8::7/128", "203.0.113.0/24", "198.51.100.9/32"}
+	if len(got) != len(want) {
+		t.Fatalf("parsed %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i].String() != want[i] {
+			t.Errorf("entry %d is %v, want %s", i, got[i], want[i])
+		}
+	}
+	if _, err := parseAddrLines([]byte("<html>Not Found</html>\n")); err == nil {
+		t.Error("a document with no address in it was read as a list")
+	}
+}
+
+// An abusive list refuses sign-in, so it is held to the hostile list's floor:
+// a list naming this machine, or the whole internet, is refused whole.
+func TestAnAbusiveListCannotRefuseThisMachine(t *testing.T) {
+	for _, cidr := range []string{"127.0.0.1/32", "10.0.0.0/8", "::1/128", "0.0.0.0/0"} {
+		if _, err := Build(KindAbusive, "poisoned", []netip.Prefix{netip.MustParsePrefix(cidr)}); err == nil {
+			t.Errorf("an abusive list containing %s was built", cidr)
+		}
+	}
+}
+
+// The strongest list answers: hostile over abusive over datacenter, so an
+// address both reported and hosted is refused sign-in, not merely weighed.
+func TestAbusiveBeatsDatacenterAndHostileBeatsAbusive(t *testing.T) {
+	f := NewFetcher(t.TempDir())
+	none := func([]byte) ([]netip.Prefix, error) { return nil, nil }
+	for _, d := range []Feed{
+		{ID: "dc", Name: "dc", Kind: KindDatacenter, URL: "https://x", Note: "n", Parse: none},
+		{ID: "ab", Name: "ab", Kind: KindAbusive, URL: "https://x", Note: "n", Parse: none},
+		{ID: "bad", Name: "bad", Kind: KindHostile, URL: "https://x", Note: "n", Parse: none},
+	} {
+		f.Add(d, true)
+	}
+	f.mu.Lock()
+	f.feeds["dc"].live.Store(mustSet(t, KindDatacenter, "dc", "192.0.2.0/24", "198.51.100.0/24"))
+	f.feeds["ab"].live.Store(mustSet(t, KindAbusive, "ab", "192.0.2.7/32", "198.51.100.7/32"))
+	f.feeds["bad"].live.Store(mustSet(t, KindHostile, "bad", "198.51.100.0/24"))
+	f.mu.Unlock()
+	if k, _ := f.Match("192.0.2.7"); k != KindAbusive {
+		t.Errorf("an address both reported and hosted resolved to %v, want abusive", k)
+	}
+	if k, _ := f.Match("192.0.2.8"); k != KindDatacenter {
+		t.Errorf("a hosted address resolved to %v, want datacenter", k)
+	}
+	if k, _ := f.Match("198.51.100.7"); k != KindHostile {
+		t.Errorf("an address reported and in a hostile network resolved to %v, want hostile", k)
 	}
 }

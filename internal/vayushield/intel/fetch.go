@@ -151,7 +151,8 @@ func (f *Fetcher) Match(ip string) (Kind, string) {
 
 	f.mu.RLock()
 	defer f.mu.RUnlock()
-	var dcSource string
+	// The strongest kind answers: hostile, then abusive, then datacenter.
+	var dcSource, abSource string
 	for _, id := range f.order {
 		st := f.feeds[id]
 		if !st.enabled {
@@ -161,12 +162,21 @@ func (f *Fetcher) Match(ip string) (Kind, string) {
 		if s.Len() == 0 || !s.Contains(a) {
 			continue
 		}
-		if s.Kind() == KindHostile {
+		switch s.Kind() {
+		case KindHostile:
 			return KindHostile, st.def.Name
+		case KindAbusive:
+			if abSource == "" {
+				abSource = st.def.Name
+			}
+		default:
+			if dcSource == "" {
+				dcSource = st.def.Name
+			}
 		}
-		if dcSource == "" {
-			dcSource = st.def.Name
-		}
+	}
+	if abSource != "" {
+		return KindAbusive, abSource
 	}
 	if dcSource != "" {
 		return KindDatacenter, dcSource

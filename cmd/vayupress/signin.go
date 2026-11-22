@@ -10,6 +10,7 @@ package main
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/signin"
+	"github.com/johalputt/vayupress/internal/vayushield/intel"
 )
 
 // signinFlushEvery is how often the attempts held are written. A failure
@@ -49,6 +51,7 @@ func (a *App) openSignins() {
 	}
 	signin.Country = geoip.Country
 	st.OnAlarm = a.notifySigninAlarm
+	st.Listed = a.signinListed
 	a.signin = st
 	go func() {
 		t := time.NewTicker(signinFlushEvery)
@@ -73,6 +76,20 @@ func (a *App) flushSignins(limit time.Duration) {
 	if err := a.signin.Flush(ctx); err != nil {
 		logging.LogError("main", "sign-in attempts on shutdown", err.Error())
 	}
+}
+
+// signinListed reports whether addr is on an enabled network list that
+// refuses sign-in: an abusive list (addresses reported for attacks) or a
+// hostile one. A door may hand over host:port.
+func (a *App) signinListed(addr string) bool {
+	if a.shieldIntel == nil {
+		return false
+	}
+	if host, _, err := net.SplitHostPort(addr); err == nil {
+		addr = host
+	}
+	kind, _ := a.shieldIntel.Match(addr)
+	return kind == intel.KindAbusive || kind == intel.KindHostile
 }
 
 // signinRefused reports whether a sign-in to account from ip is refused by a

@@ -77,6 +77,26 @@ func DefaultFeeds() []Feed {
 			Parse: parseCSVFirstField,
 		},
 		{
+			ID:   "ipsum",
+			Name: "IPsum (level 3)",
+			URL:  "https://raw.githubusercontent.com/stamparm/ipsum/master/levels/3.txt",
+			Kind: KindAbusive,
+			Note: "Compiled daily by Miroslav Stampar from more than 30 public blocklists; level 3 " +
+				"is an address on at least three of them (Unlicense). Refused at every sign-in door; " +
+				"pages stay readable.",
+			Parse: parseAddrLines,
+		},
+		{
+			ID:   "blocklist-de",
+			Name: "blocklist.de attackers",
+			URL:  "https://lists.blocklist.de/lists/all.txt",
+			Kind: KindAbusive,
+			Note: "Addresses reported in the last 48 hours by servers whose own logs caught them " +
+				"attacking SSH, mail, FTP and web sign-ins (free; see blocklist.de for its terms). " +
+				"Refused at every sign-in door; pages stay readable.",
+			Parse: parseAddrLines,
+		},
+		{
 			ID:   "spamhaus-drop",
 			Name: "Spamhaus DROP",
 			URL:  "https://www.spamhaus.org/drop/drop.txt",
@@ -157,6 +177,29 @@ func parseCSVFirstField(b []byte) ([]netip.Prefix, error) {
 		}
 		if v, err := netip.ParsePrefix(strings.TrimSpace(field)); err == nil {
 			out = append(out, v)
+		}
+	}
+	return requireSome(out)
+}
+
+// parseAddrLines reads one address or prefix per line, "#" comments
+// allowed: a bare address is its own /32 or /128. A reported-attacker list
+// names hosts, not networks.
+func parseAddrLines(b []byte) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if i := strings.IndexAny(line, " \t#"); i >= 0 {
+			line = line[:i]
+		}
+		if p, err := netip.ParsePrefix(line); err == nil {
+			out = append(out, p)
+		} else if a, err := netip.ParseAddr(line); err == nil {
+			a = a.Unmap()
+			out = append(out, netip.PrefixFrom(a, a.BitLen()))
 		}
 	}
 	return requireSome(out)

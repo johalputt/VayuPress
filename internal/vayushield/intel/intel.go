@@ -77,6 +77,12 @@ const (
 	// or otherwise not worth serving. Strong enough to deny, and only lists that
 	// are conservative by construction belong in it.
 	KindHostile
+	// KindAbusive — an address other servers have reported for attacking
+	// them: password spraying, brute force, scanning. Refused at every
+	// sign-in door (signin.Store.Listed), weighed like a datacenter address
+	// elsewhere, and never refused a page: a list of reported addresses holds
+	// reassigned ones too, whose new holders may only be reading.
+	KindAbusive
 )
 
 func (k Kind) String() string {
@@ -85,12 +91,14 @@ func (k Kind) String() string {
 		return "datacenter"
 	case KindHostile:
 		return "hostile"
+	case KindAbusive:
+		return "abusive"
 	}
 	return "unset"
 }
 
 // Valid reports whether a kind was actually chosen.
-func (k Kind) Valid() bool { return k == KindDatacenter || k == KindHostile }
+func (k Kind) Valid() bool { return k == KindDatacenter || k == KindHostile || k == KindAbusive }
 
 // Limits. Every one is enforced when a set is BUILT, so a caller cannot hand a
 // bad set to the request path and rely on a check further down.
@@ -220,7 +228,7 @@ func Build(kind Kind, source string, prefixes []netip.Prefix) (Set, error) {
 		if !p.IsValid() {
 			continue
 		}
-		if kind == KindHostile {
+		if kind == KindHostile || kind == KindAbusive {
 			if err := hostileEntryIsSane(p); err != nil {
 				// Fails the WHOLE build rather than skipping the entry. A list that
 				// wants to refuse loopback, or a quarter of the internet, is not a

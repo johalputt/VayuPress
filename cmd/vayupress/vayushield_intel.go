@@ -246,6 +246,10 @@ func intelEffect(kind string) string {
 	if kind == intel.KindHostile.String() {
 		return "refuses matching sources at their own gate; a solved challenge does not bypass it"
 	}
+	if kind == intel.KindAbusive.String() {
+		return "refuses matching sources at every sign-in door, and sign-in links; on a page it adds " +
+			strconv.FormatFloat(intel.DatacenterDelta, 'f', 2, 64) + " to the bot score and never refuses alone"
+	}
 	return "adds " + strconv.FormatFloat(intel.DatacenterDelta, 'f', 2, 64) +
 		" to the bot score, sharing one clamped budget with the other heuristics; never blocks alone"
 }
@@ -273,7 +277,7 @@ func (a *App) shieldIntelBand(ctx context.Context) string {
 	var b strings.Builder
 	b.WriteString(`<div class="card-title vs-section">Published network lists</div>`)
 	b.WriteString(`<p class="muted text-sm">Lists published by other people about the internet, refreshed every 12 hours. ` +
-		`A <strong>datacenter</strong> list says an address belongs to hosting or cloud infrastructure &mdash; evidence a visitor is automated, never proof, since a VPN exit and an office connection live there too; it nudges the score toward a check and can never block on its own. A <strong>hostile</strong> list says a network is hijacked or under criminal control, and that one refuses. ` +
+		`A <strong>datacenter</strong> list says an address belongs to hosting or cloud infrastructure &mdash; evidence a visitor is automated, never proof, since a VPN exit and an office connection live there too; it nudges the score toward a check and can never block on its own. A <strong>hostile</strong> list says a network is hijacked or under criminal control, and that one refuses. An <strong>abusive</strong> list names addresses other servers caught attacking them: those are refused sign-in at every door, the site, the console and mail apps, and can still read your pages. ` +
 		`<strong>No list can ever allow anything.</strong> That is a property of the code rather than a setting: if one of these endpoints were ever hijacked, the worst it could do is over-block, which you would see. Everything is off until you turn it on, because these are third-party lists under third-party terms &mdash; some restrict commercial use, and that is your call to make.</p>`)
 
 	if config.Cfg.OnionMode {
@@ -312,6 +316,9 @@ func (a *App) shieldIntelBand(ctx context.Context) string {
 func intelKindLabel(k intel.Kind) string {
 	if k == intel.KindHostile {
 		return `Refuses matching networks. `
+	}
+	if k == intel.KindAbusive {
+		return `Refuses sign-in from these addresses at every door; pages stay readable. `
 	}
 	return `Weighs the score; never blocks alone. `
 }

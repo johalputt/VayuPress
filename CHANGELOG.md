@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+
+- **Reported attackers are refused sign-in at every door.** A new kind of
+  network list, *abusive*, names addresses other servers caught attacking
+  them; an address on an enabled one is refused at the site's sign-in, the
+  console, mail apps (IMAP, POP3, SMTP), contacts and calendars, Talk,
+  recovery and sign-in links, before its password is checked, and can still
+  read the site's pages. Two such lists join Shield › Published network
+  lists, off until turned on: IPsum level 3 (addresses on at least three
+  of more than 30 public blocklists) and blocklist.de (addresses reported
+  in the last 48 hours for attacking SSH, mail and web sign-ins). A hostile
+  list now refuses at those doors too, where before it refused only web
+  requests. An address on the install's own network is never refused this
+  way.
+
 ## [3.18.50] — 2026-11-22
 
 Shield's observe-only mode asks before it is saved on, is shown across the
