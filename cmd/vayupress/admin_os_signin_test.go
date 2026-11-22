@@ -277,3 +277,52 @@ func TestABlockRedrawsThePageInPlace(t *testing.T) {
 		t.Errorf("an action from elsewhere answered %v", rec.Header())
 	}
 }
+
+// A source that asked for sign-in links can be blocked where its links are
+// read: its row on the Sign-in links list and its own page carry the Block
+// menu, and "Its network, always" blocks its network for good.
+func TestALinkSourceIsBlockedFromItsLinksAndItsOwnPage(t *testing.T) {
+	a, st := signinApp(t)
+	for _, acct := range []string{"x1@far.test", "x2@far.test"} {
+		st.Record(signin.Attempt{Account: acct, Door: signin.DoorLink, Stage: signin.StageLinkRefused, IP: "185.65.10.20"})
+	}
+	if err := st.Flush(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	fp := sourceFP(t, st, "185.65.x.x")
+	menu := `<form hx-post="/os/api/shield/sign-ins/block" hx-swap="none"><input type="hidden" name="fp" value="` + fp + `">`
+	page := a.signinsBody(context.Background(), 7, "", "", "")
+	links := page[strings.Index(page, `>Sign-in links</h2>`):]
+	if !strings.Contains(links, menu) {
+		t.Fatal("the Sign-in links row offers no Block menu")
+	}
+	// A section ends where the next begins: the Sign-in links list below
+	// carries the same menu, and must not stand in for this one.
+	section := func(page, heading string) string {
+		rest := page[strings.Index(page, heading):]
+		if end := strings.Index(rest, "<section"); end > 0 {
+			return rest[:end]
+		}
+		return rest
+	}
+	own := a.signinsBody(context.Background(), 7, fp, "", "")
+	attempts := section(own, `>This source&#39;s attempts</h2>`)
+	if !strings.Contains(attempts, menu) || !strings.Contains(attempts, `name="for" value="net-0"`) {
+		t.Fatal("the source's own page offers no Block menu, or no network block for good")
+	}
+	if rec := postSigninAction(a, (*App).handleOSSigninBlock, "192.0.2.1", url.Values{"fp": {fp}, "for": {"net-0"}}); rec.Code != http.StatusOK {
+		t.Fatalf("network block for good = %d %s", rec.Code, rec.Body.String())
+	}
+	if _, refused := st.Refuse("a@example.com", "185.65.10.99"); !refused {
+		t.Fatal("the network block did not refuse another address in it")
+	}
+	for _, b := range st.Blocks("") {
+		if b.Kind == "network" && !b.Until.IsZero() {
+			t.Fatalf("the network block ends: %+v", b)
+		}
+	}
+	own = a.signinsBody(context.Background(), 7, fp, "", "")
+	if attempts = section(own, `>This source&#39;s attempts</h2>`); !strings.Contains(attempts, `sa-dot--danger" aria-hidden="true"></span>Blocked, always`) {
+		t.Fatal("the source's own page does not say its network is blocked")
+	}
+}

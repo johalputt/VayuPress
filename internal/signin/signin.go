@@ -482,7 +482,12 @@ func (s *Store) Record(a Attempt) {
 // is not a member, from addr, and bans the source for good once it has asked
 // for LinkStrangers of them within LinkWindow. It reports whether this request
 // made the ban. An address on the install's own network is never banned.
-func (s *Store) NoteLinkStranger(account, addr string) bool {
+//
+// The count starts from the links the source asked for that are already
+// recorded, those for addresses member does not call members left out, so
+// a restart or an upgrade forgets nothing: the sender whose day of requests
+// came before the upgrade is banned on its next one, not after five more.
+func (s *Store) NoteLinkStranger(account, addr string, member func(account string) bool) bool {
 	if s == nil || account == "" {
 		return false
 	}
@@ -494,12 +499,20 @@ func (s *Store) NoteLinkStranger(account, addr string) bool {
 	// addresses would be a fresh source here, so for IPv6 the count and
 	// the ban are of the address's network (a /48, as a network block is
 	// everywhere else). An IPv4 /24 is shared by strangers too often for
-	// that: its sender is counted, and banned, by its one address.
-	kind, key, label := "address", src.fp, src.masked
+	// that: its sender is counted, and banned, by its one address, and its
+	// network only once a second of its addresses is (banNetworkOfTwo).
+	kind, key, label, col := "address", src.fp, src.masked, "ip_fp"
 	if strings.Contains(src.masked, ":") {
-		kind, key, label = "network", src.net, NetworkLabel(src.masked)
+		kind, key, label, col = "network", src.net, NetworkLabel(src.masked), "net_fp"
 	}
 	now := s.Now()
+	s.mu.Lock()
+	_, known := s.linkAsks[key]
+	s.mu.Unlock()
+	var seen map[string]time.Time
+	if !known {
+		seen = s.linksAsked(col, key, now, member)
+	}
 	s.mu.Lock()
 	st := s.linkAsks[key]
 	if st == nil {
@@ -522,6 +535,9 @@ func (s *Store) NoteLinkStranger(account, addr string) bool {
 			}
 		}
 		st = &sprayState{accounts: map[string]time.Time{}}
+		for acct, t := range seen {
+			st.accounts[acct] = t
+		}
 		s.linkAsks[key] = st
 	}
 	for acct, t := range st.accounts {
@@ -532,11 +548,8 @@ func (s *Store) NoteLinkStranger(account, addr string) bool {
 	st.accounts[account] = now
 	ban := len(st.accounts) >= LinkStrangers
 	if ban {
-		for _, b := range s.blocks {
-			if b.Kind == kind && b.Key == key && b.Account == "" && b.Until.IsZero() {
-				ban = false
-				break
-			}
+		if s.bannedForGoodLocked(kind, key) {
+			ban = false
 		}
 		delete(s.linkAsks, key)
 	}
@@ -544,8 +557,79 @@ func (s *Store) NoteLinkStranger(account, addr string) bool {
 	if !ban {
 		return false
 	}
-	_, err := s.add(context.Background(), &Block{Kind: kind, Key: key, Label: label, Reason: "link-spraying", Created: now})
-	return err == nil
+	if _, err := s.add(context.Background(), &Block{Kind: kind, Key: key, Label: label, Reason: "link-spraying", Created: now}); err != nil {
+		return false
+	}
+	if kind == "address" {
+		s.banNetworkOfTwo(src, now)
+	}
+	return true
+}
+
+// linksAsked is the accounts a source asked sign-in links for within
+// LinkWindow, as recorded, with when each was last asked; those member
+// calls members are left out. col names the source's fingerprint column.
+func (s *Store) linksAsked(col, key string, now time.Time, member func(account string) bool) map[string]time.Time {
+	out := map[string]time.Time{}
+	rows, err := s.db.QueryContext(context.Background(), `SELECT account, MAX(minute) FROM signin_attempts
+		WHERE `+col+` = ? AND door = 'link' AND minute >= ? GROUP BY account`, key, now.Add(-LinkWindow).Unix()/60)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var acct string
+		var minute int64
+		if rows.Scan(&acct, &minute) != nil {
+			return out
+		}
+		if member == nil || !member(acct) {
+			out[acct] = time.Unix(minute*60, 0)
+		}
+	}
+	if rows.Err() != nil {
+		return map[string]time.Time{}
+	}
+	return out
+}
+
+// bannedForGoodLocked reports whether the install refuses kind key always.
+// Caller holds s.mu.
+func (s *Store) bannedForGoodLocked(kind, key string) bool {
+	for _, b := range s.blocks {
+		if b.Kind == kind && b.Key == key && b.Account == "" && b.Until.IsZero() {
+			return true
+		}
+	}
+	return false
+}
+
+// banNetworkOfTwo bans src's network (a /24) from sign-in for good once a
+// second address in it has been banned for link spraying: one address is a
+// sender, two in one range are a sender that moves within it.
+func (s *Store) banNetworkOfTwo(src source, now time.Time) {
+	s.mu.Lock()
+	if s.bannedForGoodLocked("network", src.net) {
+		s.mu.Unlock()
+		return
+	}
+	var others []any
+	for _, b := range s.blocks {
+		if b.Kind == "address" && b.Reason == "link-spraying" && b.Key != src.fp && b.Account == "" && b.Until.IsZero() {
+			others = append(others, b.Key)
+		}
+	}
+	s.mu.Unlock()
+	if len(others) == 0 {
+		return
+	}
+	marks := strings.TrimSuffix(strings.Repeat("?,", len(others)), ",")
+	var n int
+	if err := s.db.QueryRowContext(context.Background(), `SELECT COUNT(DISTINCT ip_fp) FROM signin_attempts WHERE net_fp = ? AND ip_fp IN (`+marks+`)`,
+		append([]any{src.net}, others...)...).Scan(&n); err != nil || n == 0 {
+		return
+	}
+	_, _ = s.add(context.Background(), &Block{Kind: "network", Key: src.net, Label: NetworkLabel(src.masked), Reason: "link-spraying", Created: now})
 }
 
 // noteFailureLocked follows a source's failures across accounts and reports

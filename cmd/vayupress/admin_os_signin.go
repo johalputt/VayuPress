@@ -145,13 +145,24 @@ func (a *App) signinsBody(ctx context.Context, days int, source, self string, ta
 	}
 
 	var sections []ui.HTML
+	stops := func(x signin.Source) (bool, bool, bool) { return a.signin.WouldStop(x, self) }
 	if source != "" {
 		rows, _ := a.signin.Attempts(ctx, source, "", 100)
+		// The source's own page is where its requests are read, so it is
+		// where it can be blocked: its state and the same Block menu.
+		head := ""
+		if src, ok := a.signin.SourceOf(ctx, source); ok {
+			head = `<div class="vm-row">`
+			if src.Block != nil {
+				head += string(ui.State("danger", signinBlockState(*src.Block)))
+			}
+			head += signinBlockMenu(src, days, stops) + `</div>`
+		}
 		sections = append(sections, ui.Section("This source's attempts", "Newest first; each row is one minute",
-			ui.HTML(signinAttemptsTable(rows, true))))
+			ui.HTML(head+signinAttemptsTable(rows, true))))
 	}
 	sections = append(sections,
-		ui.Section("Sources", "Those that failed most first; an address is shown with its last part hidden", ui.HTML(signinSourcesTable(rep.Top, days, func(x signin.Source) (bool, bool, bool) { return a.signin.WouldStop(x, self) }))))
+		ui.Section("Sources", "Those that failed most first; an address is shown with its last part hidden", ui.HTML(signinSourcesTable(rep.Top, days, stops))))
 	// Links are not failures, so the sources above leave them out; a source
 	// mailing strangers is seen here, and its own attempts name each address.
 	if asked, notSent, top, err := a.signin.Links(ctx, time.Now().Add(-time.Duration(days)*24*time.Hour), 20); err == nil && asked > 0 {
@@ -159,7 +170,7 @@ func (a *App) signinsBody(ctx context.Context, days int, source, self string, ta
 		if notSent > 0 {
 			hint += ", " + strconv.Itoa(notSent) + " not sent"
 		}
-		sections = append(sections, ui.Section("Sign-in links", hint, ui.HTML(signinLinksTable(top, days))))
+		sections = append(sections, ui.Section("Sign-in links", hint, ui.HTML(signinLinksTable(top, days, stops))))
 	}
 	sections = append(sections,
 		ui.HTML(analyticsCols(
@@ -233,46 +244,7 @@ func signinSourcesTable(list []signin.Source, days int, stops func(signin.Source
 		if s.Mine {
 			state = append(state, `<span class="badge badge--ok">It was us</span>`)
 		}
-		item := func(value, label, note string) string {
-			if note != "" {
-				note = `<span class="sa-menu__meta">` + html.EscapeString(note) + `</span>`
-			}
-			return `<button class="sa-menu__item" role="menuitem" name="for" value="` + value + `"><span>` + html.EscapeString(label) + `</span>` + note + `</button>`
-		}
-		ownAddress, ownNetwork, ownCountry := stops(s)
-		why := func(text string) string { return `<p class="sa-menu__why">` + html.EscapeString(text) + `</p>` }
-		// A block the server would refuse is not offered: the menu says
-		// why instead, so a choice never ends in an error.
-		var signinItems, siteItems string
-		if !ownAddress {
-			signinItems += item("1", "This address, for a day", "") + item("30", "This address, for 30 days", "") + item("0", "This address, always", "")
-			siteItems += item("site", "This address, for 30 days", "Every page, not only sign-in")
-		}
-		if !ownNetwork {
-			signinItems += item("net", "Its network, for 30 days", signin.NetworkLabel(s.Masked))
-			siteItems += item("site-net", "Its network, for 30 days", signin.NetworkLabel(s.Masked))
-		}
-		switch {
-		case ownAddress:
-			signinItems += why("This is your own address: a block would stop your sign-in.")
-		case ownNetwork:
-			signinItems += why("Its network is yours: only the address can be blocked.")
-		}
-		if s.Private {
-			siteItems = why("An address on this install's own network may be the proxy every visitor comes through, so it is blocked from sign-in only.")
-		}
-		form := `<form hx-post="/os/api/shield/sign-ins/block" hx-swap="none"><input type="hidden" name="fp" value="` + fp + `">`
-		menu := `<details class="sa-pop"><summary class="btn btn--sm">Block</summary><div class="sa-pop__panel sa-menu sa-menu--notes" role="menu">` +
-			form + `<div class="sa-menu__label">From signing in</div>` + signinItems + `</form>`
-		if siteItems != "" {
-			menu += `<div class="sa-menu__sep"></div>` + form + `<div class="sa-menu__label">From the whole site</div>` + siteItems + `</form>`
-		}
-		if s.Country != "" && !ownCountry {
-			menu += `<div class="sa-menu__sep"></div><form hx-post="/os/api/shield/sign-ins/country" hx-swap="none"><input type="hidden" name="country" value="` + html.EscapeString(s.Country) + `">` +
-				`<button class="sa-menu__item" role="menuitem"><span>Refuse sign-ins from ` + html.EscapeString(countryName(s.Country)) + `</span><span class="sa-menu__meta">Pages stay readable</span></button></form>`
-		}
-		menu += `<div class="sa-menu__sep"></div><form hx-post="/os/api/shield/sign-ins/mine" hx-swap="none" hx-confirm="Clear this source and stop counting its failures on the accounts it tried?"><input type="hidden" name="fp" value="` + fp + `"><input type="hidden" name="days" value="` + strconv.Itoa(days) + `">` +
-			`<button class="sa-menu__item" role="menuitem"><span>It was one of us</span><span class="sa-menu__meta">Clears it and remembers the place</span></button></form></div></details>`
+		menu := signinBlockMenu(s, days, stops)
 		rows = append(rows, []ui.HTML{
 			ui.HTML(`<a href="` + attempts + `"><strong>` + html.EscapeString(signinWhere(s.Masked, s.Country)) + `</strong></a>` +
 				`<span class="sa-cell-sub">` + signinTried(s.Tried, attempts) + `</span>`),
@@ -286,7 +258,7 @@ func signinSourcesTable(list []signin.Source, days int, stops func(signin.Source
 
 // signinLinksTable lists the sources that asked for sign-in links, each with
 // how many it asked for, to how many addresses, and how many were not sent.
-func signinLinksTable(list []signin.Source, days int) string {
+func signinLinksTable(list []signin.Source, days int, stops func(signin.Source) (address, network, country bool)) string {
 	rows := make([][]ui.HTML, 0, len(list))
 	for _, s := range list {
 		attempts := signinPage + `?days=` + strconv.Itoa(days) + `&amp;source=` + html.EscapeString(s.FP)
@@ -298,16 +270,66 @@ func signinLinksTable(list []signin.Source, days int) string {
 		if s.LinksRefused > 0 {
 			what += ", " + strconv.Itoa(s.LinksRefused) + " not sent"
 		}
-		state := ""
+		state := ui.HTML("")
 		if s.Block != nil {
-			state = `<span class="badge badge--danger">` + html.EscapeString(signinBlockState(*s.Block)) + `</span>`
+			state = ui.State("danger", signinBlockState(*s.Block))
 		}
 		rows = append(rows, []ui.HTML{
 			ui.HTML(`<a href="` + attempts + `"><strong>` + html.EscapeString(signinWhere(s.Masked, s.Country)) + `</strong></a>`),
-			ui.Text(what), ui.HTML(state),
+			ui.Text(what), state, ui.HTML(signinBlockMenu(s, days, stops)),
 		})
 	}
-	return string(ui.Table([]string{"Source", "What it asked for", ""}, rows, "No sign-in link was asked for in this window."))
+	return string(ui.Table([]string{"Source", "What it asked for", "", ""}, rows, "No sign-in link was asked for in this window."))
+}
+
+// signinBlockMenu is the Block menu for source s: each control a form of its
+// own, the source's fingerprint in a hidden field and the chosen button
+// naming what to do, so no value is written into an attribute as code. stops
+// says which of its blocks would stop the operator's own sign-in, and a block
+// the server would refuse is not offered.
+func signinBlockMenu(s signin.Source, days int, stops func(signin.Source) (address, network, country bool)) string {
+	fp := html.EscapeString(s.FP)
+	ownAddress, ownNetwork, ownCountry := stops(s)
+	item := func(value, label, note string) string {
+		if note != "" {
+			note = `<span class="sa-menu__meta">` + html.EscapeString(note) + `</span>`
+		}
+		return `<button class="sa-menu__item" role="menuitem" name="for" value="` + value + `"><span>` + html.EscapeString(label) + `</span>` + note + `</button>`
+	}
+	why := func(text string) string { return `<p class="sa-menu__why">` + html.EscapeString(text) + `</p>` }
+	// A block the server would refuse is not offered: the menu says
+	// why instead, so a choice never ends in an error.
+	var signinItems, siteItems string
+	if !ownAddress {
+		signinItems += item("1", "This address, for a day", "") + item("30", "This address, for 30 days", "") + item("0", "This address, always", "")
+		siteItems += item("site", "This address, for 30 days", "Every page, not only sign-in")
+	}
+	if !ownNetwork {
+		signinItems += item("net", "Its network, for 30 days", signin.NetworkLabel(s.Masked)) + item("net-0", "Its network, always", signin.NetworkLabel(s.Masked))
+		siteItems += item("site-net", "Its network, for 30 days", signin.NetworkLabel(s.Masked))
+	}
+	switch {
+	case ownAddress:
+		signinItems += why("This is your own address: a block would stop your sign-in.")
+	case ownNetwork:
+		signinItems += why("Its network is yours: only the address can be blocked.")
+	}
+	if s.Private {
+		siteItems = why("An address on this install's own network may be the proxy every visitor comes through, so it is blocked from sign-in only.")
+	}
+	form := `<form hx-post="/os/api/shield/sign-ins/block" hx-swap="none"><input type="hidden" name="fp" value="` + fp + `">`
+	menu := `<details class="sa-pop"><summary class="btn btn--sm">Block</summary><div class="sa-pop__panel sa-menu sa-menu--notes" role="menu">` +
+		form + `<div class="sa-menu__label">From signing in</div>` + signinItems + `</form>`
+	if siteItems != "" {
+		menu += `<div class="sa-menu__sep"></div>` + form + `<div class="sa-menu__label">From the whole site</div>` + siteItems + `</form>`
+	}
+	if s.Country != "" && !ownCountry {
+		menu += `<div class="sa-menu__sep"></div><form hx-post="/os/api/shield/sign-ins/country" hx-swap="none"><input type="hidden" name="country" value="` + html.EscapeString(s.Country) + `">` +
+			`<button class="sa-menu__item" role="menuitem"><span>Refuse sign-ins from ` + html.EscapeString(countryName(s.Country)) + `</span><span class="sa-menu__meta">Pages stay readable</span></button></form>`
+	}
+	menu += `<div class="sa-menu__sep"></div><form hx-post="/os/api/shield/sign-ins/mine" hx-swap="none" hx-confirm="Clear this source and stop counting its failures on the accounts it tried?"><input type="hidden" name="fp" value="` + fp + `"><input type="hidden" name="days" value="` + strconv.Itoa(days) + `">` +
+		`<button class="sa-menu__item" role="menuitem"><span>It was one of us</span><span class="sa-menu__meta">Clears it and remembers the place</span></button></form></div></details>`
+	return menu
 }
 
 // signinTriedShown is how many accounts a source's row names; the rest are
@@ -512,6 +534,8 @@ func (a *App) handleOSSigninBlock(w http.ResponseWriter, r *http.Request) {
 		d = 0
 	case "net":
 		network = true
+	case "net-0":
+		network, d = true, 0
 	case "site":
 		site = true
 	case "site-net":

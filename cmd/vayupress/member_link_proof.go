@@ -108,7 +108,10 @@ func (a *App) confirmedMember(ctx context.Context, email string) bool {
 // is under its hourly ceiling. Each later gate runs only when the earlier
 // ones passed, so a refused request spends nothing of the ceiling.
 func (a *App) strangerLinkRefused(account, ip, email, proof, nonce string) bool {
-	if a.signin.NoteLinkStranger(account, ip) {
+	// The count leaves out the source's earlier links to confirmed members:
+	// a reader signing in is not mailing a stranger.
+	member := func(acct string) bool { return a.confirmedMember(context.Background(), acct) }
+	if a.signin.NoteLinkStranger(account, ip, member) {
 		return true
 	}
 	if !linkProofSpent(proof, nonce) {

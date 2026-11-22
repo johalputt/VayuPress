@@ -700,7 +700,7 @@ func TestLinkSprayingOverIPv6IsBannedByItsNetwork(t *testing.T) {
 	s, _ := openStore(t)
 	banned := false
 	for i := 1; i <= LinkStrangers; i++ {
-		banned = s.NoteLinkStranger(fmt.Sprintf("s%d@x.test", i), fmt.Sprintf("2001:db8:7:%x::1", i))
+		banned = s.NoteLinkStranger(fmt.Sprintf("s%d@x.test", i), fmt.Sprintf("2001:db8:7:%x::1", i), nil)
 	}
 	if !banned {
 		t.Fatal("five strangers from one /48 did not ban it")
@@ -719,5 +719,76 @@ func TestLinkSprayingOverIPv6IsBannedByItsNetwork(t *testing.T) {
 	}
 	if ban == nil || ban.Kind != "network" || ban.Label != "2001:db8:x::/48" || !ban.Until.IsZero() {
 		t.Fatalf("the ban is %+v", ban)
+	}
+}
+
+// linkAsk is a sign-in link asked for account from ip, recorded as the
+// handler records it and counted as it counts it.
+func linkAsk(s *Store, account, ip string) bool {
+	s.Record(Attempt{Account: account, Door: DoorLink, Stage: StageLinkRefused, IP: ip})
+	return s.NoteLinkStranger(account, ip, func(a string) bool { return strings.HasPrefix(a, "member") })
+}
+
+// A restart forgets nothing: links a source asked for before it are counted
+// from the record, so the fifth stranger in a day bans it even when the
+// first four came before the restart. Links to members are not counted.
+func TestLinksAskedBeforeARestartCount(t *testing.T) {
+	s, c := openStore(t)
+	ctx := context.Background()
+	for i := 1; i < LinkStrangers; i++ {
+		linkAsk(s, fmt.Sprintf("s%d@x.test", i), "198.51.100.61")
+		// A member's link is recorded, never counted: the handler asks the
+		// counter only about strangers.
+		s.Record(Attempt{Account: fmt.Sprintf("member%d@x.test", i), Door: DoorLink, Stage: StageLink, IP: "203.0.113.62"})
+	}
+	linkAsk(s, "t1@x.test", "203.0.113.62")
+	if err := s.Flush(ctx); err != nil {
+		t.Fatal(err)
+	}
+	again, err := Open(ctx, dbpkg.DB, testKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again.Now = c.now
+	if !again.NoteLinkStranger("s9@x.test", "198.51.100.61", nil) {
+		t.Fatal("the fifth stranger after a restart did not ban the source that asked for four before it")
+	}
+	if again.NoteLinkStranger("t2@x.test", "203.0.113.62", func(a string) bool { return strings.HasPrefix(a, "member") }) {
+		t.Fatal("links to members were counted toward the ban")
+	}
+}
+
+// One address banned for link spraying is a sender; a second in the same
+// /24 is a sender moving within its range, and the /24 is banned from
+// sign-in for good, so a third address there it never used is refused.
+func TestASecondBannedAddressBansItsNetwork(t *testing.T) {
+	s, _ := openStore(t)
+	ctx := context.Background()
+	for i := 1; i <= LinkStrangers; i++ {
+		linkAsk(s, fmt.Sprintf("a%d@x.test", i), "198.51.100.71")
+	}
+	if err := s.Flush(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, refused := s.Refuse("member@x.test", "198.51.100.200"); refused {
+		t.Fatal("one banned address banned its whole network")
+	}
+	for i := 1; i <= LinkStrangers; i++ {
+		linkAsk(s, fmt.Sprintf("b%d@x.test", i), "198.51.100.72")
+	}
+	if _, refused := s.Refuse("member@x.test", "198.51.100.200"); !refused {
+		t.Fatal("two banned addresses of one /24 left its other addresses free")
+	}
+	if _, refused := s.Refuse("member@x.test", "198.51.101.9"); refused {
+		t.Fatal("the next /24 was refused")
+	}
+	var net *Block
+	for _, b := range s.Blocks("") {
+		if b.Kind == "network" {
+			net = &b
+		}
+	}
+	if net == nil || net.Reason != "link-spraying" || !net.Until.IsZero() || net.Label != "198.51.x.0/24" {
+		t.Fatalf("the network ban is %+v", net)
 	}
 }

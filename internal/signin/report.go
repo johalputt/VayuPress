@@ -166,8 +166,21 @@ func (s *Store) decorate(list []Source, account string) {
 				list[i].Mine = true
 			}
 		}
+		// Its own address's block first, else its network's: a source in a
+		// blocked network is refused as surely as one blocked by itself.
 		for _, b := range s.blocks {
 			if b.Kind == "address" && b.Key == list[i].FP && b.Active(now) && (b.Account == "" || b.Account == account) {
+				c := *b
+				c.Hits += s.hits[b.ID]
+				list[i].Block = &c
+				break
+			}
+		}
+		if list[i].Block != nil || list[i].net == "" {
+			continue
+		}
+		for _, b := range s.blocks {
+			if b.Kind == "network" && b.Key == list[i].net && b.Active(now) && (b.Account == "" || b.Account == account) {
 				c := *b
 				c.Hits += s.hits[b.ID]
 				list[i].Block = &c
@@ -188,7 +201,7 @@ func (s *Store) Links(ctx context.Context, since time.Time, limit int) (asked, r
 		Scan(&asked, &refused); err != nil {
 		return 0, 0, nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT ip_fp, MAX(ip_masked), MAX(country), SUM(n), COALESCE(SUM(CASE WHEN stage = 'link-refused' THEN n END), 0), COUNT(DISTINCT account)
+	rows, err := s.db.QueryContext(ctx, `SELECT ip_fp, MAX(net_fp), MAX(ip_masked), MAX(country), SUM(n), COALESCE(SUM(CASE WHEN stage = 'link-refused' THEN n END), 0), COUNT(DISTINCT account)
 		FROM signin_attempts WHERE `+links+` GROUP BY ip_fp ORDER BY SUM(n) DESC, MAX(minute) DESC LIMIT ?`, from, limit)
 	if err != nil {
 		return 0, 0, nil, err
@@ -196,7 +209,7 @@ func (s *Store) Links(ctx context.Context, since time.Time, limit int) (asked, r
 	defer rows.Close()
 	for rows.Next() {
 		var x Source
-		if err := rows.Scan(&x.FP, &x.Masked, &x.Country, &x.LinksAsked, &x.LinksRefused, &x.Accounts); err != nil {
+		if err := rows.Scan(&x.FP, &x.net, &x.Masked, &x.Country, &x.LinksAsked, &x.LinksRefused, &x.Accounts); err != nil {
 			return 0, 0, nil, err
 		}
 		x.Private = maskedPrivate(x.Masked)
@@ -207,6 +220,21 @@ func (s *Store) Links(ctx context.Context, since time.Time, limit int) (asked, r
 	}
 	s.decorate(top, "")
 	return asked, refused, top, nil
+}
+
+// SourceOf is the source behind fingerprint fp as its latest attempt recorded
+// it, with the block it is under; false when nothing from it is recorded.
+func (s *Store) SourceOf(ctx context.Context, fp string) (Source, bool) {
+	x := Source{FP: fp}
+	err := s.db.QueryRowContext(ctx, `SELECT net_fp, ip_masked, country FROM signin_attempts WHERE ip_fp = ? ORDER BY minute DESC LIMIT 1`, fp).
+		Scan(&x.net, &x.Masked, &x.Country)
+	if err != nil {
+		return Source{}, false
+	}
+	x.Private = maskedPrivate(x.Masked)
+	list := []Source{x}
+	s.decorate(list, "")
+	return list[0], true
 }
 
 // Row is one count of attempts.
