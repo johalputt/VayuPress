@@ -186,9 +186,10 @@ func (a *App) handleOSPower(w http.ResponseWriter, r *http.Request) {
 		msg = a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyMaintenanceMessage)
 	}
 	crawlersOff := a.crawlersBlocked(r.Context())
+	aiOff := a.aiCrawlersBlocked(r.Context())
 	feedbackAddr := a.feedbackEmail(r.Context())
 	writeOSHTML(w, r, settingsLayout(nonce, "Power", "operations", cfg,
-		htmpl.HTML(osPowerBody(nonce, on, msg, crawlersOff, feedbackAddr))))
+		htmpl.HTML(osPowerBody(nonce, on, msg, crawlersOff, aiOff, feedbackAddr))))
 }
 
 // handleOSPowerPreview renders the public maintenance page inside the console so
@@ -206,7 +207,7 @@ func (a *App) handleOSPowerPreview(w http.ResponseWriter, r *http.Request) {
 // osPowerBody builds the control page. The inline script (nonce'd) drives the
 // toggle and the restart/shutdown buttons; all three POST to the CSRF-protected
 // /os/api/power/* endpoints.
-func osPowerBody(nonce string, on bool, message string, crawlersOff bool, feedbackAddr string) string {
+func osPowerBody(nonce string, on bool, message string, crawlersOff, aiOff bool, feedbackAddr string) string {
 	state := ui.State("ok", "Live")
 	siteHint := "Visitors reach the public site normally. Offline, they see a maintenance page and the console stays open."
 	siteBtn := `<button type="button" class="btn btn--sm" data-power-toggle data-on="0">Take the site offline</button>`
@@ -221,6 +222,12 @@ func osPowerBody(nonce string, on bool, message string, crawlersOff bool, feedba
 		crawl, crawlBtn = ui.State("warn", "Blocked"), `<button type="button" class="btn btn--sm" data-crawlers-toggle data-on="1">Allow</button>`
 		crawlHint = "robots.txt disallows everything, known crawlers get a 403, and every public page says noindex."
 	}
+	ai, aiBtn := ui.State("ok", "Allowed"), `<button type="button" class="btn btn--sm" data-ai-toggle data-on="0">Refuse</button>`
+	aiHint := "GPTBot, ClaudeBot, PerplexityBot, CCBot and other AI crawlers may read the public site."
+	if aiOff {
+		ai, aiBtn = ui.State("warn", "Refused"), `<button type="button" class="btn btn--sm" data-ai-toggle data-on="1">Allow</button>`
+		aiHint = "robots.txt names each AI crawler and disallows it, a known AI crawler gets a 403, and llms.txt is withheld."
+	}
 	field := func(id, key, kind, label, value string) ui.HTML {
 		return settingControl(settingField{ID: id, Key: key, Kind: kind, Label: label}, value)
 	}
@@ -234,6 +241,7 @@ func osPowerBody(nonce string, on bool, message string, crawlersOff bool, feedba
 			ui.Row{Label: "The maintenance page", Hint: "What visitors see, without taking the site down.",
 				Control: `<a class="settings-row-go" href="/os/power/preview" target="_blank" rel="noopener">Preview` + ui.Icon("ext") + `</a>`},
 			ui.Row{Label: "Search engines and AI crawlers", Hint: crawlHint + " Visitors, the console and VayuMCP are never affected.", Control: crawl + ui.HTML(crawlBtn)},
+			ui.Row{Label: "AI crawlers only", Hint: aiHint + " Search engines keep indexing the site.", Control: ai + ui.HTML(aiBtn)},
 		)),
 		ui.Section("Feedback", "", ui.Rows(
 			ui.Row{Label: "Feedback inbox", Hint: "Send feedback, in the account menu, writes a PGP-encrypted report here. Empty sends it to the VayuPress team at feedback@vayupress.com.", ID: "fb-addr",
@@ -275,6 +283,19 @@ if(crawlBtn){crawlBtn.addEventListener('click',function(){
   }).catch(function(){crawlBtn.disabled=false;toast('Network error','error');});
   };
   if(block){vpConfirm({title:'Block crawlers?',message:'Block all search engines and AI crawlers now? Your site stops being indexed until you allow crawlers again.',confirm:'Block'},apply);return;}
+  apply();
+});}
+var aiBtn=document.querySelector('[data-ai-toggle]');
+if(aiBtn){aiBtn.addEventListener('click',function(){
+  var refuse=aiBtn.getAttribute('data-on')!=='1';
+  var apply=function(){
+  aiBtn.disabled=true;
+  post('/os/api/power/crawlers',{ai:refuse}).then(function(r){return r.json();}).then(function(j){
+    if(j&&j.ok){toast(refuse?'AI crawlers are now refused. Search engines still index the site.':'AI crawlers are allowed again.','ok');setTimeout(function(){location.reload();},700);}
+    else{aiBtn.disabled=false;toast((j&&j.error&&j.error.message)||'Could not change AI crawler access','error');}
+  }).catch(function(){aiBtn.disabled=false;toast('Network error','error');});
+  };
+  if(refuse){vpConfirm({title:'Refuse AI crawlers?',message:'Refuse GPTBot, ClaudeBot, PerplexityBot and the other AI crawlers now? Search engines keep indexing the site.',confirm:'Refuse'},apply);return;}
   apply();
 });}
 var reBtn=document.querySelector('[data-power-restart]');

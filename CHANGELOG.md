@@ -8,6 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Refuse AI crawlers, keep search engines.** A second switch under
+  Operations › Power & Maintenance, "AI crawlers only": robots.txt keeps the
+  site's own rules and names each AI crawler after them, disallowed;
+  GPTBot, ClaudeBot, PerplexityBot, CCBot and the other known AI crawlers
+  are answered 403; llms.txt is withheld. Google, Bing and readers are
+  served as before, and no page says noindex. The switch that turns the
+  site dark to every crawler is unchanged.
+
 ### Security
 
 - **Reported attackers are refused sign-in at every door.** A new kind of

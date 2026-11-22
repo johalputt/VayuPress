@@ -49,6 +49,10 @@ const (
 	// every public response carries X-Robots-Tag: noindex as a backstop. The
 	// VayuOS console and operational endpoints are never affected. Defaults OFF.
 	KeyBlockCrawlers = "site.block_crawlers"
+	// KeyBlockAICrawlers, when "on", refuses AI crawlers only: robots.txt
+	// names them, a known AI crawler's request is answered 403, and llms.txt
+	// is withheld, while search engines index as before.
+	KeyBlockAICrawlers = "site.block_ai_crawlers"
 
 	// VayuKeep — automatic backup, configured from VayuOS (ADR-0145). The target
 	// is a setting rather than an env var so it can be changed from the console;
@@ -610,6 +614,7 @@ var NotPortable = map[string]bool{
 	KeyMaintenanceMode:            true,
 	KeyMaintenanceMessage:         true,
 	KeyBlockCrawlers:              true,
+	KeyBlockAICrawlers:            true,
 	KeyFeedbackEmail:              true,
 	KeyNavItems:                   true,
 	KeyFooterConfig:               true,
@@ -777,6 +782,7 @@ var AllKeys = map[string]bool{
 	KeyMaintenanceMode:         true,
 	KeyMaintenanceMessage:      true,
 	KeyBlockCrawlers:           true,
+	KeyBlockAICrawlers:         true,
 	KeyFeedbackEmail:           true,
 	KeyThemePrimaryLight:       true,
 	KeyThemePrimaryDark:        true,

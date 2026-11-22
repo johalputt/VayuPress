@@ -43,7 +43,12 @@ const crawlerBlockedRobotsTxt = `# Crawling disabled by the site owner (VayuOS â
 User-agent: *
 Disallow: /
 
-User-agent: GPTBot
+` + aiRobotsBlock
+
+// aiRobotsBlock names the AI crawlers, each disallowed: the whole of
+// robots.txt when only AI crawlers are refused, and the explicit half of it
+// when every crawler is.
+const aiRobotsBlock = `User-agent: GPTBot
 Disallow: /
 
 User-agent: OAI-SearchBot
@@ -92,6 +97,18 @@ User-agent: cohere-ai
 Disallow: /
 `
 
+// aiCrawlersBlocked reports whether the operator refuses AI crawlers only,
+// search engines still indexing.
+func (a *App) aiCrawlersBlocked(ctx context.Context) bool {
+	return a.siteSettings != nil && a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyBlockAICrawlers) == "on"
+}
+
+// aiCrawlerUA reports whether ua identifies an AI crawler or assistant.
+func aiCrawlerUA(ua string) bool {
+	sig, ok := crawlerClassifier.MatchUA(ua)
+	return ok && sig.Classification == botdb.ClassAIAgent
+}
+
 // crawlersBlocked reports whether the operator has switched the public site dark
 // to search engines and AI crawlers.
 func (a *App) crawlersBlocked(ctx context.Context) bool {
@@ -136,7 +153,20 @@ func crawlerUABlocked(ua string) bool {
 // the operator are unaffected.
 func (a *App) crawlerBlockMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if a.siteSettings == nil || !a.crawlersBlocked(r.Context()) || maintenancePathExempt(r.URL.Path) {
+		if a.siteSettings == nil || maintenancePathExempt(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !a.crawlersBlocked(r.Context()) {
+			// AI crawlers only: refused by name, and nothing else changes, so
+			// search engines index and no page says noindex.
+			if a.aiCrawlersBlocked(r.Context()) && aiCrawlerUA(r.UserAgent()) {
+				w.Header().Set("Cache-Control", "no-store")
+				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte("AI crawling is disabled by the site owner.\n"))
+				return
+			}
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -168,25 +198,31 @@ func (a *App) handleOSPowerCrawlers(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "unavailable", "settings unavailable", "")
 		return
 	}
+	// "block" is every crawler, "ai" AI crawlers only; one of them per request.
 	var body struct {
 		Block *bool `json:"block"`
+		AI    *bool `json:"ai"`
 	}
 	if err := readCappedJSON(w, r, 4*1024, &body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "invalid request body", "")
 		return
 	}
-	if body.Block == nil {
-		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "missing 'block' flag", "")
+	key, flag, what := settings.KeyBlockCrawlers, body.Block, "search-engine/AI crawler block"
+	if body.AI != nil {
+		key, flag, what = settings.KeyBlockAICrawlers, body.AI, "AI crawler block"
+	}
+	if flag == nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "missing 'block' or 'ai' flag", "")
 		return
 	}
 	val := "off"
-	if *body.Block {
+	if *flag {
 		val = "on"
 	}
-	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{settings.KeyBlockCrawlers: val}); err != nil {
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{key: val}); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "write_failed", "could not save the setting", "")
 		return
 	}
-	logging.LogWarn("crawlers", "search-engine/AI crawler block set to "+val+" by admin")
-	writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "blocked": *body.Block})
+	logging.LogWarn("crawlers", what+" set to "+val+" by admin")
+	writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "blocked": *flag})
 }

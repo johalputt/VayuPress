@@ -174,5 +174,16 @@ func (a *App) handleRobots(w http.ResponseWriter, r *http.Request) {
 		host := a.activeHost(r)
 		freshDomArtefact(rel, func() { writeRobotsScoped(host, rel) })
 	}
+	// AI crawlers only: the site's own robots.txt, and each AI crawler named
+	// and disallowed after it, so search engines read their rules unchanged.
+	if a.aiCrawlersBlocked(r.Context()) {
+		b, err := os.ReadFile(filepath.Join(config.Cfg.CacheDir, rel)) //nolint:gosec // rel is a fixed name or a scope hash, built above
+		if err == nil {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-store")
+			_, _ = w.Write(append(append(b, "\n# AI crawlers refused by the site owner (VayuOS → Power & Maintenance).\n"...), aiRobotsBlock...))
+			return
+		}
+	}
 	http.ServeFile(w, r, filepath.Join(config.Cfg.CacheDir, rel))
 }

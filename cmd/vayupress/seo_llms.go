@@ -60,7 +60,8 @@ const (
 const llmsMaxWholeReads = 20
 
 func (a *App) handleLLMsTxt(w http.ResponseWriter, r *http.Request) {
-	if a.crawlersBlocked(r.Context()) {
+	// llms.txt is written for AI systems, so refusing AI crawlers withholds it.
+	if a.crawlersBlocked(r.Context()) || a.aiCrawlersBlocked(r.Context()) {
 		http.NotFound(w, r)
 		return
 	}
