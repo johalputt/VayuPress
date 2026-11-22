@@ -275,6 +275,10 @@ type Inputs struct {
 	// "block"; WAFParanoia its OWASP Core Rule Set paranoia level.
 	WAF         string
 	WAFParanoia int
+	// SSH is whether SSH protection is switched on; SSHState what the agent
+	// last wrote for it ("on", "unsupported", or "" when it has not).
+	SSH      bool
+	SSHState string
 
 	// --- What the agent observed ---------------------------------------------
 
@@ -521,7 +525,7 @@ func Run(in Inputs) []Check {
 	}
 
 	checks = append(checks, intelChecks(in)...)
-	checks = append(checks, wafCheck(in))
+	checks = append(checks, wafCheck(in), sshCheck(in))
 
 	checks = append(checks, tierChecks(in, stale)...)
 
@@ -567,6 +571,23 @@ func Run(in Inputs) []Check {
 		"Not provided by this or any single-origin product, and no setting on this page changes that. Every defence here runs after packets have already crossed your uplink, so a flood large enough to fill the link is decided by your provider's network, not by software on this machine. Absorbing that requires capacity in more places than one — an anycast network, or several origins in front of this one. Adding nodes raises the ceiling in proportion to the nodes; it does not remove it.")
 
 	return checks
+}
+
+// sshCheck is the row for the server's own SSH: switched on, it holds only
+// if the agent is running and has read sshd's journal.
+func sshCheck(in Inputs) Check {
+	const title = "The server's SSH"
+	switch {
+	case !in.SSH:
+		return Check{Title: title, Status: Info, Detail: "Off. An address guessing SSH passwords is not banned by VayuPress; turn it on under Shield › Settings, with the Shield agent installed."}
+	case !in.AgentAlive:
+		return Check{Title: title, Status: Warn, Detail: "Switched on, but the Shield agent is not running, so nobody reads sshd's failures and nothing is banned. Install or start the agent."}
+	case in.SSHState == "unsupported":
+		return Check{Title: title, Status: Warn, Detail: "Switched on, but this server has no systemd journal for the agent to read sshd's failures from, so nothing is banned."}
+	case in.SSHState != "on":
+		return Check{Title: title, Status: Warn, Detail: "Switched on, and the agent has not yet said it is reading sshd's failures. It does on its next poll; if this stays, the agent is older than this release and needs upgrading."}
+	}
+	return Check{Title: title, Status: Pass, Detail: "The agent reads sshd's failed sign-ins; an address failing five times in ten minutes is dropped by the kernel for an hour, a day on its second ban and thirty days after. Your own addresses are never dropped."}
 }
 
 // wafCheck is the web application firewall's row: the OWASP Core Rule Set

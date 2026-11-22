@@ -3476,6 +3476,7 @@
  "the console": "控制台",
  "the event was changed on another device since you opened it: close this and open it again": "你打开后，此日程已在其他设备上被更改：请关闭后重新打开",
  "the scan hit its limit — add a filter or a longer term to see the rest": "扫描已达上限——添加筛选条件或使用更长的词语以查看其余结果",
+ "the server's SSH": "服务器的 SSH",
  "the site's sign-in": "网站登录",
  "then": "则",
  "there is no clearnet egress, so a reset link cannot be delivered to an outside address. {only} — generate them for every mailbox.": "没有通往公共网络的出口，因此无法把重置链接发送到外部地址。{only}——请为每个邮箱生成。",

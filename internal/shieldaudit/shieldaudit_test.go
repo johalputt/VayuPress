@@ -646,3 +646,22 @@ func TestTheFirewallRowSaysWhatItsModeDoes(t *testing.T) {
 		}
 	}
 }
+
+// The server's SSH row passes only when it is switched on, the agent is
+// running and the agent has said it reads sshd's journal.
+func TestTheSSHRowPassesOnlyWhenTheAgentReadsTheJournal(t *testing.T) {
+	for _, c := range []struct {
+		in   Inputs
+		want Status
+	}{
+		{Inputs{}, Info},
+		{Inputs{SSH: true}, Warn},
+		{Inputs{SSH: true, AgentAlive: true, SSHState: "unsupported"}, Warn},
+		{Inputs{SSH: true, AgentAlive: true}, Warn},
+		{Inputs{SSH: true, AgentAlive: true, SSHState: "on"}, Pass},
+	} {
+		if got := sshCheck(c.in).Status; got != c.want {
+			t.Errorf("%+v: %v, want %v", c.in, got, c.want)
+		}
+	}
+}

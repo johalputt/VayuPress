@@ -151,6 +151,8 @@ func signinDoorName(lang, door string) string {
 		return i18n.T(lang, "a recovery code")
 	case signin.DoorLink:
 		return i18n.T(lang, "a member's sign-in link")
+	case signin.DoorSSH:
+		return i18n.T(lang, "the server's SSH")
 	}
 	return ""
 }

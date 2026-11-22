@@ -10,6 +10,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **The server's own SSH is protected, as fail2ban would.** Shield ›
+  Settings › The server's SSH: switched on, the Shield agent reads sshd's
+  failed sign-ins from the system journal, and an address that fails five
+  times in ten minutes is dropped by the kernel for an hour, a day on its
+  second ban and thirty days after that. Your own addresses are never
+  dropped. Each failure shows on Shield › Sign-in attempts at "the server's
+  SSH", where the spraying rule and the Block menu apply as at any door,
+  and the posture report says whether the agent is reading the journal.
+  The agent only reads and reports; the app decides. Needs the Shield agent
+  of this release and systemd's journal.
+
 - **A web application firewall: the OWASP Core Rule Set, run by Coraza.**
   Shield › Settings › Web application firewall: off (the default), record
   only, or refuse, at paranoia level 1 to 4. It reads each public request

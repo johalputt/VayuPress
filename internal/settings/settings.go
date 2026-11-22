@@ -395,6 +395,11 @@ const (
 	KeyShieldWAF         = "shield.waf"
 	KeyShieldWAFParanoia = "shield.waf_paranoia"
 
+	// KeyShieldSSH, "on", has the Shield agent read sshd's failed sign-ins
+	// and the app ban an address that fails five times in ten minutes
+	// (cmd/vayupress/vayushield_ssh.go).
+	KeyShieldSSH = "shield.ssh"
+
 	// KeyShieldRules is the operator's own request rules, one per line
 	// (vayushield/oprules): "block path^=/wp-", "test challenge country=CN".
 	// Empty by default, for the same reason as the lists above.
@@ -690,6 +695,7 @@ var NotPortable = map[string]bool{
 	KeyShieldLinkDatacenter:       true,
 	KeyShieldWAF:                  true,
 	KeyShieldWAFParanoia:          true,
+	KeyShieldSSH:                  true,
 	KeyShieldRules:                true,
 	// A site's own shield settings are network policy, like the install's.
 	KeyShieldSitePoW:                true,
@@ -875,6 +881,7 @@ var AllKeys = map[string]bool{
 	KeyShieldLinkDatacenter:       true,
 	KeyShieldWAF:                  true,
 	KeyShieldWAFParanoia:          true,
+	KeyShieldSSH:                  true,
 	KeyShieldRules:                true,
 	KeyAnalyticsBeacon:            true,
 	KeyTorEnabled:                 true,
@@ -984,6 +991,7 @@ var Defaults = map[string]string{
 	KeyShieldObserve:              "off",
 	KeyShieldWAF:                  "off",
 	KeyShieldWAFParanoia:          "1",
+	KeyShieldSSH:                  "off",
 	KeyShieldAllowCIDRs:           "",
 	KeyShieldDenyCIDRs:            "",
 	KeyShieldAllowCountries:       "",

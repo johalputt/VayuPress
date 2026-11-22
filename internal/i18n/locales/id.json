@@ -3476,6 +3476,7 @@
  "the console": "konsol",
  "the event was changed on another device since you opened it: close this and open it again": "acara diubah di perangkat lain sejak Anda membukanya: tutup lalu buka lagi",
  "the scan hit its limit — add a filter or a longer term to see the rest": "pemindaian mencapai batasnya — tambahkan filter atau istilah yang lebih panjang untuk melihat sisanya",
+ "the server's SSH": "SSH server",
  "the site's sign-in": "halaman masuk situs",
  "then": "lalu",
  "there is no clearnet egress, so a reset link cannot be delivered to an outside address. {only} — generate them for every mailbox.": "tidak ada jalan keluar ke jaringan terbuka, jadi tautan atur ulang tidak dapat dikirim ke alamat luar. {only} — buat untuk setiap kotak surat.",

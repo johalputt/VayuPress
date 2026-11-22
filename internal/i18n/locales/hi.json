@@ -3476,6 +3476,7 @@
  "the console": "कंसोल",
  "the event was changed on another device since you opened it: close this and open it again": "आपके खोलने के बाद इवेंट किसी दूसरे डिवाइस पर बदला गया: इसे बंद करके फिर खोलें",
  "the scan hit its limit — add a filter or a longer term to see the rest": "खोज अपनी सीमा तक पहुँच गई — बाकी देखने के लिए फ़िल्टर या लंबा शब्द जोड़ें",
+ "the server's SSH": "सर्वर का SSH",
  "the site's sign-in": "साइट का साइन-इन",
  "then": "तब",
  "there is no clearnet egress, so a reset link cannot be delivered to an outside address. {only} — generate them for every mailbox.": "खुले नेटवर्क पर कोई निकास नहीं है, इसलिए रीसेट लिंक किसी बाहरी पते पर नहीं भेजा जा सकता। {only} — हर मेलबॉक्स के लिए बनाएँ।",

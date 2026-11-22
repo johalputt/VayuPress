@@ -3476,6 +3476,7 @@
  "the console": "konsol",
  "the event was changed on another device since you opened it: close this and open it again": "etkinlik siz açtıktan sonra başka bir cihazda değiştirildi: kapatıp yeniden açın",
  "the scan hit its limit — add a filter or a longer term to see the rest": "tarama sınırına ulaştı — gerisini görmek için bir filtre veya daha uzun bir terim ekleyin",
+ "the server's SSH": "sunucunun SSH’ı",
  "the site's sign-in": "sitenin oturum açma sayfası",
  "then": "sonra",
  "there is no clearnet egress, so a reset link cannot be delivered to an outside address. {only} — generate them for every mailbox.": "açık ağa çıkış yok; bu yüzden sıfırlama bağlantısı dış bir adrese gönderilemez. {only} — her posta kutusu için oluşturun.",

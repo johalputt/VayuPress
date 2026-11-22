@@ -207,6 +207,8 @@ func (a *App) shieldAuditInputs(r *http.Request) shieldaudit.Inputs {
 		IntelFeeds:  a.shieldIntelAudit(),
 		WAF:         string(a.wafMode()),
 		WAFParanoia: a.wafParanoia(),
+		SSH:         a.sshOn(context.Background()),
+		SSHState:    shieldSSHState(),
 	}
 	if a.siteSettings != nil {
 		in.BehindCDN = a.siteSettings.Get(context.Background(), settings.ForPrimary(), settings.KeyShieldBehindCDN) == "on"

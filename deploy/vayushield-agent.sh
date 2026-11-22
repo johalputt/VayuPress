@@ -477,6 +477,67 @@ reconcile_banlist() {
   rm -f "$batch" "$xdp_new" "$flushonly"
 }
 
+# export_ssh_failures — sshd's failed sign-ins, for the app's ban rule
+# (cmd/vayupress/vayushield_ssh.go).
+#
+# fail2ban's job, split along the privilege line the rest of this agent keeps:
+# root reads the journal (the app cannot), and writes only what it read, one
+# "<unix-seconds> <address> <user>" line per failure, into the app-owned
+# control directory. It decides nothing: the app counts and bans through
+# banlist.txt, which this agent already turns into kernel drops. The app
+# switches it on with an empty ssh.want; without it the journal is not read.
+#
+# Each address passes the banlist's own parser (valid_ip4/valid_ip6) and a user
+# name is cut to [A-Za-z0-9._-], so nothing sshd logged on an attacker's behalf
+# reaches the app as anything but those characters.
+SSH_FAILS="${CONTROL_DIR}/ssh-failures.txt"
+SSH_CURSOR="${CONTROL_DIR}/ssh.cursor"
+SSH_FAILS_MAX=1048576
+export_ssh_failures() {
+  if [ ! -f "${CONTROL_DIR}/ssh.want" ]; then
+    rm -f "$SSH_CURSOR" 2>/dev/null || true
+    write_state ssh off
+    return 0
+  fi
+  if ! command -v journalctl >/dev/null 2>&1; then
+    write_state ssh unsupported
+    return 0
+  fi
+  local out cursor line ts msg ip user
+  # sshd logs as "sshd" and, since OpenSSH 9.8, its sessions as "sshd-session".
+  if [ -s "$SSH_CURSOR" ]; then
+    cursor="$(head -c 512 "$SSH_CURSOR")"
+    out="$(journalctl -q --no-pager -o short-unix --show-cursor -t sshd -t sshd-session --after-cursor="$cursor" 2>/dev/null)" || out=""
+  else
+    out="$(journalctl -q --no-pager -o short-unix --show-cursor -t sshd -t sshd-session --since "-10min" 2>/dev/null)" || out=""
+  fi
+  [ -f "$SSH_FAILS" ] && [ "$(wc -c <"$SSH_FAILS")" -gt "$SSH_FAILS_MAX" ] && : >"$SSH_FAILS"
+  while IFS= read -r line; do
+    case "$line" in
+      "-- cursor: "*)
+        printf '%s' "${line#-- cursor: }" >"$SSH_CURSOR" 2>/dev/null || true
+        continue ;;
+    esac
+    ts="${line%%.*}"
+    case "$ts" in ''|*[!0-9]*) continue ;; esac
+    msg="${line#*: }"
+    ip="" user=""
+    if [[ "$msg" =~ ^Failed\ [a-z/-]+\ for\ (invalid\ user\ )?([^ ]*)\ from\ ([0-9a-fA-F.:]+)\ port\ [0-9]+ ]]; then
+      user="${BASH_REMATCH[2]}" ip="${BASH_REMATCH[3]}"
+    elif [[ "$msg" =~ ^Invalid\ user\ ([^ ]*)\ from\ ([0-9a-fA-F.:]+)\ port\ [0-9]+ ]]; then
+      user="${BASH_REMATCH[1]}" ip="${BASH_REMATCH[2]}"
+    else
+      continue
+    fi
+    valid_ip4 "$ip" || valid_ip6 "$ip" || continue
+    user="$(printf '%s' "$user" | tr -cd 'A-Za-z0-9._-' | head -c 32)"
+    [ -n "$user" ] || user="?"
+    printf '%s %s %s\n' "$ts" "$ip" "$user" >>"$SSH_FAILS" 2>/dev/null || true
+  done <<<"$out"
+  write_state ssh on
+  return 0
+}
+
 # reconcile_cdnallow — one-click population of the Tier 2 proxy allowlist.
 #
 # Behind a CDN, Tier 2's per-IP limits key on edge addresses because the kernel
@@ -2030,6 +2091,7 @@ run_agent() {
       reconcile_mcpsurface
       reconcile_realip
       reconcile_banlist
+      export_ssh_failures
       # The digest shells out to nft and nginx -T, which is far too expensive for
       # a 5-second poll. Refresh it about once a minute and on the first tick, so
       # a freshly-started agent does not leave the panel unverified for a minute.

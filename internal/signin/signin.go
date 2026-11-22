@@ -42,6 +42,7 @@ const (
 	DoorTalk     = "talk"     // VayuTalk's connect
 	DoorRecovery = "recovery" // the recovery code
 	DoorLink     = "link"     // a member's emailed sign-in link
+	DoorSSH      = "ssh"      // the host's own SSH, read by the Shield agent
 )
 
 // The stages an attempt reached.

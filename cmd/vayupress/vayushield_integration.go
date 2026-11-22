@@ -355,6 +355,9 @@ func (a *App) bootVayuShield() {
 	a.vayuShield.ApplySettings(a.shieldSettings(context.Background()))
 	// Observe-only ends by itself a day after it was switched on.
 	a.watchObserve()
+	// SSH on the host, read by the agent and banned here.
+	a.sshWatch = newSSHWatch()
+	a.watchSSH()
 	// Each hosted site's own settings, on top of the install's.
 	a.applyShieldSiteSettings(context.Background())
 	// "Behind Cloudflare/CDN" real-visitor-IP trust: enable if EITHER the env
@@ -797,6 +800,9 @@ func (a *App) shieldProtectionBody(ctx context.Context, geoBlind bool) string {
 	b.WriteString(a.shieldPolicyBand(ctx, geoBlind))
 	b.WriteString(a.shieldIntelBand(ctx))
 	b.WriteString(a.wafBand())
+	b.WriteString(`<div class="card-title vs-section">The server's SSH</div><div class="vs-feat">`)
+	b.WriteString(vsRow("sh_ssh", "Ban addresses that fail SSH sign-in", "The Shield agent reads sshd's failed sign-ins from the system journal; an address that fails five times in ten minutes is dropped by the kernel for an hour, then a day, then thirty days if it comes back. Your own addresses are never dropped. Each failure shows on Sign-in attempts as the server's SSH. Needs the Shield agent on a server with systemd's journal.", a.sshOn(ctx), false))
+	b.WriteString(`</div>`)
 	b.WriteString(`<div class="card-title vs-section">Analytics</div>`)
 	b.WriteString(`<div class="vs-feat">`)
 	b.WriteString(vsRow("sh_beacon", "Engagement analytics", "Measure time-on-page and scroll depth on public pages. Cookieless, no PII.", beaconOn, false))
@@ -1384,6 +1390,7 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		settings.KeyShieldLinkDatacenter: bs("sh_link_datacenter"),
 		settings.KeyShieldWAF:            wafMode,
 		settings.KeyShieldWAFParanoia:    wafPL,
+		settings.KeyShieldSSH:            bs("sh_ssh"),
 	}
 	// Diff BEFORE the write, so the audit record says what actually changed
 	// rather than what was submitted. Nineteen keys went in here with no actor,
@@ -1419,6 +1426,7 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 	a.applyShieldIntelSettings(r.Context())
 	a.kickShieldIntelRefresh()
 	a.applyWAFSettings(r.Context())
+	a.applySSHSetting(r.Context())
 	// "Behind Cloudflare/CDN" trust applies live (no restart): from now on the
 	// real visitor IP is read from CF-Connecting-IP so per-visitor gates work.
 	config.SetTrustCloudflare(bs("sh_behind_cdn") == "on")

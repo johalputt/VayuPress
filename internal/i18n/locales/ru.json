@@ -3476,6 +3476,7 @@
  "the console": "консоль",
  "the event was changed on another device since you opened it: close this and open it again": "событие изменили на другом устройстве, пока оно было открыто: закройте его и откройте снова",
  "the scan hit its limit — add a filter or a longer term to see the rest": "поиск дошёл до предела — добавьте фильтр или более длинное слово, чтобы увидеть остальное",
+ "the server's SSH": "SSH сервера",
  "the site's sign-in": "вход на сайт",
  "then": "то",
  "there is no clearnet egress, so a reset link cannot be delivered to an outside address. {only} — generate them for every mailbox.": "выхода в открытую сеть нет, поэтому ссылку для сброса нельзя отправить на внешний адрес. {only} — создайте их для каждого ящика.",

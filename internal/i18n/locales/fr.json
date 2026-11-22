@@ -3476,6 +3476,7 @@
  "the console": "la console",
  "the event was changed on another device since you opened it: close this and open it again": "l’évènement a été modifié sur un autre appareil depuis que vous l’avez ouvert : fermez-le et rouvrez-le",
  "the scan hit its limit — add a filter or a longer term to see the rest": "la recherche a atteint sa limite — ajoutez un filtre ou un terme plus long pour voir le reste",
+ "the server's SSH": "le SSH du serveur",
  "the site's sign-in": "la connexion du site",
  "then": "alors",
  "there is no clearnet egress, so a reset link cannot be delivered to an outside address. {only} — generate them for every mailbox.": "aucune sortie vers le réseau ouvert, donc aucun lien de réinitialisation ne peut être envoyé à une adresse extérieure. {only} — générez-les pour chaque boîte.",

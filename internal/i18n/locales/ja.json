@@ -3476,6 +3476,7 @@
  "the console": "コンソール",
  "the event was changed on another device since you opened it: close this and open it again": "開いた後に別の端末で予定が変更されました。閉じてから開き直してください",
  "the scan hit its limit — add a filter or a longer term to see the rest": "検索が上限に達しました。残りを見るには、フィルタを追加するか語句を長くしてください",
+ "the server's SSH": "サーバーの SSH",
  "the site's sign-in": "サイトのサインイン",
  "then": "処理",
  "there is no clearnet egress, so a reset link cannot be delivered to an outside address. {only} — generate them for every mailbox.": "通常のインターネットへの出口がないため、リセット用のリンクを外部アドレスに届けられません。{only}。すべてのメールボックスで作成してください。",

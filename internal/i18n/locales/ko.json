@@ -3476,6 +3476,7 @@
  "the console": "콘솔",
  "the event was changed on another device since you opened it: close this and open it again": "연 뒤에 다른 기기에서 일정이 바뀌었습니다. 닫고 다시 여세요",
  "the scan hit its limit — add a filter or a longer term to see the rest": "검색 한도에 도달했습니다. 나머지를 보려면 필터나 더 긴 검색어를 추가하세요",
+ "the server's SSH": "서버의 SSH",
  "the site's sign-in": "사이트 로그인",
  "then": "동작",
  "there is no clearnet egress, so a reset link cannot be delivered to an outside address. {only} — generate them for every mailbox.": "일반 인터넷으로 나가는 경로가 없어 재설정 링크를 외부 주소로 보낼 수 없습니다. {only} — 모든 편지함에 만들어 두세요.",

@@ -3476,6 +3476,7 @@
  "the console": "the console",
  "the event was changed on another device since you opened it: close this and open it again": "the event was changed on another device since you opened it: close this and open it again",
  "the scan hit its limit — add a filter or a longer term to see the rest": "the scan hit its limit — add a filter or a longer term to see the rest",
+ "the server's SSH": "the server's SSH",
  "the site's sign-in": "the site's sign-in",
  "then": "then",
  "there is no clearnet egress, so a reset link cannot be delivered to an outside address. {only} — generate them for every mailbox.": "there is no clearnet egress, so a reset link cannot be delivered to an outside address. {only} — generate them for every mailbox.",

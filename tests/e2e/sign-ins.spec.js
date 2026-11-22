@@ -166,7 +166,7 @@ test("a source's Block menu opens whole on a phone", async ({ page, browser }) =
 // specs running beside this one.)
 test("saving observe-only on asks first, and no leaves it off", async ({ page }) => {
   await page.goto("/os/shield");
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   const observe = page.locator("#sh_observe");
   await expect(observe).not.toBeChecked();
   let saved = false;
@@ -179,6 +179,6 @@ test("saving observe-only on asks first, and no leaves it off", async ({ page })
   await expect(ask).toHaveCount(0);
   expect(saved, "answered no, nothing was saved").toBe(false);
   await page.reload();
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(page.locator("#sh_observe")).not.toBeChecked();
 });

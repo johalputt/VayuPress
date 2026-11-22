@@ -308,6 +308,8 @@ type App struct {
 	// waf is the web application firewall (vayushield_waf.go); never nil
 	// once Shield has booted.
 	waf *waf.Engine
+	// sshWatch reads the agent's SSH failures (vayushield_ssh.go).
+	sshWatch *sshWatch
 
 	// trustedSessions caches operator-session validation (TTL) so the shield's
 	// operator-immunity check stays off the SQLite read path under load.
