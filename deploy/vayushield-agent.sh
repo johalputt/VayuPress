@@ -512,7 +512,7 @@ export_ssh_failures() {
     out="$(journalctl -q --no-pager -o short-unix --show-cursor -t sshd -t sshd-session --since "-10min" 2>/dev/null)" || out=""
   fi
   [ -f "$SSH_FAILS" ] && [ "$(wc -c <"$SSH_FAILS")" -gt "$SSH_FAILS_MAX" ] && : >"$SSH_FAILS"
-  while IFS= read -r line; do
+  while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in
       "-- cursor: "*)
         printf '%s' "${line#-- cursor: }" >"$SSH_CURSOR" 2>/dev/null || true
