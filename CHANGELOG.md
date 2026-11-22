@@ -8,6 +8,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.47] — 2026-11-22
+
+Sign-in links to strangers are guarded end to end: a proof of work in the
+browser, an automatic ban for good on a source that asks for many, no second
+link to an address that refused the install's mail, an hourly ceiling, and
+no bounce of the install's own mail in anyone's Inbox. Device approval is
+required of every mailbox.
+
 ### Security
 
 - **A sign-in link to a stranger costs a proof of work.** The site's
