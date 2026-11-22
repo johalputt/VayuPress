@@ -12,7 +12,9 @@ import (
 
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/vayushield/challenge"
+	"github.com/johalputt/vayupress/internal/vayushield/intel"
 )
 
 // A sign-in link to an address that is not a member yet is the one mail
@@ -101,9 +103,22 @@ func (a *App) confirmedMember(ctx context.Context, email string) bool {
 	return err == nil && m != nil && m.VerifiedAt != nil
 }
 
+// fromListedNetwork reports whether ip is on an enabled datacenter or
+// hostile list while the operator has switched on refusing strangers' links
+// from them (settings.KeyShieldLinkDatacenter).
+func (a *App) fromListedNetwork(ip string) bool {
+	if a.shieldIntel == nil || a.siteSettings == nil ||
+		a.siteSettings.Get(context.Background(), settings.ForPrimary(), settings.KeyShieldLinkDatacenter) != "on" {
+		return false
+	}
+	kind, _ := a.shieldIntel.Match(ip)
+	return kind == intel.KindDatacenter || kind == intel.KindHostile
+}
+
 // strangerLinkRefused is the gates a link to an address that is not a member
 // must pass, in order: the source has not now asked for too many strangers
-// (which bans it for good, signin.LinkStrangers), it solved a proof, the
+// (which bans it for good, signin.LinkStrangers), it is not on a listed
+// network when the operator refuses those (fromListedNetwork), it solved a proof, the
 // address has never refused this install's mail for good, and the install
 // is under its hourly ceiling. Each later gate runs only when the earlier
 // ones passed, so a refused request spends nothing of the ceiling.
@@ -112,6 +127,9 @@ func (a *App) strangerLinkRefused(account, ip, email, proof, nonce string) bool 
 	// a reader signing in is not mailing a stranger.
 	member := func(acct string) bool { return a.confirmedMember(context.Background(), acct) }
 	if a.signin.NoteLinkStranger(account, ip, member) {
+		return true
+	}
+	if a.fromListedNetwork(ip) {
 		return true
 	}
 	if !linkProofSpent(proof, nonce) {

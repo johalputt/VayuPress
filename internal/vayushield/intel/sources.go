@@ -67,6 +67,16 @@ func DefaultFeeds() []Feed {
 			Parse: parseCSVFirstField,
 		},
 		{
+			ID:   "x4bnet-datacenter",
+			Name: "X4BNet datacenter ranges",
+			URL:  "https://raw.githubusercontent.com/X4BNet/lists_vpn/main/output/datacenter/ipv4.txt",
+			Kind: KindDatacenter,
+			Note: "Compiled by X4BNet from hosting providers' address registrations (MIT; built on " +
+				"IPLocate's data, CC BY-SA 4.0). Wide: it lists hosting and VPN space well beyond " +
+				"the big clouds, and real people browse through VPNs there too.",
+			Parse: parseCSVFirstField,
+		},
+		{
 			ID:   "spamhaus-drop",
 			Name: "Spamhaus DROP",
 			URL:  "https://www.spamhaus.org/drop/drop.txt",

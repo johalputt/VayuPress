@@ -373,6 +373,15 @@ const (
 	// fetching, displayed as healthy, and connected to nothing.
 	KeyShieldIntelFeeds = "shield.intel_feeds"
 
+	// KeyShieldLinkDatacenter, "on", refuses a sign-in link to an address
+	// that is not a member when it is asked for from an address on an enabled
+	// datacenter or hostile list. A datacenter list only weighs a score
+	// elsewhere; here it decides, because a link to a stranger is the one
+	// thing the install sends anybody, and in November 2026 the senders
+	// asking for them came from hosting ranges. Off by default: it refuses
+	// readers on a VPN too, which is the operator's call.
+	KeyShieldLinkDatacenter = "shield.link_datacenter"
+
 	// KeyShieldRules is the operator's own request rules, one per line
 	// (vayushield/oprules): "block path^=/wp-", "test challenge country=CN".
 	// Empty by default, for the same reason as the lists above.
@@ -663,6 +672,7 @@ var NotPortable = map[string]bool{
 	KeyShieldClusterPeers:         true,
 	KeyShieldClusterNode:          true,
 	KeyShieldIntelFeeds:           true,
+	KeyShieldLinkDatacenter:       true,
 	KeyShieldRules:                true,
 	// A site's own shield settings are network policy, like the install's.
 	KeyShieldSitePoW:                true,
@@ -843,6 +853,7 @@ var AllKeys = map[string]bool{
 	KeyShieldClusterPeers:         true,
 	KeyShieldClusterNode:          true,
 	KeyShieldIntelFeeds:           true,
+	KeyShieldLinkDatacenter:       true,
 	KeyShieldRules:                true,
 	KeyAnalyticsBeacon:            true,
 	KeyTorEnabled:                 true,

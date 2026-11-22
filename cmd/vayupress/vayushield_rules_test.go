@@ -212,3 +212,30 @@ func TestTheSecurityPageStatesTheOtherLimits(t *testing.T) {
 		}
 	}
 }
+
+// The network lists band offers the switch for strangers' sign-in links,
+// says when no datacenter list is on to give it anything to refuse, and the
+// form's save stores it.
+func TestTheInstallsFormSavesTheDatacenterLinkSwitch(t *testing.T) {
+	a, _ := shieldSitesApp(t)
+	ctx := context.Background()
+	prev := config.TrustCloudflareEnabled()
+	t.Cleanup(func() { config.SetTrustCloudflare(prev) })
+	if band := a.shieldIntelBand(ctx); !strings.Contains(band, `id="sh_link_datacenter"`) {
+		t.Fatal("the band offers no switch for strangers' sign-in links")
+	}
+	form := url.Values{"sh_enabled": {"on"}, "sh_link_datacenter": {"on"}}
+	r := httptest.NewRequest(http.MethodPost, "/os/api/shield/settings", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	a.handleOSShieldSettings(w, r)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("save answered %d %s", w.Code, w.Body.String())
+	}
+	if got := a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyShieldLinkDatacenter); got != "on" {
+		t.Fatalf("the switch saved as %q", got)
+	}
+	if band := a.shieldIntelBand(ctx); !strings.Contains(band, "No datacenter list is on, so this refuses nothing yet") {
+		t.Error("the switch is on with no datacenter list, and the band does not say it refuses nothing")
+	}
+}

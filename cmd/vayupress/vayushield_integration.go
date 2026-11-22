@@ -1374,7 +1374,8 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		// ID posted into the form is dropped rather than stored: the value is
 		// re-read on every request path, and a settings row is a poor place to
 		// discover that somebody typed something.
-		settings.KeyShieldIntelFeeds: strings.Join(postedIntelFeeds(r), ","),
+		settings.KeyShieldIntelFeeds:     strings.Join(postedIntelFeeds(r), ","),
+		settings.KeyShieldLinkDatacenter: bs("sh_link_datacenter"),
 	}
 	// Diff BEFORE the write, so the audit record says what actually changed
 	// rather than what was submitted. Nineteen keys went in here with no actor,

@@ -4,17 +4,23 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/signin"
 	"github.com/johalputt/vayupress/internal/vayushield/challenge"
+	"github.com/johalputt/vayupress/internal/vayushield/intel"
 )
 
 // solvedLinkProof asks the install for a challenge, as the page's script
@@ -199,5 +205,60 @@ func TestAnUnconfirmedMemberIsAStrangerToTheGates(t *testing.T) {
 	postProvedLink(t, a, "203.0.113.51", "typed@elsewhere.test", proof, nonce)
 	if n := countLoginTokens(t, a, "typed@elsewhere.test"); n != 1 {
 		t.Errorf("an unconfirmed member with a proof was made %d links, want 1", n)
+	}
+}
+
+// withDatacenterList gives the app the X4BNet datacenter list, switched on
+// and holding cidr, as boot would from its cached copy.
+func withDatacenterList(t *testing.T, a *App, cidr string) {
+	t.Helper()
+	dir := t.TempDir()
+	const id = "x4bnet-datacenter"
+	sum := sha256.Sum256([]byte(id))
+	if err := os.WriteFile(filepath.Join(dir, "intel-"+hex.EncodeToString(sum[:8])+".json"), []byte(cidr+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.shieldIntel = intel.NewFetcher(dir)
+	for _, def := range intel.DefaultFeeds() {
+		a.shieldIntel.Add(def, def.ID == id)
+	}
+	a.shieldIntel.LoadCache()
+	a.siteSettings = settings.New(dbpkg.DB)
+}
+
+// With the switch on, a stranger's link asked for from a datacenter range
+// is not sent, proof or none, and answered as a sent one; a member's still
+// is, and a stranger from outside the range still gets one. With it off,
+// the range is only a weight elsewhere and the link goes.
+func TestStrangersLinksFromDatacenterRangesAreRefusedWhenSwitchedOn(t *testing.T) {
+	a := credentialFloodApp(t)
+	withDatacenterList(t, a, "185.65.10.0/24")
+	joinMember(t, a, "member@elsewhere.test")
+	ask := func(ip, email string) *httptest.ResponseRecorder {
+		proof, nonce := solvedLinkProof(t, a)
+		return postProvedLink(t, a, ip, email, proof, nonce)
+	}
+
+	ask("185.65.10.20", "off@elsewhere.test")
+	if n := countLoginTokens(t, a, "off@elsewhere.test"); n != 1 {
+		t.Fatalf("with the switch off a datacenter stranger was made %d links, want 1", n)
+	}
+	if err := a.siteSettings.SetMany(context.Background(), settings.ForPrimary(), map[string]string{settings.KeyShieldLinkDatacenter: "on"}); err != nil {
+		t.Fatal(err)
+	}
+	refused := ask("185.65.10.21", "dc@elsewhere.test")
+	if n := countLoginTokens(t, a, "dc@elsewhere.test"); n != 0 {
+		t.Errorf("a stranger's link from a datacenter range was made %d times with the switch on", n)
+	}
+	sent := ask("203.0.113.70", "home@elsewhere.test")
+	if n := countLoginTokens(t, a, "home@elsewhere.test"); n != 1 {
+		t.Errorf("a stranger from outside the range was made %d links, want 1", n)
+	}
+	if refused.Code != sent.Code || refused.Header().Get("Location") != sent.Header().Get("Location") {
+		t.Errorf("the refusal answered %d %q, a sent link %d %q", refused.Code, refused.Header().Get("Location"), sent.Code, sent.Header().Get("Location"))
+	}
+	postMemberLogin(t, a, "185.65.10.22", "member@elsewhere.test")
+	if n := countLoginTokens(t, a, "member@elsewhere.test"); n != 1 {
+		t.Errorf("a member asking from a datacenter range was made %d links, want 1", n)
 	}
 }

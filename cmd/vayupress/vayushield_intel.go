@@ -288,6 +288,17 @@ func (a *App) shieldIntelBand(ctx context.Context) string {
 		b.WriteString(`</div>`)
 	}
 
+	// The one place a datacenter list decides rather than weighs: a sign-in
+	// link to a stranger (member_link_proof.go).
+	linkOn := a.siteSettings != nil && a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyShieldLinkDatacenter) == "on"
+	b.WriteString(`<div class="vs-feat">`)
+	b.WriteString(vsRow("sh_link_datacenter", "Refuse sign-in links to strangers from datacenter networks",
+		"A sign-in link to an address that is not a member is not sent when it is asked for from an address on a datacenter or hostile list turned on above. The answer is the same as a sent one. Your members still get theirs from anywhere; a new reader on a VPN does not.", linkOn, false))
+	if linkOn && !a.datacenterListOn(ctx) {
+		b.WriteString(`<p class="muted text-xs">No datacenter list is on, so this refuses nothing yet. Turn one on above.</p>`)
+	}
+	b.WriteString(`</div>`)
+
 	if a.vayuShield != nil {
 		if hostile, datacenter := a.vayuShield.IntelHits(); hostile+datacenter > 0 {
 			b.WriteString(`<p class="muted text-xs">Since the last restart: ` +
@@ -343,6 +354,20 @@ func intelFeedState(enabled bool, s intel.Status) string {
 // removed in a later version leaves its ID behind in the settings row of every
 // install that had it on, and an unfiltered read would carry a name the panel
 // cannot explain and the fetcher cannot fetch.
+// datacenterListOn reports whether any enabled feed is a datacenter list.
+func (a *App) datacenterListOn(ctx context.Context) bool {
+	on := map[string]bool{}
+	for _, id := range a.enabledIntelFeeds(ctx) {
+		on[id] = true
+	}
+	for _, def := range intel.DefaultFeeds() {
+		if on[def.ID] && def.Kind == intel.KindDatacenter {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *App) enabledIntelFeeds(ctx context.Context) []string {
 	if a.siteSettings == nil {
 		return nil
