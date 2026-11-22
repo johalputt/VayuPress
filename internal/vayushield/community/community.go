@@ -12,7 +12,8 @@
 //   - every report is signed by its install's own Ed25519 key; the key is
 //     the reporter, and the hub can remove one, with all it reported;
 //   - one report per key per ReportEvery, and at most MaxAddrs addresses in
-//     it; at most NewKeysPerNet new keys from one network a day;
+//     it; at most NewKeysPerNet new keys from one network a day and
+//     NewKeysADay from all; at most MaxHeld addresses held per key;
 //   - an address is listed only when reporters on ListAt different networks
 //     (a /24, or a /48 for IPv6, of where the report came from, as the hub
 //     saw it, not as the report claims) reported it within ListWindow;
@@ -48,8 +49,14 @@ const (
 	ListAt      = 3
 	ListWindow  = 24 * time.Hour
 	ListFor     = 7 * 24 * time.Hour
-	// NewKeysPerNet is how many new reporters one network may register a day.
+	// NewKeysPerNet is how many new reporters one network may register a day,
+	// and NewKeysADay how many the hub takes a day from everywhere: what a
+	// flood of fresh keys from many networks can add to its tables.
 	NewKeysPerNet = 4
+	NewKeysADay   = 200
+	// MaxHeld is how many addresses one reporter may have on record at once
+	// (a week's): a busy install bans hundreds a week, not thousands.
+	MaxHeld = 5000
 	// clockSkew is how far a report's time may be from the hub's: a replay of
 	// an old report is refused, and so is one dated ahead.
 	clockSkew = 15 * time.Minute
@@ -239,6 +246,12 @@ func (h *Hub) Accept(ctx context.Context, rep Report, addrs []netip.Addr, from n
 		if fresh >= NewKeysPerNet {
 			return ErrTooSoon
 		}
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM community_reporters WHERE first_seen > ?`, now.Add(-24*time.Hour).Unix()).Scan(&fresh); err != nil {
+			return err
+		}
+		if fresh >= NewKeysADay {
+			return ErrTooSoon
+		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO community_reporters(key, net, first_seen) VALUES(?, ?, ?)`, rep.Key, net, now.Unix()); err != nil {
 			return err
 		}
@@ -248,6 +261,13 @@ func (h *Hub) Accept(ctx context.Context, rep Report, addrs []netip.Addr, from n
 		return ErrRemoved
 	case now.Sub(time.Unix(last, 0)) < ReportEvery:
 		return ErrTooSoon
+	}
+	var held int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM community_reports WHERE key = ?`, rep.Key).Scan(&held); err != nil {
+		return err
+	}
+	if held+len(addrs) > MaxHeld {
+		return ErrTooMany
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE community_reporters SET net = ?, last_report = ?, reports = reports + 1 WHERE key = ?`, net, now.Unix(), rep.Key); err != nil {
 		return err

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/vayushield/waf"
 )
@@ -53,9 +54,14 @@ func TestTheFirewallRefusesOnThePublicSiteOnly(t *testing.T) {
 		t.Errorf("the console was read by the firewall (%d)", code)
 	}
 	keyed := wafGet("/api/v1/articles" + sqli)
-	keyed.Header.Set("X-API-Key", "k")
+	keyed.Header.Set("X-API-Key", config.Cfg.APIKey)
 	if code := throughWAF(a, keyed); code != http.StatusOK {
 		t.Errorf("an API-key request was read by the firewall (%d)", code)
+	}
+	forged := wafGet("/api/v1/articles" + sqli)
+	forged.Header.Set("X-API-Key", "made-up")
+	if code := throughWAF(a, forged); code != http.StatusForbidden {
+		t.Errorf("a made-up API key got an injection past the firewall (%d)", code)
 	}
 	if code := throughWAF(wafApp(t, waf.ModeDetect), wafGet("/search"+sqli)); code != http.StatusOK {
 		t.Errorf("recording only, an injection was answered %d", code)

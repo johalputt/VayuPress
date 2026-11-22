@@ -65,8 +65,10 @@ func wafExempt(r *http.Request) bool {
 			return true
 		}
 	}
-	// An API request with a key is the operator's own tooling.
-	return strings.HasPrefix(p, "/api/") && (r.Header.Get("X-API-Key") != "" || r.Header.Get("Authorization") != "")
+	// An API request with a valid key is the operator's own tooling. Valid,
+	// not merely present: any header can be sent, and a made-up one was a
+	// way past the firewall for every public API route.
+	return strings.HasPrefix(p, "/api/") && (r.Header.Get("X-API-Key") != "" || r.Header.Get("Authorization") != "") && auth.HasValidAPIKey(r)
 }
 
 // wafMiddleware reads public requests through the firewall and answers a

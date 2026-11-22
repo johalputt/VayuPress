@@ -222,13 +222,17 @@ type Store struct {
 	// enabled abusive or hostile network list (the app sets it). Asked at
 	// every door through Refuse, never of an address on the install's own
 	// network, which may be the proxy every reader comes through.
-	Listed   func(addr string) bool
-	pending  map[pendKey]*pendVal
-	dropped  int
-	blocks   []*Block
-	hits     map[int64]int
-	fences   map[string]map[string]bool
-	known    map[string]map[string]bool // account → fingerprints
+	Listed  func(addr string) bool
+	pending map[pendKey]*pendVal
+	dropped int
+	blocks  []*Block
+	hits    map[int64]int
+	fences  map[string]map[string]bool
+	known   map[string]map[string]bool // account → fingerprints
+	// signedIn is where each account has signed in from (account →
+	// fingerprints), from the attempts kept: a list never refuses an
+	// account at a place it has already proved itself.
+	signedIn map[string]map[string]bool
 	spray    map[string]*sprayState
 	linkAsks map[string]*sprayState // source → strangers it asked links for
 	alarmed  map[alarmKey]time.Time
@@ -247,7 +251,7 @@ func Open(ctx context.Context, db *sql.DB, key []byte) (*Store, error) {
 	s := &Store{
 		db: db, key: append([]byte(nil), key...), Now: time.Now,
 		pending: map[pendKey]*pendVal{}, hits: map[int64]int{},
-		fences: map[string]map[string]bool{}, known: map[string]map[string]bool{},
+		fences: map[string]map[string]bool{}, known: map[string]map[string]bool{}, signedIn: map[string]map[string]bool{},
 		spray: map[string]*sprayState{}, linkAsks: map[string]*sprayState{}, alarmed: map[alarmKey]time.Time{},
 	}
 	if err := s.reload(ctx); err != nil {
@@ -318,8 +322,28 @@ func (s *Store) reload(ctx context.Context) error {
 	if err := krows.Err(); err != nil {
 		return err
 	}
+	signedIn := map[string]map[string]bool{}
+	orows, err := s.db.QueryContext(ctx, `SELECT DISTINCT account, ip_fp FROM signin_attempts WHERE stage = ?`, StageOK)
+	if err != nil {
+		return err
+	}
+	for orows.Next() {
+		var acct, fp string
+		if err := orows.Scan(&acct, &fp); err != nil {
+			orows.Close()
+			return err
+		}
+		if signedIn[acct] == nil {
+			signedIn[acct] = map[string]bool{}
+		}
+		signedIn[acct][fp] = true
+	}
+	orows.Close()
+	if err := orows.Err(); err != nil {
+		return err
+	}
 	s.mu.Lock()
-	s.blocks, s.fences, s.known = blocks, fences, known
+	s.blocks, s.fences, s.known, s.signedIn = blocks, fences, known, signedIn
 	s.rebuildSiteLocked()
 	s.mu.Unlock()
 	return nil
@@ -438,7 +462,12 @@ func (s *Store) Refuse(account, addr string) (Refusal, bool) {
 	if set := s.fences[account]; len(set) > 0 && src.country != "" && !set[src.country] {
 		return Refusal{Fence: true}, true
 	}
-	if s.Listed != nil && !src.private && s.Listed(addr) {
+	// A list is other people's word about an address, and an address is
+	// shared (a phone network's, an office's, a VPN's), so a list never
+	// refuses an account where it has signed in before or its holder said
+	// "It was me": that is what makes a poisoned list unable to lock an
+	// operator out of their own console.
+	if s.Listed != nil && !src.private && !s.signedIn[account][src.fp] && !s.known[account][src.fp] && s.Listed(addr) {
 		return Refusal{Listed: true}, true
 	}
 	return Refusal{}, false
@@ -470,6 +499,12 @@ func (s *Store) Record(a Attempt) {
 		s.pending[k] = &pendVal{net: src.net, masked: src.masked, country: src.country, n: 1}
 	} else {
 		s.dropped++
+	}
+	if a.Stage == StageOK {
+		if s.signedIn[a.Account] == nil {
+			s.signedIn[a.Account] = map[string]bool{}
+		}
+		s.signedIn[a.Account][src.fp] = true
 	}
 	known := s.known[a.Account][src.fp]
 	var alarm *Alarm

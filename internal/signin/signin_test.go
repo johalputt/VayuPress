@@ -832,3 +832,36 @@ func TestEachAutomaticBanIsPassedOn(t *testing.T) {
 		t.Fatalf("passed on %v, want the sprayer and the link sprayer", got)
 	}
 }
+
+// A list never refuses an account where it has signed in before, nor where
+// its holder said "It was me", and that survives a restart; another
+// account at the same listed address is still refused.
+func TestAListNeverRefusesAnAccountWhereItSignedInBefore(t *testing.T) {
+	s, _ := openStore(t)
+	ctx := context.Background()
+	s.Listed = func(string) bool { return true }
+	const home, cafe = "45.148.10.61", "45.148.10.62"
+	s.Record(Attempt{Account: "owner@x.test", Door: DoorConsole, Stage: StageOK, IP: home})
+	if _, refused := s.Refuse("owner@x.test", home); refused {
+		t.Fatal("a listed address was refused to an account that signed in there")
+	}
+	if _, refused := s.Refuse("other@x.test", home); !refused {
+		t.Fatal("another account at the listed address was let through")
+	}
+	src, _ := s.source(cafe, false)
+	if err := s.ItWasMe(ctx, "owner@x.test", src.fp); err != nil {
+		t.Fatal(err)
+	}
+	if _, refused := s.Refuse("owner@x.test", cafe); refused {
+		t.Fatal("a listed address the holder said was them was refused")
+	}
+	if err := s.Flush(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.reload(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, refused := s.Refuse("owner@x.test", home); refused {
+		t.Fatal("after a restart, the account's own sign-in place was refused")
+	}
+}

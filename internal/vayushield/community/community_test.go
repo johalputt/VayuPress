@@ -7,9 +7,11 @@ import (
 	"context"
 	"crypto/ed25519"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"net/netip"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -257,5 +259,34 @@ func TestAListReadsOnlyAgainstTheHubKey(t *testing.T) {
 	}
 	if _, err := VerifyList(body, key(t).Public().(ed25519.PublicKey)); err == nil {
 		t.Fatal("a list was read against another key")
+	}
+}
+
+// The hub takes at most NewKeysADay new reporters a day from all networks,
+// and a reporter holding MaxHeld addresses adds no more.
+func TestTheHubsTablesAreBounded(t *testing.T) {
+	h, now := hub(t)
+	for i := 0; i < NewKeysADay; i++ {
+		if _, err := h.DB.Exec(`INSERT INTO community_reporters(key, net, first_seen) VALUES(?, ?, ?)`, "k"+strconv.Itoa(i), "n"+strconv.Itoa(i), now.Unix()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := report(t, h, key(t), "9.9.1.1", attacker); !errors.Is(err, ErrTooSoon) {
+		t.Fatalf("a new key past the day's total: %v", err)
+	}
+	*now = now.Add(25 * time.Hour)
+	priv := key(t)
+	if err := report(t, h, priv, "9.9.1.1", attacker); err != nil {
+		t.Fatal(err)
+	}
+	pub := base64.StdEncoding.EncodeToString(priv.Public().(ed25519.PublicKey))
+	for i := 0; i < MaxHeld; i++ {
+		if _, err := h.DB.Exec(`INSERT INTO community_reports(addr, key, net, at) VALUES(?, ?, '9.9.1.0/24', ?)`, "a"+strconv.Itoa(i), pub, now.Unix()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	*now = now.Add(ReportEvery)
+	if err := report(t, h, priv, "9.9.1.1", "185.220.101.8"); !errors.Is(err, ErrTooMany) {
+		t.Fatalf("a reporter past what it may hold: %v", err)
 	}
 }

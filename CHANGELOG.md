@@ -88,6 +88,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **A list never refuses an account where it has signed in before.** The
+  abusive and hostile network lists refuse sign-in at every door; an address
+  is shared (a phone network's, an office's, a VPN exit), and the shared
+  attacker list can be fed by any three installs. A listed address is now let
+  through to the password and second factor for an account that has signed
+  in from it, or whose holder said "It was me" there, and that is kept across
+  a restart; any other account at that address is still refused. So a
+  poisoned or mistaken list cannot lock an operator out of their own console.
+- **A made-up API key no longer gets a request past the firewall.** The web
+  application firewall left API requests that carry a key to the operator's
+  tooling; it checked that a key was sent, not that it was valid. It now
+  skips only a key that authenticates.
+- **The shared attacker list's hub is bounded.** At most 200 new reporters a
+  day from all networks, and 5,000 addresses held per reporter, so a flood
+  of freshly made keys cannot grow its tables without end.
+
 - **Reported attackers are refused sign-in at every door.** A new kind of
   network list, *abusive*, names addresses other servers caught attacking
   them; an address on an enabled one is refused at the site's sign-in, the
