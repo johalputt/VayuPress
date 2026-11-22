@@ -8,6 +8,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.46] — 2026-11-22
+
+The console speaks thirteen languages across Settings, Backups, API keys,
+the Newsletter, YouTube, Advertising, VayuTor, Updates, Tools and plugins,
+Theme Studio, the theme store and VayuFlow; VayuFlow's buttons work; and the
+sign-in page's language is a small button in its corner.
+
 ### Added
 
 - **Settings in thirteen languages.** Settings follows the language chosen
