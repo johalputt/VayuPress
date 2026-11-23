@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.18.52] — 2026-11-23
+
+The shared attacker list's hub address shows, and can be changed, in Shield
+› Settings.
+
+### Fixed
+
+- **The hub's address is shown in an address field.** Shield › Settings ›
+  Shared attacker list drew the hub in a number box, which cannot show an
+  address, so the box looked empty (the stored hub, `https://johal.in`,
+  was kept). It is now an address field showing the hub in use.
+
 ## [3.18.51] — 2026-11-22
 
 Shield grows seven defences, each off until switched on: two abuse feeds of
